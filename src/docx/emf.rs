@@ -83,6 +83,10 @@ pub(crate) enum EmfRecord {
     FillPath,
     StrokePath,
     StrokeAndFillPath,
+    /// Make the current path the clip region (EMR_SELECTCLIPPATH).
+    SelectClipPath,
+    /// Discard the current path (EMR_ABORTPATH).
+    AbortPath,
     CreateBrushIndirect { handle: u32, color: [u8; 3] },
     ExtCreatePen { handle: u32, width: i32, color: [u8; 3] },
     SelectObject(u32),
@@ -166,6 +170,8 @@ fn decode(rec_type: u32, payload: &[u8]) -> EmfRecord {
         62 => FillPath,
         63 => StrokeAndFillPath,
         64 => StrokePath,
+        67 => SelectClipPath,
+        68 => AbortPath,
         37 => SelectObject(u32_at(0).unwrap_or(0)),
         40 => DeleteObject(u32_at(0).unwrap_or(0)),
         39 => decode_brush(payload).unwrap_or(Skip),
@@ -263,6 +269,12 @@ mod tests {
         assert_eq!(h.bounds, (100, 200, 300, 400));
         assert_eq!(h.bounds_size(), (200, 200));
         assert_eq!(h.device_px, (1024, 768));
+    }
+
+    #[test]
+    fn decodes_clip_path_records() {
+        assert!(matches!(decode(67, &5u32.to_le_bytes()), EmfRecord::SelectClipPath));
+        assert!(matches!(decode(68, &[]), EmfRecord::AbortPath));
     }
 
     #[test]

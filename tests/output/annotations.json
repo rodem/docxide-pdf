@@ -514,8 +514,8 @@
       "source": "Generated",
       "x_pt": 485.44128,
       "y_pt": 32.92572,
-      "note": "Logo is rendered as a black square",
-      "fixed": false,
+      "note": "Logo is rendered as a black square\n\nFIXED (2026-09-15): EMF footer logo uses EMR_SELECTCLIPPATH; the ignored clip rectangle stayed an open PDF path and merged into the next FILLPATH, painting the whole logo box black. The translator now emits W n / W* n for it (and n for ABORTPATH).",
+      "fixed": true,
       "cleared": false
     },
     {

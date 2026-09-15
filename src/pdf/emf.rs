@@ -199,6 +199,21 @@ fn translate_record(
             }
             content.stroke();
         }
+        // A PDF path stays open until a painting operator consumes it, so an ignored
+        // clip path would merge into the next fill (a logo's clip rectangle came out
+        // as a solid black block). Clip with the current fill rule and end the path.
+        SelectClipPath => {
+            match state.fill_rule {
+                FillRule::Alternate => content.clip_even_odd(),
+                FillRule::Winding => content.clip_nonzero(),
+            };
+            content.end_path();
+            state.in_path = false;
+        }
+        AbortPath => {
+            content.end_path();
+            state.in_path = false;
+        }
         StrokeAndFillPath => {
             if let Some(c) = state.selected_brush {
                 fill_rgb(content, c);
