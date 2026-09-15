@@ -359,6 +359,41 @@ HR `o:hrpct` width should use the indent-adjusted paragraph box.
   terminates; intermediate br-created lines keep the break size). samtale +57.7pp
   TxtBnd / +10.9pp SSIM / +6.5pp Jaccard, german_mezzo_soprano +2.2pp.
 
+## Annotation Fixes 2026-09-15 (#231 #228 #236 #235 #223 #234 — DONE)
+
+Five localized rendering bugs, one commit each; every fix changed only its own
+fixture's visual hash, no score regressions across the 221 scored fixtures.
+
+- **#231 EMF clip path** (indigenous footer logo as a black block): `pdf/emf.rs`
+  skipped EMR_SELECTCLIPPATH, so the clip rectangle stayed an open PDF path and
+  merged into the next FILLPATH. Now `W n`/`W* n` per the fill rule; ABORTPATH → `n`.
+- **#228 bitmap EMF + inline rotation** (italian p7 signature missing): a lone
+  EMR_STRETCHDIBITS is wrapped as BMP by `docx/emf.rs::emf_to_raster` (WMF-style);
+  inline pictures keep `a:xfrm@rot`, draw turned about the frame centre and occupy
+  the rotated box (`EmbeddedImage::layout_size`) — Word gives a -90° 56×108pt frame a
+  56pt line. Only quarter turns swap the box; `para.image` block pictures still
+  ignore rotation. #230 stays open: Word puts the text baseline at an inline
+  picture's bottom, we centre the picture on the text (`img_bottom = y + font_size
+  - line_max_img_h` in `pdf/layout.rs`).
+- **#236 / #235 table border inheritance** (croatian_grant_guidelines): inline
+  `w:tblBorders` replaced the style's set wholesale; now merged per side
+  (`merge_table_borders`), so Table Grid's insideH/insideV survive. Rule confirmed
+  for #235: at a page split each row draws its own top/bottom border, which for
+  inner rows is insideH — a table with insideH=nil shows no line at the split.
+- **#223 spAutoFit in table cells** (japanese_land_development arrow hidden):
+  `render_simple_textbox` ignored `AutoFit::Shape` and painted the white box at
+  Word's 110.6pt default height. Height computation shared via `textbox_height`.
+- **#234 footnote laid out as a table** (auditor_regulatory_report_template):
+  `parse_notes_simple` read only `w:p` children. Table rows are flattened to one
+  paragraph each, cells joined by a space (ponytail note in `headers_footers.rs`;
+  real column geometry needs Block support in `Footnote`).
+
+Triage notes for the annotations left open: #233 (Merriweather not vendored — font
+availability, not code), #237 (row split is paragraph-granular; needs line-level
+`find_cell_split`), #232 (floating `tblpPr` table pushed whole to the next page instead
+of breaking), #229 (`a:srcRect` crop is parsed but the italian stamp still shows —
+check the inline draw path), #238/#158/#195 (font/width class).
+
 ## Annotation Fixes 2026-09-09 (#225 #226 — DONE)
 
 - **#225 / #226 split-row borders**: `render_partial_row` drew the cell's top

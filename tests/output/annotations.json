@@ -547,8 +547,8 @@
       "source": "Generated",
       "x_pt": 78.17676,
       "y_pt": 73.54114,
-      "note": "Missing footnote here. Also footnote horizontal line is too low.",
-      "fixed": false,
+      "note": "Missing footnote here. Also footnote horizontal line is too low.\n\nFIXED (2026-09-15): The footnote body is a two-cell table (footnoteRef in a 170-twip cell, text in the next); parse_notes_simple only read w:p children, so the note had no visible content and its separator was placed for a near-empty footnote. Table rows in footnotes are now flattened to one paragraph each (cells joined by a space), which brings back the text and moves the separator up to Word's position.",
+      "fixed": true,
       "cleared": false
     },
     {

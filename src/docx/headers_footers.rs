@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Seek};
 
-use crate::model::{Alignment, Block, Footnote, HeaderFooter, LineSpacing, Paragraph};
+use crate::model::{Alignment, Block, Footnote, HeaderFooter, LineSpacing, Paragraph, Run};
 
 use super::numbering::NumberingInfo;
 use super::parse_table_node;
@@ -131,8 +131,7 @@ fn parse_notes_simple<R: Read + Seek>(
             continue;
         };
 
-        let mut paragraphs = Vec::new();
-        for p in node.children().filter(|n| is_wml(*n, "p")) {
+        let parse_para = |p: roxmltree::Node, fn_ctx: &mut ParseContext<'_, R>| -> Paragraph {
             let ppr = wml(p, "pPr");
             let para_style_id = ppr
                 .and_then(|ppr| wml_attr(ppr, "pStyle"))
@@ -140,7 +139,7 @@ fn parse_notes_simple<R: Read + Seek>(
             let para_style = fn_ctx.styles.paragraph_styles.get(para_style_id);
 
             let alignment = resolve_alignment(ppr, para_style);
-            let parsed = parse_runs(p, &mut fn_ctx);
+            let parsed = parse_runs(p, fn_ctx);
             let (sp_before, sp_after, ls) = parse_paragraph_spacing(ppr, para_style, None);
 
             // Indents: inline w:ind overrides the style, missing attributes
@@ -173,7 +172,7 @@ fn parse_notes_simple<R: Read + Seek>(
                     (None, None, None, None)
                 };
 
-            paragraphs.push(Paragraph {
+            Paragraph {
                 runs: parsed.runs,
                 space_before: sp_before.unwrap_or(0.0),
                 space_after: sp_after.unwrap_or(0.0),
@@ -185,7 +184,44 @@ fn parse_notes_simple<R: Read + Seek>(
                 indent_hanging: hanging.unwrap_or(0.0),
                 indent_first_line: first.unwrap_or(0.0),
                 ..Paragraph::default()
-            });
+            }
+        };
+
+        let mut paragraphs = Vec::new();
+        for child in node.children() {
+            if is_wml(child, "p") {
+                paragraphs.push(parse_para(child, &mut fn_ctx));
+            } else if is_wml(child, "tbl") {
+                // Some templates (FAR/ST4) lay a footnote out as a table: the reference
+                // mark in a narrow first cell, the text in the second. Dropping the table
+                // dropped the whole footnote (auditor_regulatory_report_template p2).
+                // ponytail: each row becomes one paragraph with the cells joined by a
+                // space; real column geometry needs Block support in Footnote.
+                for tr in child.children().filter(|n| is_wml(*n, "tr")) {
+                    let mut cell_paras = tr
+                        .descendants()
+                        .filter(|n| is_wml(*n, "p"))
+                        .map(|p| parse_para(p, &mut fn_ctx));
+                    let Some(mut merged) = cell_paras.next() else {
+                        continue;
+                    };
+                    for para in cell_paras {
+                        if let Some(first) = para.runs.first() {
+                            merged.runs.push(Run {
+                                text: " ".to_string(),
+                                is_footnote_ref_mark: false,
+                                is_endnote_ref_mark: false,
+                                footnote_id: None,
+                                endnote_id: None,
+                                inline_image: None,
+                                ..first.clone()
+                            });
+                        }
+                        merged.runs.extend(para.runs);
+                    }
+                    paragraphs.push(merged);
+                }
+            }
         }
 
         if !paragraphs.is_empty() {
