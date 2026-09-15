@@ -75,6 +75,19 @@ fn parse_table_borders_def(bdr_node: roxmltree::Node) -> TableBordersDef {
     }
 }
 
+/// Per-side merge: sides `over` specifies (or explicitly clears) win, the rest
+/// fall through to `base`.
+fn merge_table_borders(over: TableBordersDef, base: TableBordersDef) -> TableBordersDef {
+    TableBordersDef {
+        top: border_or_fallback(over.top, base.top),
+        bottom: border_or_fallback(over.bottom, base.bottom),
+        left: border_or_fallback(over.left, base.left),
+        right: border_or_fallback(over.right, base.right),
+        inside_h: border_or_fallback(over.inside_h, base.inside_h),
+        inside_v: border_or_fallback(over.inside_v, base.inside_v),
+    }
+}
+
 fn border_or_fallback(inline: CellBorder, fallback: CellBorder) -> CellBorder {
     if inline.present || inline.is_override {
         CellBorder {
@@ -298,6 +311,13 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
     let inline_tbl_borders = tbl_pr
         .and_then(|pr| wml(pr, "tblBorders"))
         .map(parse_table_borders_def);
+    // A table's own tblBorders overrides the style side by side (§17.4.39); sides
+    // it leaves out still come from the style. croatian_grant_guidelines sets only
+    // the outer borders inline and takes insideH/insideV from Table Grid.
+    let merged_tbl_borders = match (inline_tbl_borders, tbl_style_borders) {
+        (Some(inline), Some(style)) => Some(merge_table_borders(inline, *style)),
+        (inline, style) => inline.or(style.copied()),
+    };
 
     // Parse tblLook — controls which conditional formats from the style apply.
     // Supports both named attributes (w:firstRow="1") and legacy hex bitmask (w:val="04A0").
@@ -375,25 +395,16 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
 
         // Per-row table property exceptions (§17.4.60): merge with base table
         // borders — specified exception borders override, unspecified inherit.
-        let base_tbl_borders: Option<&TableBordersDef> =
-            inline_tbl_borders.as_ref().or(tbl_style_borders);
+        let base_tbl_borders: Option<&TableBordersDef> = merged_tbl_borders.as_ref();
         let merged_row_borders;
         let row_effective_tbl_borders = match wml(*tr, "tblPrEx")
             .and_then(|prex| wml(prex, "tblBorders"))
         {
             Some(bdr_node) => {
                 let exc = parse_table_borders_def(bdr_node);
-                merged_row_borders = if let Some(base) = base_tbl_borders {
-                    TableBordersDef {
-                        top: border_or_fallback(exc.top, base.top),
-                        bottom: border_or_fallback(exc.bottom, base.bottom),
-                        left: border_or_fallback(exc.left, base.left),
-                        right: border_or_fallback(exc.right, base.right),
-                        inside_h: border_or_fallback(exc.inside_h, base.inside_h),
-                        inside_v: border_or_fallback(exc.inside_v, base.inside_v),
-                    }
-                } else {
-                    exc
+                merged_row_borders = match base_tbl_borders {
+                    Some(base) => merge_table_borders(exc, *base),
+                    None => exc,
                 };
                 Some(&merged_row_borders)
             }
@@ -965,6 +976,33 @@ mod border_conflict_tests {
             style,
             is_override,
         }
+    }
+
+    #[test]
+    fn inline_tbl_borders_keep_unspecified_sides_from_style() {
+        // croatian_grant_guidelines: inline tblBorders name only the outer sides;
+        // insideH/insideV must still come from the Table Grid style.
+        let none = CellBorder::default();
+        let inline = TableBordersDef {
+            top: border(BorderStyle::Single, false),
+            bottom: border(BorderStyle::Single, false),
+            left: none,
+            right: none,
+            inside_h: none,
+            inside_v: none,
+        };
+        let style = TableBordersDef {
+            top: border(BorderStyle::Dotted, false),
+            bottom: none,
+            left: none,
+            right: none,
+            inside_h: border(BorderStyle::Single, false),
+            inside_v: border(BorderStyle::Single, false),
+        };
+        let merged = merge_table_borders(inline, style);
+        assert_eq!(merged.top.style, BorderStyle::Single);
+        assert!(merged.inside_h.present && merged.inside_v.present);
+        assert!(!merged.left.present);
     }
 
     #[test]

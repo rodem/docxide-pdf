@@ -558,8 +558,8 @@
       "source": "Generated",
       "x_pt": 341.99338,
       "y_pt": 412.85886,
-      "note": "Table segment that neither starts or ends on this page should still be rendered with top and bottom border. At least in this case. Confirm if this is always the rule.",
-      "fixed": false,
+      "note": "Table segment that neither starts or ends on this page should still be rendered with top and bottom border. At least in this case. Confirm if this is always the rule.\n\nFIXED (2026-09-15): Same root cause as #236. Rule confirmed on this fixture: Word draws each row's own borders on every page, so at a page split the continuation's first row shows its top border and the last row on the previous page its bottom border. For rows inside the table those resolve to insideH, not the table's outer top/bottom; a table with insideH=nil shows no line at the split.",
+      "fixed": true,
       "cleared": false
     },
     {
@@ -569,8 +569,8 @@
       "source": "Generated",
       "x_pt": 311.92712,
       "y_pt": 395.67072,
-      "note": "Table is missing internal horizontal and vertical borders.",
-      "fixed": false,
+      "note": "Table is missing internal horizontal and vertical borders.\n\nFIXED (2026-09-15): The table's own tblBorders named only top/left/bottom/right, and the parser let that element replace the Table Grid style's border set wholesale, dropping the style's insideH/insideV. Inline tblBorders now merge with the style side by side (merge_table_borders in docx/tables.rs).",
+      "fixed": true,
       "cleared": false
     },
     {

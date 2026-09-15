@@ -172,6 +172,7 @@ pub(super) struct CharacterStyle {
     pub(super) text_glow: Option<TextGlow>,
 }
 
+#[derive(Clone, Copy)]
 pub(super) struct TableBordersDef {
     pub(super) top: CellBorder,
     pub(super) bottom: CellBorder,
