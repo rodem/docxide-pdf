@@ -536,7 +536,7 @@ fn render_simple_textbox(
     use super::textbox_render::render_textbox_paragraphs;
 
     let tb_width = tb.width_pt;
-    let tb_height = tb.height_pt;
+    let tb_height = super::textbox_render::textbox_height(tb, ctx);
 
     // Fill
     if let Some(ShapeFill::Solid(color)) = &tb.fill {

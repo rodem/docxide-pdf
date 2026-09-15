@@ -426,8 +426,8 @@
       "source": "Generated",
       "x_pt": 225.17592,
       "y_pt": 264.42816,
-      "note": "Missing arrow below the \"50\" here",
-      "fixed": false,
+      "note": "Missing arrow below the \"50\" here\n\nFIXED (2026-09-15): The arrow was drawn at full length but hidden: the white-filled '50cm' textbox is anchored in a table cell, and the cell path (render_simple_textbox) ignored its a:spAutoFit, keeping Word's stored 110.6pt default height so the box painted over the lower 55pt of the arrow. Cell textboxes now share textbox_height with body textboxes.",
+      "fixed": true,
       "cleared": false
     },
     {

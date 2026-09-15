@@ -37,38 +37,12 @@ fn image_block_height(img: &EmbeddedImage) -> f32 {
     img.display_height + img.layout_extra_height
 }
 
-pub(super) fn render_single_textbox(
-    tb: &Textbox,
-    sp: &SectionProperties,
-    col_x: f32,
-    col_w: f32,
-    text_width: f32,
-    slot_top: f32,
-    content: &mut Content,
-    gradient_specs: &mut Vec<GradientSpec>,
-    ctx: &RenderContext,
-    page_links: &mut Vec<LinkAnnotation>,
-) {
-    let tb_x = resolve_h_position(
-        tb.h_relative_from,
-        &tb.h_position,
-        tb.width_pt,
-        sp,
-        col_x,
-        col_w,
-        text_width,
-    );
-    let tb_y_top = resolve_tb_y_top(
-        tb.v_relative_from,
-        &tb.v_position,
-        tb.height_pt,
-        sp,
-        slot_top,
-    );
-
-
-    // For AutoFit::Shape, compute height from content instead of using tb.height_pt
-    let tb_height = if matches!(tb.auto_fit, crate::model::AutoFit::Shape) {
+/// Rendered height of a textbox: the stored height, or for `a:spAutoFit` shapes the
+/// height of their content (Word shrinks or grows the shape to fit). Shared by body
+/// and table-cell textboxes so a cell-anchored autofit box does not keep Word's
+/// 110.6pt default and paint over neighbouring shapes (japanese_land_development p1).
+pub(super) fn textbox_height(tb: &Textbox, ctx: &RenderContext) -> f32 {
+    if matches!(tb.auto_fit, crate::model::AutoFit::Shape) {
         let tmp_w = if tb.no_text_wrap {
             10000.0
         } else {
@@ -113,7 +87,40 @@ pub(super) fn render_single_textbox(
         h + tb.margin_top + tb.margin_bottom
     } else {
         tb.height_pt
-    };
+    }
+}
+
+pub(super) fn render_single_textbox(
+    tb: &Textbox,
+    sp: &SectionProperties,
+    col_x: f32,
+    col_w: f32,
+    text_width: f32,
+    slot_top: f32,
+    content: &mut Content,
+    gradient_specs: &mut Vec<GradientSpec>,
+    ctx: &RenderContext,
+    page_links: &mut Vec<LinkAnnotation>,
+) {
+    let tb_x = resolve_h_position(
+        tb.h_relative_from,
+        &tb.h_position,
+        tb.width_pt,
+        sp,
+        col_x,
+        col_w,
+        text_width,
+    );
+    let tb_y_top = resolve_tb_y_top(
+        tb.v_relative_from,
+        &tb.v_position,
+        tb.height_pt,
+        sp,
+        slot_top,
+    );
+
+
+    let tb_height = textbox_height(tb, ctx);
 
     if let Some(ref fill) = tb.fill {
         render_shape_fill(
