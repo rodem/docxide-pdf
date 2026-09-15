@@ -42,6 +42,29 @@ pub struct EmbeddedImage {
     /// `a:srcRect` crop as (left, top, right, bottom) fractions of the source image.
     /// None when the picture is uncropped. Negative values pad the frame with blank space.
     pub src_rect: Option<[f32; 4]>,
+    /// In-plane rotation in clockwise degrees (`a:xfrm@rot`).
+    pub rotation_deg: f32,
+}
+
+/// True for an odd number of quarter turns (±90°, 270°), which swap a picture's
+/// width and height in the text flow.
+pub fn quarter_turn(rotation_deg: f32) -> bool {
+    let turns = (rotation_deg / 90.0).round();
+    (rotation_deg - turns * 90.0).abs() < 1.0 && (turns as i64).rem_euclid(2) == 1
+}
+
+impl EmbeddedImage {
+    /// Size of the box an inline picture occupies in the line. Word lays a
+    /// quarter-turned picture out as its rotated bounding box: the 56×108pt signature
+    /// turned -90° on italian_evaluation_minutes p7 takes a 56pt line, not 108pt.
+    // ponytail: other angles keep the unrotated box and are drawn unrotated.
+    pub fn layout_size(&self) -> (f32, f32) {
+        if quarter_turn(self.rotation_deg) {
+            (self.display_height, self.display_width)
+        } else {
+            (self.display_width, self.display_height)
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -102,7 +102,9 @@ unit-bbox form gives us for free.
 Known ceilings (`ponytail:` note in `embed_single_image`): soft-edge and reflection masks
 are still built on the uncropped source; SmartArt pictures use their own draw path. Also
 seen while verifying: italian page 7's third signature is a bitmap EMF (`image3.emf`) that
-`docx/emf.rs` renders as nothing — an EMF gap, not a crop issue. See `minipdf.md` §1.2 and
+`docx/emf.rs` rendered as nothing — fixed 2026-09-15 (annotation #228): `emf_to_raster`
+wraps a lone EMR_STRETCHDIBITS DIB as a BMP, and inline pictures honour `a:xfrm@rot`
+(quarter turns swap the layout box, `EmbeddedImage::layout_size`). See `minipdf.md` §1.2 and
 §4.1 for the MiniPdf comparison and their corpus scan.
 
 ## Engine Comparison Findings (2026-09-04, `tools/engine_compare.py`)

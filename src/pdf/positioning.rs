@@ -172,14 +172,7 @@ fn render_one_floating_image(
         content.save_state();
         let cx = fi_x + img.display_width / 2.0;
         let cy = fi_y_bottom + img.display_height / 2.0;
-        let rad = -fi.rotation_deg.to_radians();
-        let cos = rad.cos();
-        let sin = rad.sin();
-        content.transform([
-            cos, sin, -sin, cos,
-            cx - cos * cx + sin * cy,
-            cy - sin * cx - cos * cy,
-        ]);
+        rotate_about(content, cx, cy, fi.rotation_deg);
     }
 
     let fi_fx = effect_pdf_names.get(&(global_block_idx, fi_idx));
@@ -231,6 +224,18 @@ fn render_one_floating_image(
         content.restore_state();
     }
     true
+}
+
+/// Turn subsequent drawing by `deg` (OOXML clockwise degrees) about (`cx`, `cy`).
+/// PDF rotates counterclockwise, hence the negation. The caller brackets this
+/// with save/restore.
+pub(super) fn rotate_about(content: &mut Content, cx: f32, cy: f32, deg: f32) {
+    let (sin, cos) = (-deg.to_radians()).sin_cos();
+    content.transform([
+        cos, sin, -sin, cos,
+        cx - cos * cx + sin * cy,
+        cy - sin * cx - cos * cy,
+    ]);
 }
 
 pub(super) fn render_connector(

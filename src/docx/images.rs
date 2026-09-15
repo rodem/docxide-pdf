@@ -64,7 +64,8 @@ pub(super) fn image_dimensions(data: &[u8]) -> Option<(u32, u32, ImageFormat, u8
 
     if data.len() >= 26 && data[0] == b'B' && data[1] == b'M' {
         let width = u32::from_le_bytes([data[18], data[19], data[20], data[21]]);
-        let height = u32::from_le_bytes([data[22], data[23], data[24], data[25]]);
+        // A negative height marks a top-down DIB (common in EMF-wrapped bitmaps).
+        let height = i32::from_le_bytes([data[22], data[23], data[24], data[25]]).unsigned_abs();
         return Some((width, height, ImageFormat::Bmp, 3));
     }
 
@@ -141,6 +142,7 @@ fn apply_pic_props<'a>(
     container: roxmltree::Node<'a, 'a>,
 ) -> Option<roxmltree::Node<'a, 'a>> {
     let sp_pr = find_pic_sp_pr(container);
+    img.rotation_deg = parse_image_rotation(sp_pr);
     let (stroke_color, stroke_width) = parse_pic_outline(sp_pr);
     img.stroke_color = stroke_color;
     img.stroke_width = stroke_width;
@@ -342,6 +344,8 @@ pub(super) fn read_image_from_zip_extra<R: Read + Seek>(
     entry.read_to_end(&mut data).ok()?;
     if super::wmf::is_wmf(&data) {
         data = super::wmf::wmf_to_raster(&data)?;
+    } else if let Some(bmp) = super::emf::emf_to_raster(&data) {
+        data = bmp;
     }
     let (pw, ph, fmt, components) = image_dimensions(&data)?;
     Some(EmbeddedImage {
@@ -354,6 +358,7 @@ pub(super) fn read_image_from_zip_extra<R: Read + Seek>(
         jpeg_components: components,
         layout_extra_height,
         layout_extra_top,
+        rotation_deg: 0.0,
         stroke_color: None,
         stroke_width: 0.0,
         shadow: None,

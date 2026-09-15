@@ -481,8 +481,8 @@
       "source": "Generated",
       "x_pt": 253.92429,
       "y_pt": 528.43207,
-      "note": "Signature missing here.",
-      "fixed": false,
+      "note": "Signature missing here.\n\nFIXED (2026-09-15): image3.emf is a bitmap EMF (one EMR_STRETCHDIBITS record) that the vector translator drew as nothing. emf_to_raster now wraps the DIB as a BMP before the raster pipeline, and the picture's a:xfrm rot=-90 is honoured for inline pictures (drawn turned, laid out as the rotated box) so the signature is horizontal and its line is 56pt like Word.",
+      "fixed": true,
       "cleared": false
     },
     {
@@ -503,7 +503,7 @@
       "source": "Generated",
       "x_pt": 71.04342,
       "y_pt": 593.27167,
-      "note": "Vertical spacing between names and signatures is off.",
+      "note": "Vertical spacing between names and signatures is off.\n\nPARTIAL (2026-09-15): the Gambacorta line was 108pt tall because the -90-degree inline rotation was ignored; inline pictures now lay out as their rotated box (56pt). Still open: Word sits the text baseline at the bottom of an inline picture, we place the picture centred on the text (image bottom = baseline + font_size - image_h in layout.rs), so names sit near the top of their signatures.",
       "fixed": false,
       "cleared": false
     },

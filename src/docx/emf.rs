@@ -91,8 +91,27 @@ pub(crate) enum EmfRecord {
     ExtCreatePen { handle: u32, width: i32, color: [u8; 3] },
     SelectObject(u32),
     DeleteObject(u32),
+    /// A blitted DIB (EMR_STRETCHDIBITS), already wrapped as a BMP file.
+    StretchDiBits(Vec<u8>),
     /// Any record we don't decode — `(record_type, payload_bytes)`.
     Skip,
+}
+
+/// Word wraps pasted bitmaps (scanned signatures, stamps) in an EMF whose only
+/// drawing record is one EMR_STRETCHDIBITS. Return that bitmap as a BMP so the
+/// raster pipeline can embed it; `None` for vector EMFs.
+// ponytail: first DIB only, drawn at the picture frame — a mixed vector+bitmap EMF
+// would need the translator to place the DIB as an image XObject instead.
+pub(crate) fn emf_to_raster(data: &[u8]) -> Option<Vec<u8>> {
+    let mut bmp = None;
+    for_each_record(data, |rec| {
+        if let EmfRecord::StretchDiBits(b) = rec {
+            bmp = Some(b.clone());
+            return false;
+        }
+        true
+    });
+    bmp
 }
 
 /// Walk all records after the header, calling `f` for each. Stops at EOF, on
@@ -176,8 +195,38 @@ fn decode(rec_type: u32, payload: &[u8]) -> EmfRecord {
         40 => DeleteObject(u32_at(0).unwrap_or(0)),
         39 => decode_brush(payload).unwrap_or(Skip),
         95 => decode_extcreatepen(payload).unwrap_or(Skip),
+        81 => decode_stretchdibits(payload).map(StretchDiBits).unwrap_or(Skip),
         _ => Skip,
     }
+}
+
+/// EMR_STRETCHDIBITS: the BITMAPINFO (`offBmiSrc`/`cbBmiSrc`) and pixel bits
+/// (`offBitsSrc`/`cbBitsSrc`) are addressed from the record start, i.e. 8 bytes
+/// before the payload. Prepend a BITMAPFILEHEADER to make a BMP file.
+fn decode_stretchdibits(payload: &[u8]) -> Option<Vec<u8>> {
+    let u32_at = |off: usize| -> Option<usize> {
+        payload
+            .get(off..off + 4)
+            .map(|s| u32::from_le_bytes(s.try_into().unwrap()) as usize)
+    };
+    let part = |off: usize, len: usize| -> Option<&[u8]> {
+        let start = off.checked_sub(8)?;
+        payload.get(start..start.checked_add(len)?)
+    };
+    let bmi = part(u32_at(40)?, u32_at(44)?)?;
+    let bits = part(u32_at(48)?, u32_at(52)?)?;
+    if bmi.len() < 40 || bits.is_empty() {
+        return None;
+    }
+    let pixel_off = 14 + bmi.len();
+    let mut bmp = Vec::with_capacity(pixel_off + bits.len());
+    bmp.extend_from_slice(b"BM");
+    bmp.extend_from_slice(&((pixel_off + bits.len()) as u32).to_le_bytes());
+    bmp.extend_from_slice(&[0u8; 4]); // reserved
+    bmp.extend_from_slice(&(pixel_off as u32).to_le_bytes());
+    bmp.extend_from_slice(bmi);
+    bmp.extend_from_slice(bits);
+    Some(bmp)
 }
 
 fn decode_polybezier16(payload: &[u8]) -> Option<Vec<(i16, i16)>> {
@@ -275,6 +324,48 @@ mod tests {
     fn decodes_clip_path_records() {
         assert!(matches!(decode(67, &5u32.to_le_bytes()), EmfRecord::SelectClipPath));
         assert!(matches!(decode(68, &[]), EmfRecord::AbortPath));
+    }
+
+    #[test]
+    fn bitmap_emf_becomes_bmp() {
+        // Header + one STRETCHDIBITS carrying a 1x1 24-bpp DIB + EOF.
+        let mut data = vec![0u8; 108];
+        data[0..4].copy_from_slice(&1u32.to_le_bytes());
+        data[4..8].copy_from_slice(&108u32.to_le_bytes());
+        data[16..20].copy_from_slice(&1i32.to_le_bytes()); // bounds right
+        data[20..24].copy_from_slice(&1i32.to_le_bytes()); // bounds bottom
+        data[40..44].copy_from_slice(&EMF_MAGIC);
+
+        let mut bih = vec![0u8; 40];
+        bih[0..4].copy_from_slice(&40u32.to_le_bytes());
+        bih[4..8].copy_from_slice(&1i32.to_le_bytes());
+        bih[8..12].copy_from_slice(&1i32.to_le_bytes());
+        bih[12..14].copy_from_slice(&1u16.to_le_bytes());
+        bih[14..16].copy_from_slice(&24u16.to_le_bytes());
+        let bits = [0x10u8, 0x20, 0x30, 0x00];
+
+        let mut rec = Vec::new();
+        rec.extend_from_slice(&81u32.to_le_bytes());
+        rec.extend_from_slice(&(80u32 + 40 + 4).to_le_bytes()); // record size
+        rec.extend_from_slice(&[0u8; 40]); // bounds, dest/src origin, src size
+        rec.extend_from_slice(&80u32.to_le_bytes()); // offBmiSrc
+        rec.extend_from_slice(&40u32.to_le_bytes()); // cbBmiSrc
+        rec.extend_from_slice(&120u32.to_le_bytes()); // offBitsSrc
+        rec.extend_from_slice(&4u32.to_le_bytes()); // cbBitsSrc
+        rec.extend_from_slice(&[0u8; 16]); // usage, rop, dest size
+        assert_eq!(rec.len(), 80);
+        rec.extend_from_slice(&bih);
+        rec.extend_from_slice(&bits);
+        data.extend_from_slice(&rec);
+        data.extend_from_slice(&14u32.to_le_bytes());
+        data.extend_from_slice(&8u32.to_le_bytes());
+
+        let bmp = emf_to_raster(&data).expect("bitmap EMF converts");
+        assert_eq!(&bmp[..2], b"BM");
+        assert_eq!(u32::from_le_bytes(bmp[10..14].try_into().unwrap()), 54);
+        assert_eq!(bmp.len(), 54 + 4);
+        assert_eq!(&bmp[54..], &bits);
+        assert!(emf_to_raster(&data[..108]).is_none());
     }
 
     #[test]

@@ -115,7 +115,8 @@ fn translate_record(
 ) {
     use EmfRecord::*;
     match rec {
-        Header | Eof | Skip => {}
+        // Bitmap EMFs are rasterised before reaching the translator (`emf_to_raster`).
+        Header | Eof | Skip | StretchDiBits(_) => {}
         SetMapMode(_) | SetBkMode(_) => {} // We honour window/viewport explicitly.
         SetPolyFillMode(rule) => state.fill_rule = *rule,
         SetWindowOrgEx(x, y) => state.window_org = (*x, *y),
