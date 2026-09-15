@@ -838,7 +838,7 @@ pub(super) fn compute_row_layouts(
                                             display_height: fi.image.display_height,
                                             h_offset,
                                             v_offset,
-                                            rotation_deg: fi.rotation_deg,
+                                            rotation_deg: fi.image.rotation_deg,
                                             behind_doc: fi.behind_doc,
                                         })
                                     })

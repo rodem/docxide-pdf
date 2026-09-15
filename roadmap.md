@@ -370,11 +370,11 @@ fixture's visual hash, no score regressions across the 221 scored fixtures.
 - **#228 bitmap EMF + inline rotation** (italian p7 signature missing): a lone
   EMR_STRETCHDIBITS is wrapped as BMP by `docx/emf.rs::emf_to_raster` (WMF-style);
   inline pictures keep `a:xfrm@rot`, draw turned about the frame centre and occupy
-  the rotated box (`EmbeddedImage::layout_size`) — Word gives a -90° 56×108pt frame a
-  56pt line. Only quarter turns swap the box; `para.image` block pictures still
-  ignore rotation. #230 stays open: Word puts the text baseline at an inline
-  picture's bottom, we centre the picture on the text (`img_bottom = y + font_size
-  - line_max_img_h` in `pdf/layout.rs`).
+  the rotated bounding box (`EmbeddedImage::layout_size`) — Word gives a -90°
+  56×108pt frame a 56pt line. `para.image` block pictures (a lone picture in its own
+  paragraph) still ignore rotation. #230 stays open: Word puts the text baseline at
+  an inline picture's bottom, we centre the picture on the text (`img_bottom = y +
+  font_size - line_max_img_h` in `pdf/layout.rs`).
 - **#236 / #235 table border inheritance** (croatian_grant_guidelines): inline
   `w:tblBorders` replaced the style's set wholesale; now merged per side
   (`merge_table_borders`), so Table Grid's insideH/insideV survive. Rule confirmed
@@ -393,6 +393,18 @@ availability, not code), #237 (row split is paragraph-granular; needs line-level
 `find_cell_split`), #232 (floating `tblpPr` table pushed whole to the next page instead
 of breaking), #229 (`a:srcRect` crop is parsed but the italian stamp still shows —
 check the inline draw path), #238/#158/#195 (font/width class).
+
+Follow-ups from the `/simplify` review of this round (not done): the EMF translator
+still leaves immediate-mode segments (MoveTo/LineTo outside BeginPath) and mid-path
+SaveDc/RestoreDc unhandled — a `path_pending` flag emitting `n` would generalise the
+#231 fix; mixed vector+bitmap EMFs need the DIB placed as an image XObject inside the
+form (bitmap-only EMFs take the raster path today); block pictures (`para.image`, five
+draw copies across `pdf/mod.rs`, `table.rs`, `header_footer.rs`, `textbox_render.rs`)
+want one shared `draw_embedded_image` that applies rotation + effects; body/header
+flow still reserves `height_pt` for TopAndBottom textboxes while rendering uses
+`textbox_height`; `TableStyleDef` parses no `pPr`/`tblCellMar`, so `has_tbl_style`
+is a proxy for "style defines borders"; `Footnote { paragraphs }` should become
+blocks so footnote tables keep their geometry.
 
 ## Annotation Fixes 2026-09-09 (#225 #226 — DONE)
 

@@ -209,12 +209,12 @@ fn parse_notes_simple<R: Read + Seek>(
                         if let Some(first) = para.runs.first() {
                             merged.runs.push(Run {
                                 text: " ".to_string(),
-                                is_footnote_ref_mark: false,
-                                is_endnote_ref_mark: false,
-                                footnote_id: None,
-                                endnote_id: None,
-                                inline_image: None,
-                                ..first.clone()
+                                font_size: first.font_size,
+                                font_name: first.font_name.clone(),
+                                east_asia_font_name: first.east_asia_font_name.clone(),
+                                bold: first.bold,
+                                italic: first.italic,
+                                ..Run::default()
                             });
                         }
                         merged.runs.extend(para.runs);

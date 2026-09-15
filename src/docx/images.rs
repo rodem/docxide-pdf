@@ -134,13 +134,9 @@ fn parse_src_rect(container: roxmltree::Node) -> Option<[f32; 4]> {
     Some(r)
 }
 
-/// Apply the picture properties shared by inline and anchored pictures: outline,
-/// effects, non-rectangular clip and `a:srcRect` crop. Returns the `pic:spPr` node for
-/// callers that need more from it (anchored pictures also read the rotation).
-fn apply_pic_props<'a>(
-    img: &mut EmbeddedImage,
-    container: roxmltree::Node<'a, 'a>,
-) -> Option<roxmltree::Node<'a, 'a>> {
+/// Apply the picture properties shared by inline and anchored pictures: rotation,
+/// outline, effects, non-rectangular clip and `a:srcRect` crop.
+fn apply_pic_props(img: &mut EmbeddedImage, container: roxmltree::Node) {
     let sp_pr = find_pic_sp_pr(container);
     img.rotation_deg = parse_image_rotation(sp_pr);
     let (stroke_color, stroke_width) = parse_pic_outline(sp_pr);
@@ -156,7 +152,6 @@ fn apply_pic_props<'a>(
         .map(super::textbox::parse_shape_geometry)
         .filter(|g| g.preset.as_deref() != Some("rect") || g.custom.is_some());
     img.src_rect = parse_src_rect(container);
-    sp_pr
 }
 
 /// Read in-plane rotation (clockwise degrees) for a floating picture. Prefers the
@@ -594,8 +589,7 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
             }
             if let Some(embed_id) = find_blip_embed(container) {
                 if let Some(mut img) = read_image_from_zip(embed_id, ctx.rels, ctx.zip, display_w, display_h) {
-                    let sp_pr = apply_pic_props(&mut img, container);
-                    let rotation_deg = parse_image_rotation(sp_pr);
+                    apply_pic_props(&mut img, container);
                     let (h_position, h_relative, v_position, v_relative) =
                         parse_anchor_position(container);
                     let (wrap_type, wrap_text, wrap_polygon) = parse_wrap_type(container);
@@ -619,7 +613,6 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
                         dist_left: emu_attr(container, "distL"),
                         dist_right: emu_attr(container, "distR"),
                         z_index,
-                        rotation_deg,
                     }));
                 }
             }
@@ -866,7 +859,6 @@ pub(super) fn parse_object_floating_image<R: Read + Seek>(
         dist_left: 0.0,
         dist_right: 0.0,
         z_index: 0,
-        rotation_deg: 0.0,
     })
 }
 

@@ -111,16 +111,14 @@ pub(super) fn render_single_textbox(
         col_w,
         text_width,
     );
+    let tb_height = textbox_height(tb, ctx);
     let tb_y_top = resolve_tb_y_top(
         tb.v_relative_from,
         &tb.v_position,
-        tb.height_pt,
+        tb_height,
         sp,
         slot_top,
     );
-
-
-    let tb_height = textbox_height(tb, ctx);
 
     if let Some(ref fill) = tb.fill {
         render_shape_fill(

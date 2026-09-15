@@ -179,20 +179,25 @@ fn dib_to_bmp(dib: &[u8]) -> Option<Vec<u8>> {
     }
     let bpp = u16::from_le_bytes(dib[14..16].try_into().ok()?) as usize;
     let palette_bytes = if bpp <= 8 { (1usize << bpp) * 4 } else { 0 };
-    if bih_size + palette_bytes > dib.len() {
+    let info_len = bih_size + palette_bytes;
+    if info_len > dib.len() {
         return None;
     }
-    let pixel_off = 14 + bih_size + palette_bytes;
-    let file_size = 14 + dib.len();
+    Some(bmp_from_parts(&dib[..info_len], &dib[info_len..]))
+}
 
-    let mut bmp = Vec::with_capacity(file_size);
+/// Prepend a BITMAPFILEHEADER to a DIB given as its BITMAPINFO (header + colour
+/// table) and pixel bits. Shared with the EMF EMR_STRETCHDIBITS path.
+pub(super) fn bmp_from_parts(info: &[u8], bits: &[u8]) -> Vec<u8> {
+    let pixel_off = 14 + info.len();
+    let mut bmp = Vec::with_capacity(pixel_off + bits.len());
     bmp.extend_from_slice(b"BM");
-    bmp.extend_from_slice(&(file_size as u32).to_le_bytes());
-    bmp.extend_from_slice(&0u16.to_le_bytes()); // reserved1
-    bmp.extend_from_slice(&0u16.to_le_bytes()); // reserved2
+    bmp.extend_from_slice(&((pixel_off + bits.len()) as u32).to_le_bytes());
+    bmp.extend_from_slice(&[0u8; 4]); // reserved1 + reserved2
     bmp.extend_from_slice(&(pixel_off as u32).to_le_bytes());
-    bmp.extend_from_slice(dib);
-    Some(bmp)
+    bmp.extend_from_slice(info);
+    bmp.extend_from_slice(bits);
+    bmp
 }
 
 #[cfg(test)]

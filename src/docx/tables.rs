@@ -395,20 +395,14 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
 
         // Per-row table property exceptions (§17.4.60): merge with base table
         // borders — specified exception borders override, unspecified inherit.
-        let base_tbl_borders: Option<&TableBordersDef> = merged_tbl_borders.as_ref();
-        let merged_row_borders;
         let row_effective_tbl_borders = match wml(*tr, "tblPrEx")
             .and_then(|prex| wml(prex, "tblBorders"))
         {
             Some(bdr_node) => {
                 let exc = parse_table_borders_def(bdr_node);
-                merged_row_borders = match base_tbl_borders {
-                    Some(base) => merge_table_borders(exc, *base),
-                    None => exc,
-                };
-                Some(&merged_row_borders)
+                Some(merged_tbl_borders.map_or(exc, |base| merge_table_borders(exc, base)))
             }
-            None => base_tbl_borders,
+            None => merged_tbl_borders,
         };
 
         let mut cells = Vec::new();

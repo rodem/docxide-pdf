@@ -28,7 +28,6 @@ struct EmfState {
     fill_rule: FillRule,
     selected_brush: Option<[u8; 3]>,
     selected_pen: Option<([u8; 3], i32)>,
-    in_path: bool,
 }
 
 impl EmfState {
@@ -42,7 +41,6 @@ impl EmfState {
             fill_rule: FillRule::Alternate,
             selected_brush: None,
             selected_pen: None,
-            in_path: false,
         }
     }
 }
@@ -115,8 +113,7 @@ fn translate_record(
 ) {
     use EmfRecord::*;
     match rec {
-        // Bitmap EMFs are rasterised before reaching the translator (`emf_to_raster`).
-        Header | Eof | Skip | StretchDiBits(_) => {}
+        Header | Eof | Skip => {}
         SetMapMode(_) | SetBkMode(_) => {} // We honour window/viewport explicitly.
         SetPolyFillMode(rule) => state.fill_rule = *rule,
         SetWindowOrgEx(x, y) => state.window_org = (*x, *y),
@@ -147,8 +144,9 @@ fn translate_record(
             Some(EmfObject::Pen { color, width }) => state.selected_pen = Some((*color, *width)),
             None => {}
         },
-        BeginPath => state.in_path = true,
-        EndPath => state.in_path = false,
+        // PDF path construction has no explicit bracket; segments accumulate until
+        // a painting or clipping operator consumes them.
+        BeginPath | EndPath => {}
         MoveToEx(x, y) => {
             let (u, v) = mapper.map(state, *x, *y);
             content.move_to(u, v);
@@ -209,11 +207,9 @@ fn translate_record(
                 FillRule::Winding => content.clip_nonzero(),
             };
             content.end_path();
-            state.in_path = false;
         }
         AbortPath => {
             content.end_path();
-            state.in_path = false;
         }
         StrokeAndFillPath => {
             if let Some(c) = state.selected_brush {

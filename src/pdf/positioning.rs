@@ -167,12 +167,12 @@ fn render_one_floating_image(
     // the anchor offset and effectExtent already accounting for the turn. Rotate
     // about that center so the image's center stays put — matching Word. The sign
     // is negated because OOXML rotation is clockwise while PDF's is counterclockwise.
-    let rotated = fi.rotation_deg.abs() > 0.01;
+    let rotated = img.rotation_deg.abs() > 0.01;
     if rotated {
         content.save_state();
-        let cx = fi_x + img.display_width / 2.0;
-        let cy = fi_y_bottom + img.display_height / 2.0;
-        rotate_about(content, cx, cy, fi.rotation_deg);
+        push_center_rotation(
+            content, fi_x, fi_y_bottom, img.display_width, img.display_height, img.rotation_deg,
+        );
     }
 
     let fi_fx = effect_pdf_names.get(&(global_block_idx, fi_idx));
@@ -226,10 +226,16 @@ fn render_one_floating_image(
     true
 }
 
-/// Turn subsequent drawing by `deg` (OOXML clockwise degrees) about (`cx`, `cy`).
-/// PDF rotates counterclockwise, hence the negation. The caller brackets this
-/// with save/restore.
-pub(super) fn rotate_about(content: &mut Content, cx: f32, cy: f32, deg: f32) {
+/// Turn subsequent drawing by `deg` (OOXML clockwise degrees) about the centre of
+/// the box at (`x`, `y_bottom`) with size `w`×`h`. PDF rotates counterclockwise,
+/// hence the negation. Push before the box's own transform; the caller brackets
+/// it with save/restore. No-op for an unrotated box.
+pub(super) fn push_center_rotation(content: &mut Content, x: f32, y_bottom: f32, w: f32, h: f32, deg: f32) {
+    if deg.abs() <= 0.01 {
+        return;
+    }
+    let cx = x + w / 2.0;
+    let cy = y_bottom + h / 2.0;
     let (sin, cos) = (-deg.to_radians()).sin_cos();
     content.transform([
         cos, sin, -sin, cos,

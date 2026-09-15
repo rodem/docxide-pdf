@@ -42,28 +42,23 @@ pub struct EmbeddedImage {
     /// `a:srcRect` crop as (left, top, right, bottom) fractions of the source image.
     /// None when the picture is uncropped. Negative values pad the frame with blank space.
     pub src_rect: Option<[f32; 4]>,
-    /// In-plane rotation in clockwise degrees (`a:xfrm@rot`).
+    /// In-plane rotation in degrees, clockwise (OOXML convention). Sourced from
+    /// `a:xfrm @rot` or a 3D scene camera `a:scene3d/a:camera/a:rot @rev`.
+    /// Applied as a rotation about the picture's center at render time.
     pub rotation_deg: f32,
 }
 
-/// True for an odd number of quarter turns (±90°, 270°), which swap a picture's
-/// width and height in the text flow.
-pub fn quarter_turn(rotation_deg: f32) -> bool {
-    let turns = (rotation_deg / 90.0).round();
-    (rotation_deg - turns * 90.0).abs() < 1.0 && (turns as i64).rem_euclid(2) == 1
-}
-
 impl EmbeddedImage {
-    /// Size of the box an inline picture occupies in the line. Word lays a
-    /// quarter-turned picture out as its rotated bounding box: the 56×108pt signature
-    /// turned -90° on italian_evaluation_minutes p7 takes a 56pt line, not 108pt.
-    // ponytail: other angles keep the unrotated box and are drawn unrotated.
+    /// Size of the box an inline picture occupies in the line: the bounding box of
+    /// the rotated frame. Word gives the 56×108pt signature turned -90° on
+    /// italian_evaluation_minutes p7 a 56pt line, not 108pt.
     pub fn layout_size(&self) -> (f32, f32) {
-        if quarter_turn(self.rotation_deg) {
-            (self.display_height, self.display_width)
-        } else {
-            (self.display_width, self.display_height)
-        }
+        let (sin, cos) = self.rotation_deg.to_radians().sin_cos();
+        let (s, c) = (sin.abs(), cos.abs());
+        (
+            self.display_width * c + self.display_height * s,
+            self.display_width * s + self.display_height * c,
+        )
     }
 }
 
@@ -128,10 +123,6 @@ pub struct FloatingImage {
     /// objects. Higher draws on top. Used to composite foreground floating
     /// images into the same z-stack as textboxes/connectors.
     pub z_index: u32,
-    /// In-plane rotation in degrees, clockwise (OOXML convention). Sourced from
-    /// `a:xfrm @rot` or a 3D scene camera `a:scene3d/a:camera/a:rot @rev`.
-    /// Applied as a rotation about the image's center at render time.
-    pub rotation_deg: f32,
 }
 
 /// Covers all 187 OOXML preset shapes and arbitrary custom geometry (a:custGeom).

@@ -349,7 +349,6 @@ fn emit_pic<R: Read + Seek>(
             dist_left: 0.0,
             dist_right: 0.0,
             z_index: base.z_index,
-            rotation_deg: 0.0,
         }));
     }
 }

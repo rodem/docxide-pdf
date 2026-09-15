@@ -204,7 +204,9 @@ pub(super) struct WordChunk {
     pub(super) inline_image_glow: Option<crate::model::ImageGlow>,
     pub(super) inline_image_effect_xobjs: Option<super::images::EffectXObjs>,
     pub(super) inline_image_clip: Option<crate::model::ShapeGeometry>,
-    /// Clockwise degrees; `width`/`inline_image_height` already hold the turned box.
+    /// Natural (unrotated) size; `width`/`inline_image_height` hold the rotated box.
+    pub(super) inline_image_size: (f32, f32),
+    /// Clockwise degrees (OOXML).
     pub(super) inline_image_rotation_deg: f32,
     pub(super) synthetic_bold: bool,
     pub(super) text_outline: Option<TextOutline>,
@@ -281,6 +283,7 @@ impl WordChunk {
             inline_image_glow: None,
             inline_image_effect_xobjs: None,
             inline_image_clip: None,
+            inline_image_size: (0.0, 0.0),
             inline_image_rotation_deg: 0.0,
             synthetic_bold: entry.synthetic_bold,
             text_outline: run.text_outline.clone(),
@@ -295,16 +298,10 @@ impl WordChunk {
         pdf_name: &str,
         font_size: f32,
         x_offset: f32,
-        display_width: f32,
-        display_height: f32,
-        stroke_color: Option<[u8; 3]>,
-        stroke_width: f32,
-        shadow: Option<crate::model::ImageShadow>,
-        glow: Option<crate::model::ImageGlow>,
+        img: &crate::model::EmbeddedImage,
         effect_xobjs: Option<super::images::EffectXObjs>,
-        clip: Option<crate::model::ShapeGeometry>,
-        rotation_deg: f32,
     ) -> Self {
+        let (width, height) = img.layout_size();
         Self {
             pdf_font: String::new(),
             text: String::new(),
@@ -314,7 +311,7 @@ impl WordChunk {
             shading: None,
             border: None,
             x_offset,
-            width: display_width,
+            width,
             underline: false,
             double_underline: false,
             strikethrough: false,
@@ -324,14 +321,15 @@ impl WordChunk {
             y_offset: 0.0,
             hyperlink_url: None,
             inline_image_name: Some(pdf_name.to_string()),
-            inline_image_height: display_height,
-            inline_image_stroke_color: stroke_color,
-            inline_image_stroke_width: stroke_width,
-            inline_image_shadow: shadow,
-            inline_image_glow: glow,
+            inline_image_height: height,
+            inline_image_stroke_color: img.stroke_color,
+            inline_image_stroke_width: img.stroke_width,
+            inline_image_shadow: img.shadow.clone(),
+            inline_image_glow: img.glow.clone(),
             inline_image_effect_xobjs: effect_xobjs,
-            inline_image_clip: clip,
-            inline_image_rotation_deg: rotation_deg,
+            inline_image_clip: img.clip_geometry.clone(),
+            inline_image_size: (img.display_width, img.display_height),
+            inline_image_rotation_deg: img.rotation_deg,
             synthetic_bold: false,
             text_outline: None,
             text_fill: None,
@@ -375,6 +373,7 @@ impl WordChunk {
             inline_image_glow: None,
             inline_image_effect_xobjs: None,
             inline_image_clip: None,
+            inline_image_size: (0.0, 0.0),
             inline_image_rotation_deg: 0.0,
             synthetic_bold: false,
             text_outline: None,
@@ -424,6 +423,7 @@ impl WordChunk {
             inline_image_glow: None,
             inline_image_effect_xobjs: None,
             inline_image_clip: None,
+            inline_image_size: (0.0, 0.0),
             inline_image_rotation_deg: 0.0,
             synthetic_bold: false,
             text_outline: None,
@@ -718,7 +718,7 @@ pub(super) fn build_paragraph_lines(
         // Handle inline images as single block elements in the line
         if let Some(img) = &run.inline_image {
             if let Some(pdf_name) = inline_image_names.get(&run_idx) {
-                let (img_w, img_h) = img.layout_size();
+                let img_w = img.layout_size().0;
                 let need_space = !current_chunks.is_empty() && pending_space_w > 0.0;
                 let proposed_x = if need_space {
                     current_x + pending_space_w
@@ -747,10 +747,8 @@ pub(super) fn build_paragraph_lines(
                             let proposed_x2 = 0.0;
                             if proposed_x2 + img_w <= rw {
                                 current_chunks.push(WordChunk::image(
-                                    pdf_name, run.font_size, proposed_x2, img_w, img_h,
-                                    img.stroke_color, img.stroke_width, img.shadow.clone(),
-                                    img.glow.clone(), effect_inline_names.get(&run_idx).cloned(),
-                                    img.clip_geometry.clone(), img.rotation_deg,
+                                    pdf_name, run.font_size, proposed_x2, img,
+                                    effect_inline_names.get(&run_idx).cloned(),
                                 ));
                                 current_x = img_w;
                                 continue;
@@ -765,10 +763,8 @@ pub(super) fn build_paragraph_lines(
                 pending_space_w = 0.0;
 
                 current_chunks.push(WordChunk::image(
-                    pdf_name, run.font_size, current_x, img_w, img_h,
-                    img.stroke_color, img.stroke_width, img.shadow.clone(),
-                    img.glow.clone(), effect_inline_names.get(&run_idx).cloned(),
-                    img.clip_geometry.clone(), img.rotation_deg,
+                    pdf_name, run.font_size, current_x, img,
+                    effect_inline_names.get(&run_idx).cloned(),
                 ));
                 current_x += img_w;
             }
@@ -1314,22 +1310,14 @@ pub(super) fn build_tabbed_line(
             // Handle inline images (same pattern as build_paragraph_lines)
             if let Some(img) = &run.inline_image {
                 if let Some(pdf_name) = inline_image_names.get(&seg_indices[local_idx]) {
-                    let (img_w, img_h) = img.layout_size();
                     all_chunks.push(WordChunk::image(
                         pdf_name,
                         run.font_size,
                         current_x,
-                        img_w,
-                        img_h,
-                        img.stroke_color,
-                        img.stroke_width,
-                        img.shadow.clone(),
-                        img.glow.clone(),
+                        img,
                         effect_inline_names.get(&seg_indices[local_idx]).cloned(),
-                        img.clip_geometry.clone(),
-                        img.rotation_deg,
                     ));
-                    current_x += img_w;
+                    current_x += img.layout_size().0;
                 }
                 continue;
             }
@@ -2098,19 +2086,19 @@ pub(super) fn render_paragraph_lines(
                 let box_x = chunk_abs_x(chunk_idx, chunk);
                 let box_bottom = y + chunk.font_size - line_max_img_h;
 
-                // A quarter-turned picture occupies its rotated bounding box; draw the
-                // unrotated picture turned about that box's centre.
-                let turned = crate::model::quarter_turn(chunk.inline_image_rotation_deg);
-                let (w, h, x, img_bottom) = if turned {
-                    let (w, h) = (chunk.inline_image_height, chunk.width);
-                    let cx = box_x + chunk.width / 2.0;
-                    let cy = box_bottom + chunk.inline_image_height / 2.0;
+                // The chunk box is the rotated frame's bounding box; draw the picture at
+                // its natural size centred in it, turned about that centre like Word.
+                let (w, h) = chunk.inline_image_size;
+                let x = box_x + (chunk.width - w) / 2.0;
+                let img_bottom = box_bottom + (chunk.inline_image_height - h) / 2.0;
+                let turned = chunk.inline_image_rotation_deg.abs() > 0.01;
+                if turned {
                     content.save_state();
-                    super::positioning::rotate_about(content, cx, cy, chunk.inline_image_rotation_deg);
-                    (w, h, cx - w / 2.0, cy - h / 2.0)
-                } else {
-                    (chunk.width, chunk.inline_image_height, box_x, box_bottom)
-                };
+                    super::positioning::push_center_rotation(
+                        content, box_x, box_bottom, chunk.width, chunk.inline_image_height,
+                        chunk.inline_image_rotation_deg,
+                    );
+                }
 
                 // Pre-image effects: shadow, glow (rendered before image so they appear behind)
                 let chunk_fx = chunk.inline_image_effect_xobjs.as_ref();

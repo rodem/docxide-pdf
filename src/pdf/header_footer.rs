@@ -418,6 +418,7 @@ pub(super) fn render_header_footer(
 
                 // Render textboxes
                 for tb in &para.textboxes {
+                    let tb_height = super::textbox_render::textbox_height(tb, ctx);
                     let tb_x = super::resolve_h_position(
                         tb.h_relative_from,
                         &tb.h_position,
@@ -430,7 +431,7 @@ pub(super) fn render_header_footer(
                     let tb_y_top = resolve_tb_y_top(
                         tb.v_relative_from,
                         &tb.v_position,
-                        tb.height_pt,
+                        tb_height,
                         sp,
                         slot_top,
                     );
@@ -440,9 +441,9 @@ pub(super) fn render_header_footer(
                             content,
                             fill,
                             tb_x,
-                            tb_y_top - tb.height_pt,
+                            tb_y_top - tb_height,
                             tb.width_pt,
-                            tb.height_pt,
+                            tb_height,
                             &tb.shape_type,
                             gradient_specs,
                         );
@@ -524,7 +525,7 @@ pub(super) fn render_header_footer(
                             };
                             let total_h: f32 = tb.paragraphs.iter().map(tp_height).sum();
                             let available =
-                                (tb.height_pt - tb.margin_top - tb.margin_bottom).max(0.0);
+                                (tb_height - tb.margin_top - tb.margin_bottom).max(0.0);
                             let gap = (available - total_h).max(0.0);
                             match tb.text_anchor {
                                 TextAnchor::Middle => gap / 2.0,

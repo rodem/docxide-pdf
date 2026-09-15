@@ -180,16 +180,9 @@ pub(super) fn render_smartart(
         let rotated = shape.rotation_deg.abs() > 0.01;
         if rotated {
             content.save_state();
-            let cx = sx + shape.width / 2.0;
-            let cy = sy + shape.height / 2.0;
-            let rad = -shape.rotation_deg.to_radians();
-            let cos = rad.cos();
-            let sin = rad.sin();
-            content.transform([
-                cos, sin, -sin, cos,
-                cx - cos * cx + sin * cy,
-                cy - sin * cx - cos * cy,
-            ]);
+            super::positioning::push_center_rotation(
+                content, sx, sy, shape.width, shape.height, shape.rotation_deg,
+            );
         }
         rotated
     };

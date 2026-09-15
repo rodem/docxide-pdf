@@ -91,32 +91,48 @@ pub(crate) enum EmfRecord {
     ExtCreatePen { handle: u32, width: i32, color: [u8; 3] },
     SelectObject(u32),
     DeleteObject(u32),
-    /// A blitted DIB (EMR_STRETCHDIBITS), already wrapped as a BMP file.
-    StretchDiBits(Vec<u8>),
     /// Any record we don't decode — `(record_type, payload_bytes)`.
     Skip,
 }
 
 /// Word wraps pasted bitmaps (scanned signatures, stamps) in an EMF whose only
 /// drawing record is one EMR_STRETCHDIBITS. Return that bitmap as a BMP so the
-/// raster pipeline can embed it; `None` for vector EMFs.
-// ponytail: first DIB only, drawn at the picture frame — a mixed vector+bitmap EMF
-// would need the translator to place the DIB as an image XObject instead.
+/// raster pipeline can embed it; `None` for anything else, including EMFs that
+/// mix vector drawing with a bitmap (those keep the vector translator).
+// ponytail: the DIB is stretched over the whole picture frame, ignoring its
+// destination rectangle; placing it as an image XObject inside the translated
+// form is the general fix for inset and mixed bitmaps.
 pub(crate) fn emf_to_raster(data: &[u8]) -> Option<Vec<u8>> {
+    if !is_emf(data) {
+        return None;
+    }
     let mut bmp = None;
-    for_each_record(data, |rec| {
-        if let EmfRecord::StretchDiBits(b) = rec {
-            bmp = Some(b.clone());
-            return false;
+    let mut vector = false;
+    for_each_raw_record(data, |rec_type, payload| {
+        match rec_type {
+            81 if bmp.is_none() => bmp = decode_stretchdibits(payload),
+            t if paints_vector(t) => vector = true,
+            _ => {}
         }
-        true
+        !vector
     });
-    bmp
+    if vector { None } else { bmp }
+}
+
+/// Records that paint vector geometry: polygon primitives, shapes, LINETO,
+/// path painting and text ([MS-EMF] §2.3.5).
+fn paints_vector(rec_type: u32) -> bool {
+    matches!(rec_type, 2..=8 | 42..=47 | 54 | 62..=64 | 83..=92)
 }
 
 /// Walk all records after the header, calling `f` for each. Stops at EOF, on
 /// a malformed record (zero/negative size), or when `f` returns `false`.
 pub(crate) fn for_each_record(data: &[u8], mut f: impl FnMut(&EmfRecord) -> bool) {
+    for_each_raw_record(data, |rec_type, payload| f(&decode(rec_type, payload)));
+}
+
+/// Same walk without decoding: `f(record_type, payload)`.
+fn for_each_raw_record(data: &[u8], mut f: impl FnMut(u32, &[u8]) -> bool) {
     let mut i = 0usize;
     while i + 8 <= data.len() {
         let rec_type = u32::from_le_bytes(data[i..i + 4].try_into().unwrap());
@@ -124,10 +140,7 @@ pub(crate) fn for_each_record(data: &[u8], mut f: impl FnMut(&EmfRecord) -> bool
         if rec_size < 8 || i + rec_size > data.len() {
             return;
         }
-        let payload = &data[i + 8..i + rec_size];
-        let record = decode(rec_type, payload);
-        let cont = f(&record);
-        if matches!(record, EmfRecord::Eof) || !cont {
+        if !f(rec_type, &data[i + 8..i + rec_size]) || rec_type == 14 {
             return;
         }
         i += rec_size;
@@ -195,14 +208,13 @@ fn decode(rec_type: u32, payload: &[u8]) -> EmfRecord {
         40 => DeleteObject(u32_at(0).unwrap_or(0)),
         39 => decode_brush(payload).unwrap_or(Skip),
         95 => decode_extcreatepen(payload).unwrap_or(Skip),
-        81 => decode_stretchdibits(payload).map(StretchDiBits).unwrap_or(Skip),
         _ => Skip,
     }
 }
 
 /// EMR_STRETCHDIBITS: the BITMAPINFO (`offBmiSrc`/`cbBmiSrc`) and pixel bits
 /// (`offBitsSrc`/`cbBitsSrc`) are addressed from the record start, i.e. 8 bytes
-/// before the payload. Prepend a BITMAPFILEHEADER to make a BMP file.
+/// before the payload. Returns them wrapped as a BMP file.
 fn decode_stretchdibits(payload: &[u8]) -> Option<Vec<u8>> {
     let u32_at = |off: usize| -> Option<usize> {
         payload
@@ -218,15 +230,7 @@ fn decode_stretchdibits(payload: &[u8]) -> Option<Vec<u8>> {
     if bmi.len() < 40 || bits.is_empty() {
         return None;
     }
-    let pixel_off = 14 + bmi.len();
-    let mut bmp = Vec::with_capacity(pixel_off + bits.len());
-    bmp.extend_from_slice(b"BM");
-    bmp.extend_from_slice(&((pixel_off + bits.len()) as u32).to_le_bytes());
-    bmp.extend_from_slice(&[0u8; 4]); // reserved
-    bmp.extend_from_slice(&(pixel_off as u32).to_le_bytes());
-    bmp.extend_from_slice(bmi);
-    bmp.extend_from_slice(bits);
-    Some(bmp)
+    Some(super::wmf::bmp_from_parts(bmi, bits))
 }
 
 fn decode_polybezier16(payload: &[u8]) -> Option<Vec<(i16, i16)>> {
@@ -328,43 +332,39 @@ mod tests {
 
     #[test]
     fn bitmap_emf_becomes_bmp() {
-        // Header + one STRETCHDIBITS carrying a 1x1 24-bpp DIB + EOF.
+        // Header + one STRETCHDIBITS carrying a 1x1 24-bpp DIB.
         let mut data = vec![0u8; 108];
         data[0..4].copy_from_slice(&1u32.to_le_bytes());
         data[4..8].copy_from_slice(&108u32.to_le_bytes());
-        data[16..20].copy_from_slice(&1i32.to_le_bytes()); // bounds right
-        data[20..24].copy_from_slice(&1i32.to_le_bytes()); // bounds bottom
         data[40..44].copy_from_slice(&EMF_MAGIC);
 
         let mut bih = vec![0u8; 40];
         bih[0..4].copy_from_slice(&40u32.to_le_bytes());
-        bih[4..8].copy_from_slice(&1i32.to_le_bytes());
-        bih[8..12].copy_from_slice(&1i32.to_le_bytes());
-        bih[12..14].copy_from_slice(&1u16.to_le_bytes());
-        bih[14..16].copy_from_slice(&24u16.to_le_bytes());
+        bih[4..8].copy_from_slice(&1i32.to_le_bytes()); // width
+        bih[8..12].copy_from_slice(&1i32.to_le_bytes()); // height
+        bih[14..16].copy_from_slice(&24u16.to_le_bytes()); // bpp
         let bits = [0x10u8, 0x20, 0x30, 0x00];
 
-        let mut rec = Vec::new();
-        rec.extend_from_slice(&81u32.to_le_bytes());
-        rec.extend_from_slice(&(80u32 + 40 + 4).to_le_bytes()); // record size
-        rec.extend_from_slice(&[0u8; 40]); // bounds, dest/src origin, src size
-        rec.extend_from_slice(&80u32.to_le_bytes()); // offBmiSrc
-        rec.extend_from_slice(&40u32.to_le_bytes()); // cbBmiSrc
-        rec.extend_from_slice(&120u32.to_le_bytes()); // offBitsSrc
-        rec.extend_from_slice(&4u32.to_le_bytes()); // cbBitsSrc
-        rec.extend_from_slice(&[0u8; 16]); // usage, rop, dest size
-        assert_eq!(rec.len(), 80);
-        rec.extend_from_slice(&bih);
-        rec.extend_from_slice(&bits);
-        data.extend_from_slice(&rec);
-        data.extend_from_slice(&14u32.to_le_bytes());
-        data.extend_from_slice(&8u32.to_le_bytes());
+        data.extend_from_slice(&81u32.to_le_bytes());
+        data.extend_from_slice(&(80u32 + 40 + 4).to_le_bytes()); // record size
+        data.extend_from_slice(&[0u8; 40]); // bounds, dest/src origin, src size
+        for v in [80u32, 40, 120, 4] {
+            data.extend_from_slice(&v.to_le_bytes()); // offBmi, cbBmi, offBits, cbBits
+        }
+        data.extend_from_slice(&[0u8; 16]); // usage, rop, dest size
+        data.extend_from_slice(&bih);
+        data.extend_from_slice(&bits);
 
         let bmp = emf_to_raster(&data).expect("bitmap EMF converts");
-        assert_eq!(&bmp[..2], b"BM");
-        assert_eq!(u32::from_le_bytes(bmp[10..14].try_into().unwrap()), 54);
-        assert_eq!(bmp.len(), 54 + 4);
         assert_eq!(&bmp[54..], &bits);
+        let (w, h, fmt, _) = super::super::images::image_dimensions(&bmp).unwrap();
+        assert_eq!((w, h, fmt), (1, 1, crate::model::ImageFormat::Bmp));
+
+        // Vector drawing (here FILLPATH) keeps the EMF on the translator path.
+        let mut mixed = data.clone();
+        mixed.extend_from_slice(&62u32.to_le_bytes());
+        mixed.extend_from_slice(&8u32.to_le_bytes());
+        assert!(emf_to_raster(&mixed).is_none());
         assert!(emf_to_raster(&data[..108]).is_none());
     }
 
