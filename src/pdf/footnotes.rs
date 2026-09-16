@@ -260,6 +260,7 @@ fn render_notes_downward(
                     para_text_width,
                     baseline_y,
                     layout.line_height,
+                    (layout.font_size * layout.ascender_ratio, layout.font_size * 0.25),
                     line_count,
                     0,
                     &mut Vec::new(),

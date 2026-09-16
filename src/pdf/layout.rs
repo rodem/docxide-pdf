@@ -6,8 +6,8 @@ use pdf_writer::{Content, Name, Rect, Str};
 
 use crate::fonts::{FontEntry, encode_as_gids, font_key, font_key_buf, to_winansi_bytes};
 use crate::model::{
-    Alignment, ParagraphBorder, Run, TabAlignment, TabStop, TextFill, TextOutline, TextShadow,
-    VertAlign,
+    Alignment, LineSpacing, ParagraphBorder, Run, TabAlignment, TabStop, TextFill, TextOutline,
+    TextShadow, VertAlign,
 };
 
 use super::color::{fill_color_or_black, stroke_color_or_black};
@@ -1455,6 +1455,40 @@ pub(super) struct LineNumberArg<'a> {
     pub right_x: f32,
 }
 
+fn line_max_image_h(line: &TextLine) -> f32 {
+    line.chunks
+        .iter()
+        .map(|c| c.inline_image_height)
+        .fold(0.0f32, f32::max)
+}
+
+/// How far an inline picture lowers its line's baseline. Word sits the picture on
+/// the baseline, so a picture taller than the paragraph's text ascent pushes the
+/// baseline down by the difference. `ascent` is the paragraph's baseline offset
+/// (tallest run's ascent), the same figure the caller places the first baseline
+/// with, so the picture top lands exactly on the line top.
+pub(super) fn inline_image_line_extra(line: &TextLine, ascent: f32) -> f32 {
+    (line_max_image_h(line) - ascent).max(0.0)
+}
+
+/// Height of one laid-out line: the paragraph pitch, or for a picture line the
+/// picture plus the text descent. Word gives the picture line no line gap and no
+/// spacing-multiplier leading (italian_evaluation_minutes p7: a 36pt signature in
+/// 10pt Arial makes a 38.2pt line; english_town_council p1: 149pt logo with a 48pt
+/// run makes 159pt, annotation #230).
+pub(super) fn inline_line_advance(
+    line: &TextLine,
+    line_pitch: f32,
+    (ascent, descent): (f32, f32),
+) -> f32 {
+    let img_h = line_max_image_h(line);
+    if img_h > ascent {
+        line_pitch.max(img_h + descent)
+    } else {
+        line_pitch
+    }
+}
+
 /// Render pre-built lines applying the paragraph alignment.
 /// `total_line_count` is the full paragraph line count (for justify: last line stays left-aligned).
 pub(super) fn render_paragraph_lines(
@@ -1465,6 +1499,9 @@ pub(super) fn render_paragraph_lines(
     text_width: f32,
     first_baseline_y: f32,
     line_pitch: f32,
+    // Paragraph (ascent, descent) in points; only picture lines use them (see
+    // `inline_line_advance`).
+    text_metrics: (f32, f32),
     total_line_count: usize,
     first_line_index: usize,
     links: &mut Vec<LinkAnnotation>,
@@ -1489,26 +1526,21 @@ pub(super) fn render_paragraph_lines(
         .map(|e| (e.pdf_name.as_str(), e))
         .collect();
 
-    // Pre-compute per-line y offsets accounting for inline images making lines taller
+    // Per-line baseline offsets: previous line's height minus its own baseline
+    // drop, plus this line's drop. Normal lines reduce to `line_pitch`; a picture
+    // line drops its baseline by the surplus over the ascent (the caller has
+    // already folded line 0's drop into `first_baseline_y`) and advances by
+    // picture height plus descent.
     let mut line_y_offsets: Vec<f32> = Vec::with_capacity(lines.len());
     let mut cumulative_y = 0.0f32;
     for (i, line) in lines.iter().enumerate() {
-        line_y_offsets.push(cumulative_y);
-        let img_h = line
-            .chunks
-            .iter()
-            .map(|c| c.inline_image_height)
-            .fold(0.0f32, f32::max);
-        cumulative_y += if img_h > line_pitch {
-            img_h
-        } else {
-            line_pitch
-        };
-        // First line offset is always 0
-        if i == 0 {
-            cumulative_y = line_pitch.max(img_h);
-            line_y_offsets[0] = 0.0;
+        if i > 0 {
+            let prev = &lines[i - 1];
+            cumulative_y += inline_line_advance(prev, line_pitch, text_metrics)
+                - inline_image_line_extra(prev, text_metrics.0)
+                + inline_image_line_extra(line, text_metrics.0);
         }
+        line_y_offsets.push(cumulative_y);
     }
 
     let last_line_idx = total_line_count.saturating_sub(1);
@@ -2072,19 +2104,12 @@ pub(super) fn render_paragraph_lines(
             }
         }
 
-        // Draw inline images outside text block.
-        // Word bottom-aligns inline images of differing heights on the same line
-        // (anchored to the common baseline slot). Compute the tallest image so
-        // shorter ones sit on the same bottom rather than top-aligning.
-        let line_max_img_h = line
-            .chunks
-            .iter()
-            .map(|c| c.inline_image_height)
-            .fold(0.0f32, f32::max);
+        // Draw inline images outside text block. Every inline picture sits on the
+        // baseline (see inline_image_line_extra), whatever its height.
         for (chunk_idx, chunk) in line.chunks.iter().enumerate() {
             if let Some(ref img_name) = chunk.inline_image_name {
                 let box_x = chunk_abs_x(chunk_idx, chunk);
-                let box_bottom = y + chunk.font_size - line_max_img_h;
+                let box_bottom = y;
 
                 // The chunk box is the rotated frame's bounding box; draw the picture at
                 // its natural size centred in it, turned about that centre like Word.
@@ -2196,6 +2221,50 @@ pub(super) fn tallest_run_metrics(
         }
     }
     (best_font_size, best_line_h_ratio, best_ascender_ratio)
+}
+
+/// Height below the picture on a picture line, for `inline_line_advance`: the
+/// descent of the tallest run with visible glyphs, plus the extra leading that
+/// multiple line spacing adds to the tallest non-picture run's font (Word puts
+/// that leading above the *next* line; we carry it here). The picture run's own
+/// font size never counts. Word measured: 36pt signature beside 10pt Arial,
+/// single spacing → +2.2 (italian_evaluation_minutes p7); 149pt logo after a
+/// 14pt tab at 1.15 → +2.6 (english_town_council p1); 177pt picture after a run
+/// of spaces at 1.5 → +7.6 (family_kinship p4); four 48pt chord diagrams alone
+/// → +0 (old_blue_truck p1).
+pub(super) fn picture_line_bottom(
+    runs: &[Run],
+    seen_fonts: &HashMap<String, FontEntry>,
+    ls: LineSpacing,
+) -> f32 {
+    let mut key_buf = String::new();
+    // (font_size, line_h_ratio, ascender_ratio) of the run with the tallest ascent
+    let mut tallest = |glyphs_only: bool| -> Option<(f32, Option<f32>, Option<f32>)> {
+        let mut best: Option<(f32, Option<f32>, Option<f32>)> = None;
+        let mut best_ascent = 0.0f32;
+        for run in runs.iter().filter(|r| {
+            r.inline_image.is_none()
+                && !r.is_line_break
+                && !r.vanish
+                && (!glyphs_only || !r.text.trim().is_empty())
+        }) {
+            let entry = seen_fonts.get(font_key_buf(run, &mut key_buf));
+            let (lhr, ar) = entry.map_or((None, None), |e| run_line_metrics(e, &run.text));
+            let ascent = run.font_size * ar.unwrap_or(0.75);
+            if best.is_none() || ascent > best_ascent {
+                best_ascent = ascent;
+                best = Some((run.font_size, lhr, ar));
+            }
+        }
+        best
+    };
+    let leading = tallest(false).map_or(0.0, |(fs, lhr, _)| {
+        (super::helpers::resolve_line_h(ls, fs, lhr) - fs * lhr.unwrap_or(1.2)).max(0.0)
+    });
+    let descent = tallest(true).map_or(0.0, |(fs, lhr, ar)| {
+        fs * lhr.zip(ar).map_or(0.25, |(l, a)| (l - a).max(0.0))
+    });
+    descent + leading
 }
 
 /// A run's (line_h_ratio, ascender_ratio). A run of nothing but spaces in an

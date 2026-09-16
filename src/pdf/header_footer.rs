@@ -8,7 +8,8 @@ use crate::model::{
 };
 
 use super::layout::{
-    TextLine, build_paragraph_lines, build_tabbed_line, is_text_empty, render_paragraph_lines,
+    TextLine, build_paragraph_lines, build_tabbed_line, inline_image_line_extra,
+    inline_line_advance, is_text_empty, picture_line_bottom, render_paragraph_lines,
     tallest_run_metrics,
 };
 use super::positioning::resolve_h_position;
@@ -388,7 +389,7 @@ pub(super) fn render_header_footer(
                 render_paragraph_lines(
                     content, &lines, &Alignment::Left,
                     frame_x, content_width, frame_baseline,
-                    font_size, lines.len(), 0,
+                    font_size, (font_size * ascender_ratio, font_size * 0.25), lines.len(), 0,
                     &mut Vec::new(), 0.0, ctx.fonts, None,
                     gradient_specs,
                     None,
@@ -635,6 +636,7 @@ pub(super) fn render_header_footer(
                             tp_text_w,
                             tb_baseline,
                             tb_line_h,
+                            (tb_fs * tb_ascender, tb_fs * 0.25),
                             tb_lines.len(),
                             0,
                             &mut Vec::new(),
@@ -955,14 +957,23 @@ pub(super) fn render_header_footer(
                     per_line_widths.as_deref(),
                 );
 
+                // Inline pictures sit on the baseline and grow their line upward.
+                let metrics = (
+                    font_size * ascender_ratio,
+                    picture_line_bottom(&substituted_runs, ctx.fonts, effective_ls),
+                );
+                let first_extra = lines
+                    .first()
+                    .map_or(0.0, |l| inline_image_line_extra(l, metrics.0));
                 render_paragraph_lines(
                     content,
                     &lines,
                     &para.alignment,
                     para_text_x,
                     para_text_width,
-                    baseline_y,
+                    baseline_y - first_extra,
                     line_h,
+                    metrics,
                     lines.len(),
                     0,
                     &mut Vec::new(),
@@ -974,12 +985,14 @@ pub(super) fn render_header_footer(
                     None,
                 );
 
-                let max_img_h = lines
-                    .iter()
-                    .flat_map(|l| l.chunks.iter())
-                    .map(|c| c.inline_image_height)
-                    .fold(0.0f32, f32::max);
-                cursor_y -= lines.len().max(1) as f32 * max_img_h.max(line_h);
+                cursor_y -= if lines.is_empty() {
+                    line_h
+                } else {
+                    lines
+                        .iter()
+                        .map(|l| inline_line_advance(l, line_h, metrics))
+                        .sum()
+                };
                 prev_space_after = para.space_after;
                 pi += 1;
             }

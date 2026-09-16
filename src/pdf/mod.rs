@@ -49,8 +49,9 @@ pub(super) use positioning::{resolve_h_position, resolve_fi_y_top};
 use images::{EffectXObjs, EmbeddedImages, embed_all_images};
 use layout::{
     DualRegion, LineNumberArg, LinkAnnotation, TextLine, build_paragraph_lines, build_tabbed_line,
-    grid_snapped_line_h,
-    is_text_empty, render_paragraph_lines, run_line_metrics, tallest_run_metrics,
+    grid_snapped_line_h, inline_image_line_extra, inline_line_advance,
+    is_text_empty, picture_line_bottom, render_paragraph_lines, run_line_metrics,
+    tallest_run_metrics,
 };
 use crate::fonts::font_key;
 use color::{fill_rgb, stroke_rgb};
@@ -1238,11 +1239,12 @@ fn render_paragraph_block(
     };
 
     let text_empty = is_text_empty(&effective_runs);
-    // Word lays the line following a tall inline image one full line height
-    // below the image bottom (leading above the text). Our baseline
-    // convention (ascent below slot top) omits that leading, so a paragraph
-    // directly after an image-dominated line gets both its first baseline and
-    // its block height extended by the missing leading.
+    // Word lays the line following a tall picture one full line height below
+    // the picture bottom (leading above the text). A block picture paragraph
+    // (`para.image`) is exactly the picture tall, so the paragraph after it gets
+    // both its first baseline and its block height extended by the missing
+    // leading. Run-level inline pictures need no boost: their line already
+    // carries the descent and leading (inline_image_line_extra).
     let after_image_boost = if text_empty
         || grid_snapped
         || para.image.is_some()
@@ -1252,13 +1254,7 @@ fn render_paragraph_block(
         0.0
     } else {
         adjacent_para(block_idx - 1).map_or(0.0, |prev| {
-            let img_h = prev
-                .runs
-                .iter()
-                .filter_map(|r| r.inline_image.as_ref())
-                .map(|i| i.display_height)
-                .fold(0.0f32, f32::max)
-                .max(if prev.image.is_some() { prev.content_height } else { 0.0 });
+            let img_h = if prev.image.is_some() { prev.content_height } else { 0.0 };
             if img_h <= 0.0 {
                 return 0.0;
             }
@@ -1792,21 +1788,24 @@ fn render_paragraph_block(
         .map(|c| c.inline_image_height)
         .fold(0.0f32, f32::max);
 
+    // Paragraph ascent/descent in points: the first baseline sits `para_ascent`
+    // below the paragraph top, and picture lines are sized from both (see
+    // `inline_line_advance` and `text_run_descent`).
+    let para_ascent = exact_baseline_base.unwrap_or(font_size * tallest_ar.unwrap_or(0.75));
+    let para_metrics = (
+        para_ascent,
+        picture_line_bottom(&effective_runs, ctx.fonts, effective_ls),
+    );
+
     let mut content_h = if para.inline_chart.is_some() {
         para.content_height
     } else if para.image.is_some() {
         para.content_height
     } else if max_inline_img_h > 0.0 {
-        let mut h = 0.0f32;
-        for line in &lines {
-            let img_h = line
-                .chunks
-                .iter()
-                .map(|c| c.inline_image_height)
-                .fold(0.0f32, f32::max);
-            h += if img_h > line_h { img_h } else { line_h };
-        }
-        h
+        lines
+            .iter()
+            .map(|line| inline_line_advance(line, line_h, para_metrics))
+            .sum()
     } else if text_empty {
         if para.paragraph_mark_vanish {
             0.0
@@ -1864,6 +1863,10 @@ fn render_paragraph_block(
     };
 
     content_h += after_image_boost;
+    // A tall inline picture on the first line lowers that line's baseline.
+    let first_line_extra = lines
+        .first()
+        .map_or(0.0, |l| inline_image_line_extra(l, para_ascent));
 
     // Extra height from floating images that extends beyond
     // the text content — used only for page-break decisions,
@@ -2109,6 +2112,7 @@ fn render_paragraph_block(
                         .unwrap_or(font_size * ascender_ratio),
                     font_size,
                 ) + after_image_boost
+                    + first_line_extra
             };
             let baseline_y = state.pb.slot_top - baseline_offset;
 
@@ -2129,6 +2133,7 @@ fn render_paragraph_block(
                 para_text_width,
                 baseline_y,
                 line_h,
+                para_metrics,
                 lines.len(),
                 0,
                 &mut state.pb.links,
@@ -2169,6 +2174,7 @@ fn render_paragraph_block(
                 sp.line_pitch
             } else {
                 font_size * ascender_ratio
+                    + rest.first().map_or(0.0, |l| inline_image_line_extra(l, para_ascent))
             };
             let baseline_y2 = state.pb.slot_top - baseline_offset2;
 
@@ -2185,6 +2191,7 @@ fn render_paragraph_block(
                 rest_text_width,
                 baseline_y2,
                 line_h,
+                para_metrics,
                 lines.len(),
                 lines_that_fit,
                 &mut state.pb.links,
@@ -2624,6 +2631,7 @@ fn render_paragraph_block(
                 exact_baseline_base.unwrap_or(font_size * ascender_ratio),
                 font_size,
             ) + after_image_boost
+                + first_line_extra
         };
         let baseline_y = state.pb.slot_top - bdr_top_pad - baseline_offset;
 
@@ -2647,6 +2655,7 @@ fn render_paragraph_block(
                     para_text_width,
                     baseline_y,
                     line_h,
+                    para_metrics,
                     lines.len(),
                     0,
                     &mut state.pb.links,
@@ -2676,6 +2685,7 @@ fn render_paragraph_block(
                     after_w,
                     below_baseline,
                     line_h,
+                    para_metrics,
                     lines.len(),
                     split_at,
                     &mut state.pb.links,
@@ -2702,6 +2712,7 @@ fn render_paragraph_block(
                     para_text_width,
                     baseline_y,
                     line_h,
+                    para_metrics,
                     lines.len(),
                     0,
                     &mut state.pb.links,
@@ -2728,6 +2739,7 @@ fn render_paragraph_block(
                 para_text_width,
                 baseline_y,
                 line_h,
+                para_metrics,
                 lines.len(),
                 0,
                 &mut state.pb.links,

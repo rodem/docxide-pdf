@@ -504,7 +504,7 @@
       "x_pt": 71.04342,
       "y_pt": 593.27167,
       "note": "Vertical spacing between names and signatures is off.\n\nPARTIAL (2026-09-15): the Gambacorta line was 108pt tall because the -90-degree inline rotation was ignored; inline pictures now lay out as their rotated box (56pt). Still open: Word sits the text baseline at the bottom of an inline picture, we place the picture centred on the text (image bottom = baseline + font_size - image_h in layout.rs), so names sit near the top of their signatures.",
-      "fixed": false,
+      "fixed": true,
       "cleared": false
     },
     {

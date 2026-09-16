@@ -438,7 +438,7 @@ pub(super) fn render_textbox_paragraphs(
         }
         render_paragraph_lines(
             content, &tb_lines, &tp.alignment, tp_text_x, tp_align_w,
-            tb_baseline, tb_line_h, tb_lines.len(), 0,
+            tb_baseline, tb_line_h, (tb_fs * tb_ar.unwrap_or(0.75), tb_fs * 0.25), tb_lines.len(), 0,
             links, 0.0, ctx.fonts, None,
             gradient_specs,
             None,
