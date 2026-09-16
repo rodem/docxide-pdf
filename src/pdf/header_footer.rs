@@ -8,9 +8,8 @@ use crate::model::{
 };
 
 use super::layout::{
-    CjkLayout, TextLine, build_paragraph_lines, build_tabbed_line, inline_image_line_extra,
-    inline_line_advance, is_text_empty, picture_line_bottom, render_paragraph_lines,
-    tallest_run_metrics,
+    TextLine, build_paragraph_lines, build_tabbed_line, is_text_empty, lines_height,
+    picture_line_bottom, render_paragraph_lines, tallest_run_metrics,
 };
 use super::positioning::resolve_h_position;
 use super::table;
@@ -234,39 +233,34 @@ pub(super) fn resolve_tb_y_top(
 
 fn build_lines(
     runs: &[Run],
-    fonts: &HashMap<String, crate::fonts::FontEntry>,
+    ctx: &RenderContext,
     tab_stops: &[crate::model::TabStop],
     text_width: f32,
     inline_images: &HashMap<usize, String>,
-    default_tab_stop: f32,
     indent_left: f32,
     indent_right: f32,
     text_hanging: f32,
-    compress_punct: bool,
 ) -> Vec<TextLine> {
-    build_lines_with_float(runs, fonts, tab_stops, text_width, inline_images, default_tab_stop, indent_left, indent_right, text_hanging, None, compress_punct)
+    build_lines_with_float(runs, ctx, tab_stops, text_width, inline_images, indent_left, indent_right, text_hanging, None)
 }
 
 fn build_lines_with_float(
     runs: &[Run],
-    fonts: &HashMap<String, crate::fonts::FontEntry>,
+    ctx: &RenderContext,
     tab_stops: &[crate::model::TabStop],
     text_width: f32,
     inline_images: &HashMap<usize, String>,
-    default_tab_stop: f32,
     indent_left: f32,
     indent_right: f32,
     text_hanging: f32,
     per_line_widths: Option<&[f32]>,
-    compress_punct: bool,
 ) -> Vec<TextLine> {
     let empty_fx: HashMap<usize, super::images::EffectXObjs> = HashMap::new();
     let has_tabs = runs.iter().any(|r| r.is_tab);
     if has_tabs {
-        build_tabbed_line(runs, fonts, tab_stops, indent_left, text_width, indent_right, text_hanging, inline_images, &empty_fx, default_tab_stop, &[])
+        build_tabbed_line(runs, ctx.fonts, tab_stops, indent_left, text_width, indent_right, text_hanging, inline_images, &empty_fx, ctx.default_tab_stop, &[])
     } else {
-        let cjk = CjkLayout { auto_space: true, compress_punct };
-        build_paragraph_lines(runs, fonts, text_width, text_hanging, inline_images, &empty_fx, None, per_line_widths, None, cjk)
+        build_paragraph_lines(runs, ctx.fonts, text_width, text_hanging, inline_images, &empty_fx, None, per_line_widths, None, ctx.cjk(true))
     }
 }
 
@@ -343,9 +337,9 @@ pub(super) fn render_header_footer(
 
                 let empty_inline_imgs: HashMap<usize, String> = HashMap::new();
                 let lines = build_lines(
-                    &substituted_runs, ctx.fonts, &para.tab_stops,
-                    text_width, &empty_inline_imgs, ctx.default_tab_stop,
-                    0.0, 0.0, 0.0, ctx.compress_punctuation,
+                    &substituted_runs, ctx, &para.tab_stops,
+                    text_width, &empty_inline_imgs,
+                    0.0, 0.0, 0.0,
                 );
                 let content_width = lines.iter()
                     .map(|l| l.total_width)
@@ -389,10 +383,11 @@ pub(super) fn render_header_footer(
                 };
                 let frame_baseline = frame_top - font_size * ascender_ratio;
 
+                // Frame text carries no inline pictures, so no descent is needed.
                 render_paragraph_lines(
                     content, &lines, &Alignment::Left,
                     frame_x, content_width, frame_baseline,
-                    font_size, (font_size * ascender_ratio, font_size * 0.25), lines.len(), 0,
+                    font_size, (font_size * ascender_ratio, 0.0), lines.len(), 0,
                     &mut Vec::new(), 0.0, ctx.fonts, None,
                     gradient_specs,
                     None,
@@ -507,15 +502,13 @@ pub(super) fn render_header_footer(
                                     };
                                 let tb_lines = build_lines(
                                     &tp.runs,
-                                    ctx.fonts,
+                                    ctx,
                                     &tp.tab_stops,
                                     tp_text_w,
                                     &inline_imgs,
-                                    ctx.default_tab_stop,
                                     tp.indent_left,
                                     tp.indent_right,
                                     tp_hanging,
-                                    ctx.compress_punctuation,
                                 );
                                 if tb_lines.is_empty() {
                                     let (fs, _, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
@@ -605,15 +598,13 @@ pub(super) fn render_header_footer(
                             };
                         let tb_lines = build_lines(
                             &tp.runs,
-                            ctx.fonts,
+                            ctx,
                             &tp.tab_stops,
                             tp_text_w,
                             &inline_imgs,
-                            ctx.default_tab_stop,
                             tp.indent_left,
                             tp.indent_right,
                             tp_hanging,
-                            ctx.compress_punctuation,
                         );
                         if tb_lines.is_empty() {
                             let (fs, _, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
@@ -625,6 +616,14 @@ pub(super) fn render_header_footer(
                         let tb_ascender = tb_ar.unwrap_or(0.75);
                         let tb_line_h = resolve_line_h(tp_ls, tb_fs, tb_ar);
                         let tb_baseline = tb_cursor - tp.space_before - tb_fs * tb_ascender;
+                        let tb_metrics = (
+                            tb_fs * tb_ascender,
+                            if inline_imgs.is_empty() {
+                                0.0
+                            } else {
+                                picture_line_bottom(&tp.runs, ctx.fonts, tp_ls)
+                            },
+                        );
                         super::render_list_label(
                             content,
                             tp,
@@ -641,7 +640,7 @@ pub(super) fn render_header_footer(
                             tp_text_w,
                             tb_baseline,
                             tb_line_h,
-                            (tb_fs * tb_ascender, tb_fs * 0.25),
+                            tb_metrics,
                             tb_lines.len(),
                             0,
                             &mut Vec::new(),
@@ -951,33 +950,32 @@ pub(super) fn render_header_footer(
 
                 let lines = build_lines_with_float(
                     &substituted_runs,
-                    ctx.fonts,
+                    ctx,
                     &para.tab_stops,
                     para_text_width,
                     &block_inline_images,
-                    ctx.default_tab_stop,
                     para.indent_left,
                     para.indent_right,
                     text_hanging,
                     per_line_widths.as_deref(),
-                    ctx.compress_punctuation,
                 );
 
                 // Inline pictures sit on the baseline and grow their line upward.
                 let metrics = (
                     font_size * ascender_ratio,
-                    picture_line_bottom(&substituted_runs, ctx.fonts, effective_ls),
+                    if block_inline_images.is_empty() {
+                        0.0
+                    } else {
+                        picture_line_bottom(&substituted_runs, ctx.fonts, effective_ls)
+                    },
                 );
-                let first_extra = lines
-                    .first()
-                    .map_or(0.0, |l| inline_image_line_extra(l, metrics.0));
                 render_paragraph_lines(
                     content,
                     &lines,
                     &para.alignment,
                     para_text_x,
                     para_text_width,
-                    baseline_y - first_extra,
+                    baseline_y,
                     line_h,
                     metrics,
                     lines.len(),
@@ -991,14 +989,7 @@ pub(super) fn render_header_footer(
                     None,
                 );
 
-                cursor_y -= if lines.is_empty() {
-                    line_h
-                } else {
-                    lines
-                        .iter()
-                        .map(|l| inline_line_advance(l, line_h, metrics))
-                        .sum()
-                };
+                cursor_y -= lines_height(&lines, line_h, metrics);
                 prev_space_after = para.space_after;
                 pi += 1;
             }

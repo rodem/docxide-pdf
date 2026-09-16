@@ -7,8 +7,8 @@ use crate::model::{EmbeddedImage, Paragraph, SectionProperties, TextAnchor, Text
 use super::color::{fill_rgb, stroke_rgb};
 use super::header_footer::resolve_tb_y_top;
 use super::layout::{
-    CjkLayout, LinkAnnotation, build_paragraph_lines, build_tabbed_line, render_paragraph_lines,
-    tallest_run_metrics,
+    LinkAnnotation, build_paragraph_lines, build_tabbed_line, lines_height,
+    picture_line_bottom, render_paragraph_lines, tallest_run_metrics,
 };
 use super::list_label::render_list_label;
 use super::positioning::resolve_h_position;
@@ -78,7 +78,7 @@ pub(super) fn textbox_height(tb: &Textbox, ctx: &RenderContext) -> f32 {
             } else {
                 build_paragraph_lines(
                     &tp.runs, ctx.fonts, tw, hang, &empty_imgs, &empty_fx, None, None, None,
-                    CjkLayout { auto_space: true, compress_punct: ctx.compress_punctuation },
+                    ctx.cjk(true),
                 )
             };
             let (fs, lhr, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
@@ -234,7 +234,7 @@ pub(super) fn render_single_textbox(
                 } else {
                     build_paragraph_lines(
                         &tp.runs, ctx.fonts, tp_text_w, text_hanging, &empty_inline_imgs_pre, &empty_fx_pre, None, None, None,
-                        CjkLayout { auto_space: true, compress_punct: ctx.compress_punctuation },
+                        ctx.cjk(true),
                     )
                 };
                 let (fs, lhr, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
@@ -412,7 +412,7 @@ pub(super) fn render_textbox_paragraphs(
         } else {
             build_paragraph_lines(
                 &tp.runs, ctx.fonts, tp_text_w, text_hanging, &inline_imgs, &empty_fx, None, None, None,
-                CjkLayout { auto_space: true, compress_punct: ctx.compress_punctuation },
+                ctx.cjk(true),
             )
         };
         if tb_lines.is_empty() {
@@ -425,6 +425,14 @@ pub(super) fn render_textbox_paragraphs(
         let (tb_fs, tb_lhr, tb_ar) = tallest_run_metrics(&tp.runs, ctx.fonts);
         let tb_line_h = resolve_line_h(tp_ls, tb_fs, tb_lhr);
         let tb_baseline = cursor_y - inter_gap - tb_fs * tb_ar.unwrap_or(0.75) - y_offset;
+        let tb_metrics = (
+            tb_fs * tb_ar.unwrap_or(0.75),
+            if inline_imgs.is_empty() {
+                0.0
+            } else {
+                picture_line_bottom(&tp.runs, ctx.fonts, tp_ls)
+            },
+        );
         let tp_text_x = content_x + tp.indent_left + x_offset;
         if let Some(c) = force_color {
             fill_rgb(content, c);
@@ -441,13 +449,13 @@ pub(super) fn render_textbox_paragraphs(
         }
         render_paragraph_lines(
             content, &tb_lines, &tp.alignment, tp_text_x, tp_align_w,
-            tb_baseline, tb_line_h, (tb_fs * tb_ar.unwrap_or(0.75), tb_fs * 0.25), tb_lines.len(), 0,
+            tb_baseline, tb_line_h, tb_metrics, tb_lines.len(), 0,
             links, 0.0, ctx.fonts, None,
             gradient_specs,
             None,
             None,
         );
-        cursor_y -= inter_gap + (tb_lines.len() as f32) * tb_line_h;
+        cursor_y -= inter_gap + lines_height(&tb_lines, tb_line_h, tb_metrics);
         prev_space_after = tp.space_after;
     }
 }

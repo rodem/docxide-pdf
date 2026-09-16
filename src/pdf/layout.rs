@@ -617,13 +617,6 @@ fn finish_line_with_break(chunks: &mut Vec<WordChunk>) -> TextLine {
     line
 }
 
-/// Layout runs into wrapped lines.
-/// Handles cross-run contiguous text correctly: no space is inserted between
-/// runs unless the preceding text ended with whitespace or the new run starts
-/// with whitespace (e.g., "bold" + ", " → "bold," not "bold ,").
-/// `width_after_line`: after building this many lines, switch to a different
-/// max_width (used for text wrapping around floating tables where lines beside
-/// the table are narrow, then lines below it expand to full column width).
 /// East Asian line-breaking switches for `build_paragraph_lines`.
 #[derive(Clone, Copy)]
 pub(super) struct CjkLayout {
@@ -665,27 +658,22 @@ fn compress_punctuation(chunks: &mut [WordChunk], needed: f32) -> bool {
         .iter()
         .map(|&i| (chunks[i].font_size * 0.25 - chunks[i].punct_compressed).max(0.0))
         .collect();
-    if needed <= 0.0 || room.iter().sum::<f32>() + 0.01 < needed {
+    let total: f32 = room.iter().sum();
+    if needed <= 0.0 || total + 0.01 < needed {
         return false;
     }
-    // Even shares, tightest marks first so a mark short of its share passes the
-    // remainder on to the others.
-    let mut order: Vec<usize> = (0..marks.len()).collect();
-    order.sort_by(|a, b| room[*a].total_cmp(&room[*b]));
-    let mut cuts = vec![0.0f32; marks.len()];
-    let mut remaining = needed;
-    for (n, &k) in order.iter().enumerate() {
-        cuts[k] = (remaining / (marks.len() - n) as f32).min(room[k]);
-        remaining -= cuts[k];
-    }
+    // Each mark gives in proportion to what it has left: untouched marks share
+    // evenly, an already-squeezed one gives less.
+    let scale = (needed / total).min(1.0);
     let mut shift = 0.0;
     let mut k = 0;
     for (i, chunk) in chunks.iter_mut().enumerate() {
         chunk.x_offset -= shift;
         if k < marks.len() && marks[k] == i {
-            chunk.width -= cuts[k];
-            chunk.punct_compressed += cuts[k];
-            shift += cuts[k];
+            let cut = room[k] * scale;
+            chunk.width -= cut;
+            chunk.punct_compressed += cut;
+            shift += cut;
             k += 1;
         }
     }
@@ -696,6 +684,13 @@ fn compress_punctuation(chunks: &mut [WordChunk], needed: f32) -> bool {
 /// For lines outside the float zone, right_w is 0.0 (single region).
 pub(super) type DualRegion = (f32, f32, f32, f32);
 
+/// Layout runs into wrapped lines.
+/// Handles cross-run contiguous text correctly: no space is inserted between
+/// runs unless the preceding text ended with whitespace or the new run starts
+/// with whitespace (e.g., "bold" + ", " → "bold," not "bold ,").
+/// `width_after_line`: after building this many lines, switch to a different
+/// max_width (used for text wrapping around floating tables where lines beside
+/// the table are narrow, then lines below it expand to full column width).
 pub(super) fn build_paragraph_lines(
     runs: &[Run],
     seen_fonts: &HashMap<String, FontEntry>,
@@ -1545,7 +1540,7 @@ pub(super) struct LineNumberArg<'a> {
     pub right_x: f32,
 }
 
-fn line_max_image_h(line: &TextLine) -> f32 {
+pub(super) fn line_max_image_h(line: &TextLine) -> f32 {
     line.chunks
         .iter()
         .map(|c| c.inline_image_height)
@@ -1566,11 +1561,7 @@ pub(super) fn inline_image_line_extra(line: &TextLine, ascent: f32) -> f32 {
 /// spacing-multiplier leading (italian_evaluation_minutes p7: a 36pt signature in
 /// 10pt Arial makes a 38.2pt line; english_town_council p1: 149pt logo with a 48pt
 /// run makes 159pt, annotation #230).
-pub(super) fn inline_line_advance(
-    line: &TextLine,
-    line_pitch: f32,
-    (ascent, descent): (f32, f32),
-) -> f32 {
+fn inline_line_advance(line: &TextLine, line_pitch: f32, (ascent, descent): (f32, f32)) -> f32 {
     let img_h = line_max_image_h(line);
     if img_h > ascent {
         line_pitch.max(img_h + descent)
@@ -1579,7 +1570,28 @@ pub(super) fn inline_line_advance(
     }
 }
 
+/// Height of a laid-out paragraph: the sum of its line advances, one pitch when
+/// it has no lines.
+pub(super) fn lines_height(lines: &[TextLine], line_pitch: f32, metrics: (f32, f32)) -> f32 {
+    if lines.is_empty() {
+        line_pitch
+    } else {
+        lines
+            .iter()
+            .map(|l| inline_line_advance(l, line_pitch, metrics))
+            .sum()
+    }
+}
+
+/// winDescent as a fraction of the font size: the line-height ratio less the
+/// ascender ratio (identity used throughout), 0.25 when the font is unknown.
+fn descender_ratio(lhr: Option<f32>, ar: Option<f32>) -> f32 {
+    lhr.zip(ar).map_or(0.25, |(l, a)| (l - a).max(0.0))
+}
+
 /// Render pre-built lines applying the paragraph alignment.
+/// `first_baseline_y` is line 0's text baseline as if it held no picture; a
+/// picture line drops its own baseline here (see `inline_image_line_extra`).
 /// `total_line_count` is the full paragraph line count (for justify: last line stays left-aligned).
 pub(super) fn render_paragraph_lines(
     content: &mut Content,
@@ -1616,21 +1628,14 @@ pub(super) fn render_paragraph_lines(
         .map(|e| (e.pdf_name.as_str(), e))
         .collect();
 
-    // Per-line baseline offsets: previous line's height minus its own baseline
-    // drop, plus this line's drop. Normal lines reduce to `line_pitch`; a picture
-    // line drops its baseline by the surplus over the ascent (the caller has
-    // already folded line 0's drop into `first_baseline_y`) and advances by
-    // picture height plus descent.
+    // Per-line baseline offsets below `first_baseline_y`: each line's top is the
+    // sum of the previous lines' advances, and a picture line drops its baseline
+    // by the picture's surplus over the ascent. Normal lines reduce to `line_pitch`.
     let mut line_y_offsets: Vec<f32> = Vec::with_capacity(lines.len());
-    let mut cumulative_y = 0.0f32;
-    for (i, line) in lines.iter().enumerate() {
-        if i > 0 {
-            let prev = &lines[i - 1];
-            cumulative_y += inline_line_advance(prev, line_pitch, text_metrics)
-                - inline_image_line_extra(prev, text_metrics.0)
-                + inline_image_line_extra(line, text_metrics.0);
-        }
-        line_y_offsets.push(cumulative_y);
+    let mut line_top = 0.0f32;
+    for line in lines {
+        line_y_offsets.push(line_top + inline_image_line_extra(line, text_metrics.0));
+        line_top += inline_line_advance(line, line_pitch, text_metrics);
     }
 
     let last_line_idx = total_line_count.saturating_sub(1);
@@ -2278,20 +2283,26 @@ pub(super) fn tallest_run_metrics(
     runs: &[Run],
     seen_fonts: &HashMap<String, FontEntry>,
 ) -> (f32, Option<f32>, Option<f32>) {
-    let mut best_font_size = runs.first().map_or(12.0, |r| r.font_size);
-    let mut best_ascent = 0.0f32;
-    let mut best_line_h_ratio: Option<f32> = None;
-    let mut best_ascender_ratio: Option<f32> = None;
-    let mut key_buf = String::new();
+    tallest_by_ascent(runs.iter(), seen_fonts)
+        .unwrap_or((runs.first().map_or(12.0, |r| r.font_size), None, None))
+}
 
+/// (font_size, line_h_ratio, ascender_ratio) of the run with the tallest ascent
+/// (font_size × ascender ratio); None when no run has one.
+fn tallest_by_ascent<'a>(
+    runs: impl Iterator<Item = &'a Run>,
+    seen_fonts: &HashMap<String, FontEntry>,
+) -> Option<(f32, Option<f32>, Option<f32>)> {
+    let mut best: Option<(f32, Option<f32>, Option<f32>)> = None;
+    let mut best_ascent = 0.0f32;
+    let mut key_buf = String::new();
     for run in runs {
         // Line-break runs only affect the empty line they create, not
         // the paragraph's overall line height.
         if run.is_line_break {
             continue;
         }
-        let key = font_key_buf(run, &mut key_buf);
-        let entry = seen_fonts.get(key);
+        let entry = seen_fonts.get(font_key_buf(run, &mut key_buf));
         // Math runs use a math font (e.g. Cambria Math) whose ascent/descent are
         // very tall to accommodate big operators. Inline math should sit within
         // the surrounding text line height (as Word lays it out), so clamp math
@@ -2305,12 +2316,10 @@ pub(super) fn tallest_run_metrics(
         let ascent = run.font_size * ascender_ratio.unwrap_or(0.75);
         if ascent > best_ascent {
             best_ascent = ascent;
-            best_font_size = run.font_size;
-            best_ascender_ratio = ascender_ratio;
-            best_line_h_ratio = lhr;
+            best = Some((run.font_size, lhr, ascender_ratio));
         }
     }
-    (best_font_size, best_line_h_ratio, best_ascender_ratio)
+    best
 }
 
 /// Height below the picture on a picture line, for `inline_line_advance`: the
@@ -2327,33 +2336,13 @@ pub(super) fn picture_line_bottom(
     seen_fonts: &HashMap<String, FontEntry>,
     ls: LineSpacing,
 ) -> f32 {
-    let mut key_buf = String::new();
-    // (font_size, line_h_ratio, ascender_ratio) of the run with the tallest ascent
-    let mut tallest = |glyphs_only: bool| -> Option<(f32, Option<f32>, Option<f32>)> {
-        let mut best: Option<(f32, Option<f32>, Option<f32>)> = None;
-        let mut best_ascent = 0.0f32;
-        for run in runs.iter().filter(|r| {
-            r.inline_image.is_none()
-                && !r.is_line_break
-                && !r.vanish
-                && (!glyphs_only || !r.text.trim().is_empty())
-        }) {
-            let entry = seen_fonts.get(font_key_buf(run, &mut key_buf));
-            let (lhr, ar) = entry.map_or((None, None), |e| run_line_metrics(e, &run.text));
-            let ascent = run.font_size * ar.unwrap_or(0.75);
-            if best.is_none() || ascent > best_ascent {
-                best_ascent = ascent;
-                best = Some((run.font_size, lhr, ar));
-            }
-        }
-        best
-    };
-    let leading = tallest(false).map_or(0.0, |(fs, lhr, _)| {
+    let text_runs = || runs.iter().filter(|r| r.inline_image.is_none() && !r.vanish);
+    let leading = tallest_by_ascent(text_runs(), seen_fonts).map_or(0.0, |(fs, lhr, _)| {
         (super::helpers::resolve_line_h(ls, fs, lhr) - fs * lhr.unwrap_or(1.2)).max(0.0)
     });
-    let descent = tallest(true).map_or(0.0, |(fs, lhr, ar)| {
-        fs * lhr.zip(ar).map_or(0.25, |(l, a)| (l - a).max(0.0))
-    });
+    let glyph_runs = text_runs().filter(|r| !r.text.trim().is_empty());
+    let descent = tallest_by_ascent(glyph_runs, seen_fonts)
+        .map_or(0.0, |(fs, lhr, ar)| fs * descender_ratio(lhr, ar));
     descent + leading
 }
 

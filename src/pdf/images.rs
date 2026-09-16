@@ -83,20 +83,15 @@ fn downscale_target(
     Some((target_w, target_h))
 }
 
-/// Encode an RGB image as JPEG, returning the bytes. Returns `None` on failure.
 /// Office picture brightness/contrast (`a:lum`, fractions of ±1.0) on 8-bit
 /// samples: contrast scales about mid-grey, brightness offsets, then clamp. Same
 /// mapping LibreOffice uses for its DrawingML import; Word's exact curve is
 /// undocumented, but this reproduces the washed-out stamp on
 /// italian_evaluation_minutes p7 (annotation #229).
 fn apply_lum(samples: &mut [u8], bright: f32, contrast: f32) {
-    let c = (contrast * 100.0).clamp(-100.0, 100.0);
-    let scale = if c >= 0.0 {
-        128.0 / (128.0 - 1.27 * c)
-    } else {
-        (128.0 + 1.27 * c) / 128.0
-    };
-    let offset = (bright * 100.0).clamp(-100.0, 100.0) * 2.55;
+    let c = contrast.clamp(-1.0, 1.0) * 127.0;
+    let scale = if c >= 0.0 { 128.0 / (128.0 - c) } else { (128.0 + c) / 128.0 };
+    let offset = bright.clamp(-1.0, 1.0) * 255.0;
     let lut: [u8; 256] = std::array::from_fn(|v| {
         ((v as f32 - 128.0) * scale + 128.0 + offset).round().clamp(0.0, 255.0) as u8
     });
@@ -105,6 +100,7 @@ fn apply_lum(samples: &mut [u8], bright: f32, contrast: f32) {
     }
 }
 
+/// Encode an RGB image as JPEG, returning the bytes. Returns `None` on failure.
 fn encode_jpeg(rgb: &image::RgbImage) -> Option<Vec<u8>> {
     let mut buf = Vec::new();
     let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, JPEG_QUALITY);
@@ -346,7 +342,7 @@ fn embed_image_xobject(
                         }
                         None => decoded,
                     };
-                    let mut rgb = resized.to_rgb8();
+                    let mut rgb = resized.into_rgb8();
                     if let Some((bright, contrast)) = img.lum {
                         apply_lum(&mut rgb, bright, contrast);
                     }

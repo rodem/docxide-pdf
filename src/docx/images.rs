@@ -120,11 +120,7 @@ fn find_pic_sp_pr<'a>(container: roxmltree::Node<'a, 'a>) -> Option<roxmltree::N
 /// kept: they pad the frame with blank space.
 fn parse_src_rect(container: roxmltree::Node) -> Option<[f32; 4]> {
     let rect = dml(find_blip(container)?.parent()?, "srcRect")?;
-    let frac = |name: &str| {
-        rect.attribute(name)
-            .and_then(|v| v.parse::<f32>().ok())
-            .map_or(0.0, |v| v / 100_000.0)
-    };
+    let frac = |name| frac_attr(rect, name);
     let r = [frac("l"), frac("t"), frac("r"), frac("b")];
     let visible_w = 1.0 - r[0] - r[2];
     let visible_h = 1.0 - r[1] - r[3];
@@ -161,13 +157,16 @@ fn apply_pic_props(img: &mut EmbeddedImage, container: roxmltree::Node) {
 /// (italian_evaluation_minutes p7, annotation #229).
 fn parse_lum(container: roxmltree::Node) -> Option<(f32, f32)> {
     let lum = dml(find_blip(container)?, "lum")?;
-    let frac = |name: &str| {
-        lum.attribute(name)
-            .and_then(|v| v.parse::<f32>().ok())
-            .map_or(0.0, |v| v / 100_000.0)
-    };
-    let (bright, contrast) = (frac("bright"), frac("contrast"));
+    let (bright, contrast) = (frac_attr(lum, "bright"), frac_attr(lum, "contrast"));
     (bright != 0.0 || contrast != 0.0).then_some((bright, contrast))
+}
+
+/// A DrawingML percentage attribute stored as 1/1000 of a percent (`ST_Percentage`
+/// in its integer form), as a fraction; 0.0 when absent.
+fn frac_attr(node: roxmltree::Node, name: &str) -> f32 {
+    node.attribute(name)
+        .and_then(|v| v.parse::<f32>().ok())
+        .map_or(0.0, |v| v / 100_000.0)
 }
 
 /// Read in-plane rotation (clockwise degrees) for a floating picture. Prefers the

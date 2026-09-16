@@ -50,6 +50,23 @@ pub(super) fn resolve_fi_x(
     )
 }
 
+/// True when a float wraps text and its box (with its text distances) reaches
+/// into the column: a QR code sitting entirely in the margin never narrows text.
+pub(super) fn wraps_in_column(
+    fi: &FloatingImage,
+    sp: &SectionProperties,
+    col_x: f32,
+    col_w: f32,
+    text_width: f32,
+) -> bool {
+    use crate::model::WrapType;
+    matches!(fi.wrap_type, WrapType::Square | WrapType::Tight | WrapType::Through) && {
+        let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
+        fi_x + fi.image.display_width + fi.dist_right > col_x
+            && fi_x - fi.dist_left < col_x + col_w
+    }
+}
+
 pub(crate) fn resolve_fi_y_top(
     fi: &FloatingImage,
     sp: &SectionProperties,

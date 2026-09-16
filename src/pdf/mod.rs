@@ -43,15 +43,15 @@ pub(super) use helpers::resolve_line_h;
 use helpers::joins_border_group;
 use positioning::{
     render_connector, render_floating_images, render_foreground_floating_images_deferred,
-    resolve_fi_x,
+    resolve_fi_x, wraps_in_column,
 };
 pub(super) use positioning::{resolve_h_position, resolve_fi_y_top};
 use images::{EffectXObjs, EmbeddedImages, embed_all_images};
 use layout::{
     CjkLayout, DualRegion, LineNumberArg, LinkAnnotation, TextLine, build_paragraph_lines,
     build_tabbed_line,
-    grid_snapped_line_h, inline_image_line_extra, inline_line_advance,
-    is_text_empty, picture_line_bottom, render_paragraph_lines, run_line_metrics,
+    grid_snapped_line_h, inline_image_line_extra, is_text_empty, line_max_image_h,
+    lines_height, picture_line_bottom, render_paragraph_lines, run_line_metrics,
     tallest_run_metrics,
 };
 use crate::fonts::font_key;
@@ -82,6 +82,14 @@ pub(super) struct RenderContext<'a> {
     pub(super) chart_font_name: &'a str,
     /// Word's `compressPunctuation` setting (see `docx::settings`).
     pub(super) compress_punctuation: bool,
+}
+
+impl RenderContext<'_> {
+    /// East Asian switches for `build_paragraph_lines`: the paragraph's autospace
+    /// choice plus the document-wide punctuation compression.
+    fn cjk(&self, auto_space: bool) -> CjkLayout {
+        CjkLayout { auto_space, compress_punct: self.compress_punctuation }
+    }
 }
 
 pub(super) struct GradientSpec {
@@ -274,6 +282,26 @@ pub(super) struct FloatZone {
 }
 
 impl FloatZone {
+    /// The exclusion zone of a wrapping float whose frame's left edge is `fi_x`
+    /// and top edge `fi_y_top` (page coordinates, y from the bottom).
+    fn for_float(fi: &crate::model::FloatingImage, fi_x: f32, fi_y_top: f32) -> Self {
+        let (w, h) = (fi.image.display_width, fi.image.display_height);
+        FloatZone {
+            top_y: fi_y_top + fi.dist_top,
+            bottom_y: fi_y_top - h - fi.dist_bottom,
+            obj_left: fi_x,
+            obj_right: fi_x + w,
+            left_from_text: fi.dist_left,
+            right_from_text: fi.dist_right,
+            polygon_pts: fi
+                .wrap_polygon
+                .as_ref()
+                .map(|verts| convert_polygon_to_page_coords(verts, fi_x, fi_y_top, w, h)),
+            wrap_text: fi.wrap_text,
+            para_relative: fi.v_relative_from == VRelativeFrom::Paragraph,
+        }
+    }
+
     /// Returns (left_edge, right_edge) of the exclusion zone at the given Y.
     /// Falls back to rectangular bounds if no polygon or scanline misses.
     fn exclusion_at_y(&self, y: f32) -> (f32, f32) {
@@ -909,10 +937,7 @@ fn compute_bookmark_positions(
                         build_paragraph_lines(
                             &para.runs, ctx.fonts, para_w, hanging, &empty_imgs,
                             &empty_fx, None, None, None,
-                            CjkLayout {
-                                auto_space: para.auto_space_de || para.auto_space_dn,
-                                compress_punct: ctx.compress_punctuation,
-                            },
+                            ctx.cjk(para.auto_space_de || para.auto_space_dn),
                         )
                     };
                     let num_lines = lines.len().max(1);
@@ -1295,43 +1320,16 @@ fn render_paragraph_block(
     if !para.floating_images.is_empty()
         && !text_empty
     {
-        if let Some(fi) = para.floating_images.iter().find(|fi| {
-            matches!(
-                fi.wrap_type,
-                WrapType::Square | WrapType::Tight | WrapType::Through
-            ) && {
-                let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
-                fi_x + fi.image.display_width + fi.dist_right > col_x
-                    && fi_x - fi.dist_left < col_x + col_w
-            }
-        }) {
+        if let Some(fi) = para
+            .floating_images
+            .iter()
+            .find(|fi| wraps_in_column(fi, sp, col_x, col_w, text_width))
+        {
             let fi_x =
                 resolve_fi_x(fi, sp, col_x, col_w, text_width);
             let fi_y_top =
                 resolve_fi_y_top(fi, sp, state.pb.slot_top);
-            let fi_y_bottom =
-                fi_y_top - fi.image.display_height;
-            let polygon_pts =
-                fi.wrap_polygon.as_ref().map(|verts| {
-                    convert_polygon_to_page_coords(
-                        verts,
-                        fi_x,
-                        fi_y_top,
-                        fi.image.display_width,
-                        fi.image.display_height,
-                    )
-                });
-            state.pb.float_zone = Some(FloatZone {
-                top_y: fi_y_top + fi.dist_top,
-                bottom_y: fi_y_bottom - fi.dist_bottom,
-                obj_left: fi_x,
-                obj_right: fi_x + fi.image.display_width,
-                left_from_text: fi.dist_left,
-                right_from_text: fi.dist_right,
-                polygon_pts,
-                wrap_text: fi.wrap_text,
-                para_relative: fi.v_relative_from == VRelativeFrom::Paragraph,
-            });
+            state.pb.float_zone = Some(FloatZone::for_float(fi, fi_x, fi_y_top));
             // Re-narrow para_text_x / para_text_width using the
             // new float zone (same logic as the block above).
             let fz = state.pb.float_zone.as_ref().unwrap();
@@ -1392,10 +1390,7 @@ fn render_paragraph_block(
         }
     }
 
-    let cjk = CjkLayout {
-        auto_space: para.auto_space_de || para.auto_space_dn,
-        compress_punct: ctx.compress_punctuation,
-    };
+    let cjk = ctx.cjk(para.auto_space_de || para.auto_space_dn);
 
     // Look-ahead: a wrapping float anchored in the *next* block (an image-only
     // paragraph) sits at that block's top, which Word computes from this
@@ -1405,8 +1400,8 @@ fn render_paragraph_block(
     // #152). Install that zone now so the per-line geometry below narrows the
     // lines it reaches, and hand the anchor position to the next paragraph so
     // it draws the picture there rather than where it now flows.
-    let mut lookahead_zone_top: Option<f32> = None;
-    let mut lookahead_anchor: Option<f32> = None;
+    // (anchor paragraph top, the zone's real top edge) once installed.
+    let mut lookahead: Option<(f32, f32)> = None;
     if state.pb.float_zone.is_none() && !text_empty && !has_tabs {
         let next = section_blocks.get(block_idx + 1).and_then(|b| match b {
             Block::Paragraph(np)
@@ -1422,15 +1417,7 @@ fn render_paragraph_block(
                                 fi.v_position,
                                 VerticalPosition::Offset(_) | VerticalPosition::AlignTop
                             )
-                            && matches!(
-                                fi.wrap_type,
-                                WrapType::Square | WrapType::Tight | WrapType::Through
-                            )
-                            && {
-                                let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
-                                fi_x + fi.image.display_width + fi.dist_right > col_x
-                                    && fi_x - fi.dist_left < col_x + col_w
-                            }
+                            && wraps_in_column(fi, sp, col_x, col_w, text_width)
                     })
                     .map(|fi| (fi, np.space_before))
             }
@@ -1449,36 +1436,18 @@ fn render_paragraph_block(
                 VerticalPosition::Offset(o) => anchor_top - o,
                 _ => anchor_top,
             };
-            let fi_y_bottom = fi_y_top - fi.image.display_height;
+            let mut zone = FloatZone::for_float(fi, fi_x, fi_y_top);
             // Only when the float lands on this page: a paragraph that breaks
             // before its anchor would hand the next page a stale anchor.
-            if fi_y_bottom - fi.dist_bottom > state.effective_margin_bottom {
-                let true_top = fi_y_top + fi.dist_top;
-                state.pb.float_zone = Some(FloatZone {
-                    // Word treats the last line's space-after as part of that
-                    // line when testing overlap, so the zone reaches up through
-                    // the gap for this paragraph's geometry (restored after the
-                    // lines are built).
-                    top_y: true_top + gap,
-                    bottom_y: fi_y_bottom - fi.dist_bottom,
-                    obj_left: fi_x,
-                    obj_right: fi_x + fi.image.display_width,
-                    left_from_text: fi.dist_left,
-                    right_from_text: fi.dist_right,
-                    polygon_pts: fi.wrap_polygon.as_ref().map(|verts| {
-                        convert_polygon_to_page_coords(
-                            verts,
-                            fi_x,
-                            fi_y_top,
-                            fi.image.display_width,
-                            fi.image.display_height,
-                        )
-                    }),
-                    wrap_text: fi.wrap_text,
-                    para_relative: true,
-                });
-                lookahead_zone_top = Some(true_top);
-                lookahead_anchor = Some(anchor_top);
+            if zone.bottom_y > state.effective_margin_bottom {
+                let true_top = zone.top_y;
+                // Word treats the last line's space-after as part of that line
+                // when testing overlap, so the zone reaches up through the gap
+                // for this paragraph's geometry (restored after the lines are
+                // built).
+                zone.top_y += gap;
+                state.pb.float_zone = Some(zone);
+                lookahead = Some((anchor_top, true_top));
             }
         }
     }
@@ -1500,27 +1469,7 @@ fn render_paragraph_block(
             .map(|fi| {
                 let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
                 let fi_y_top = resolve_fi_y_top(fi, sp, state.pb.slot_top);
-                let fi_y_bottom = fi_y_top - fi.image.display_height;
-                let polygon_pts = fi.wrap_polygon.as_ref().map(|verts| {
-                    convert_polygon_to_page_coords(
-                        verts,
-                        fi_x,
-                        fi_y_top,
-                        fi.image.display_width,
-                        fi.image.display_height,
-                    )
-                });
-                FloatZone {
-                    top_y: fi_y_top + fi.dist_top,
-                    bottom_y: fi_y_bottom - fi.dist_bottom,
-                    obj_left: fi_x,
-                    obj_right: fi_x + fi.image.display_width,
-                    left_from_text: fi.dist_left,
-                    right_from_text: fi.dist_right,
-                    polygon_pts,
-                    wrap_text: fi.wrap_text,
-                    para_relative: fi.v_relative_from == VRelativeFrom::Paragraph,
-                }
+                FloatZone::for_float(fi, fi_x, fi_y_top)
             })
             .collect()
     } else {
@@ -1801,24 +1750,24 @@ fn render_paragraph_block(
     };
     // The look-ahead zone reached up through this paragraph's space-after only
     // for its own geometry; following paragraphs see the float's real edge.
-    if let (Some(top), Some(fz)) = (lookahead_zone_top, state.pb.float_zone.as_mut()) {
+    if let (Some((_, top)), Some(fz)) = (lookahead, state.pb.float_zone.as_mut()) {
         fz.top_y = top;
     }
 
-    // For lines containing inline images, use the tallest element as line height
-    let max_inline_img_h = lines
-        .iter()
-        .flat_map(|l| l.chunks.iter())
-        .map(|c| c.inline_image_height)
-        .fold(0.0f32, f32::max);
+    let max_inline_img_h = lines.iter().map(line_max_image_h).fold(0.0f32, f32::max);
 
     // Paragraph ascent/descent in points: the first baseline sits `para_ascent`
     // below the paragraph top, and picture lines are sized from both (see
-    // `inline_line_advance` and `text_run_descent`).
+    // `inline_line_advance` and `picture_line_bottom`). The bottom part is only
+    // read for picture lines, so most paragraphs skip its run scan.
     let para_ascent = exact_baseline_base.unwrap_or(font_size * tallest_ar.unwrap_or(0.75));
     let para_metrics = (
         para_ascent,
-        picture_line_bottom(&effective_runs, ctx.fonts, effective_ls),
+        if max_inline_img_h > 0.0 {
+            picture_line_bottom(&effective_runs, ctx.fonts, effective_ls)
+        } else {
+            0.0
+        },
     );
 
     let mut content_h = if para.inline_chart.is_some() {
@@ -1826,10 +1775,7 @@ fn render_paragraph_block(
     } else if para.image.is_some() {
         para.content_height
     } else if max_inline_img_h > 0.0 {
-        lines
-            .iter()
-            .map(|line| inline_line_advance(line, line_h, para_metrics))
-            .sum()
+        lines_height(&lines, line_h, para_metrics)
     } else if text_empty {
         if para.paragraph_mark_vanish {
             0.0
@@ -1887,8 +1833,10 @@ fn render_paragraph_block(
     };
 
     content_h += after_image_boost;
-    // A tall inline picture on the first line lowers that line's baseline.
-    let first_line_extra = lines
+    // A tall inline picture on the first line lowers that line's baseline; the
+    // list label sits on the lowered one (render_paragraph_lines drops the text
+    // lines itself).
+    let first_line_drop = lines
         .first()
         .map_or(0.0, |l| inline_image_line_extra(l, para_ascent));
 
@@ -2129,14 +2077,8 @@ fn render_paragraph_block(
             let baseline_offset = if grid_snapped {
                 sp.line_pitch
             } else {
-                label_boosted_baseline_offset(
-                    para,
-                    ctx.fonts,
-                    exact_baseline_base
-                        .unwrap_or(font_size * ascender_ratio),
-                    font_size,
-                ) + after_image_boost
-                    + first_line_extra
+                label_boosted_baseline_offset(para, ctx.fonts, para_ascent, font_size)
+                    + after_image_boost
             };
             let baseline_y = state.pb.slot_top - baseline_offset;
 
@@ -2145,7 +2087,7 @@ fn render_paragraph_block(
                 para,
                 ctx.fonts,
                 label_x,
-                baseline_y,
+                baseline_y - first_line_drop,
                 font_size,
             );
 
@@ -2193,12 +2135,11 @@ fn render_paragraph_block(
             );
 
             let rest = &lines[lines_that_fit..];
-            let rest_content_h = rest.len() as f32 * line_h;
+            let rest_content_h = lines_height(rest, line_h, para_metrics);
             let baseline_offset2 = if grid_snapped {
                 sp.line_pitch
             } else {
                 font_size * ascender_ratio
-                    + rest.first().map_or(0.0, |l| inline_image_line_extra(l, para_ascent))
             };
             let baseline_y2 = state.pb.slot_top - baseline_offset2;
 
@@ -2362,9 +2303,7 @@ fn render_paragraph_block(
         .unwrap_or(state.pb.slot_top);
     // Hand the look-ahead float's anchor to the next paragraph (the one that
     // actually carries it) only after this paragraph has taken its own.
-    if lookahead_anchor.is_some() {
-        state.pb.pending_float_anchor = lookahead_anchor;
-    }
+    state.pb.pending_float_anchor = lookahead.map(|(anchor_top, _)| anchor_top);
 
     // Render behind-doc layer: floating images + textboxes
     render_floating_images(
@@ -2452,48 +2391,17 @@ fn render_paragraph_block(
     // Set FloatZone for wrapping floating images
     // (may already be set by self-wrapping above; overwrite
     // to ensure polygon data is included).
-    for fi in &para.floating_images {
-        match fi.wrap_type {
-            WrapType::Square | WrapType::Tight | WrapType::Through => {
-                let fi_x =
-                    resolve_fi_x(fi, sp, col_x, col_w, text_width);
-                // A float entirely outside the text column (e.g. a QR code in
-                // the left margin) never narrows text — installing its zone
-                // would only clobber a still-active in-column zone from an
-                // earlier paragraph's float.
-                if fi_x + fi.image.display_width + fi.dist_right <= col_x
-                    || fi_x - fi.dist_left >= col_x + col_w
-                {
-                    continue;
-                }
-                let fi_y_top =
-                    resolve_fi_y_top(fi, sp, float_anchor_top);
-                let fi_y_bottom =
-                    fi_y_top - fi.image.display_height;
-                let polygon_pts =
-                    fi.wrap_polygon.as_ref().map(|verts| {
-                        convert_polygon_to_page_coords(
-                            verts,
-                            fi_x,
-                            fi_y_top,
-                            fi.image.display_width,
-                            fi.image.display_height,
-                        )
-                    });
-                state.pb.float_zone = Some(FloatZone {
-                    top_y: fi_y_top + fi.dist_top,
-                    bottom_y: fi_y_bottom - fi.dist_bottom,
-                    obj_left: fi_x,
-                    obj_right: fi_x + fi.image.display_width,
-                    left_from_text: fi.dist_left,
-                    right_from_text: fi.dist_right,
-                    polygon_pts,
-                    wrap_text: fi.wrap_text,
-                    para_relative: fi.v_relative_from == VRelativeFrom::Paragraph,
-                });
-            }
-            _ => {}
-        }
+    // A float entirely outside the text column (e.g. a QR code in the left
+    // margin) never narrows text — installing its zone would only clobber a
+    // still-active in-column zone from an earlier paragraph's float.
+    for fi in para
+        .floating_images
+        .iter()
+        .filter(|fi| wraps_in_column(fi, sp, col_x, col_w, text_width))
+    {
+        let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
+        let fi_y_top = resolve_fi_y_top(fi, sp, float_anchor_top);
+        state.pb.float_zone = Some(FloatZone::for_float(fi, fi_x, fi_y_top));
     }
 
     if debug_wrap {
@@ -2647,20 +2555,14 @@ fn render_paragraph_block(
                 .set_fill_gray(0.0);
         }
     } else if !lines.is_empty() {
-        let ascender_ratio = tallest_ar.unwrap_or(0.75);
         // When the document grid snaps line heights, align the first
         // baseline one linePitch below the slot top so text sits on
         // the grid rather than at a font-metric-dependent offset.
         let baseline_offset = if grid_snapped {
             sp.line_pitch
         } else {
-            label_boosted_baseline_offset(
-                para,
-                ctx.fonts,
-                exact_baseline_base.unwrap_or(font_size * ascender_ratio),
-                font_size,
-            ) + after_image_boost
-                + first_line_extra
+            label_boosted_baseline_offset(para, ctx.fonts, para_ascent, font_size)
+                + after_image_boost
         };
         let baseline_y = state.pb.slot_top - bdr_top_pad - baseline_offset;
 
@@ -2669,7 +2571,7 @@ fn render_paragraph_block(
             para,
             ctx.fonts,
             label_x,
-            baseline_y,
+            baseline_y - first_line_drop,
             font_size,
         );
 

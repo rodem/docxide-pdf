@@ -43,7 +43,8 @@ pub struct EmbeddedImage {
     /// None when the picture is uncropped. Negative values pad the frame with blank space.
     pub src_rect: Option<[f32; 4]>,
     /// `a:lum` picture recolouring as (brightness, contrast) fractions of ±1.0.
-    /// None when both are zero. Applied to the decoded pixels at embed time.
+    /// None when both are zero. Applied to the decoded pixels at embed time, so
+    /// only raster formats honour it; an EMF keeps its colours.
     pub lum: Option<(f32, f32)>,
     /// In-plane rotation in degrees, clockwise (OOXML convention). Sourced from
     /// `a:xfrm @rot` or a 3D scene camera `a:scene3d/a:camera/a:rot @rev`.

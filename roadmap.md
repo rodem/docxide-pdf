@@ -418,9 +418,20 @@ paragraph + 24pt empty marks, not investigated), #237 (row split is
 paragraph-granular), #93/#185/#239 (vague), #8/#59/#82/#124 (systemic drift).
 
 Follow-ups: `resolve_fi_y_top` should treat AlignTop-relative-to-paragraph as
-the anchor top; opening brackets are not compressed; table cells still drop
-run-level inline pictures (`EMPTY_INLINE_IMAGE_MAP`), so the picture-line rule
-does not reach them; `Picture Effects` above can list `a:lum` as done.
+the anchor top (then the look-ahead can drop its paragraph-relative filter);
+opening brackets are not compressed; table cells still drop run-level inline
+pictures (`EMPTY_INLINE_IMAGE_MAP`), so the picture-line rule does not reach
+them; `Picture Effects` above can list `a:lum` as done. From the `/simplify`
+review of this round: (1) one picture model — `docx/paragraph.rs` hoists a lone
+inline picture into `Paragraph::image` (bare height + `after_image_boost` on
+the next paragraph) while two or more stay in runs (`inline_line_advance`);
+removing the hoist would give every picture the measured rule (~40
+`para.image` renderer references); (2) a shared `decode_raster` so `a:lum`,
+crop and soft-edge are applied once instead of per format branch, and reach
+`embed_reflection`; (3) the floating-table keep-together could be geometric
+(`fp.y > saved`) rather than reading raw `tblpY`, which would also decide
+page/margin-anchored tables — no fixture evidence yet; (4) the look-ahead's
+full-width lines could be reused when its zone reaches no line.
 
 ## Annotation Fixes 2026-09-15 (#231 #228 #236 #235 #223 #234 — DONE)
 
