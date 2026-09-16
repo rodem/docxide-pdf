@@ -493,7 +493,7 @@
       "x_pt": 318.89697,
       "y_pt": 654.1157,
       "note": "Weird stamp thing that shows up here.",
-      "fixed": false,
+      "fixed": true,
       "cleared": false
     },
     {

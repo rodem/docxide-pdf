@@ -42,6 +42,9 @@ pub struct EmbeddedImage {
     /// `a:srcRect` crop as (left, top, right, bottom) fractions of the source image.
     /// None when the picture is uncropped. Negative values pad the frame with blank space.
     pub src_rect: Option<[f32; 4]>,
+    /// `a:lum` picture recolouring as (brightness, contrast) fractions of ±1.0.
+    /// None when both are zero. Applied to the decoded pixels at embed time.
+    pub lum: Option<(f32, f32)>,
     /// In-plane rotation in degrees, clockwise (OOXML convention). Sourced from
     /// `a:xfrm @rot` or a 3D scene camera `a:scene3d/a:camera/a:rot @rev`.
     /// Applied as a rotation about the picture's center at render time.

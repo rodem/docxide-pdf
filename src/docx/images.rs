@@ -152,6 +152,22 @@ fn apply_pic_props(img: &mut EmbeddedImage, container: roxmltree::Node) {
         .map(super::textbox::parse_shape_geometry)
         .filter(|g| g.preset.as_deref() != Some("rect") || g.custom.is_some());
     img.src_rect = parse_src_rect(container);
+    img.lum = parse_lum(container);
+}
+
+/// `a:lum` brightness/contrast on the picture's blip, each stored as 1/1000 of a
+/// percent. None when absent or both zero. Word applies these to the pixels, which
+/// is how a +30%/+30% signature scan loses its faint background stamp
+/// (italian_evaluation_minutes p7, annotation #229).
+fn parse_lum(container: roxmltree::Node) -> Option<(f32, f32)> {
+    let lum = dml(find_blip(container)?, "lum")?;
+    let frac = |name: &str| {
+        lum.attribute(name)
+            .and_then(|v| v.parse::<f32>().ok())
+            .map_or(0.0, |v| v / 100_000.0)
+    };
+    let (bright, contrast) = (frac("bright"), frac("contrast"));
+    (bright != 0.0 || contrast != 0.0).then_some((bright, contrast))
 }
 
 /// Read in-plane rotation (clockwise degrees) for a floating picture. Prefers the
@@ -363,6 +379,7 @@ pub(super) fn read_image_from_zip_extra<R: Read + Seek>(
         reflection: None,
         clip_geometry: None,
         src_rect: None,
+        lum: None,
     })
 }
 
@@ -947,6 +964,23 @@ mod tests {
         for (g, w) in got.iter().zip(want) {
             assert!((g - w).abs() < 1e-6, "{got:?} != {want:?}");
         }
+    }
+
+    #[test]
+    fn lum_is_fraction_pair_or_none() {
+        let lum_of = |blip_children: &str| {
+            let xml = format!(
+                r#"<root xmlns:a="{DML_NS}" xmlns:r="{REL_NS}"><a:blipFill><a:blip r:embed="rId1">{blip_children}</a:blip></a:blipFill></root>"#
+            );
+            let doc = roxmltree::Document::parse(&xml).unwrap();
+            parse_lum(doc.root_element())
+        };
+        assert_eq!(lum_of(""), None);
+        assert_eq!(lum_of(r#"<a:lum bright="0" contrast="0"/>"#), None);
+        let (b, c) = lum_of(r#"<a:lum bright="30000" contrast="30000"/>"#).unwrap();
+        assert!((b - 0.3).abs() < 1e-6 && (c - 0.3).abs() < 1e-6);
+        let (b, c) = lum_of(r#"<a:lum bright="-20000"/>"#).unwrap();
+        assert!((b + 0.2).abs() < 1e-6 && c == 0.0);
     }
 
     #[test]

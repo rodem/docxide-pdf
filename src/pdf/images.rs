@@ -84,6 +84,27 @@ fn downscale_target(
 }
 
 /// Encode an RGB image as JPEG, returning the bytes. Returns `None` on failure.
+/// Office picture brightness/contrast (`a:lum`, fractions of ±1.0) on 8-bit
+/// samples: contrast scales about mid-grey, brightness offsets, then clamp. Same
+/// mapping LibreOffice uses for its DrawingML import; Word's exact curve is
+/// undocumented, but this reproduces the washed-out stamp on
+/// italian_evaluation_minutes p7 (annotation #229).
+fn apply_lum(samples: &mut [u8], bright: f32, contrast: f32) {
+    let c = (contrast * 100.0).clamp(-100.0, 100.0);
+    let scale = if c >= 0.0 {
+        128.0 / (128.0 - 1.27 * c)
+    } else {
+        (128.0 + 1.27 * c) / 128.0
+    };
+    let offset = (bright * 100.0).clamp(-100.0, 100.0) * 2.55;
+    let lut: [u8; 256] = std::array::from_fn(|v| {
+        ((v as f32 - 128.0) * scale + 128.0 + offset).round().clamp(0.0, 255.0) as u8
+    });
+    for s in samples {
+        *s = lut[*s as usize];
+    }
+}
+
 fn encode_jpeg(rgb: &image::RgbImage) -> Option<Vec<u8>> {
     let mut buf = Vec::new();
     let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, JPEG_QUALITY);
@@ -310,19 +331,29 @@ fn embed_image_xobject(
 
     match img.format {
         ImageFormat::Jpeg => {
-            if let Some((tw, th)) = target {
-                // Decode -> resize -> re-encode as JPEG
+            // Decode -> resize / recolour -> re-encode as JPEG. A plain
+            // full-resolution JPEG is passed through untouched below.
+            if target.is_some() || img.lum.is_some() {
                 let cursor = std::io::Cursor::new(img.data.as_slice());
                 let reader = image::ImageReader::with_format(
                     std::io::BufReader::new(cursor),
                     image::ImageFormat::Jpeg,
                 );
                 if let Ok(decoded) = reader.decode() {
-                    let resized =
-                        decoded.resize_exact(tw, th, image::imageops::FilterType::Lanczos3);
-                    if let Some(jpeg_buf) = encode_jpeg(&resized.to_rgb8()) {
+                    let resized = match target {
+                        Some((tw, th)) => {
+                            decoded.resize_exact(tw, th, image::imageops::FilterType::Lanczos3)
+                        }
+                        None => decoded,
+                    };
+                    let mut rgb = resized.to_rgb8();
+                    if let Some((bright, contrast)) = img.lum {
+                        apply_lum(&mut rgb, bright, contrast);
+                    }
+                    let (tw, th) = rgb.dimensions();
+                    if let Some(jpeg_buf) = encode_jpeg(&rgb) {
                         log::debug!(
-                            "Downscaled JPEG {}x{} -> {}x{} ({} -> {} bytes)",
+                            "Re-encoded JPEG {}x{} -> {}x{} ({} -> {} bytes)",
                             img.pixel_width,
                             img.pixel_height,
                             tw,
@@ -414,6 +445,9 @@ fn embed_image_xobject(
                 if a < 255 {
                     has_alpha = true;
                 }
+            }
+            if let Some((bright, contrast)) = img.lum {
+                apply_lum(&mut rgb_data, bright, contrast);
             }
 
             // Apply soft-edge mask: multiply with existing alpha or create new alpha
@@ -964,7 +998,31 @@ fn embed_textbox_images(
 
 #[cfg(test)]
 mod tests {
-    use super::crop_matrix;
+    use super::{apply_lum, crop_matrix};
+
+    #[test]
+    fn lum_washes_out_faint_ink_but_keeps_dark_ink() {
+        // The stamp on the italian_evaluation_minutes signature scan is a pale
+        // purple; +30%/+30% pushes it to white while the blue ink stays visible.
+        let mut px = [200u8, 190, 220, 60, 60, 150, 128, 0, 255];
+        apply_lum(&mut px, 0.3, 0.3);
+        assert_eq!(&px[..3], &[255, 255, 255]);
+        assert!(px[3] < 140 && px[5] < 240, "{px:?}");
+        assert_eq!(px[6], 205); // mid-grey: unchanged by contrast, +76.5 brightness
+        assert_eq!(px[7], 22); // (0-128)*1.424+128+76.5
+        assert_eq!(px[8], 255);
+    }
+
+    #[test]
+    fn lum_zero_is_identity_and_negative_contrast_flattens() {
+        let mut px: Vec<u8> = (0..=255).step_by(51).map(|v| v as u8).collect();
+        let orig = px.clone();
+        apply_lum(&mut px, 0.0, 0.0);
+        assert_eq!(px, orig);
+        apply_lum(&mut px, 0.0, -1.0);
+        // -100% contrast collapses everything toward mid-grey
+        assert!(px.iter().all(|&v| (v as i32 - 128).abs() <= 2), "{px:?}");
+    }
 
     #[test]
     fn crop_matrix_maps_visible_window_onto_unit_square() {
