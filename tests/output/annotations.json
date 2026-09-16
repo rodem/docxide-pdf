@@ -229,7 +229,7 @@
       "x_pt": 189.17963,
       "y_pt": 391.03726,
       "note": "Green text box should be broken across two pages here, not pushed to the next.",
-      "fixed": false,
+      "fixed": true,
       "cleared": false
     },
     {
@@ -526,7 +526,7 @@
       "x_pt": 140.4051,
       "y_pt": 693.08057,
       "note": "This table should start on page 1 and be broken across pages",
-      "fixed": false,
+      "fixed": true,
       "cleared": false
     },
     {

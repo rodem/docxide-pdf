@@ -1255,6 +1255,17 @@ pub(super) fn render_table(
     let cm = &table.cell_margins;
 
     let is_floating = override_pos.is_some();
+    // A text-anchored floating table sitting at or below its anchor paginates like
+    // an inline table: Word starts it in the room left on the page and breaks it
+    // across pages, between rows (indigenous_innovation p1-2, trHeight rows) or
+    // inside a row (croatian_grant_guidelines p4-5) — annotations #232 #200. Only
+    // a table hoisted above its anchor (negative tblpY, pendulum_mechanics) moves
+    // whole to the next page with the anchor, and only then may a row overflow be
+    // split regardless of its own splittability.
+    let flows_inline = override_pos
+        .as_ref()
+        .is_some_and(|fp| fp.v_anchor_text && fp.v_offset_pt >= 0.0);
+    let keep_with_anchor = is_floating && !flows_inline;
     let (table_left, saved_slot_top, text_margins) =
         if let Some(ref fp) = override_pos {
             let saved = Some((pb.slot_top - prev_space_after, fp.y));
@@ -1412,7 +1423,7 @@ pub(super) fn render_table(
     // following content flows below the table instead of behind it.
     // (Pendulum #172/#173: the data table was landing on page 1 over list
     // item 10, which also pushed the following illustration off-page.)
-    if is_floating && !row_layouts.is_empty() {
+    if keep_with_anchor && !row_layouts.is_empty() {
         let eff_top = effective_slot_top(sp, pb.is_first_page_of_section, ctx);
         let at_page_top = (pb.slot_top - eff_top).abs() < 1.0;
         let available = pb.slot_top - *effective_margin_bottom;
@@ -1504,7 +1515,7 @@ pub(super) fn render_table(
             && available_h > 50.0
             && first_chunk_fits;
 
-        if row_h > available_h && (row_h > page_content_h || is_floating) && !row.cant_split {
+        if row_h > available_h && (row_h > page_content_h || keep_with_anchor) && !row.cant_split {
             split_row_across_pages(row, layout, pb, ri, &mut did_flush_while_floating, effective_margin_bottom);
         } else if row_h > available_h && can_meaningfully_split {
             split_row_across_pages(row, layout, pb, ri, &mut did_flush_while_floating, effective_margin_bottom);
@@ -1521,7 +1532,7 @@ pub(super) fn render_table(
             let new_eff_bot = *effective_margin_bottom;
             let new_available = pb.slot_top - new_eff_bot;
             let new_page_h = new_eff_top - new_eff_bot;
-            if row_h > new_available && (row_h > new_page_h || is_floating) && !row.cant_split {
+            if row_h > new_available && (row_h > new_page_h || keep_with_anchor) && !row.cant_split {
                 split_row_across_pages(row, layout, pb, ri, &mut did_flush_while_floating, effective_margin_bottom);
             } else {
                 render_table_row(
