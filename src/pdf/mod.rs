@@ -48,7 +48,8 @@ use positioning::{
 pub(super) use positioning::{resolve_h_position, resolve_fi_y_top};
 use images::{EffectXObjs, EmbeddedImages, embed_all_images};
 use layout::{
-    DualRegion, LineNumberArg, LinkAnnotation, TextLine, build_paragraph_lines, build_tabbed_line,
+    CjkLayout, DualRegion, LineNumberArg, LinkAnnotation, TextLine, build_paragraph_lines,
+    build_tabbed_line,
     grid_snapped_line_h, inline_image_line_extra, inline_line_advance,
     is_text_empty, picture_line_bottom, render_paragraph_lines, run_line_metrics,
     tallest_run_metrics,
@@ -79,6 +80,8 @@ pub(super) struct RenderContext<'a> {
     pub(super) textbox_image_names: &'a HashMap<usize, String>,
     pub(super) effect_textbox_names: &'a HashMap<usize, EffectXObjs>,
     pub(super) chart_font_name: &'a str,
+    /// Word's `compressPunctuation` setting (see `docx::settings`).
+    pub(super) compress_punctuation: bool,
 }
 
 pub(super) struct GradientSpec {
@@ -906,7 +909,10 @@ fn compute_bookmark_positions(
                         build_paragraph_lines(
                             &para.runs, ctx.fonts, para_w, hanging, &empty_imgs,
                             &empty_fx, None, None, None,
-                            para.auto_space_de || para.auto_space_dn,
+                            CjkLayout {
+                                auto_space: para.auto_space_de || para.auto_space_dn,
+                                compress_punct: ctx.compress_punctuation,
+                            },
                         )
                     };
                     let num_lines = lines.len().max(1);
@@ -1386,7 +1392,10 @@ fn render_paragraph_block(
         }
     }
 
-    let auto_space = para.auto_space_de || para.auto_space_dn;
+    let cjk = CjkLayout {
+        auto_space: para.auto_space_de || para.auto_space_dn,
+        compress_punct: ctx.compress_punctuation,
+    };
 
     // Look-ahead: a wrapping float anchored in the *next* block (an image-only
     // paragraph) sits at that block's top, which Word computes from this
@@ -1430,7 +1439,7 @@ fn render_paragraph_block(
         if let Some((fi, next_space_before)) = next {
             let full_lines = build_paragraph_lines(
                 &effective_runs, ctx.fonts, para_text_width, text_hanging,
-                &block_inline_images, &block_effect_inlines, None, None, None, auto_space,
+                &block_inline_images, &block_effect_inlines, None, None, None, cjk,
             );
             let gap = para.space_after.max(next_space_before);
             let anchor_top =
@@ -1787,7 +1796,7 @@ fn render_paragraph_block(
             &effective_runs, ctx.fonts, para_text_width,
             text_hanging, &block_inline_images, &block_effect_inlines, None,
             plw, poly_dual_geom.as_deref(),
-            auto_space,
+            cjk,
         )
     };
     // The look-ahead zone reached up through this paragraph's space-after only
@@ -2865,6 +2874,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         textbox_image_names: &textbox_image_names,
         effect_textbox_names: &effect_textbox_names,
         chart_font_name: &doc.chart_font_name,
+        compress_punctuation: doc.compress_punctuation,
     };
 
     let t_images = t0.elapsed();

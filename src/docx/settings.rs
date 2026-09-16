@@ -11,6 +11,10 @@ pub(super) struct DocumentSettings {
     pub east_asia_lang: Option<String>,
     pub auto_hyphenation: bool,
     pub default_lang: Option<String>,
+    /// §17.15.1.15 `w:characterSpacingControl` is `compressPunctuation` or
+    /// `compressPunctuationAndJapaneseKana`: Word may squeeze full-width East
+    /// Asian punctuation to keep one more character on a line.
+    pub compress_punctuation: bool,
 }
 
 impl Default for DocumentSettings {
@@ -23,6 +27,7 @@ impl Default for DocumentSettings {
             east_asia_lang: None,
             auto_hyphenation: false,
             default_lang: None,
+            compress_punctuation: false,
         }
     }
 }
@@ -59,5 +64,7 @@ pub(super) fn parse_settings<R: Read + Seek>(
         east_asia_lang,
         auto_hyphenation: wml_bool(root, "autoHyphenation").unwrap_or(false),
         default_lang,
+        compress_punctuation: wml_attr(root, "characterSpacingControl")
+            .is_some_and(|v| v.starts_with("compressPunctuation")),
     }
 }

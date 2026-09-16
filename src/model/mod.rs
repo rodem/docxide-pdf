@@ -241,6 +241,9 @@ pub struct Document {
     pub auto_hyphenation: bool,
     #[allow(dead_code)]
     pub default_lang: Option<String>,
+    /// Word's `compressPunctuation` character-spacing control (see
+    /// `docx::settings`); drives full-width punctuation squeezing in line breaking.
+    pub compress_punctuation: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

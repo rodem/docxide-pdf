@@ -15,7 +15,8 @@ use crate::model::{
 use super::RenderContext;
 use super::header_footer::substitute_hf_runs;
 use super::layout::{
-    TextLine, build_paragraph_lines, build_tabbed_line, is_text_empty, run_line_metrics,
+    CjkLayout, TextLine, build_paragraph_lines, build_tabbed_line, is_text_empty,
+    run_line_metrics,
 };
 use super::resolve_line_h;
 
@@ -741,7 +742,11 @@ pub(super) fn compute_row_layouts(
                                             None,
                                             None,
                                             None,
-                                            para.auto_space_de || para.auto_space_dn,
+                                            CjkLayout {
+                                                auto_space: para.auto_space_de
+                                                    || para.auto_space_dn,
+                                                compress_punct: ctx.compress_punctuation,
+                                            },
                                         )
                                     };
                                     if is_rotated {

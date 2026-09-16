@@ -7,7 +7,7 @@ use crate::model::{EmbeddedImage, Paragraph, SectionProperties, TextAnchor, Text
 use super::color::{fill_rgb, stroke_rgb};
 use super::header_footer::resolve_tb_y_top;
 use super::layout::{
-    LinkAnnotation, build_paragraph_lines, build_tabbed_line, render_paragraph_lines,
+    CjkLayout, LinkAnnotation, build_paragraph_lines, build_tabbed_line, render_paragraph_lines,
     tallest_run_metrics,
 };
 use super::list_label::render_list_label;
@@ -77,7 +77,8 @@ pub(super) fn textbox_height(tb: &Textbox, ctx: &RenderContext) -> f32 {
                 )
             } else {
                 build_paragraph_lines(
-                    &tp.runs, ctx.fonts, tw, hang, &empty_imgs, &empty_fx, None, None, None, true,
+                    &tp.runs, ctx.fonts, tw, hang, &empty_imgs, &empty_fx, None, None, None,
+                    CjkLayout { auto_space: true, compress_punct: ctx.compress_punctuation },
                 )
             };
             let (fs, lhr, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
@@ -232,7 +233,8 @@ pub(super) fn render_single_textbox(
                     )
                 } else {
                     build_paragraph_lines(
-                        &tp.runs, ctx.fonts, tp_text_w, text_hanging, &empty_inline_imgs_pre, &empty_fx_pre, None, None, None, true,
+                        &tp.runs, ctx.fonts, tp_text_w, text_hanging, &empty_inline_imgs_pre, &empty_fx_pre, None, None, None,
+                        CjkLayout { auto_space: true, compress_punct: ctx.compress_punctuation },
                     )
                 };
                 let (fs, lhr, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
@@ -409,7 +411,8 @@ pub(super) fn render_textbox_paragraphs(
             )
         } else {
             build_paragraph_lines(
-                &tp.runs, ctx.fonts, tp_text_w, text_hanging, &inline_imgs, &empty_fx, None, None, None, true,
+                &tp.runs, ctx.fonts, tp_text_w, text_hanging, &inline_imgs, &empty_fx, None, None, None,
+                CjkLayout { auto_space: true, compress_punct: ctx.compress_punctuation },
             )
         };
         if tb_lines.is_empty() {

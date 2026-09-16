@@ -359,6 +359,69 @@ HR `o:hrpct` width should use the indent-adjusted paragraph box.
   terminates; intermediate br-created lines keep the break size). samtale +57.7pp
   TxtBnd / +10.9pp SSIM / +6.5pp Jaccard, german_mezzo_soprano +2.2pp.
 
+## Annotation Fixes 2026-09-16 (#229 #230 #200 #232 #152 #238 — DONE)
+
+Five fixes, one commit each, every run diffed against a snapshot of the
+pre-round suite (221 fixtures, 203/221 page counts match); no fixture lost more
+than 0.1pp, 15 improved.
+
+- **#229 picture brightness/contrast** (italian_evaluation_minutes p7 "stamp"):
+  the signature scan's `a:lum bright/contrast=30%` was ignored; Word's +30/+30
+  washes the pale stamp inside the crop window to white. `parse_lum` +
+  `apply_lum` (LibreOffice's DrawingML mapping: contrast scales about mid-grey,
+  brightness offsets). Only italian and mongolian_human_rights_law changed.
+- **#230 inline picture baseline** (italian signatures under their names): Word
+  sits the picture bottom on the baseline and the picture top on the paragraph
+  top; the picture line advances by picture height + descent of the runs with
+  visible glyphs + multiple-spacing leading of the text run's font (the picture
+  run's own `w:sz` never counts; a picture-only line has neither). Measured on
+  italian (+2.2), english_town (+2.6 at 1.15), family_kinship (+7.6 at 1.5) and
+  old_blue_truck (+0). `pdf/layout.rs`: `inline_image_line_extra`,
+  `inline_line_advance`, `picture_line_bottom`; `render_paragraph_lines` takes
+  the paragraph (ascent, descent). 12 fixtures improved (case16 J +5.7 / SSIM
+  +16.4, russian_chess +2.6, croatian_thesis +2.6, english_town +1.6,
+  polish_tender +1.3, ut_koer +1.1, usep +1.0). `after_image_boost` now only
+  applies after block pictures (`para.image`), whose height is still bare.
+- **#200 #232 floating tables** (croatian_grant p4-5 green box,
+  indigenous_innovation p1-2 DEFINED TERM table): a `vertAnchor="text"` table
+  with `tblpY ≥ 0` paginates like an inline table (rows split/migrate per the
+  trHeight rule); only a negative-tblpY table (pendulum) moves whole with its
+  anchor. `render_table`: `flows_inline` / `keep_with_anchor`. indigenous J +6.0
+  / SSIM +7.7.
+- **#152 pre-anchor wrap** (case41 p3): the paragraph before an image-only
+  anchor paragraph wraps around the float positioned from its full-width
+  layout; Word leaves the float there while the paragraph grows. Look-ahead
+  installs the zone (top raised by the paragraph gap for its own geometry) and
+  hands the anchor to the next paragraph via `pending_float_anchor`; replaces
+  the "narrow the last line if the picture is under half the column" heuristic.
+  Only paragraph-relative floats (Offset / AlignTop): `resolve_fi_y_top` puts an
+  AlignTop-relative-to-paragraph float at the *page* top, which narrowed
+  indonesian_benchmarking p6 until the look-ahead computed the top itself.
+  case41 J +3.9 / SSIM +4.2.
+- **#238 compressPunctuation** (taiwanese heading's lone 決): with
+  `w:characterSpacingControl compressPunctuation` Word trims the full-width
+  closing marks already on the line, evenly and by at most ¼ em, to keep one
+  more character (marks on the taiwanese page advance 12–16pt at 16pt, never
+  less). `docx/settings.rs` → `Document::compress_punctuation` →
+  `RenderContext` → `CjkLayout` → `compress_punctuation()` in `pdf/layout.rs`.
+  Gated: 191 fixtures say doNotCompress, only 6 compress. taiwanese J +3.8 /
+  SSIM +9.1, tokyo_welfare +3.6 / +8.2, japanese_land_development −0.1 SSIM.
+
+Left open with triage: #66 (case33 bullet lines 16.0pt vs our 15.5: neither
+Windows/Word-for-Mac Symbol (ratio 1.2251) nor the reference's embedded SymbolMT
+descriptor (1.221) gives Word's 1.265 — needs its own investigation), #220
+(english_town Q3 now sits on p6 as the note asks; the rest is row-height drift
+— probably resolved, confirm), #233 (Merriweather not vendored), #158/#195
+(bosch: Word substitutes the missing "Bosch Office Sans" with Calibri, we pick
+Arial — the `w:family="auto"` question), #186 (alfies p1 13.9pt high: OLE object
+paragraph + 24pt empty marks, not investigated), #237 (row split is
+paragraph-granular), #93/#185/#239 (vague), #8/#59/#82/#124 (systemic drift).
+
+Follow-ups: `resolve_fi_y_top` should treat AlignTop-relative-to-paragraph as
+the anchor top; opening brackets are not compressed; table cells still drop
+run-level inline pictures (`EMPTY_INLINE_IMAGE_MAP`), so the picture-line rule
+does not reach them; `Picture Effects` above can list `a:lum` as done.
+
 ## Annotation Fixes 2026-09-15 (#231 #228 #236 #235 #223 #234 — DONE)
 
 Five localized rendering bugs, one commit each; every fix changed only its own

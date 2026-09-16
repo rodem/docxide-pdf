@@ -592,7 +592,7 @@
       "x_pt": 102.3861,
       "y_pt": 681.3009,
       "note": "Lone character from heading here.",
-      "fixed": false,
+      "fixed": true,
       "cleared": false
     },
     {

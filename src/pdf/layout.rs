@@ -219,6 +219,9 @@ pub(super) struct WordChunk {
     /// the page where its reference mark lands, so pagination needs to know
     /// which line carries which reference.
     pub(super) footnote_id: Option<u32>,
+    /// Points already trimmed from a trailing full-width punctuation mark by
+    /// `compress_punctuation`; caps further squeezing at half an em.
+    pub(super) punct_compressed: f32,
 }
 
 /// Pale-pink highlight color Word uses for comment-anchored text spans.
@@ -285,6 +288,7 @@ impl WordChunk {
             inline_image_clip: None,
             inline_image_size: (0.0, 0.0),
             inline_image_rotation_deg: 0.0,
+            punct_compressed: 0.0,
             synthetic_bold: entry.synthetic_bold,
             text_outline: run.text_outline.clone(),
             text_fill: run.text_fill.clone(),
@@ -330,6 +334,7 @@ impl WordChunk {
             inline_image_clip: img.clip_geometry.clone(),
             inline_image_size: (img.display_width, img.display_height),
             inline_image_rotation_deg: img.rotation_deg,
+            punct_compressed: 0.0,
             synthetic_bold: false,
             text_outline: None,
             text_fill: None,
@@ -375,6 +380,7 @@ impl WordChunk {
             inline_image_clip: None,
             inline_image_size: (0.0, 0.0),
             inline_image_rotation_deg: 0.0,
+            punct_compressed: 0.0,
             synthetic_bold: false,
             text_outline: None,
             text_fill: None,
@@ -425,6 +431,7 @@ impl WordChunk {
             inline_image_clip: None,
             inline_image_size: (0.0, 0.0),
             inline_image_rotation_deg: 0.0,
+            punct_compressed: 0.0,
             synthetic_bold: false,
             text_outline: None,
             text_fill: None,
@@ -617,6 +624,74 @@ fn finish_line_with_break(chunks: &mut Vec<WordChunk>) -> TextLine {
 /// `width_after_line`: after building this many lines, switch to a different
 /// max_width (used for text wrapping around floating tables where lines beside
 /// the table are narrow, then lines below it expand to full column width).
+/// East Asian line-breaking switches for `build_paragraph_lines`.
+#[derive(Clone, Copy)]
+pub(super) struct CjkLayout {
+    /// `w:autoSpaceDE`/`DN`: quarter-em gap where Latin text meets ideographs.
+    pub(super) auto_space: bool,
+    /// `w:characterSpacingControl compressPunctuation`: squeeze full-width
+    /// punctuation to keep one more character on the line.
+    pub(super) compress_punct: bool,
+}
+
+/// Full-width East Asian closing punctuation whose right half is blank, which
+/// Word's `compressPunctuation` may squeeze (§17.15.1.15). Opening brackets
+/// compress on their left; ponytail: no fixture needs them, so they are left alone.
+fn is_compressible_punct(c: char) -> bool {
+    matches!(
+        c,
+        '、' | '。' | '，' | '．' | '：' | '；' | '！' | '？' | '）' | '］' | '｝' | '」' | '』'
+            | '】' | '〕' | '〉' | '》' | '〙' | '〗'
+    )
+}
+
+/// Recover `needed` points on the current line by trimming the chunks that end in
+/// compressible punctuation, evenly and each by at most a quarter of its em. Word
+/// does this instead of wrapping whenever it lets one more character fit: on
+/// taiwanese_education_fraud_ruling p1 every full-width comma advances between
+/// 12 and 16pt at 16pt depending on how tight its line is, and 12pt (a quarter
+/// em off) is the most Word ever took (annotation #238). Returns false and
+/// touches nothing when the marks cannot yield enough.
+fn compress_punctuation(chunks: &mut [WordChunk], needed: f32) -> bool {
+    let marks: Vec<usize> = chunks
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| {
+            c.inline_image_name.is_none() && c.text.chars().last().is_some_and(is_compressible_punct)
+        })
+        .map(|(i, _)| i)
+        .collect();
+    let room: Vec<f32> = marks
+        .iter()
+        .map(|&i| (chunks[i].font_size * 0.25 - chunks[i].punct_compressed).max(0.0))
+        .collect();
+    if needed <= 0.0 || room.iter().sum::<f32>() + 0.01 < needed {
+        return false;
+    }
+    // Even shares, tightest marks first so a mark short of its share passes the
+    // remainder on to the others.
+    let mut order: Vec<usize> = (0..marks.len()).collect();
+    order.sort_by(|a, b| room[*a].total_cmp(&room[*b]));
+    let mut cuts = vec![0.0f32; marks.len()];
+    let mut remaining = needed;
+    for (n, &k) in order.iter().enumerate() {
+        cuts[k] = (remaining / (marks.len() - n) as f32).min(room[k]);
+        remaining -= cuts[k];
+    }
+    let mut shift = 0.0;
+    let mut k = 0;
+    for (i, chunk) in chunks.iter_mut().enumerate() {
+        chunk.x_offset -= shift;
+        if k < marks.len() && marks[k] == i {
+            chunk.width -= cuts[k];
+            chunk.punct_compressed += cuts[k];
+            shift += cuts[k];
+            k += 1;
+        }
+    }
+    true
+}
+
 /// Dual-region geometry for bothSides wrapping: (left_x, left_w, right_x, right_w).
 /// For lines outside the float zone, right_w is 0.0 (single region).
 pub(super) type DualRegion = (f32, f32, f32, f32);
@@ -631,7 +706,7 @@ pub(super) fn build_paragraph_lines(
     width_after_line: Option<(usize, f32)>,
     per_line_widths: Option<&[f32]>,
     per_line_dual: Option<&[DualRegion]>,
-    auto_space: bool,
+    cjk: CjkLayout,
 ) -> Vec<TextLine> {
     let mut lines: Vec<TextLine> = Vec::new();
     let mut current_chunks: Vec<WordChunk> = Vec::new();
@@ -795,7 +870,7 @@ pub(super) fn build_paragraph_lines(
             // CJK auto-spacing (autoSpaceDE/DN): add ~0.25em gap at
             // script boundaries between East Asian and Latin/digit text
             // when there is no explicit whitespace.
-            if auto_space {
+            if cjk.auto_space {
                 if let Some(prev_ch) = prev_last_char {
                     if let Some(first_ch) = word.chars().next() {
                         if pending_space_w == 0.0 && space_count == 0 {
@@ -848,6 +923,21 @@ pub(super) fn build_paragraph_lines(
 
             // Small tolerance for floating-point width accumulation over many glyphs
             let overflows = proposed_x + ww > cur_max + 0.05;
+
+            // compressPunctuation: before wrapping, make room for this word by
+            // squeezing the full-width punctuation already on the line.
+            let (proposed_x, overflows) = if overflows
+                && cjk.compress_punct
+                && !current_chunks.is_empty()
+                && !in_right_region
+                && right_region_for(lines.len()).is_none()
+                && compress_punctuation(&mut current_chunks, proposed_x + ww - cur_max)
+            {
+                current_x = current_chunks.last().map_or(0.0, |c| c.x_offset + c.width);
+                (if need_space { current_x + pending_space_w } else { current_x }, false)
+            } else {
+                (proposed_x, overflows)
+            };
 
             // When leading spaces push the first word past the line width,
             // emit a blank line for the spaces and start the word at x=0.
@@ -2316,6 +2406,28 @@ pub(super) fn grid_snapped_line_h(
 mod tests {
     use super::*;
     use crate::model::VertAlign;
+
+    #[test]
+    fn compress_punctuation_trims_marks_evenly_and_shifts_followers() {
+        let entry = stub_font_entry();
+        let chunk = |text: &str, x: f32| {
+            let mut c = WordChunk::tab_underline(&entry, 16.0, None, false, None, x, 32.0);
+            c.text = text.to_string();
+            c
+        };
+        let mut chunks = vec![chunk("任，", 0.0), chunk("負", 32.0), chunk("事、", 64.0), chunk("公", 96.0)];
+        assert!(compress_punctuation(&mut chunks, 4.0));
+        // 2pt off each mark; everything after a mark slides left
+        assert!((chunks[0].width - 30.0).abs() < 1e-4 && (chunks[2].width - 30.0).abs() < 1e-4);
+        assert!((chunks[1].x_offset - 30.0).abs() < 1e-4);
+        assert!((chunks[2].x_offset - 62.0).abs() < 1e-4);
+        assert!((chunks[3].x_offset - 92.0).abs() < 1e-4);
+        // A quarter em each is the cap: 2pt is left per mark, so 5 is refused untouched.
+        assert!(!compress_punctuation(&mut chunks, 5.0));
+        assert!((chunks[0].width - 30.0).abs() < 1e-4);
+        let mut plain = vec![chunk("任負", 0.0)];
+        assert!(!compress_punctuation(&mut plain, 1.0));
+    }
 
     #[test]
     fn test_char_justify_gaps() {

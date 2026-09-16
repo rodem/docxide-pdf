@@ -6,7 +6,8 @@ use crate::model::{Footnote, LineSpacing, Paragraph, Run};
 
 use super::RenderContext;
 use super::layout::{
-    TextLine, build_paragraph_lines, is_text_empty, render_paragraph_lines, tallest_run_metrics,
+    CjkLayout, TextLine, build_paragraph_lines, is_text_empty, render_paragraph_lines,
+    tallest_run_metrics,
 };
 use super::list_label::render_list_label;
 use super::resolve_line_h;
@@ -44,7 +45,8 @@ fn layout_paragraph(
     }
     let (fs, tallest_lhr, tallest_ar) = tallest_run_metrics(runs, ctx.fonts);
     let lh = resolve_line_h(line_spacing, fs, tallest_lhr);
-    let lines = build_paragraph_lines(runs, ctx.fonts, text_width, first_line_hanging, &HashMap::new(), &HashMap::new(), None, None, None, true);
+    let cjk = CjkLayout { auto_space: true, compress_punct: ctx.compress_punctuation };
+    let lines = build_paragraph_lines(runs, ctx.fonts, text_width, first_line_hanging, &HashMap::new(), &HashMap::new(), None, None, None, cjk);
     if lines.is_empty() {
         return None;
     }
