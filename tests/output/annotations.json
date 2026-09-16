@@ -141,7 +141,7 @@
       "x_pt": 310.00967,
       "y_pt": 691.51483,
       "note": "Text on the paragraph above the rectangle should also wrap around it.",
-      "fixed": false,
+      "fixed": true,
       "cleared": false
     },
     {

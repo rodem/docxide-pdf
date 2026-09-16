@@ -1386,6 +1386,94 @@ fn render_paragraph_block(
         }
     }
 
+    let auto_space = para.auto_space_de || para.auto_space_dn;
+
+    // Look-ahead: a wrapping float anchored in the *next* block (an image-only
+    // paragraph) sits at that block's top, which Word computes from this
+    // paragraph laid out at full width — and then re-wraps this paragraph's
+    // lines around the float without moving it (case41 p3: the paragraph before
+    // a centred 4.5in picture wraps beside it from its second line, annotation
+    // #152). Install that zone now so the per-line geometry below narrows the
+    // lines it reaches, and hand the anchor position to the next paragraph so
+    // it draws the picture there rather than where it now flows.
+    let mut lookahead_zone_top: Option<f32> = None;
+    let mut lookahead_anchor: Option<f32> = None;
+    if state.pb.float_zone.is_none() && !text_empty && !has_tabs {
+        let next = section_blocks.get(block_idx + 1).and_then(|b| match b {
+            Block::Paragraph(np)
+                if is_text_empty(&np.runs) && np.image.is_none() && np.inline_chart.is_none() =>
+            {
+                np.floating_images
+                    .iter()
+                    .find(|fi| {
+                        // Only floats that hang off the anchor paragraph itself;
+                        // a page- or margin-relative float does not move with it.
+                        fi.v_relative_from == VRelativeFrom::Paragraph
+                            && matches!(
+                                fi.v_position,
+                                VerticalPosition::Offset(_) | VerticalPosition::AlignTop
+                            )
+                            && matches!(
+                                fi.wrap_type,
+                                WrapType::Square | WrapType::Tight | WrapType::Through
+                            )
+                            && {
+                                let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
+                                fi_x + fi.image.display_width + fi.dist_right > col_x
+                                    && fi_x - fi.dist_left < col_x + col_w
+                            }
+                    })
+                    .map(|fi| (fi, np.space_before))
+            }
+            _ => None,
+        });
+        if let Some((fi, next_space_before)) = next {
+            let full_lines = build_paragraph_lines(
+                &effective_runs, ctx.fonts, para_text_width, text_hanging,
+                &block_inline_images, &block_effect_inlines, None, None, None, auto_space,
+            );
+            let gap = para.space_after.max(next_space_before);
+            let anchor_top =
+                state.pb.slot_top - inter_gap - full_lines.len() as f32 * line_h - gap;
+            let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
+            let fi_y_top = match fi.v_position {
+                VerticalPosition::Offset(o) => anchor_top - o,
+                _ => anchor_top,
+            };
+            let fi_y_bottom = fi_y_top - fi.image.display_height;
+            // Only when the float lands on this page: a paragraph that breaks
+            // before its anchor would hand the next page a stale anchor.
+            if fi_y_bottom - fi.dist_bottom > state.effective_margin_bottom {
+                let true_top = fi_y_top + fi.dist_top;
+                state.pb.float_zone = Some(FloatZone {
+                    // Word treats the last line's space-after as part of that
+                    // line when testing overlap, so the zone reaches up through
+                    // the gap for this paragraph's geometry (restored after the
+                    // lines are built).
+                    top_y: true_top + gap,
+                    bottom_y: fi_y_bottom - fi.dist_bottom,
+                    obj_left: fi_x,
+                    obj_right: fi_x + fi.image.display_width,
+                    left_from_text: fi.dist_left,
+                    right_from_text: fi.dist_right,
+                    polygon_pts: fi.wrap_polygon.as_ref().map(|verts| {
+                        convert_polygon_to_page_coords(
+                            verts,
+                            fi_x,
+                            fi_y_top,
+                            fi.image.display_width,
+                            fi.image.display_height,
+                        )
+                    }),
+                    wrap_text: fi.wrap_text,
+                    para_relative: true,
+                });
+                lookahead_zone_top = Some(true_top);
+                lookahead_anchor = Some(anchor_top);
+            }
+        }
+    }
+
     // Additional wrapping floats anchored to this same paragraph beyond the
     // first (which became `float_zone` above). The single-zone geometry below
     // can't model e.g. a logo on each side of a centered title, so when these
@@ -1646,9 +1734,6 @@ fn render_paragraph_block(
             g.iter().map(|&(_, w)| w).collect()
         });
 
-    let mut float_width_change: Option<(usize, f32)> = None;
-    // For look-ahead: (narrow_x, narrow_w) for lines after the split
-    let mut lookahead_narrow: Option<(f32, f32)> = None;
     let has_inline_image_runs = effective_runs.iter().any(|r| r.inline_image.is_some());
     // Word advances a left tab past any floating image whose body sits on the
     // line, snapping to the first stop clear of the image's right edge. Collect
@@ -1695,91 +1780,21 @@ fn render_paragraph_block(
             &tab_exclusions,
         )
     } else {
-        // Look-ahead: if next block is an image-only paragraph
-        // with wrapping, build lines at full width first, then
-        // check if the bottom lines need narrowing.
-        let lookahead_fi = if state.pb.float_zone.is_none() {
-            section_blocks.get(block_idx + 1).and_then(|b| {
-                if let Block::Paragraph(np) = b {
-                    if !np.floating_images.is_empty()
-                        && is_text_empty(&np.runs)
-                        && np.image.is_none()
-                        && np.inline_chart.is_none()
-                    {
-                        np.floating_images.iter().find(|fi| matches!(
-                            fi.wrap_type,
-                            WrapType::Square | WrapType::Tight | WrapType::Through
-                        ) && fi.image.display_width < text_width * 0.5)
-                    } else { None }
-                } else { None }
-            })
-        } else { None };
-
-        let auto_space = para.auto_space_de || para.auto_space_dn;
-        let (lines, final_width_change) = if let Some(fi) = lookahead_fi {
-            // Two-pass: build at full width, then narrow bottom lines
-            let full_lines = build_paragraph_lines(
-                &effective_runs, ctx.fonts, para_text_width,
-                text_hanging, &block_inline_images, &block_effect_inlines, None, None, None,
-                auto_space,
-            );
-            let num_lines = full_lines.len();
-            let _content_h_est = num_lines as f32 * line_h;
-            let fi_x = resolve_fi_x(fi, sp, col_x, col_w, col_w);
-            let space_right = (col_x + col_w)
-                - (fi_x + fi.image.display_width + fi.dist_right);
-            let space_left = (fi_x - fi.dist_left) - col_x;
-            let best = space_right.max(space_left);
-            // Zone overlap: image starts at ~(slot_top - content_h - space_after)
-            // zone extends dist_top above that into the current paragraph
-            // Image-only paragraphs effectively have zero height
-            // in Word, so the image anchors right at the preceding
-            // paragraph's bottom. The zone extends dist_top above.
-            let overlap = fi.dist_top;
-            let lines_to_narrow = if best >= 72.0 && overlap > 0.0 {
-                ((overlap / line_h).ceil() as usize).min(num_lines)
-            } else { 0 };
-            if lines_to_narrow > 0 {
-                let lines_above = num_lines.saturating_sub(lines_to_narrow);
-                let narrow_w = if space_right >= space_left {
-                    ((col_x + col_w) - (fi_x + fi.image.display_width + fi.dist_right)
-                        - para.indent_right).max(1.0)
-                } else {
-                    (fi_x - fi.dist_left - col_x
-                        - para.indent_left - para.indent_right).max(1.0)
-                };
-                let narrow_x = if space_right >= space_left {
-                    fi_x + fi.image.display_width + fi.dist_right
-                        + para.indent_left
-                } else {
-                    col_x + para.indent_left
-                };
-                lookahead_narrow = Some((narrow_x, narrow_w));
-                let rebuilt = build_paragraph_lines(
-                    &effective_runs, ctx.fonts, para_text_width,
-                    text_hanging, &block_inline_images, &block_effect_inlines,
-                    Some((lines_above, narrow_w)), None, None,
-                    auto_space,
-                );
-                (rebuilt, Some((lines_above, narrow_w)))
-            } else {
-                (full_lines, None)
-            }
-        } else {
-            // Per-line geometry handles narrow→wide transitions;
-            // dual geometry takes priority over single-region widths.
-            let plw: Option<&[f32]> = if poly_dual_geom.is_some() { None } else { poly_line_widths.as_deref() };
-            let built = build_paragraph_lines(
-                &effective_runs, ctx.fonts, para_text_width,
-                text_hanging, &block_inline_images, &block_effect_inlines, None,
-                plw, poly_dual_geom.as_deref(),
-                auto_space,
-            );
-            (built, None)
-        };
-        float_width_change = final_width_change;
-        lines
+        // Per-line geometry handles narrow→wide transitions;
+        // dual geometry takes priority over single-region widths.
+        let plw: Option<&[f32]> = if poly_dual_geom.is_some() { None } else { poly_line_widths.as_deref() };
+        build_paragraph_lines(
+            &effective_runs, ctx.fonts, para_text_width,
+            text_hanging, &block_inline_images, &block_effect_inlines, None,
+            plw, poly_dual_geom.as_deref(),
+            auto_space,
+        )
     };
+    // The look-ahead zone reached up through this paragraph's space-after only
+    // for its own geometry; following paragraphs see the float's real edge.
+    if let (Some(top), Some(fz)) = (lookahead_zone_top, state.pb.float_zone.as_mut()) {
+        fz.top_y = top;
+    }
 
     // For lines containing inline images, use the tallest element as line height
     let max_inline_img_h = lines
@@ -2336,6 +2351,11 @@ fn render_paragraph_block(
         .pending_float_anchor
         .take()
         .unwrap_or(state.pb.slot_top);
+    // Hand the look-ahead float's anchor to the next paragraph (the one that
+    // actually carries it) only after this paragraph has taken its own.
+    if lookahead_anchor.is_some() {
+        state.pb.pending_float_anchor = lookahead_anchor;
+    }
 
     // Render behind-doc layer: floating images + textboxes
     render_floating_images(
@@ -2644,119 +2664,31 @@ fn render_paragraph_block(
             font_size,
         );
 
-        if let Some((split_at, _after_w)) = float_width_change {
-            if split_at < lines.len() {
-                // Render first part
-                render_paragraph_lines(
-                    &mut state.pb.content,
-                    &lines[..split_at],
-                    &para.alignment,
-                    para_text_x,
-                    para_text_width,
-                    baseline_y,
-                    line_h,
-                    para_metrics,
-                    lines.len(),
-                    0,
-                    &mut state.pb.links,
-                    text_hanging,
-                    ctx.fonts,
-                    poly_line_geom.as_deref(),
-                    &mut state.pb.gradient_specs,
-                    Some(&mut state.pb.comment_anchors),
-                    ln_cfg.map(|(start, count_by, continuous_offset, right_x)| LineNumberArg {
-                        counter: &mut state.line_number_counter,
-                        start,
-                        count_by,
-                        continuous_offset,
-                        right_x,
-                    }),
-                );
-                // float_width_change only comes from the lookahead path,
-                // which always sets lookahead_narrow in the same branch.
-                let (after_x, after_w) = lookahead_narrow
-                    .expect("lookahead_narrow set when float_width_change is Some");
-                let below_baseline = baseline_y - split_at as f32 * line_h;
-                render_paragraph_lines(
-                    &mut state.pb.content,
-                    &lines[split_at..],
-                    &para.alignment,
-                    after_x,
-                    after_w,
-                    below_baseline,
-                    line_h,
-                    para_metrics,
-                    lines.len(),
-                    split_at,
-                    &mut state.pb.links,
-                    text_hanging,
-                    ctx.fonts,
-                    poly_line_geom.as_deref(),
-                    &mut state.pb.gradient_specs,
-                    Some(&mut state.pb.comment_anchors),
-                    ln_cfg.map(|(start, count_by, continuous_offset, right_x)| LineNumberArg {
-                        counter: &mut state.line_number_counter,
-                        start,
-                        count_by,
-                        continuous_offset,
-                        right_x,
-                    }),
-                );
-            } else {
-                // Split point beyond paragraph — render all at once
-                render_paragraph_lines(
-                    &mut state.pb.content,
-                    &lines,
-                    &para.alignment,
-                    para_text_x,
-                    para_text_width,
-                    baseline_y,
-                    line_h,
-                    para_metrics,
-                    lines.len(),
-                    0,
-                    &mut state.pb.links,
-                    text_hanging,
-                    ctx.fonts,
-                    poly_line_geom.as_deref(),
-                    &mut state.pb.gradient_specs,
-                    Some(&mut state.pb.comment_anchors),
-                    ln_cfg.map(|(start, count_by, continuous_offset, right_x)| LineNumberArg {
-                        counter: &mut state.line_number_counter,
-                        start,
-                        count_by,
-                        continuous_offset,
-                        right_x,
-                    }),
-                );
-            }
-        } else {
-            render_paragraph_lines(
-                &mut state.pb.content,
-                &lines,
-                &para.alignment,
-                para_text_x,
-                para_text_width,
-                baseline_y,
-                line_h,
-                para_metrics,
-                lines.len(),
-                0,
-                &mut state.pb.links,
-                text_hanging,
-                ctx.fonts,
-                poly_line_geom.as_deref(),
-                &mut state.pb.gradient_specs,
-                Some(&mut state.pb.comment_anchors),
-                ln_cfg.map(|(start, count_by, continuous_offset, right_x)| LineNumberArg {
-                    counter: &mut state.line_number_counter,
-                    start,
-                    count_by,
-                    continuous_offset,
-                    right_x,
-                }),
-            );
-        }
+        render_paragraph_lines(
+            &mut state.pb.content,
+            &lines,
+            &para.alignment,
+            para_text_x,
+            para_text_width,
+            baseline_y,
+            line_h,
+            para_metrics,
+            lines.len(),
+            0,
+            &mut state.pb.links,
+            text_hanging,
+            ctx.fonts,
+            poly_line_geom.as_deref(),
+            &mut state.pb.gradient_specs,
+            Some(&mut state.pb.comment_anchors),
+            ln_cfg.map(|(start, count_by, continuous_offset, right_x)| LineNumberArg {
+                counter: &mut state.line_number_counter,
+                start,
+                count_by,
+                continuous_offset,
+                right_x,
+            }),
+        );
     }
 
     // Draw paragraph borders — left/right borders extend outward
