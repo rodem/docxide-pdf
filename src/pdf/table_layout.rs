@@ -466,6 +466,9 @@ pub(super) struct CellFloatingImageLayout {
     pub(super) rotation_deg: f32,
     #[allow(dead_code)]
     pub(super) behind_doc: bool,
+    /// wp:anchor relativeHeight, so a cell picture can paint over a
+    /// connector/textbox anchored in the same paragraph (annotation #241).
+    pub(super) z_index: u32,
 }
 
 pub(super) struct CellParagraphLayout {
@@ -840,6 +843,7 @@ pub(super) fn compute_row_layouts(
                                             v_offset,
                                             rotation_deg: fi.image.rotation_deg,
                                             behind_doc: fi.behind_doc,
+                                            z_index: fi.z_index,
                                         })
                                     })
                                     .collect();

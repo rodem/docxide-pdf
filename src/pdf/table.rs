@@ -16,7 +16,7 @@ use super::layout::{
     encode_text_for_pdf, render_paragraph_lines,
 };
 use super::table_layout::{
-    CellContentItem, CellLayout, CellParagraphLayout, HfSubstitution,
+    CellContentItem, CellFloatingImageLayout, CellLayout, CellParagraphLayout, HfSubstitution,
     RowLayout, apply_pct_width, auto_fit_columns, cell_span_width, cell_x_offset, compute_merge_spans,
     compute_row_layouts, find_cell_split, para_block_height,
 };
@@ -353,29 +353,27 @@ fn render_cell_content(
 
                 cursor_y -= para.space_before;
 
-                // Render floating images positioned relative to this paragraph
-                for fi in &para.floating_images {
-                    let fi_x = cell_x + fi.h_offset;
-                    let fi_y_top = cursor_y + valign_off - fi.v_offset;
-                    let fi_y_bottom = fi_y_top - fi.display_height;
-                    content.save_state();
-                    super::positioning::push_center_rotation(
-                        content, fi_x, fi_y_bottom, fi.display_width, fi.display_height,
-                        fi.rotation_deg,
-                    );
-                    content.transform([
-                        fi.display_width,
-                        0.0,
-                        0.0,
-                        fi.display_height,
-                        fi_x,
-                        fi_y_bottom,
-                    ]);
-                    content.x_object(Name(fi.pdf_name.as_bytes()));
-                    content.restore_state();
+                // Word stacks anchored objects by relativeHeight: a picture
+                // above the paragraph's connectors/textboxes must paint after
+                // them (annotation #241: an opaque label cutting a vertical
+                // arrow). Everything else keeps the picture-before-text order.
+                let shape_z = source_para.and_then(|p| {
+                    p.connectors
+                        .iter()
+                        .map(|c| c.z_index)
+                        .chain(p.textboxes.iter().map(|t| t.z_index))
+                        .max()
+                });
+                let above_shapes =
+                    |fi: &&CellFloatingImageLayout| shape_z.is_some_and(|z| fi.z_index > z);
+                for fi in para.floating_images.iter().filter(|fi| !above_shapes(fi)) {
+                    draw_cell_float(content, fi, cell_x, cursor_y + valign_off);
                 }
 
                 if let Some(ref img_name) = para.image_name {
+                    for fi in para.floating_images.iter().filter(above_shapes) {
+                        draw_cell_float(content, fi, cell_x, cursor_y + valign_off);
+                    }
                     // distT/distB in layout_extra_height contribute to row
                     // height but don't add spacing between image and text.
                     cursor_y -= render_cell_inline_image(
@@ -437,6 +435,9 @@ fn render_cell_content(
                         gradient_specs,
                     );
                 }
+                for fi in para.floating_images.iter().filter(above_shapes) {
+                    draw_cell_float(content, fi, cell_x, para_top - para.space_before + valign_off);
+                }
             }
             CellContentItem::NestedTable { height } => {
                 // Find the corresponding Block::Table
@@ -466,6 +467,24 @@ fn render_cell_content(
             }
         }
     }
+}
+
+/// Draw one floating picture anchored to a cell paragraph whose top is `para_y`.
+fn draw_cell_float(
+    content: &mut Content,
+    fi: &CellFloatingImageLayout,
+    cell_x: f32,
+    para_y: f32,
+) {
+    let fi_x = cell_x + fi.h_offset;
+    let fi_y_bottom = para_y - fi.v_offset - fi.display_height;
+    content.save_state();
+    super::positioning::push_center_rotation(
+        content, fi_x, fi_y_bottom, fi.display_width, fi.display_height, fi.rotation_deg,
+    );
+    content.transform([fi.display_width, 0.0, 0.0, fi.display_height, fi_x, fi_y_bottom]);
+    content.x_object(Name(fi.pdf_name.as_bytes()));
+    content.restore_state();
 }
 
 /// Render floating textboxes and connectors anchored to a cell paragraph.
@@ -751,24 +770,7 @@ fn render_partial_cell_content(
                 cursor_y -= sb;
 
                 for fi in &para.floating_images {
-                    let fi_x = cell_x + fi.h_offset;
-                    let fi_y_top = cursor_y - fi.v_offset;
-                    let fi_y_bottom = fi_y_top - fi.display_height;
-                    content.save_state();
-                    super::positioning::push_center_rotation(
-                        content, fi_x, fi_y_bottom, fi.display_width, fi.display_height,
-                        fi.rotation_deg,
-                    );
-                    content.transform([
-                        fi.display_width,
-                        0.0,
-                        0.0,
-                        fi.display_height,
-                        fi_x,
-                        fi_y_bottom,
-                    ]);
-                    content.x_object(Name(fi.pdf_name.as_bytes()));
-                    content.restore_state();
+                    draw_cell_float(content, fi, cell_x, cursor_y);
                 }
 
                 if let Some(ref img_name) = para.image_name {

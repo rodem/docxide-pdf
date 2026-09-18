@@ -1,5 +1,5 @@
 {
-  "next_id": 240,
+  "next_id": 242,
   "annotations": [
     {
       "id": 208,
@@ -393,8 +393,8 @@
       "source": "Generated",
       "x_pt": 193.96237,
       "y_pt": 205.5987,
-      "note": "We split the table at the wrong place here, compared to reference. Q3 should be on page 6.",
-      "fixed": false,
+      "note": "We split the table at the wrong place here, compared to reference. Q3 should be on page 6.\n\nFIXED (2026-09-18, by the earlier row-split work): re-measured at HEAD, the Q3 row starts on page 6 in both (ref baseline 618.5pt from top, ours 615.3pt) and page 7 begins with the same content. The rows have no trHeight/cantSplit so they split like Word's. Remaining difference on page 6 is font-width wrapping (Q1-Q3 each take one extra line with our substitute face).",
+      "fixed": true,
       "cleared": false
     },
     {
@@ -417,7 +417,7 @@
       "y_pt": 41.34906,
       "note": "Table cells that are broken should render with the bottom border. At least this one. Confirm if this is always the case.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 223,
@@ -428,7 +428,7 @@
       "y_pt": 264.42816,
       "note": "Missing arrow below the \"50\" here\n\nFIXED (2026-09-15): The arrow was drawn at full length but hidden: the white-filled '50cm' textbox is anchored in a table cell, and the cell path (render_simple_textbox) ignored its a:spAutoFit, keeping Word's stored 110.6pt default height so the box painted over the lower 55pt of the arrow. Cell textboxes now share textbox_height with body textboxes.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 224,
@@ -483,7 +483,7 @@
       "y_pt": 528.43207,
       "note": "Signature missing here.\n\nFIXED (2026-09-15): image3.emf is a bitmap EMF (one EMR_STRETCHDIBITS record) that the vector translator drew as nothing. emf_to_raster now wraps the DIB as a BMP before the raster pipeline, and the picture's a:xfrm rot=-90 is honoured for inline pictures (drawn turned, laid out as the rotated box) so the signature is horizontal and its line is 56pt like Word.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 229,
@@ -494,7 +494,7 @@
       "y_pt": 654.1157,
       "note": "Weird stamp thing that shows up here.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 230,
@@ -505,7 +505,7 @@
       "y_pt": 593.27167,
       "note": "Vertical spacing between names and signatures is off.\n\nPARTIAL (2026-09-15): the Gambacorta line was 108pt tall because the -90-degree inline rotation was ignored; inline pictures now lay out as their rotated box (56pt). Still open: Word sits the text baseline at the bottom of an inline picture, we place the picture centred on the text (image bottom = baseline + font_size - image_h in layout.rs), so names sit near the top of their signatures.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 231,
@@ -593,7 +593,7 @@
       "y_pt": 681.3009,
       "note": "Lone character from heading here.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 239,
@@ -604,6 +604,28 @@
       "y_pt": 127.81036,
       "note": "There should be a page break here before the last line for some reason? Maybe just vertical size of everything else pushes it down naturally?",
       "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 240,
+      "case": "case41",
+      "page": 5,
+      "source": "Generated",
+      "x_pt": 76.27396,
+      "y_pt": 708.9523,
+      "note": "Page 6: ... - content should start above paragraph, not above imarge. Compare with reference.",
+      "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 241,
+      "case": "new/japanese_land_development_sign_form",
+      "page": 0,
+      "source": "Generated",
+      "x_pt": 77.34532,
+      "y_pt": 557.9524,
+      "note": "Vertical arrow on the far left should be broken up by the \"70 ... \" text\n\nFIXED (2026-09-18): the \"70cm\" label is an opaque PNG anchored in the same cell paragraph as the arrow, with a higher relativeHeight. The cell path drew every floating picture before the paragraph's connectors/textboxes regardless of z-order, so the arrow painted over the label. Cell pictures now carry z_index and those above the paragraph's shapes are drawn after them.",
+      "fixed": true,
       "cleared": false
     }
   ]
