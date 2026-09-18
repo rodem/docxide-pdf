@@ -215,14 +215,10 @@ fn family_fallback(family: FontFamily) -> Option<&'static str> {
         FontFamily::Swiss => Some("Arial"),
         FontFamily::Modern => Some("Courier New"),
         FontFamily::Script | FontFamily::Decorative => Some("Times New Roman"),
-        // `w:family="auto"` (unspecified) — substitute a real vendored sans
-        // instead of dropping to the base-14 Helvetica last resort, which matches
-        // Word's output poorly. INTERIM choice: Arial. NOTE: for the known case
-        // (Bosch Office Sans missing) Word's own PDF export actually substitutes
-        // Calibri, not Arial — so Calibri may be the better universal default, or
-        // the right rule may be panose/theme-based. Left as Arial pending a survey
-        // of what Word substitutes across multiple missing-font fixtures.
-        FontFamily::Auto => Some("Arial"),
+        // `w:family="auto"` (unspecified): Word substitutes the document theme's
+        // body font (see `register_font`); Calibri, the usual theme body font,
+        // is the last resort when the theme gives nothing usable.
+        FontFamily::Auto => Some("Calibri"),
     }
 }
 
@@ -434,6 +430,7 @@ pub(crate) fn register_font(
     embedded_fonts: &EmbeddedFonts,
     used_chars: &HashSet<char>,
     font_table: &FontTable,
+    theme_body_font: &str,
 ) -> FontEntry {
     let t0 = Instant::now();
     let font_ref = alloc();
@@ -526,6 +523,18 @@ pub(crate) fn register_font(
             // lack CJK glyphs and would produce squares
             if needs_cjk {
                 if let Some(m) = try_cjk_fallback(&mut try_candidate) {
+                    return Some(m);
+                }
+            }
+            // A missing font with no declared family gets the theme's body
+            // font, as Word's export does: bosch (theme Calibri) embeds
+            // Calibri, german_mezzo (theme Arial) embeds Arial, and the
+            // panose match (Bosch Office Sans = Arial's) plays no part.
+            // (try_candidate writes the font once it resolves: call it once.)
+            if entry.family == FontFamily::Auto && !theme_body_font.is_empty() {
+                if let Some(m) = try_candidate(theme_body_font) {
+                    log::info!("Font substitution: {primary} → theme body font \"{theme_body_font}\"");
+                    substituted.set(true);
                     return Some(m);
                 }
             }

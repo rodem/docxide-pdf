@@ -392,6 +392,7 @@ pub(super) fn collect_and_register_fonts(
                 &doc.embedded_fonts,
                 &used,
                 &doc.font_table,
+                &doc.chart_font_name,
             );
             font_order.push(key_owned.clone());
             seen_fonts.insert(key_owned, entry);
@@ -413,7 +414,7 @@ pub(super) fn collect_and_register_fonts(
         let pdf_name = format!("F{}", font_order.len() + 1);
         let entry = register_font(
             pdf, base, bold, italic, pdf_name, alloc,
-            &doc.embedded_fonts, used, &doc.font_table,
+            &doc.embedded_fonts, used, &doc.font_table, &doc.chart_font_name,
         );
         seen_fonts.insert(key.clone(), entry);
         font_order.push(key.clone());
@@ -439,6 +440,7 @@ pub(super) fn collect_and_register_fonts(
             &doc.embedded_fonts,
             &all_missing_cjk,
             &doc.font_table,
+            &doc.chart_font_name,
         );
         font_order.push(fallback_key.clone());
         seen_fonts.insert(fallback_key, entry);
@@ -474,6 +476,7 @@ pub(super) fn collect_and_register_fonts(
             &doc.embedded_fonts,
             &HashSet::new(),
             &doc.font_table,
+            &doc.chart_font_name,
         );
         seen_fonts.insert("Helvetica".to_string(), entry);
         font_order.push("Helvetica".to_string());

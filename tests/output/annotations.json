@@ -151,8 +151,8 @@
       "source": "Generated",
       "x_pt": 74.63493,
       "y_pt": 284.4301,
-      "note": "Generally the \"Las Vegas, NV ...\" text looks different,",
-      "fixed": false,
+      "note": "Generally the \"Las Vegas, NV ...\" text looks different,\n\nFIXED (2026-09-18): the document's font is \"Bosch Office Sans\" (fontTable w:family=\"auto\"), which is not installed; Word's export substituted Calibri while we picked Arial (about 8% wider, so every line rewrapped). A corpus survey (bosch, centrifugal_water_chillers, run-borders, youtube_channel_link, german_mezzo_soprano) shows Word substitutes the document theme's body font for a missing family=\"auto\" font: Calibri here, Arial for german_mezzo. register_font now falls back to the theme body font, then Calibri. Same size as before (10.5pt); font and wrapping now match. Bosch SSIM +21pp.",
+      "fixed": true,
       "cleared": false
     },
     {
@@ -217,8 +217,8 @@
       "source": "Generated",
       "x_pt": 70.719734,
       "y_pt": 752.8874,
-      "note": "\"Bosch gebruikt\" -text looks too large? Also too high up.",
-      "fixed": false,
+      "note": "\"Bosch gebruikt\" -text looks too large? Also too high up.\n\nFIXED (2026-09-18): two causes. Size: the run is 15pt in both, but our Arial substitute for the missing \"Bosch Office Sans\" was wider than Word's Calibri; the theme-body-font rule (see #158) picks Calibri now. Position: the first-page header holds a 106pt-tall \"Persbericht\" frame at 33pt from the page top with w:wrap=\"notBeside\"; Word flows the header's 14.75pt lines from the top and pushes the one that would overlap the frame below it, so the header ends at 153.75pt and the body starts there instead of at the 86pt top margin. compute_header_height and the header renderer now apply that per-line rule (FrameProperties gained height and text_below). Body baseline 168.0 vs Word 167.8 (was 100.0).",
+      "fixed": true,
       "cleared": false
     },
     {

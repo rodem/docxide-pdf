@@ -302,6 +302,11 @@ pub struct FrameProperties {
     pub y_offset: f32,
     /// Frame width `w:w` in points (0 = auto/unspecified).
     pub width: f32,
+    /// Frame height `w:h` in points (0 = auto/unspecified).
+    pub height: f32,
+    /// `w:wrap` none/notBeside: body text may not flow beside the frame, so
+    /// in-flow text starts below its bottom edge.
+    pub text_below: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

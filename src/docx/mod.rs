@@ -385,12 +385,15 @@ pub(super) fn parse_frame_props(ppr: roxmltree::Node) -> Option<FrameProperties>
     };
     let y_pts = twips_to_pts(attr("y").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0));
     let width = twips_to_pts(attr("w").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0));
+    let height = twips_to_pts(attr("h").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0));
     Some(FrameProperties {
         h_relative_from: h_anchor,
         h_position,
         v_relative_from: v_anchor,
         y_offset: y_pts,
         width,
+        height,
+        text_below: matches!(attr("wrap"), Some("none") | Some("notBeside")),
     })
 }
 

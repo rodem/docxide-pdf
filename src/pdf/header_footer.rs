@@ -47,6 +47,43 @@ pub(super) fn substitute_hf_runs(
         .collect()
 }
 
+/// Vertical bands (top, bottom from the page top) of the header's page- or
+/// margin-anchored frames that forbid text beside them (`w:wrap`
+/// none/notBeside with an explicit `w:h`). An in-flow header line that would
+/// overlap such a band is laid out below it: bosch's first-page header has a
+/// 106pt "Persbericht" frame at 33pt, its first two 14.75pt lines fit above
+/// it and the third lands at 139pt, which is why Word starts the body at
+/// 153pt while the top margin says 86pt (annotation #195). ponytail: `w:h`
+/// is taken as the frame height whatever `w:hRule` says; grow it by the
+/// frame's content height if a frame ever overflows it.
+fn blocking_frame_bands(hf: &HeaderFooter, sp: &SectionProperties) -> Vec<(f32, f32)> {
+    hf.blocks
+        .iter()
+        .filter_map(|b| match b {
+            Block::Paragraph(p) => p.frame_props.as_ref(),
+            _ => None,
+        })
+        .filter(|fp| fp.text_below && fp.height > 0.0)
+        .filter_map(|fp| {
+            let top = match fp.v_relative_from {
+                VRelativeFrom::Page => fp.y_offset,
+                VRelativeFrom::Margin | VRelativeFrom::TopMargin => sp.margin_top + fp.y_offset,
+                VRelativeFrom::Paragraph => return None,
+            };
+            Some((top, top + fp.height))
+        })
+        .collect()
+}
+
+/// Where a line of height `line_h` whose top sits `top` below the page top
+/// really starts: below the first blocking frame band it would overlap.
+fn below_blocking_frames(top: f32, line_h: f32, bands: &[(f32, f32)]) -> f32 {
+    bands
+        .iter()
+        .find(|&&(b_top, b_bot)| top < b_bot && top + line_h > b_top)
+        .map_or(top, |&(_, b_bot)| b_bot)
+}
+
 pub(super) fn compute_header_height(
     hf: &HeaderFooter,
     ctx: &RenderContext,
@@ -59,6 +96,7 @@ pub(super) fn compute_header_height(
     // Track bottom of wrapping float zones (Square/Tight/Through): subsequent
     // paragraphs flow beside the image so their height is absorbed, not additive.
     let mut float_bottom_h = 0.0f32;
+    let bands = if is_header { blocking_frame_bands(hf, sp) } else { Vec::new() };
     for block in &hf.blocks {
         match block {
             Block::Paragraph(para) if para.frame_props.is_some() => {
@@ -69,6 +107,8 @@ pub(super) fn compute_header_height(
                 let (font_size, tallest_lhr, _) = tallest_run_metrics(&para.runs, ctx.fonts);
                 let effective_ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
                 let line_h = resolve_line_h(effective_ls, font_size, tallest_lhr);
+                height = below_blocking_frames(sp.header_margin + height, line_h, &bands)
+                    - sp.header_margin;
                 let max_img_h = para
                     .runs
                     .iter()
@@ -308,6 +348,7 @@ pub(super) fn render_header_footer(
     // A header can hold several wrapping floats (e.g. a logo on each side of a
     // centered letterhead) — all of them constrain the text bounds together.
     let mut hdr_fz: Vec<(f32, f32, f32, f32, f32, f32)> = Vec::new();
+    let bands = if is_header { blocking_frame_bands(hf, sp) } else { Vec::new() };
     for block in &hf.blocks {
         match block {
             Block::Table(table) => {
@@ -411,6 +452,10 @@ pub(super) fn render_header_footer(
                 let ascender_ratio = tallest_ar.unwrap_or(0.75);
                 let effective_ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
                 let line_h = resolve_line_h(effective_ls, font_size, tallest_lhr);
+                // Mirrors compute_header_height: a line overlapping a frame the
+                // text may not sit beside moves below it.
+                cursor_y = sp.page_height
+                    - below_blocking_frames(sp.page_height - cursor_y, line_h, &bands);
 
                 let baseline_y = cursor_y - font_size * ascender_ratio;
                 let slot_top = cursor_y;
