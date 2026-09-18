@@ -1338,8 +1338,11 @@ fn render_paragraph_block(
         {
             let fi_x =
                 resolve_fi_x(fi, sp, col_x, col_w, text_width);
-            let fi_y_top =
-                resolve_fi_y_top(fi, sp, state.pb.slot_top);
+            // The previous paragraph may have re-wrapped around this float and
+            // grown; the float stays where that look-ahead anchored it
+            // (peeked here, taken below).
+            let anchor_top = state.pb.pending_float_anchor.unwrap_or(state.pb.slot_top);
+            let fi_y_top = resolve_fi_y_top(fi, sp, anchor_top);
             state.pb.float_zone = Some(FloatZone::for_float(fi, fi_x, fi_y_top));
             // Re-narrow para_text_x / para_text_width using the
             // new float zone (same logic as the block above).
@@ -1414,10 +1417,10 @@ fn render_paragraph_block(
     // (anchor paragraph top, the zone's real top edge) once installed.
     let mut lookahead: Option<(f32, f32)> = None;
     if state.pb.float_zone.is_none() && !text_empty && !has_tabs {
+        // The next paragraph may carry text of its own (case41 p6, annotation
+        // #240): the anchor is its top either way.
         let next = section_blocks.get(block_idx + 1).and_then(|b| match b {
-            Block::Paragraph(np)
-                if is_text_empty(&np.runs) && np.image.is_none() && np.inline_chart.is_none() =>
-            {
+            Block::Paragraph(np) if np.image.is_none() && np.inline_chart.is_none() => {
                 np.floating_images
                     .iter()
                     .find(|fi| {
@@ -1429,6 +1432,19 @@ fn render_paragraph_block(
                                 VerticalPosition::Offset(_) | VerticalPosition::AlignTop
                             )
                             && wraps_in_column(fi, sp, col_x, col_w, text_width)
+                            // Only a float text can sit beside: Word wraps the
+                            // preceding paragraph next to case41 p3's centred
+                            // picture (64.8pt free on each side) but leaves
+                            // brazilian p9's caption alone above a figure with
+                            // 37.5pt beside it. ponytail: 48pt threshold, two
+                            // calibration points.
+                            && {
+                                let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
+                                let left = fi_x - fi.dist_left - col_x;
+                                let right = col_x + col_w
+                                    - (fi_x + fi.image.display_width + fi.dist_right);
+                                left.max(right) >= 48.0
+                            }
                     })
                     .map(|fi| (fi, np.space_before))
             }

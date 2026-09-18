@@ -63,7 +63,7 @@
       "source": "Generated",
       "x_pt": 539.4887,
       "y_pt": 410.5048,
-      "note": "is this a line break we are adding, or just word wrapping?  Splitting in the middle of a phone number is unfortunate, but it migjt just be a result of  word with difference.",
+      "note": "is this a line break we are adding, or just word wrapping?  Splitting in the middle of a phone number is unfortunate, but it migjt just be a result of  word with difference.\n\nTRIAGE (2026-09-18, not fixed): plain word wrapping, and not a width problem: the column is 322.1pt in both and the line above measures within 0.02%. Word keeps \"2251,\" on the line by COMPRESSING the 10 breakable spaces to 2.00pt (natural 2.75pt at 11pt Times New Roman, so ~73%); the nbsp inside \"59 740\" stays natural in both. We only ever expand justified lines (layout.rs: the overflow test has no shrink allowance and extra_per_gap is clamped at 0). No wpJustification compat flag is set, so this is Word's ordinary justification. Implementing it touches every justified paragraph in the corpus and the shrink limit needs calibration first.",
       "fixed": false,
       "cleared": false
     },
@@ -613,8 +613,8 @@
       "source": "Generated",
       "x_pt": 76.27396,
       "y_pt": 708.9523,
-      "note": "Page 6: ... - content should start above paragraph, not above imarge. Compare with reference.",
-      "fixed": false,
+      "note": "Page 6: ... - content should start above paragraph, not above imarge. Compare with reference.\n\nFIXED (2026-09-18): the look-ahead that wraps the paragraph before an anchored float around it (annotation #152) only fired when the next paragraph was image-only; page 6's anchor paragraph carries text too, so the preceding paragraph stayed full width (1 line instead of Word's 2 beside the image) and everything below sat one line high. The guard now accepts text-carrying anchor paragraphs, the anchor paragraph's own wrap zone uses the handed-forward anchor top, and the look-ahead only fires when the float leaves at least 48pt beside it for text (case41 p3 wraps with 64.8pt free; brazilian p9's 364pt figure with 37.5pt beside it leaves the preceding caption alone, as Word does). Page 6 line count now matches (13).",
+      "fixed": true,
       "cleared": false
     },
     {
