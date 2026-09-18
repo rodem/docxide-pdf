@@ -41,8 +41,8 @@
       "source": "Generated",
       "x_pt": 119.409325,
       "y_pt": 572.0255,
-      "note": "Looks like each bullet point causes a slightly larger vertical drift from the reference. This acumulates. Do not brush this off or defer it. Do a thorough examination and compare to reference.",
-      "fixed": false,
+      "note": "Looks like each bullet point causes a slightly larger vertical drift from the reference. This acumulates. Do not brush this off or defer it. Do a thorough examination and compare to reference.\n\nFIXED (2026-09-18): measured every baseline on page 1 (mutool stext, fonts dir set). Non-list lines matched Word within 0.06pt; each bullet line was 0.50pt short (15.50 vs Word's 16.00). Word sizes the line as marker ascent (Symbol 11.06pt) + text descent (Calibri 2.95pt) x 1.15 = 16.115 -> 16.0 on its grid; we took the larger of the two fonts' whole line heights (15.50). label_boosted_line_h now combines ascent and descent, and the first baseline drops by the marker's extra ascent as in Word (first bullet step 26.03 = ref 26.03). Result: bullet pitch 16.12, post-list drift +0.14pt (was -1.71). The marker's own descent is not counted: Courier New sub-bullets (streamnet p5) and Symbol on Arial (dialysis) confirmed Word ignores it.",
+      "fixed": true,
       "cleared": false
     },
     {

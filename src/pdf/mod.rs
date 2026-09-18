@@ -49,7 +49,7 @@ pub(super) use positioning::{resolve_h_position, resolve_fi_y_top};
 use images::{EffectXObjs, EmbeddedImages, embed_all_images};
 use layout::{
     CjkLayout, DualRegion, LineNumberArg, LinkAnnotation, TextLine, build_paragraph_lines,
-    build_tabbed_line,
+    build_tabbed_line, descender_ratio,
     grid_snapped_line_h, inline_image_line_extra, is_text_empty, line_max_image_h,
     lines_height, picture_line_bottom, render_paragraph_lines, run_line_metrics,
     tallest_run_metrics,
@@ -155,6 +155,8 @@ fn label_boosted_line_h(
     text_line_h: f32,
     effective_ls: LineSpacing,
     text_font_size: f32,
+    text_lhr: Option<f32>,
+    text_ar: Option<f32>,
 ) -> f32 {
     if para.list_label.is_empty() {
         return text_line_h;
@@ -166,13 +168,23 @@ fn label_boosted_line_h(
     let Some(entry) = fonts.get(&key) else {
         return text_line_h;
     };
-    let label_lh = resolve_line_h(effective_ls, label_fs, entry.line_h_ratio);
-    text_line_h.max(label_lh)
+    let Some(label_ar) = entry.ascender_ratio else {
+        return text_line_h;
+    };
+    // Word raises the line by the marker's ascent but keeps the text's descent,
+    // never one font's whole line height: a Symbol bullet reaches 0.6pt above
+    // 11pt Calibri and Word's line grows by exactly that (annotation #66, 16.0pt
+    // not 15.5), while a Courier New "o" or a Symbol bullet on Arial, whose
+    // descents are deeper than the text's, leave the line at the text height
+    // (streamnet p5, dialysis). Measured against Word, not from the spec.
+    let ascent = (text_font_size * text_ar.unwrap_or(0.75)).max(label_fs * label_ar);
+    let descent = text_font_size * descender_ratio(text_lhr, text_ar);
+    resolve_line_h(effective_ls, 1.0, Some(ascent + descent)).max(text_line_h)
 }
 
 /// First-baseline offset including the list label's ascent. The label is a run
-/// on the first line, so an oversized numbering label pushes the first baseline
-/// down to its own ascent (a same-size label leaves it unchanged).
+/// on the first line, so a numbering label that reaches higher than the text
+/// (oversized, or a taller face) pushes the first baseline down to its ascent.
 fn label_boosted_baseline_offset(
     para: &Paragraph,
     fonts: &HashMap<String, FontEntry>,
@@ -183,9 +195,8 @@ fn label_boosted_baseline_offset(
         return text_offset;
     }
     let label_fs = para.list_label_font_size.unwrap_or(text_font_size);
-    if label_fs <= text_font_size {
-        return text_offset;
-    }
+    // Compared by ascent, not size: an 11pt Symbol bullet reaches 0.6pt above
+    // 11pt Calibri, and Word puts that above the first baseline (annotation #66).
     let label_ar = label_font_key(para)
         .and_then(|k| fonts.get(&k))
         .and_then(|e| e.ascender_ratio)
@@ -1788,7 +1799,9 @@ fn render_paragraph_block(
         let num_lines = lines.len();
         // The numbering label is a run on the first line, so its font
         // metrics participate in that line's height.
-        let first_line_h = label_boosted_line_h(para, ctx.fonts, line_h, effective_ls, font_size);
+        let first_line_h = label_boosted_line_h(
+            para, ctx.fonts, line_h, effective_ls, font_size, tallest_lhr, tallest_ar,
+        );
         if num_lines <= 1 {
             // If the single line was created by a break, use its font size
             if let Some(bfs) = lines.first().and_then(|l| l.break_font_size) {
@@ -3455,5 +3468,57 @@ mod tests {
             per_line_footnote_extra(&[vec![], vec![]], &[], &HashSet::new(), 12.0, |_| 99.0);
         assert_eq!(per_line, vec![0.0, 0.0]);
         assert_eq!(total, 0.0);
+    }
+
+    fn font(lhr: f32, ar: f32) -> FontEntry {
+        FontEntry {
+            pdf_name: "F".to_string(),
+            font_ref: pdf_writer::Ref::new(1),
+            widths_1000: vec![500.0; 224],
+            line_h_ratio: Some(lhr),
+            ascender_ratio: Some(ar),
+            grid_line_ratio: None,
+            plain_line_h_ratio: Some(lhr),
+            plain_ascender_ratio: Some(ar),
+            char_to_gid: None,
+            char_widths_1000: None,
+            kern_pairs: None,
+            synthetic_bold: false,
+            is_substituted: false,
+            missing_cjk_chars: Default::default(),
+            font_path: None,
+            face_index: 0,
+        }
+    }
+
+    /// case33: an 11pt Symbol bullet on 11pt Calibri gives Word a 16.0pt line
+    /// (marker ascent + text descent, ×1.15), not the 15.5pt of either font alone.
+    #[test]
+    fn symbol_bullet_line_combines_ascent_and_descent() {
+        let (cal_lhr, cal_ar) = (1.220703, 0.952148);
+        let fonts = HashMap::from([
+            ("Symbol".to_string(), font(1.225098, 1.005371)),
+            ("Calibri".to_string(), font(cal_lhr, cal_ar)),
+            ("Courier New".to_string(), font(1.132813, 0.832520)),
+        ]);
+        let text_line_h = 11.0 * cal_lhr * 1.15;
+        let mut para = Paragraph { list_label: "\u{2022}".to_string(), ..Default::default() };
+        let boosted = |para: &Paragraph| {
+            label_boosted_line_h(
+                para, &fonts, text_line_h, LineSpacing::Auto(1.15), 11.0, Some(cal_lhr), Some(cal_ar),
+            )
+        };
+
+        para.list_label_font = Some("Symbol".to_string());
+        assert!((boosted(&para) - 16.115).abs() < 0.01, "got {}", boosted(&para));
+        // Symbol reaches higher than Calibri, so the first baseline drops too.
+        let off = label_boosted_baseline_offset(&para, &fonts, 11.0 * cal_ar, 11.0);
+        assert!((off - 11.0 * 1.005371).abs() < 0.001);
+
+        para.list_label_font = Some("Calibri".to_string());
+        assert_eq!(boosted(&para), text_line_h);
+        // Courier New's deeper descent does not count (streamnet p5 sub-bullets).
+        para.list_label_font = Some("Courier New".to_string());
+        assert_eq!(boosted(&para), text_line_h);
     }
 }

@@ -1585,7 +1585,7 @@ pub(super) fn lines_height(lines: &[TextLine], line_pitch: f32, metrics: (f32, f
 
 /// winDescent as a fraction of the font size: the line-height ratio less the
 /// ascender ratio (identity used throughout), 0.25 when the font is unknown.
-fn descender_ratio(lhr: Option<f32>, ar: Option<f32>) -> f32 {
+pub(super) fn descender_ratio(lhr: Option<f32>, ar: Option<f32>) -> f32 {
     lhr.zip(ar).map_or(0.25, |(l, a)| (l - a).max(0.0))
 }
 
