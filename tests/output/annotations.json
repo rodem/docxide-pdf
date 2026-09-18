@@ -580,8 +580,8 @@
       "source": "Generated",
       "x_pt": 358.6049,
       "y_pt": 175.3728,
-      "note": "Content of this cell \"Banksia Park International High School in South Australia ....\" should start on this page, as there is plenty of room.",
-      "fixed": false,
+      "note": "Content of this cell \"Banksia Park International High School in South Australia ....\" should start on this page, as there is plenty of room.\n\nFIXED (2026-09-18): the row has no trHeight/cantSplit so it did split, but only between paragraphs: the 10-line body paragraph did not fit the ~90pt left and moved whole to page 5, leaving the row's third column empty (the document ran to 9 pages vs Word's 7). find_cell_split now breaks inside a paragraph between lines, keeping at least two lines on each side (Word's widow control), and the partial-row renderer draws line ranges (label and anchored pictures only with the first line). Page 4 now shows the heading plus seven body lines like the reference; 7 pages.",
+      "fixed": true,
       "cleared": false
     },
     {

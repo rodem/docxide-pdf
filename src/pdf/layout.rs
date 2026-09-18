@@ -456,6 +456,7 @@ pub(super) struct RightRegion {
     pub(super) content_width: f32,
 }
 
+#[derive(Default)]
 pub(super) struct TextLine {
     pub(super) chunks: Vec<WordChunk>,
     pub(super) total_width: f32,

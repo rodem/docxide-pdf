@@ -1,5 +1,62 @@
 # Roadmap
 
+## Annotation Fixes 2026-09-18 (5 fixes, one commit each)
+
+Baseline for the round: HEAD 2c0706d, 170 tests passing. Every fix verified by
+a full-suite run against the previous fix's run (`touch src/lib.rs` before each
+run — a stash pop mid-run bumps mtimes and the harness silently reuses PDFs).
+
+1. **#241 cell float z-order** (japanese_land_development): a picture anchored
+   in a table-cell paragraph was always drawn before the paragraph's
+   connectors/textboxes; `CellFloatingImageLayout` now carries `z_index` and
+   pictures above the shapes draw after them (`draw_cell_float`). No score
+   change (small region), hash change only there. Also confirmed #220 already
+   fixed by the row-split work (Q3 on p6 in both).
+2. **#66 list marker line height** (case33): Word sizes a list line as *marker
+   ascent + text descent* (× spacing), never the marker's descent, and drops
+   the first baseline by the marker's extra ascent. 11pt Symbol on 11pt Calibri
+   → 16.115 (Word 16.00) instead of our 15.50. Courier New "o" sub-bullets
+   (streamnet p5) and Symbol on Arial (dialysis) confirmed the marker descent
+   is ignored. 27 fixtures improve (samtale SSIM +36pp, case3 J +35pp,
+   usep_handbook J +31pp, case33 +21pp, romanian_quality +21pp, czech_crisis
+   +9pp); streamnet SSIM −3.8pp while its Jaccard gains 13pp — an agenda
+   *table* on p1 runs +0.43/+0.68pt per row (row-height drift, was cancelled
+   by the wrong list pitch). Residual: Word's 0.25pt line grid (16.115 vs 16.0).
+3. **#158 #195 bosch**: (a) Word substitutes the *theme body font* for a
+   missing `w:family="auto"` font — bosch (theme Calibri) → Calibri,
+   german_mezzo "Archivo" (theme Arial) → Arial, three more fixtures agree;
+   a plain "always Calibri" broke german_mezzo (1 → 2 pages). `register_font`
+   takes `theme_body_font`; `try_candidate` writes the font, so it is called
+   once. (b) A header `framePr` with `w:wrap="notBeside"` and `w:h` pushes each
+   in-flow header *line* that would overlap its band below the frame (per
+   line: bosch's first two 14.75pt lines fit above the 33–139pt band, the
+   third lands at 139 → body at 153.75 like Word). bosch SSIM +21pp,
+   croatian_thesis SSIM +9pp.
+4. **#240 case41 p6**: the #152 look-ahead only fired for image-only anchor
+   paragraphs; it now accepts text-carrying ones, the anchor paragraph's own
+   zone peeks the handed-forward anchor top, and the look-ahead only fires
+   when the float leaves ≥48pt beside it for text (case41 p3 wraps with
+   64.8pt free; brazilian p9's figure with 37.5pt beside it went 20 → 21
+   pages without that gate — Word leaves its caption alone).
+5. **#237 stem_partnerships p4**: table rows split between *lines* of a cell
+   paragraph (2 lines kept on each side), not only between paragraphs:
+   `find_cell_split` returns a `CellCursor { item, line }`; `cursor_chunks` /
+   `item_chunk_height` / `chunk_space_before` share the chunk arithmetic with
+   `render_partial_row` / `render_partial_cell_content`; the split gate also
+   accepts a single paragraph of ≥4 lines. stem_partnerships 9 → 7 pages (= Word).
+
+Findings left for later:
+- **#93 justified space compression**: Word pulled "2251," onto the line by
+  shrinking the 10 breakable spaces to 2.00pt (natural 2.75 @ 11pt TNR, i.e.
+  ~73%); no `wpJustification` compat flag. We only expand (`layout.rs`
+  `overflows` / `extra_per_gap.max(0.0)`). Corpus-wide effect on justified
+  text; the shrink limit needs calibration before touching it.
+- **#233** needs Merriweather in the assets repo (underscore 0.835em vs Arial
+  0.556em); nothing to do in code.
+- streamnet p1 agenda table rows +0.43/+0.68pt each (table cell line height).
+- dental_amalgam gained +22pp J with a max-descent rule but +10pp with the
+  measured ascent-only rule — worth a look at what its markers are.
+
 ## Distributed Alignment (DONE — 2026-07-27)
 
 `w:jc="distribute"` used to fall through `parse_alignment`'s
@@ -407,15 +464,12 @@ than 0.1pp, 15 improved.
   Gated: 191 fixtures say doNotCompress, only 6 compress. taiwanese J +3.8 /
   SSIM +9.1, tokyo_welfare +3.6 / +8.2, japanese_land_development −0.1 SSIM.
 
-Left open with triage: #66 (case33 bullet lines 16.0pt vs our 15.5: neither
-Windows/Word-for-Mac Symbol (ratio 1.2251) nor the reference's embedded SymbolMT
-descriptor (1.221) gives Word's 1.265 — needs its own investigation), #220
-(english_town Q3 now sits on p6 as the note asks; the rest is row-height drift
-— probably resolved, confirm), #233 (Merriweather not vendored), #158/#195
-(bosch: Word substitutes the missing "Bosch Office Sans" with Calibri, we pick
-Arial — the `w:family="auto"` question), #186 (alfies p1 13.9pt high: OLE object
-paragraph + 24pt empty marks, not investigated), #237 (row split is
-paragraph-granular), #93/#185/#239 (vague), #8/#59/#82/#124 (systemic drift).
+Left open with triage (2026-09-16; #66, #220, #158/#195, #237, #240, #241
+closed in the 2026-09-18 round above): #233 (Merriweather not vendored), #186
+(alfies p1 13.9pt high: OLE object paragraph + 24pt empty marks, not
+investigated), #93 (Word compresses justified inter-word spaces to fit one
+more word — see the 2026-09-18 notes), #185/#239 (vague), #8/#59/#82/#124
+(systemic drift).
 
 Follow-ups: `resolve_fi_y_top` should treat AlignTop-relative-to-paragraph as
 the anchor top (then the look-ahead can drop its paragraph-relative filter);

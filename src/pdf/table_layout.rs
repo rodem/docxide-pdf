@@ -471,6 +471,7 @@ pub(super) struct CellFloatingImageLayout {
     pub(super) z_index: u32,
 }
 
+#[derive(Default)]
 pub(super) struct CellParagraphLayout {
     pub(super) lines: Vec<TextLine>,
     pub(super) line_h: f32,
@@ -986,32 +987,130 @@ pub(super) fn compute_merge_spans(table: &Table, row_layouts: &[RowLayout]) -> H
     spans
 }
 
-/// Find how many items (from `start`) fit within `available_h`.
-/// Always includes at least one item to guarantee progress.
-pub(super) fn find_cell_split(cell: &CellLayout, start: usize, available_h: f32, cm: &CellMargins) -> usize {
-    if start >= cell.items.len() {
-        return cell.items.len();
+/// Position in a cell's content for row splitting: items before `item` are
+/// emitted; when `line > 0`, paragraph `item` is emitted up to that line.
+#[derive(Clone, Copy, Default, PartialEq, Debug)]
+pub(super) struct CellCursor {
+    pub(super) item: usize,
+    pub(super) line: usize,
+}
+
+/// The (item index, first line, end line) pieces of a cell between two cursors;
+/// `None` for the end line means the rest of the paragraph.
+pub(super) fn cursor_chunks(
+    items: &[CellContentItem],
+    start: CellCursor,
+    end: CellCursor,
+) -> impl Iterator<Item = (usize, usize, Option<usize>)> + '_ {
+    let last = if end.line > 0 { end.item + 1 } else { end.item };
+    (start.item..last.min(items.len())).map(move |pi| {
+        let l0 = if pi == start.item { start.line } else { 0 };
+        let l1 = if pi == end.item && end.line > 0 { Some(end.line) } else { None };
+        (pi, l0, l1)
+    })
+}
+
+/// Height of lines `l0..l1` of an item (`l1` None = to the end); items without
+/// lines use their block height.
+pub(super) fn item_chunk_height(item: &CellContentItem, l0: usize, l1: Option<usize>) -> f32 {
+    match item {
+        CellContentItem::Paragraph(p) if !p.lines.is_empty() => {
+            (l1.unwrap_or(p.lines.len()) - l0) as f32 * p.line_h
+        }
+        CellContentItem::Paragraph(p) => para_block_height(p),
+        CellContentItem::NestedTable { height } => *height,
+    }
+}
+
+/// The paragraph's space_before as charged inside a split chunk: only when
+/// it is not the chunk's first item (a continuation never repeats it).
+pub(super) fn chunk_space_before(item: &CellContentItem, first_in_chunk: bool) -> f32 {
+    match item {
+        CellContentItem::Paragraph(p) if !first_in_chunk => p.space_before,
+        _ => 0.0,
+    }
+}
+
+/// Where the cell content from `start` must break to fit `available_h`.
+/// Word breaks a row's paragraph between lines, keeping two lines on each
+/// side (widow control; annotation #237: a 10-line cell paragraph moved whole
+/// to the next page, leaving 90pt of the row empty). A paragraph that cannot
+/// split that way moves whole. Always progresses by at least one item.
+/// ponytail: widowControl is assumed on, not read from the paragraph.
+pub(super) fn find_cell_split(
+    cell: &CellLayout,
+    start: CellCursor,
+    available_h: f32,
+    cm: &CellMargins,
+) -> CellCursor {
+    let done = CellCursor { item: cell.items.len(), line: 0 };
+    if start.item >= cell.items.len() {
+        return done;
     }
     let mut h = cm.top + cm.bottom;
-    for pi in start..cell.items.len() {
-        let item_h = match &cell.items[pi] {
-            CellContentItem::Paragraph(para) => {
-                let sb = if pi == start { 0.0 } else { para.space_before };
-                sb + para_block_height(para)
-            }
-            CellContentItem::NestedTable { height } => *height,
-        };
-        if h + item_h > available_h && pi > start {
-            return pi;
+    for pi in start.item..cell.items.len() {
+        let first = pi == start.item;
+        let l0 = if first { start.line } else { 0 };
+        let item = &cell.items[pi];
+        let sb = chunk_space_before(item, first);
+        let item_h = sb + item_chunk_height(item, l0, None);
+        if h + item_h <= available_h {
+            h += item_h;
+            continue;
         }
+        if let CellContentItem::Paragraph(p) = item {
+            let remaining = p.lines.len().saturating_sub(l0);
+            let room = ((available_h - h - sb) / p.line_h).floor().max(0.0) as usize;
+            let fit = room.min(remaining.saturating_sub(2));
+            if fit >= 2 {
+                return CellCursor { item: pi, line: l0 + fit };
+            }
+        }
+        if !first {
+            return CellCursor { item: pi, line: 0 };
+        }
+        // The first item is force-included so the split makes progress.
         h += item_h;
     }
-    cell.items.len()
+    done
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// stem_partnerships p4 (annotation #237): a 10-line cell paragraph after a
+    /// heading must break between lines, two lines minimum on either side.
+    #[test]
+    fn row_split_breaks_inside_a_long_paragraph() {
+        let para = |n: usize| {
+            CellContentItem::Paragraph(CellParagraphLayout {
+                lines: (0..n).map(|_| TextLine::default()).collect(),
+                line_h: 10.0,
+                space_before: 5.0,
+                ..Default::default()
+            })
+        };
+        let cell = CellLayout {
+            items: vec![para(1), para(10)],
+            total_height: 0.0,
+            text_direction: TextDirection::default(),
+        };
+        let cm = CellMargins { top: 0.0, left: 0.0, bottom: 0.0, right: 0.0 };
+        let split = |start, avail| find_cell_split(&cell, start, avail, &cm);
+        let at = |item, line| CellCursor { item, line };
+
+        // heading (10) + space_before (5) + four of the ten lines
+        assert_eq!(split(at(0, 0), 55.0), at(1, 4));
+        // the remaining six lines fit, no space_before on a continuation
+        assert_eq!(split(at(1, 4), 60.0), at(2, 0));
+        // room for one line only: the paragraph moves whole
+        assert_eq!(split(at(0, 0), 26.0), at(1, 0));
+        // nine lines would fit but two must stay for the next page
+        assert_eq!(split(at(0, 0), 110.0), at(1, 8));
+        let chunks: Vec<_> = cursor_chunks(&cell.items, at(0, 0), at(1, 4)).collect();
+        assert_eq!(chunks, vec![(0, 0, None), (1, 0, Some(4))]);
+    }
 
     #[test]
     fn test_cell_span_width_single() {

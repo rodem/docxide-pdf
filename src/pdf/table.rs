@@ -16,9 +16,10 @@ use super::layout::{
     encode_text_for_pdf, render_paragraph_lines,
 };
 use super::table_layout::{
-    CellContentItem, CellFloatingImageLayout, CellLayout, CellParagraphLayout, HfSubstitution,
-    RowLayout, apply_pct_width, auto_fit_columns, cell_span_width, cell_x_offset, compute_merge_spans,
-    compute_row_layouts, find_cell_split, para_block_height,
+    CellContentItem, CellCursor, CellFloatingImageLayout, CellLayout, CellParagraphLayout,
+    HfSubstitution, RowLayout, apply_pct_width, auto_fit_columns, cell_span_width, cell_x_offset,
+    chunk_space_before, compute_merge_spans, compute_row_layouts, cursor_chunks, find_cell_split,
+    item_chunk_height, para_block_height,
 };
 
 fn draw_border(content: &mut Content, border: &CellBorder, x1: f32, y1: f32, x2: f32, y2: f32) {
@@ -720,8 +721,8 @@ fn render_partial_cell_content(
     content: &mut Content,
     items: &[CellContentItem],
     blocks: &[Block],
-    start: usize,
-    end: usize,
+    start: CellCursor,
+    end: CellCursor,
     cell_x: f32,
     col_w: f32,
     cursor_y_start: f32,
@@ -757,10 +758,10 @@ fn render_partial_cell_content(
         }
     }
 
-    for pi in start..end {
+    for (pi, l0, l1) in cursor_chunks(items, start, end) {
         match &items[pi] {
             CellContentItem::Paragraph(para) => {
-                let sb = if pi == start { 0.0 } else { para.space_before };
+                let sb = if pi == start.item { 0.0 } else { para.space_before };
 
                 if !para_has_visible_content(para) {
                     cursor_y -= sb + para_block_height(para);
@@ -769,8 +770,12 @@ fn render_partial_cell_content(
 
                 cursor_y -= sb;
 
-                for fi in &para.floating_images {
-                    draw_cell_float(content, fi, cell_x, cursor_y);
+                // Anchored pictures and the list label belong to the
+                // paragraph's first line; a continuation chunk has neither.
+                if l0 == 0 {
+                    for fi in &para.floating_images {
+                        draw_cell_float(content, fi, cell_x, cursor_y);
+                    }
                 }
 
                 if let Some(ref img_name) = para.image_name {
@@ -796,8 +801,10 @@ fn render_partial_cell_content(
                 let first_line_hanging = if para.list_label.is_empty() {
                     para.indent_hanging
                 } else {
-                    let label_x = cell_x + cm.left + para.indent_left - para.indent_hanging;
-                    draw_cell_label(content, para, label_x, baseline_y, ctx.fonts);
+                    if l0 == 0 {
+                        let label_x = cell_x + cm.left + para.indent_left - para.indent_hanging;
+                        draw_cell_label(content, para, label_x, baseline_y, ctx.fonts);
+                    }
                     if para.indent_first_line > 0.0 && para.indent_hanging == 0.0 {
                         -para.indent_first_line
                     } else {
@@ -805,9 +812,10 @@ fn render_partial_cell_content(
                     }
                 };
 
+                let l1 = l1.unwrap_or(para.lines.len());
                 render_paragraph_lines(
                     content,
-                    &para.lines,
+                    &para.lines[l0..l1],
                     &para.alignment,
                     text_x,
                     text_w,
@@ -815,7 +823,7 @@ fn render_partial_cell_content(
                     para.line_h,
                     (para.font_size, para.font_size * para.descender_ratio),
                     para.lines.len(),
-                    0,
+                    l0,
                     &mut Vec::new(),
                     first_line_hanging,
                     ctx.fonts,
@@ -825,7 +833,7 @@ fn render_partial_cell_content(
                     None,
                 );
 
-                cursor_y -= para.lines.len() as f32 * para.line_h;
+                cursor_y -= (l1 - l0) as f32 * para.line_h;
             }
             CellContentItem::NestedTable { height } => {
                 let bi = item_to_block.get(pi).copied().unwrap_or(0);
@@ -1099,23 +1107,17 @@ fn render_partial_row(
     table_left: f32,
     pb: &mut super::PageBuilder,
     ctx: &RenderContext,
-    starts: &[usize],
-    ends: &[usize],
+    starts: &[CellCursor],
+    ends: &[CellCursor],
 ) {
     let mut max_h: f32 = cm.top + cm.bottom;
     for (ci, cell_layout) in layout.cells.iter().enumerate() {
         let start = starts[ci];
         let end = ends[ci];
         let mut h = cm.top + cm.bottom;
-        for pi in start..end {
-            let item_h = match &cell_layout.items[pi] {
-                CellContentItem::Paragraph(para) => {
-                    let sb = if pi == start { 0.0 } else { para.space_before };
-                    sb + para_block_height(para)
-                }
-                CellContentItem::NestedTable { height } => *height,
-            };
-            h += item_h;
+        for (pi, l0, l1) in cursor_chunks(&cell_layout.items, start, end) {
+            let item = &cell_layout.items[pi];
+            h += chunk_space_before(item, pi == start.item) + item_chunk_height(item, l0, l1);
         }
         max_h = max_h.max(h);
     }
@@ -1149,10 +1151,11 @@ fn render_partial_row(
             row_h,
         );
 
-        let has_content = (start..end).any(|pi| match &cell_layout.items[pi] {
-            CellContentItem::Paragraph(p) => para_has_visible_content(p),
-            CellContentItem::NestedTable { height } => *height > 0.0,
-        });
+        let has_content =
+            cursor_chunks(&cell_layout.items, start, end).any(|(pi, _, _)| match &cell_layout.items[pi] {
+                CellContentItem::Paragraph(p) => para_has_visible_content(p),
+                CellContentItem::NestedTable { height } => *height > 0.0,
+            });
 
         if has_content {
             render_partial_cell_content(
@@ -1384,7 +1387,7 @@ pub(super) fn render_table(
                                    did_flush: &mut bool,
                                    emb: &mut f32| {
         let ncells = layout.cells.len();
-        let mut starts = vec![0usize; ncells];
+        let mut starts = vec![CellCursor::default(); ncells];
         loop {
             let avail = pb.slot_top - *emb;
             let mut ends = Vec::with_capacity(ncells);
@@ -1392,7 +1395,7 @@ pub(super) fn render_table(
 
             for ci in 0..ncells {
                 let end = find_cell_split(&layout.cells[ci], starts[ci], avail, cm);
-                if end < layout.cells[ci].items.len() {
+                if end.item < layout.cells[ci].items.len() {
                     all_done = false;
                 }
                 ends.push(end);
@@ -1490,12 +1493,16 @@ pub(super) fn render_table(
         // minimum row height for splitting. But a row with an explicit
         // trHeight (exact or atLeast) never breaks in Word; it migrates whole
         // (arizona_physical / traditional_skills vs isla / master_thesis).
-        // The cell must have multiple breakable items for the split to
+        // A cell must have somewhere to break — several items, or a paragraph
+        // long enough to leave two lines on each side — for the split to
         // produce anything, and every cell's first chunk must genuinely fit
         // in the remaining space (otherwise find_cell_split's force-included
         // first item would overflow the footer and the row migrates whole
         // instead).
-        let any_cell_multi_item = layout.cells.iter().any(|c| c.items.len() > 1);
+        let any_cell_multi_item = layout.cells.iter().any(|c| {
+            c.items.len() > 1
+                || c.items.iter().any(|it| matches!(it, CellContentItem::Paragraph(p) if p.lines.len() >= 4))
+        });
         let first_chunk_fits = layout.cells.iter().all(|c| {
             c.items.first().is_none_or(|it| {
                 let item_h = match it {
