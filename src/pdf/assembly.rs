@@ -149,6 +149,7 @@ pub(super) fn assemble_pdf_pages(
     doc: &Document,
     bookmark_positions: &HashMap<String, (usize, f32)>,
     heading_entries: &[HeadingEntry],
+    tags: &super::tagging::Tags,
 ) {
     let n = all_contents.len();
     let page_ids: Vec<Ref> = (0..n).map(|_| alloc()).collect();
@@ -304,11 +305,13 @@ pub(super) fn assemble_pdf_pages(
     let mut all_deferred_shapes = all_deferred_shapes.into_iter();
     for (i, c) in all_contents.into_iter().enumerate() {
         let mut body_raw = c.finish().to_vec();
+        // Closes the body stream's default artifact (tagging::artifact_content).
+        body_raw.extend_from_slice(b"\nEMC\n");
+        let mut body_raw = super::tagging::strip_empty_artifacts(&body_raw);
         // Anchored shapes paint above the page's text layer, pre-sorted by
         // relativeHeight at flush time
         for (_, shape) in all_deferred_shapes.next().into_iter().flatten() {
-            body_raw.push(b'\n');
-            body_raw.extend_from_slice(shape.finish().as_slice());
+            super::tagging::wrap_artifact(&mut body_raw, shape.finish().as_slice(), false);
         }
 
         // When the document has comments, Word's PDF export renders body
@@ -368,9 +371,7 @@ pub(super) fn assemble_pdf_pages(
 
         let mut combined: Vec<u8> = Vec::new();
         if let Some(hf) = all_hf_contents[i].take() {
-            let hf_raw = hf.finish();
-            combined.extend_from_slice(hf_raw.as_slice());
-            combined.push(b'\n');
+            super::tagging::wrap_artifact(&mut combined, hf.finish().as_slice(), true);
         }
         // Page border box (page coords, unscaled — outside the comment-scale
         // wrapper). @display gates which pages get it; is_first = first page of
@@ -385,8 +386,8 @@ pub(super) fn assemble_pdf_pages(
                     PageBorderDisplay::NotFirstPage => !is_first,
                 };
                 if show {
-                    combined.extend_from_slice(render_page_borders(pb, sp).finish().as_slice());
-                    combined.push(b'\n');
+                    let borders = render_page_borders(pb, sp).finish();
+                    super::tagging::wrap_artifact(&mut combined, borders.as_slice(), false);
                 }
             }
         }
@@ -397,7 +398,7 @@ pub(super) fn assemble_pdf_pages(
         combined.extend_from_slice(&valign_suffix);
         if !pane_raw.is_empty() {
             combined.push(b'\n');
-            combined.extend_from_slice(&pane_raw);
+            super::tagging::wrap_artifact(&mut combined, &pane_raw, false);
         }
         let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&combined, 6);
         pdf.stream(content_ids[i], &compressed)
@@ -494,6 +495,7 @@ pub(super) fn assemble_pdf_pages(
     let lang = doc.default_lang.as_deref().unwrap_or("en-US");
     let metadata_id = alloc();
     pdf.metadata(metadata_id, xmp_packet(doc, lang).as_bytes());
+    let struct_root = (!tags.is_empty()).then(|| tags.write(pdf, alloc, &page_ids));
     {
         let mut catalog = pdf.catalog(catalog_id);
         catalog.pages(pages_id);
@@ -503,6 +505,10 @@ pub(super) fn assemble_pdf_pages(
         }
         catalog.lang(TextStr(lang)).metadata(metadata_id);
         catalog.viewer_preferences().display_doc_title(true);
+        if let Some(root) = struct_root {
+            catalog.pair(Name(b"StructTreeRoot"), root);
+            catalog.mark_info().marked(true);
+        }
     }
 
     if doc.title.is_some() || doc.author.is_some() || doc.subject.is_some() || doc.keywords.is_some() {
@@ -540,6 +546,9 @@ pub(super) fn assemble_pdf_pages(
             .parent(pages_id)
             .contents(content_ids[i])
             .tab_order(pdf_writer::types::TabOrder::StructureOrder);
+        if let Some(key) = tags.struct_parents(i) {
+            page.struct_parents(key);
+        }
         if !page_annot_refs[i].is_empty() {
             page.annotations(page_annot_refs[i].iter().copied());
         }

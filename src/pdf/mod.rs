@@ -16,6 +16,7 @@ mod positioning;
 mod smartart;
 mod table;
 mod table_layout;
+mod tagging;
 mod textbox_render;
 mod wordart;
 
@@ -582,12 +583,13 @@ pub(super) struct PageBuilder {
     page_section_indices: Vec<(usize, bool, usize)>,
     all_styleref: Vec<HashMap<String, String>>,
     all_first_styleref: Vec<HashMap<String, String>>,
+    pub(super) tags: tagging::Tags,
 }
 
 impl PageBuilder {
     fn new(slot_top: f32) -> Self {
         PageBuilder {
-            content: Content::new(),
+            content: tagging::artifact_content(),
             links: Vec::new(),
             comment_anchors: Vec::new(),
             footnote_ids: Vec::new(),
@@ -616,12 +618,23 @@ impl PageBuilder {
             page_section_indices: Vec::new(),
             all_styleref: Vec::new(),
             all_first_styleref: Vec::new(),
+            tags: tagging::Tags::new(),
         }
+    }
+
+    /// Start `node`'s content on the current page (see `tagging`).
+    pub(super) fn begin_tag(&mut self, node: usize) {
+        let page = self.all_contents.len();
+        self.tags.begin(&mut self.content, page, node);
+    }
+
+    pub(super) fn end_tag(&mut self) {
+        tagging::Tags::end(&mut self.content);
     }
 
     pub(super) fn flush_page(&mut self, sect_idx: usize) {
         self.all_contents
-            .push(std::mem::replace(&mut self.content, Content::new()));
+            .push(std::mem::replace(&mut self.content, tagging::artifact_content()));
         self.all_content_bottom.push(self.slot_top);
         // Stable sort: equal relativeHeight keeps document order
         self.deferred_shapes.sort_by_key(|(z, _)| *z);
@@ -651,7 +664,7 @@ impl PageBuilder {
     }
 
     fn push_blank_page(&mut self, sect_idx: usize) {
-        self.all_contents.push(Content::new());
+        self.all_contents.push(tagging::artifact_content());
         // Blank page has no body content; record top so vAlign yields no shift.
         self.all_content_bottom.push(self.slot_top);
         self.all_deferred_shapes.push(Vec::new());
@@ -1019,6 +1032,24 @@ fn compute_bookmark_positions(
 /// Render a single paragraph block. Returns `true` if the block was skipped
 /// (the caller should `continue` the block loop).
 #[allow(clippy::too_many_arguments)]
+/// Structure type of a body paragraph. Word tags outline levels as H1–H6
+/// (deeper levels stay H6) and its Title style as Title, role-mapped to H1.
+fn para_tag_kind(para: &Paragraph, doc: &Document) -> &'static str {
+    let style_name = para.style_id.as_ref().and_then(|id| doc.style_id_to_name.get(id));
+    if style_name.is_some_and(|n| n.eq_ignore_ascii_case("title")) {
+        return "H1";
+    }
+    match para.outline_level {
+        Some(0) => "H1",
+        Some(1) => "H2",
+        Some(2) => "H3",
+        Some(3) => "H4",
+        Some(4) => "H5",
+        Some(_) => "H6",
+        None => "P",
+    }
+}
+
 fn render_paragraph_block(
     para: &Paragraph,
     state: &mut LayoutState,
@@ -2110,6 +2141,9 @@ fn render_paragraph_block(
             };
             let baseline_y = state.pb.slot_top - baseline_offset;
 
+            // One element for both halves: its content continues on the next page.
+            let tag = state.pb.tags.add(tagging::ROOT, para_tag_kind(para, doc));
+            state.pb.begin_tag(tag);
             render_list_label(
                 &mut state.pb.content,
                 para,
@@ -2144,6 +2178,7 @@ fn render_paragraph_block(
                     right_x,
                 }),
             );
+            state.pb.end_tag();
 
             // Footnotes referenced on the lines that stay here belong to this
             // page's footnote area; the flush below would otherwise carry them
@@ -2176,6 +2211,7 @@ fn render_paragraph_block(
             let rest_text_width =
                 (rest_col_w - para.indent_left - para.indent_right).max(1.0);
 
+            state.pb.begin_tag(tag);
             render_paragraph_lines(
                 &mut state.pb.content,
                 rest,
@@ -2201,6 +2237,7 @@ fn render_paragraph_block(
                     right_x,
                 }),
             );
+            state.pb.end_tag();
 
             state.pb.slot_top -= rest_content_h;
             state.prev_space_after = effective_space_after;
@@ -2594,6 +2631,8 @@ fn render_paragraph_block(
         };
         let baseline_y = state.pb.slot_top - bdr_top_pad - baseline_offset;
 
+        let tag = state.pb.tags.add(tagging::ROOT, para_tag_kind(para, doc));
+        state.pb.begin_tag(tag);
         render_list_label(
             &mut state.pb.content,
             para,
@@ -2628,6 +2667,12 @@ fn render_paragraph_block(
                 right_x,
             }),
         );
+        state.pb.end_tag();
+    } else {
+        // Word tags empty paragraphs too; keeping them keeps the P sequence aligned.
+        let tag = state.pb.tags.add(tagging::ROOT, para_tag_kind(para, doc));
+        state.pb.begin_tag(tag);
+        state.pb.end_tag();
     }
 
     // Draw paragraph borders — left/right borders extend outward
@@ -3441,6 +3486,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         doc,
         &state.bookmark_positions,
         &state.heading_entries,
+        &state.pb.tags,
     );
 
     let t_assembly = t0.elapsed();
