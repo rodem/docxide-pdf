@@ -12,6 +12,7 @@ mod helpers;
 mod images;
 mod list_label;
 mod layout;
+mod objstm;
 mod positioning;
 mod smartart;
 mod table;
@@ -3500,7 +3501,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         (t_assembly - t_headers).as_secs_f64() * 1000.0,
     );
 
-    Ok(pdf.finish())
+    Ok(objstm::pack(pdf.finish()))
 }
 
 #[cfg(test)]
