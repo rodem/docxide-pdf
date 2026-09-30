@@ -499,6 +499,7 @@ fn visual_comparison() {
                 convert_ms: None,
                 ref_pages: Some(r.ref_pages),
                 gen_pages: Some(r.gen_pages),
+                ..Default::default()
             },
         );
     }

@@ -12,7 +12,13 @@ import subprocess
 import sys
 
 THRESHOLDS = {"jaccard": 0.20, "ssim": 0.75}
-METRIC_NAMES = {"jaccard": "Jaccard", "ssim": "SSIM", "text_boundary": "TxtBnd"}
+METRIC_NAMES = {
+    "jaccard": "Jaccard",
+    "ssim": "SSIM",
+    "text_boundary": "TxtBnd",
+    "a11y_struct": "A11ySt",
+    "a11y_text": "A11yTx",
+}
 
 # Score changes smaller than this are ignored
 NOISE = 0.003
@@ -78,7 +84,8 @@ def main():
     new = load_current_baseline()
 
     all_keys = sorted(set(old) | set(new))
-    metrics = ["jaccard", "ssim", "text_boundary"]
+    # ponytail: ua_deficit (a count, lower is better) left out; compact_report.py covers it
+    metrics = ["jaccard", "ssim", "text_boundary", "a11y_struct", "a11y_text"]
 
     improvements = []
     regressions = []

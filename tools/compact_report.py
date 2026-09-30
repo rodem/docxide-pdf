@@ -11,8 +11,17 @@ from pathlib import Path
 
 REGRESSION_SLACK = 0.02
 NOISE = 0.003
-METRIC_NAMES = {"jaccard": "Jaccard", "ssim": "SSIM", "text_boundary": "TxtBnd"}
-METRICS = ["jaccard", "ssim", "text_boundary"]
+METRIC_NAMES = {
+    "jaccard": "Jaccard",
+    "ssim": "SSIM",
+    "text_boundary": "TxtBnd",
+    "ua_deficit": "UaDef",
+    "a11y_struct": "A11ySt",
+    "a11y_text": "A11yTx",
+}
+METRICS = ["jaccard", "ssim", "text_boundary", "ua_deficit", "a11y_struct", "a11y_text"]
+# Counts of PDF/UA-1 rules we fail worse than Word: any increase is a regression.
+LOWER_IS_BETTER = {"ua_deficit"}
 
 
 def short_name(name: str, max_len: int = 30) -> str:
@@ -23,6 +32,15 @@ def short_name(name: str, max_len: int = 30) -> str:
 
 def fmt_pct(v: float) -> str:
     return f"{v * 100:.1f}%"
+
+
+def fmt_val(m: str, v: float) -> str:
+    return str(v) if m in LOWER_IS_BETTER else fmt_pct(v)
+
+
+def fmt_change(m: str, delta: float) -> str:
+    # delta is already sign-flipped for LOWER_IS_BETTER, so undo it for display
+    return f"{-delta:+d}" if m in LOWER_IS_BETTER else f"{delta * 100:+.1f}pp"
 
 
 def main():
@@ -57,7 +75,7 @@ def main():
             nv = scores.get(m)
             if ov is None or nv is None:
                 continue
-            delta = nv - ov
+            delta = ov - nv if m in LOWER_IS_BETTER else nv - ov
             if abs(delta) < NOISE:
                 continue
             entry = (name, m, ov, nv, delta)
@@ -71,10 +89,9 @@ def main():
         regressions.sort(key=lambda x: x[4])
         print(f"Regressions ({len(regressions)}):")
         for name, m, ov, nv, delta in regressions:
-            pp = delta * 100
             print(
                 f"  {short_name(name):<{name_w}}  {METRIC_NAMES.get(m, m):<7}  "
-                f"{fmt_pct(ov)} -> {fmt_pct(nv)}  {pp:+.1f}pp"
+                f"{fmt_val(m, ov)} -> {fmt_val(m, nv)}  {fmt_change(m, delta)}"
             )
         print()
 
@@ -82,10 +99,9 @@ def main():
         improvements.sort(key=lambda x: x[4], reverse=True)
         print(f"Improvements ({len(improvements)}):")
         for name, m, ov, nv, delta in improvements:
-            pp = delta * 100
             print(
                 f"  {short_name(name):<{name_w}}  {METRIC_NAMES.get(m, m):<7}  "
-                f"{fmt_pct(ov)} -> {fmt_pct(nv)}  {pp:+.1f}pp"
+                f"{fmt_val(m, ov)} -> {fmt_val(m, nv)}  {fmt_change(m, delta)}"
             )
         print()
 
@@ -96,7 +112,7 @@ def main():
             for m in METRICS:
                 v = scores.get(m)
                 if v is not None:
-                    parts.append(f"{METRIC_NAMES.get(m, m)} {fmt_pct(v)}")
+                    parts.append(f"{METRIC_NAMES.get(m, m)} {fmt_val(m, v)}")
             print(f"  {short_name(name):<{name_w}}  {', '.join(parts)}")
         print()
 

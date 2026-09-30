@@ -1,5 +1,98 @@
 # Roadmap
 
+## Accessibility (IN PROGRESS — started 2026-10-01)
+
+Goal: our PDFs are at least as accessible as Word's own export. Measured by
+`./tools/run-tests.sh --test accessibility` (needs `brew install verapdf poppler`;
+the test skips with a notice when they are missing). Three reference-relative
+metrics per fixture, in `baselines.json` like Jaccard/SSIM:
+
+- **`ua_deficit`** — veraPDF PDF/UA-1 (`-f ua1`, forced because Word writes no
+  pdfuaid) rules we fail where Word passes, or where we fail a larger share of
+  the rule's checks than Word (so 7.1-3 "content not tagged" can't hide behind
+  Word's one stray failure). Count, lower is better, **0 = at least as good as
+  Word** on the machine checks. Any increase is a regression.
+- **`a11y_struct`** — 1 − edit distance over the structure-tree element types
+  in reading order (`pdfinfo -struct`, role maps resolved, Span dropped,
+  `Figure+alt` distinct from `Figure`).
+- **`a11y_text`** — block texts in structure order (`pdfinfo -struct-text`,
+  whitespace-normalised): characters of blocks that match exactly and in
+  order. Catches reading order, headers/footers leaking in as content, and
+  words merged because no space glyph was emitted.
+
+Per-case detail (deficit rules with descriptions and check counts for both
+PDFs) lands in `tests/output/<group>/<case>/generated.deficit.json`; analyses
+are cached in `*.a11y.json` next to it (delete them after upgrading
+veraPDF/Poppler). `DOCXSIDE_A11Y_GEN=libreoffice.pdf` scores another engine's
+PDF with the same yardstick (no baselines written).
+
+**What Word's references look like** (surveyed 2026-10-01): 174/222 are tagged
+exports — `Document` root, P/Span/H1–H6/L/LI/Lbl/LBody/Table/THead/TBody/TR/
+TH/TD/Link/Figure/Footnote/Textbox/TOC/TOCI, Word's RoleMap (Footnote/
+Endnote→Note, Textbox/Header/Footer/InlineShape/Artifact→Sect, Title→H1,
+Diagram→Figure, CommentAnchor→Span), `/Tabs /S` on pages, headers/footers as
+`/Artifact /Pagination`. Word's own bar is low: no pdfuaid (5-1), catalog
+`/Lang` always `en` (real language on Span `/Lang`), DisplayDocTitle without
+a Title in 157/174, TH without `/Scope`, Figure `/Alt` copied verbatim from
+`wp:docPr/@descr` (41/140 figures).
+
+**Deferred: 48 untagged references** are macOS Quartz print-path PDFs (not
+the accessibility export README.md claims) and score N/A until re-exported:
+cases/case17 case18 case19 case20 case36 case63 case64; new/alfies_arc_adult_safeguarding_policy
+alpharetta_school_governance_council americas_counter_terrorism_agenda
+arizona_physical_education_standards bosch_software_ai_announcement
+czech_census_2021_instructions dutch_council_member_resignation
+family_kinship_lesson_plan japanese_land_development_sign_form
+lithuanian_railway_transport_code romanian_quality_evaluation_strategy
+russian_chess_pawn_lesson russian_regional_spatial_development
+turkish_chemistry_course_plan; samples/double-underline run-borders
+sample500kB; scraped/classroom_weekly_newsletter croatian_regulations_altchunk
+czech_expert_witness_law east_asia_conference_form education_consultant_posting
+federal_procurement_terms feminist_voice_dissertation go_math_grade4_guide
+indonesian_benchmarking_guide italian_evaluation_minutes italian_project_proposal
+learning_cultures_dissertation lithuanian_ethics_law lithuanian_food_quality_order
+mandated_reporter_child_abuse polish_archery_range_plan
+russian_university_proceedings seminary_hill_board_meeting
+slovak_misdemeanor_amendment stem_partnerships_guide transition_to_work_deed
+usep_handbook vaccines_history_chapter waste_management_request.
+Their print path may also lay out differently from the online converter, so
+re-exporting can shift visual scores.
+
+**Starting point (173 scored):** struct 0 / text 0 everywhere (untagged);
+ua_deficit 6–11. Every fixture: 6.2-1 MarkInfo, 7.1-3 untagged content,
+7.1-8 no XMP, 7.1-10 no DisplayDocTitle, 7.1-11 no StructTreeRoot, 7.2-34 no
+language. Also 7.2-2 outline language (59), 7.18.3-1 no `/Tabs` (25),
+7.18.5-1 untagged links (25), 7.21.5-1 font widths ≠ glyph widths (7),
+7.21.4.1-1 non-embedded base-14 fallback (3), 7.18.5-2 link `/Contents` (3),
+7.21.7-1 missing ToUnicode (1), 7.21.8-1 `.notdef` referenced (1).
+
+**Backlog, ordered by metric impact:**
+1. Catalog basics: `/Lang` (docDefaults `w:lang`), XMP with dc:title,
+   DisplayDocTitle, page `/Tabs /S`. (No pdfuaid until we actually conform.)
+2. Real space glyphs between words (body text has none: every word is its
+   own `Tj`, so extraction merges words — blocks can't match Word's).
+3. Structure tree: MarkInfo, StructTreeRoot/ParentTree, P and H1–H6 (from
+   `outline_level`, Title style → Title), header/footer `/Artifact
+   /Pagination`, decoration (borders, shading, rules, underlines) artifacts.
+4. Lists L/LI/Lbl/LBody (model keeps only the label string — keep ilvl).
+5. Tables Table/THead/TBody/TR/TH/TD (`tblHeader`; repeated header rows are
+   artifacts; `tblHeader val="0"` currently still counts as a header).
+6. Figures with `/Alt` from `wp:docPr/@descr` (not parsed yet); decorative →
+   artifact.
+7. Links: Link + OBJR + `/StructParent` + `/Contents`. Also fix links dropped
+   in table cells, headers/footers and footnotes (throwaway `Vec` at
+   `table.rs`, `header_footer.rs`, `footnotes.rs`) and link rects/outline
+   destinations not transformed by `BODY_SCALE`/vAlign (`assembly.rs`).
+8. Footnotes (Word: `P > Link > (OBJR, Footnote > P)`), textboxes, TOC/TOCI.
+9. Font rules: widths ≠ glyph widths, base-14 fallback without ToUnicode or
+   embedding, Symbol PUA bullets extracting as U+F0xx, `.notdef` for missing
+   chars, `w:softHyphen` dropped, `w:noBreakHyphen` → U+002D.
+
+**Harness side findings (2026-10-01):** `tests/text_boundary.rs` has had no
+`#[test]` since fb9373b, so the TxtBnd baselines are stale;
+`engine_compare.py` `pdf_creator()` truncates Quartz producers at the escaped
+paren.
+
 ## Annotation Fixes 2026-09-18 (5 fixes, one commit each)
 
 Baseline for the round: HEAD 2c0706d, 170 tests passing. Every fix verified by

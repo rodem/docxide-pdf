@@ -10,6 +10,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, io};
 
+pub mod a11y;
 pub mod text_boundary;
 
 pub const REGRESSION_SLACK: f64 = 0.02;
@@ -28,6 +29,12 @@ pub struct Baselines {
     pub ref_pages: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gen_pages: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ua_deficit: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub a11y_struct: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub a11y_text: Option<f64>,
 }
 
 fn load_skiplist() -> HashSet<String> {
@@ -186,6 +193,15 @@ pub fn write_latest_scores(updates: &HashMap<String, Baselines>) {
         }
         if let Some(v) = new.gen_pages {
             entry.gen_pages = Some(v);
+        }
+        if let Some(v) = new.ua_deficit {
+            entry.ua_deficit = Some(v);
+        }
+        if let Some(v) = new.a11y_struct {
+            entry.a11y_struct = Some(round4(v));
+        }
+        if let Some(v) = new.a11y_text {
+            entry.a11y_text = Some(round4(v));
         }
     }
     let json = serde_json::to_string_pretty(&scores).expect("Failed to serialize latest scores");

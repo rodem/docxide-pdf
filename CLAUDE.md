@@ -17,6 +17,7 @@ cargo build
 ./tools/run-tests.sh --test visual_comparison      # one test suite
 ./tools/run-tests.sh --case case5                  # one fixture
 ./tools/run-tests.sh --verbose                     # full cargo output (debugging only)
+./tools/run-tests.sh --test accessibility          # PDF/UA-1 + structure-tree parity vs Word (needs: brew install verapdf poppler)
 
 # Run a specific test (verbose — avoid unless debugging)
 cargo test test_name
@@ -147,6 +148,7 @@ tests/
 - Rust edition: 2024
 - Test output is compared using **Jaccard similarity on ink pixels** (luma < 200 = ink) and **SSIM** with spatial tolerance (±8px). Run tests with `cargo test -- --nocapture` to see scores.
 - Jaccard threshold: **20%**, SSIM threshold: **75%** (defined in `tests/visual_comparison.rs`)
+- Accessibility (`tests/accessibility.rs`, `tests/common/a11y.rs`): `ua_deficit` (veraPDF PDF/UA-1 rules we fail worse than Word; 0 = as good as Word), `a11y_struct` (tag sequence vs Word's), `a11y_text` (block text in structure order vs Word's). Untagged references score N/A. See the Accessibility section of `roadmap.md`
 - 37 handcrafted test cases covering text, tables, images, charts, shapes, SmartArt, and more
 
 ## Word Layout Learnings

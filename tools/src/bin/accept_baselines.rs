@@ -13,6 +13,12 @@ struct Scores {
     text_boundary: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     convert_ms: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ua_deficit: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    a11y_struct: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    a11y_text: Option<f64>,
 }
 
 fn find_project_root() -> PathBuf {
@@ -136,6 +142,15 @@ fn main() {
                     if let Some(v) = new.convert_ms {
                         entry.convert_ms = Some(v);
                     }
+                    if let Some(v) = new.ua_deficit {
+                        entry.ua_deficit = Some(v);
+                    }
+                    if let Some(v) = new.a11y_struct {
+                        entry.a11y_struct = Some(v);
+                    }
+                    if let Some(v) = new.a11y_text {
+                        entry.a11y_text = Some(v);
+                    }
                 }
                 accepted += 1;
             }
@@ -216,6 +231,13 @@ fn is_changed(existing: Option<&Scores>, new: &Scores) -> bool {
         || field_changed(old.ssim, new.ssim)
         || field_changed(old.text_boundary, new.text_boundary)
         || field_changed(old.convert_ms, new.convert_ms)
+        || deficit_changed(old.ua_deficit, new.ua_deficit)
+        || field_changed(old.a11y_struct, new.a11y_struct)
+        || field_changed(old.a11y_text, new.a11y_text)
+}
+
+fn deficit_changed(old: Option<usize>, new: Option<usize>) -> bool {
+    new.is_some() && old != new
 }
 
 fn field_changed(old: Option<f64>, new: Option<f64>) -> bool {
@@ -271,6 +293,18 @@ fn print_change(
             .map(|v| format!("{v:.0}"))
             .unwrap_or("-".into());
         parts.push(format!("ms:{old_ms}→{new_ms}"));
+    }
+    if deficit_changed(old.ua_deficit, new.ua_deficit) {
+        let fmt = |v: Option<usize>| v.map_or("-".into(), |d| d.to_string());
+        parts.push(format!("UA:{}→{}", fmt(old.ua_deficit), fmt(new.ua_deficit)));
+    }
+    for (label, o, n) in [
+        ("A11ySt", old.a11y_struct, new.a11y_struct),
+        ("A11yTx", old.a11y_text, new.a11y_text),
+    ] {
+        if field_changed(o, n) {
+            parts.push(format!("{label}:{}→{}{}", fmt_score(o), fmt_score(n), fmt_delta(o, n)));
+        }
     }
     if hash_changed {
         if existing.is_none() {

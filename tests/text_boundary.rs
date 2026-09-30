@@ -123,6 +123,7 @@ fn text_boundaries_match() {
                 convert_ms: None,
                 ref_pages: None,
                 gen_pages: None,
+                ..Default::default()
             },
         );
     }
