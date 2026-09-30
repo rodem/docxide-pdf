@@ -177,7 +177,7 @@ pub(super) fn render_shape_fill(
 /// calculation, so a bullet from Symbol font can make the line taller than text-only
 /// Calibri, and an oversized label (e.g. 20pt number on 10pt text) makes the first
 /// line taller outright.
-fn label_boosted_line_h(
+pub(super) fn label_boosted_line_h(
     para: &Paragraph,
     fonts: &HashMap<String, FontEntry>,
     text_line_h: f32,

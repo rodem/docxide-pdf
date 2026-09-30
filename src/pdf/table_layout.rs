@@ -653,11 +653,26 @@ pub(super) fn compute_row_layouts(
                                 let line_h =
                                     resolve_line_h(effective_ls, font_size, tallest_lhr);
 
+                                // A numbering label taller than the text raises the
+                                // first line (see `label_boosted_line_h`); CV's 9pt
+                                // Symbol bullets on 9pt Georgia add 0.8pt per item.
+                                // ponytail: folded into space_before, which equals the
+                                // baseline drop at single spacing; split them if a
+                                // multiple-spaced list cell ever drifts.
+                                let label_extra = super::label_boosted_line_h(
+                                    para,
+                                    ctx.fonts,
+                                    line_h,
+                                    effective_ls,
+                                    font_size,
+                                    tallest_lhr,
+                                    tallest_ar,
+                                ) - line_h;
                                 let space_before = if para_idx > 0 {
                                     f32::max(prev_space_after, para.space_before)
                                 } else {
                                     para.space_before
-                                };
+                                } + label_extra;
                                 total_h += space_before;
 
                                 let ascender_ratio = tallest_ar.unwrap_or(0.75);
