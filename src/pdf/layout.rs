@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use pdf_writer::types::TextRenderingMode;
 use pdf_writer::{Content, Name, Rect, Str};
 
-use crate::fonts::{FontEntry, encode_as_gids, font_key, font_key_buf, to_winansi_bytes};
+use crate::fonts::{FontEntry, encode_as_gids, font_key_buf, to_winansi_bytes};
 use crate::model::{
     Alignment, LineSpacing, ParagraphBorder, Run, TabAlignment, TabStop, TextFill, TextOutline,
     TextShadow, VertAlign,
@@ -2265,17 +2265,6 @@ pub(super) fn render_paragraph_lines(
     if current_color.is_some() {
         content.set_fill_gray(0.0);
     }
-}
-
-pub(super) fn font_metric(
-    runs: &[Run],
-    seen_fonts: &HashMap<String, FontEntry>,
-    get: impl Fn(&FontEntry) -> Option<f32>,
-) -> Option<f32> {
-    runs.first()
-        .map(font_key)
-        .and_then(|k| seen_fonts.get(&k))
-        .and_then(get)
 }
 
 /// Compute the effective font_size, line_h_ratio, and ascender_ratio for a set of runs

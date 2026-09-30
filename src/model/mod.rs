@@ -54,8 +54,6 @@ pub struct Footnote {
 
 #[derive(Clone, Debug)]
 pub struct Comment {
-    pub id: u32,
-    pub author: String,
     pub initials: String,
     pub text: String,
     /// 1-based ordinal in document encounter order. Word renumbers densely

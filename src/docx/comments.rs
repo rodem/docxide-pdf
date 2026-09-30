@@ -29,10 +29,6 @@ pub(super) fn parse_comments<R: Read + Seek>(
         else {
             continue;
         };
-        let author = node
-            .attribute((WML_NS, "author"))
-            .unwrap_or("")
-            .to_string();
         let initials = node
             .attribute((WML_NS, "initials"))
             .unwrap_or("")
@@ -42,8 +38,6 @@ pub(super) fn parse_comments<R: Read + Seek>(
         out.insert(
             id,
             Comment {
-                id,
-                author,
                 initials,
                 text,
                 display_index,

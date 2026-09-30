@@ -47,7 +47,6 @@ pub(super) struct EmbeddedImages {
     pub(super) effect_hf_inline_names: HashMap<(usize, u8, usize, usize), EffectXObjs>,
     pub(super) effect_hf_floating_names: HashMap<(usize, u8, usize, usize), EffectXObjs>,
     pub(super) effect_table_names: HashMap<usize, EffectXObjs>,
-    pub(super) effect_textbox_names: HashMap<usize, EffectXObjs>,
 }
 
 const DOWNSAMPLE_DPI_THRESHOLD: f32 = 200.0;
@@ -836,6 +835,8 @@ pub(super) fn embed_all_images(
     }
 
     let mut textbox_image_names: HashMap<usize, String> = HashMap::new();
+    // ponytail: textbox image effects are embedded but never drawn; pass this map
+    // into textbox_render if shadow/glow on textbox images matters.
     let mut effect_textbox_names: HashMap<usize, EffectXObjs> = HashMap::new();
     {
         let mut all_textboxes: Vec<&Textbox> = Vec::new();
@@ -910,7 +911,6 @@ pub(super) fn embed_all_images(
         effect_hf_inline_names,
         effect_hf_floating_names,
         effect_table_names,
-        effect_textbox_names,
     }
 }
 

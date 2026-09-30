@@ -498,7 +498,7 @@ fn render_cell_floating_shapes(
     ctx: &RenderContext,
     gradient_specs: &mut Vec<super::GradientSpec>,
 ) {
-    use crate::model::{HorizontalPosition, VerticalPosition};
+    use crate::model::HorizontalPosition;
     use super::positioning::render_connector;
 
     for conn in &para.connectors {

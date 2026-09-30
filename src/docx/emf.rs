@@ -16,12 +16,6 @@ const EMF_MAGIC: [u8; 4] = [0x20, 0x45, 0x4D, 0x46]; // " EMF"
 pub(crate) struct EmfHeader {
     /// Inclusive logical bounds of all drawing in device coordinates.
     pub bounds: (i32, i32, i32, i32),
-    /// Physical frame size in hundredths of a millimetre.
-    pub frame: (i32, i32, i32, i32),
-    /// Device size in pixels.
-    pub device_px: (i32, i32),
-    /// Device size in millimetres.
-    pub device_mm: (i32, i32),
 }
 
 impl EmfHeader {
@@ -43,9 +37,6 @@ pub(crate) fn parse_header(data: &[u8]) -> Option<EmfHeader> {
     let i32_at = |off: usize| i32::from_le_bytes(data[off..off + 4].try_into().unwrap());
     Some(EmfHeader {
         bounds: (i32_at(8), i32_at(12), i32_at(16), i32_at(20)),
-        frame: (i32_at(24), i32_at(28), i32_at(32), i32_at(36)),
-        device_px: (i32_at(72), i32_at(76)),
-        device_mm: (i32_at(80), i32_at(84)),
     })
 }
 
@@ -63,8 +54,8 @@ pub(crate) enum EmfRecord {
     Eof,
     SaveDc,
     RestoreDc,
-    SetMapMode(u32),
-    SetBkMode(u32),
+    SetMapMode,
+    SetBkMode,
     SetPolyFillMode(FillRule),
     SetWindowExtEx(i32, i32),
     SetWindowOrgEx(i32, i32),
@@ -164,8 +155,8 @@ fn decode(rec_type: u32, payload: &[u8]) -> EmfRecord {
         14 => Eof,
         33 => SaveDc,
         34 => RestoreDc,
-        17 => SetMapMode(u32_at(0).unwrap_or(0)),
-        18 => SetBkMode(u32_at(0).unwrap_or(0)),
+        17 => SetMapMode,
+        18 => SetBkMode,
         19 => match u32_at(0).unwrap_or(0) {
             1 => SetPolyFillMode(FillRule::Alternate),
             _ => SetPolyFillMode(FillRule::Winding),
@@ -321,7 +312,6 @@ mod tests {
         let h = parse_header(&hdr).expect("parses");
         assert_eq!(h.bounds, (100, 200, 300, 400));
         assert_eq!(h.bounds_size(), (200, 200));
-        assert_eq!(h.device_px, (1024, 768));
     }
 
     #[test]
