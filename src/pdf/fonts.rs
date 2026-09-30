@@ -82,6 +82,9 @@ fn collect_used_chars(doc: &Document, all_runs: &[&Run]) -> HashMap<String, Hash
     for run in all_runs {
         let key = font_key_buf(run, &mut key_buf);
         let chars = used.entry(key.to_string()).or_default();
+        // Word boundaries are drawn with the preceding word's font, which may
+        // not be the font of the run that holds the space.
+        chars.insert(' ');
         if run.caps || run.small_caps {
             chars.extend(run.text.to_uppercase().chars());
         } else {

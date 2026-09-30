@@ -222,6 +222,10 @@ pub(super) struct WordChunk {
     /// Points already trimmed from a trailing full-width punctuation mark by
     /// `compress_punctuation`; caps further squeezing at half an em.
     pub(super) punct_compressed: f32,
+    /// A break-space followed this word in the source. Words are positioned
+    /// individually, so the space is drawn as an invisible glyph after the word
+    /// purely so text extraction and screen readers see the word boundary.
+    pub(super) space_after: bool,
 }
 
 /// Pale-pink highlight color Word uses for comment-anchored text spans.
@@ -295,6 +299,7 @@ impl WordChunk {
             text_shadow: run.text_shadow.clone(),
             comment_ids: run.comment_ids.clone(),
             footnote_id: run.footnote_id,
+            space_after: false,
         }
     }
 
@@ -341,6 +346,7 @@ impl WordChunk {
             text_shadow: None,
             comment_ids: Vec::new(),
             footnote_id: None,
+            space_after: false,
         }
     }
 
@@ -387,6 +393,7 @@ impl WordChunk {
             text_shadow: None,
             comment_ids: Vec::new(),
             footnote_id: None,
+            space_after: false,
         }
     }
 
@@ -438,6 +445,7 @@ impl WordChunk {
             text_shadow: None,
             comment_ids: Vec::new(),
             footnote_id: None,
+            space_after: false,
         }
     }
 }
@@ -533,6 +541,14 @@ fn word_width_for_run(
 }
 
 /// Push WordChunks for a word, splitting into per-segment chunks for smallCaps.
+/// Record a break-space before the next word on the last glyph chunk laid out
+/// so far (see `WordChunk::space_after`).
+fn mark_space_after(chunks: &mut [WordChunk]) {
+    if let Some(c) = chunks.iter_mut().rev().find(|c| !c.text.is_empty()) {
+        c.space_after = true;
+    }
+}
+
 fn push_word_chunks(
     chunks: &mut Vec<WordChunk>,
     entry: &FontEntry,
@@ -708,6 +724,8 @@ pub(super) fn build_paragraph_lines(
     let mut current_chunks: Vec<WordChunk> = Vec::new();
     let mut current_x: f32 = 0.0;
     let mut pending_space_w: f32 = 0.0;
+    // pending_space_w minus CJK auto-spacing: a space character really occurred.
+    let mut pending_real_space = false;
     // Underline state of the run that emitted the pending whitespace. A space
     // is underlined when its *own* run is underlined (Word draws underline
     // continuously across spaces inside an underlined run, but not across a
@@ -782,12 +800,16 @@ pub(super) fn build_paragraph_lines(
             lines.push(line);
             current_x = 0.0;
             pending_space_w = 0.0;
+            pending_real_space = false;
             prev_last_char = None;
             continue;
         }
 
         // Handle inline images as single block elements in the line
         if let Some(img) = &run.inline_image {
+            if std::mem::take(&mut pending_real_space) {
+                mark_space_after(&mut current_chunks);
+            }
             if let Some(pdf_name) = inline_image_names.get(&run_idx) {
                 let img_w = img.layout_size().0;
                 let need_space = !current_chunks.is_empty() && pending_space_w > 0.0;
@@ -857,10 +879,16 @@ pub(super) fn build_paragraph_lines(
         for (space_count, word) in split_preserving_spaces(&text) {
             pending_space_w += space_count as f32 * space_w_cs;
             if space_count > 0 {
+                pending_real_space = true;
                 pending_space_underline = run.underline;
                 pending_space_double = run.double_underline;
                 pending_space_color = run.color;
                 pending_space_border = run.border.clone();
+            }
+            // current_chunks still holds what precedes this word on its line,
+            // so a wrap below keeps the space at the end of the finished line.
+            if std::mem::take(&mut pending_real_space) {
+                mark_space_after(&mut current_chunks);
             }
 
             // CJK auto-spacing (autoSpaceDE/DN): add ~0.25em gap at
@@ -1028,6 +1056,7 @@ pub(super) fn build_paragraph_lines(
         let trailing_spaces = text.chars().rev().take_while(|c| is_break_space(*c)).count();
         if trailing_spaces > 0 {
             pending_space_w += trailing_spaces as f32 * space_w_cs;
+            pending_real_space = true;
             pending_space_underline = run.underline;
             pending_space_double = run.double_underline;
             pending_space_color = run.color;
@@ -1438,6 +1467,7 @@ pub(super) fn build_tabbed_line(
                 // tabs, so this never re-applies absorbed line-end spaces.
                 let applied_space = pending_space_w > 0.0;
                 if applied_space {
+                    mark_space_after(&mut all_chunks);
                     if pending_space_underline && !all_chunks.is_empty() {
                         all_chunks.push(WordChunk::tab_underline(
                             entry,
@@ -2051,6 +2081,11 @@ pub(super) fn render_paragraph_lines(
                 let fallback_entry = has_missing
                     .then(|| seen_fonts.get("__cjk_fallback"))
                     .flatten();
+                // The next chunk is positioned from the line start, so the
+                // space's advance moves nothing; it only marks the word boundary.
+                let boundary_space = chunk.space_after
+                    && primary_entry
+                        .is_none_or(|e| e.char_to_gid.as_ref().is_none_or(|m| m.contains_key(&' ')));
 
                 if let (Some(primary), Some(fallback)) = (primary_entry, fallback_entry) {
                     let _primary_gids = primary.char_to_gid.as_ref();
@@ -2111,12 +2146,18 @@ pub(super) fn render_paragraph_lines(
                         );
                         content.show(Str(&bytes));
                     }
+                    if boundary_space {
+                        content.show(Str(&encode_text_for_pdf(" ", &chunk.pdf_font, &pdf_name_to_entry)));
+                    }
                 } else {
-                    let text_bytes = encode_text_for_pdf(
+                    let mut text_bytes = encode_text_for_pdf(
                         &chunk.text,
                         &chunk.pdf_font,
                         &pdf_name_to_entry,
                     );
+                    if boundary_space {
+                        text_bytes.extend(encode_text_for_pdf(" ", &chunk.pdf_font, &pdf_name_to_entry));
+                    }
                     content.show(Str(&text_bytes));
                 };
 
