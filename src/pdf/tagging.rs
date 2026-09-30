@@ -29,6 +29,22 @@ pub(crate) struct Tags {
     next_mcid: Vec<i32>,
 }
 
+/// Open list levels for L/LI nesting. Word nests a deeper level's L inside the
+/// LBody of the item above it and ends the list at any non-list block.
+#[derive(Default)]
+pub(crate) struct Lists {
+    /// (level, its L, LBody of that level's latest item)
+    stack: Vec<(u8, usize, usize)>,
+    id: Option<u32>,
+}
+
+impl Lists {
+    pub(super) fn close(&mut self) {
+        self.stack.clear();
+        self.id = None;
+    }
+}
+
 /// A fresh body page stream, inside the default artifact.
 pub(super) fn artifact_content() -> Content {
     let mut content = Content::new();
@@ -82,6 +98,38 @@ impl Tags {
         self.nodes.push(Node { kind, parent, kids: Vec::new() });
         self.nodes[parent].kids.push(Kid::Node(id));
         id
+    }
+
+    /// LI for list `id` at `level` (a new L under `parent` when the list
+    /// starts); returns (Lbl when the label is drawn separately, LBody).
+    pub(super) fn list_item(
+        &mut self,
+        lists: &mut Lists,
+        parent: usize,
+        id: u32,
+        level: u8,
+        labelled: bool,
+    ) -> (Option<usize>, usize) {
+        if lists.id != Some(id) {
+            lists.close();
+            lists.id = Some(id);
+        }
+        while lists.stack.last().is_some_and(|&(l, ..)| l > level) {
+            lists.stack.pop();
+        }
+        let list = match lists.stack.last() {
+            Some(&(l, list, _)) if l == level => {
+                lists.stack.pop();
+                list
+            }
+            Some(&(_, _, body)) => self.add(body, "L"),
+            None => self.add(parent, "L"),
+        };
+        let item = self.add(list, "LI");
+        let label = labelled.then(|| self.add(item, "Lbl"));
+        let body = self.add(item, "LBody");
+        lists.stack.push((level, list, body));
+        (label, body)
     }
 
     /// Start a piece of `node`'s content on `page`; it runs until `end`.
@@ -193,5 +241,31 @@ mod tests {
         assert_eq!(out.matches("/Artifact BMC").count(), 1);
         assert_eq!(out.matches("BMC").count() + out.matches("BDC").count(), out.matches("EMC").count());
         assert_eq!(tags.struct_parents(0), Some(0));
+    }
+
+    #[test]
+    fn list_items_nest_like_word() {
+        let mut tags = Tags::new();
+        let mut lists = Lists::default();
+        let (label, first_body) = tags.list_item(&mut lists, ROOT, 7, 0, true);
+        tags.list_item(&mut lists, ROOT, 7, 1, false);
+        tags.list_item(&mut lists, ROOT, 7, 0, true);
+        tags.list_item(&mut lists, ROOT, 8, 0, true);
+        let kids = |n: usize| -> Vec<&str> {
+            tags.nodes[n]
+                .kids
+                .iter()
+                .filter_map(|k| match k {
+                    Kid::Node(c) => Some(tags.nodes[*c].kind),
+                    Kid::Mcid { .. } => None,
+                })
+                .collect()
+        };
+        // A new list id starts a new L; the sub-list sits in the first item's body.
+        assert_eq!(kids(ROOT), ["L", "L"]);
+        assert_eq!(kids(tags.nodes[label.unwrap()].parent), ["Lbl", "LBody"]);
+        assert_eq!(kids(first_body), ["L"]);
+        let first_list = tags.nodes[tags.nodes[first_body].parent].parent;
+        assert_eq!(kids(first_list), ["LI", "LI"]);
     }
 }

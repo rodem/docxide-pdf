@@ -585,6 +585,7 @@ pub(super) struct PageBuilder {
     all_styleref: Vec<HashMap<String, String>>,
     all_first_styleref: Vec<HashMap<String, String>>,
     pub(super) tags: tagging::Tags,
+    pub(super) lists: tagging::Lists,
 }
 
 impl PageBuilder {
@@ -620,6 +621,7 @@ impl PageBuilder {
             all_styleref: Vec::new(),
             all_first_styleref: Vec::new(),
             tags: tagging::Tags::new(),
+            lists: tagging::Lists::default(),
         }
     }
 
@@ -631,6 +633,35 @@ impl PageBuilder {
 
     pub(super) fn end_tag(&mut self) {
         tagging::Tags::end(&mut self.content);
+    }
+
+    /// Structure nodes for a body paragraph: (Lbl, element for its text). List
+    /// items become LI > Lbl + LBody; numbered headings stay headings.
+    fn para_tags(&mut self, para: &Paragraph, doc: &Document) -> (Option<usize>, usize) {
+        match (para.list_level, para.list_id) {
+            (Some(level), Some(id)) if para.outline_level.is_none() => {
+                let labelled = !para.list_label.is_empty();
+                self.tags.list_item(&mut self.lists, tagging::ROOT, id, level, labelled)
+            }
+            _ => {
+                self.lists.close();
+                (None, self.tags.add(tagging::ROOT, para_tag_kind(para, doc)))
+            }
+        }
+    }
+
+    /// Draw the list label as its own Lbl (or inside the paragraph's element
+    /// when it has none) and leave the paragraph text's tag open.
+    fn begin_para_tags(&mut self, (label, text): (Option<usize>, usize), draw_label: impl FnOnce(&mut Content)) {
+        if let Some(label) = label {
+            self.begin_tag(label);
+            draw_label(&mut self.content);
+            self.end_tag();
+            self.begin_tag(text);
+        } else {
+            self.begin_tag(text);
+            draw_label(&mut self.content);
+        }
     }
 
     pub(super) fn flush_page(&mut self, sect_idx: usize) {
@@ -2143,16 +2174,11 @@ fn render_paragraph_block(
             let baseline_y = state.pb.slot_top - baseline_offset;
 
             // One element for both halves: its content continues on the next page.
-            let tag = state.pb.tags.add(tagging::ROOT, para_tag_kind(para, doc));
-            state.pb.begin_tag(tag);
-            render_list_label(
-                &mut state.pb.content,
-                para,
-                ctx.fonts,
-                label_x,
-                baseline_y - first_line_drop,
-                font_size,
-            );
+            let tags = state.pb.para_tags(para, doc);
+            let tag = tags.1;
+            state.pb.begin_para_tags(tags, |content| {
+                render_list_label(content, para, ctx.fonts, label_x, baseline_y - first_line_drop, font_size)
+            });
 
             render_paragraph_lines(
                 &mut state.pb.content,
@@ -2632,16 +2658,10 @@ fn render_paragraph_block(
         };
         let baseline_y = state.pb.slot_top - bdr_top_pad - baseline_offset;
 
-        let tag = state.pb.tags.add(tagging::ROOT, para_tag_kind(para, doc));
-        state.pb.begin_tag(tag);
-        render_list_label(
-            &mut state.pb.content,
-            para,
-            ctx.fonts,
-            label_x,
-            baseline_y - first_line_drop,
-            font_size,
-        );
+        let tags = state.pb.para_tags(para, doc);
+        state.pb.begin_para_tags(tags, |content| {
+            render_list_label(content, para, ctx.fonts, label_x, baseline_y - first_line_drop, font_size)
+        });
 
         render_paragraph_lines(
             &mut state.pb.content,
@@ -2671,8 +2691,8 @@ fn render_paragraph_block(
         state.pb.end_tag();
     } else {
         // Word tags empty paragraphs too; keeping them keeps the P sequence aligned.
-        let tag = state.pb.tags.add(tagging::ROOT, para_tag_kind(para, doc));
-        state.pb.begin_tag(tag);
+        let tags = state.pb.para_tags(para, doc);
+        state.pb.begin_para_tags(tags, |_| {});
         state.pb.end_tag();
     }
 
@@ -3114,6 +3134,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 }
 
                 Block::Table(table) => {
+                    state.pb.lists.close();
                     let override_pos = table.position.as_ref().map(|pos| {
                         let table_total_w: f32 = table.col_widths.iter().sum();
                         let x = match pos.h_anchor {

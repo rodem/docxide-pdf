@@ -339,6 +339,10 @@ pub struct Paragraph {
     pub list_label_font_size: Option<f32>,
     pub list_label_bold: bool,
     pub list_label_color: Option<[u8; 3]>,
+    /// `ilvl` and abstract list id of a list item, for L/LI tagging. Also set
+    /// for `suff="nothing"` items whose label was folded into the runs.
+    pub list_level: Option<u8>,
+    pub list_id: Option<u32>,
     /// Numbering level tab stop (pts from paragraph left edge)
     pub num_level_tab_stop: Option<f32>,
     pub contextual_spacing: bool,

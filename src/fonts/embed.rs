@@ -142,8 +142,10 @@ pub(super) fn embed_truetype(
     let tounicode_ref = alloc();
     let cmap_name = format!("{}-UTF16", ps_name);
     let mut cmap = UnicodeCmap::new(Name(cmap_name.as_bytes()), system_info);
+    let is_symbol = font_name.eq_ignore_ascii_case("symbol");
     for (&ch, &new_gid) in &char_to_gid {
-        cmap.pair(new_gid, ch);
+        let uni = if is_symbol { symbol_font_unicode(ch).unwrap_or(ch) } else { ch };
+        cmap.pair(new_gid, uni);
     }
     pdf.stream(tounicode_ref, cmap.finish().as_slice());
 
@@ -165,6 +167,37 @@ pub(super) fn embed_truetype(
         char_to_gid,
         char_widths_1000,
         kern_pairs,
+    })
+}
+
+/// Adobe Symbol encoding for the Symbol font's private-use codes (U+F0xx) that
+/// documents use as bullets and signs. Word's export maps them the same way, so
+/// extracted text reads "•" rather than U+F0B7.
+// ponytail: common bullets/signs only; the full Symbol encoding when Greek/math text needs it
+fn symbol_font_unicode(ch: char) -> Option<char> {
+    Some(match ch as u32 {
+        0xF0B7 => '•',
+        0xF02D => '−',
+        0xF0B0 => '°',
+        0xF0B1 => '±',
+        0xF0B4 => '×',
+        0xF0B8 => '÷',
+        0xF0A3 => '≤',
+        0xF0B3 => '≥',
+        0xF0B9 => '≠',
+        0xF0AB => '↔',
+        0xF0AC => '←',
+        0xF0AD => '↑',
+        0xF0AE => '→',
+        0xF0AF => '↓',
+        0xF0A7 => '♣',
+        0xF0A8 => '♦',
+        0xF0A9 => '♥',
+        0xF0AA => '♠',
+        0xF0D7 => '⋅',
+        0xF0D8 => '¬',
+        0xF0E0 => '◊',
+        _ => return None,
     })
 }
 

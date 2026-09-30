@@ -145,6 +145,8 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         bold: mut list_label_bold,
         color: mut list_label_color,
         suff: list_label_suff,
+        level: list_level,
+        list_id,
     } = parse_list_info(
         num_pr,
         style_num,
@@ -392,6 +394,8 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         list_label_font_size,
         list_label_bold,
         list_label_color,
+        list_level,
+        list_id,
         num_level_tab_stop: num_tab_stop,
         contextual_spacing,
         keep_next,

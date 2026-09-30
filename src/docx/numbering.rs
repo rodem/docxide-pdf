@@ -41,6 +41,10 @@ pub(super) struct ListLabelInfo {
     pub(super) bold: bool,
     pub(super) color: Option<[u8; 3]>,
     pub(super) suff: String,
+    /// `ilvl` and abstract list id of a numbered/bulleted item (None when the
+    /// paragraph shows no label).
+    pub(super) level: Option<u8>,
+    pub(super) list_id: Option<u32>,
 }
 
 #[derive(Default)]
@@ -522,6 +526,8 @@ pub(super) fn parse_list_info(
         bold: def.label_bold,
         color: def.label_color,
         suff: def.suff.clone(),
+        level: Some(ilvl),
+        list_id: Some(abs_key),
     }
 }
 

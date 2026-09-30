@@ -756,6 +756,8 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         bold: list_label_bold,
                         color: list_label_color,
                         suff: _,
+                        level: list_level,
+                        list_id,
                     } = parse_list_info(
                         num_pr,
                         style_num,
@@ -815,6 +817,8 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         list_label_font_size,
                         list_label_bold,
                         list_label_color,
+                        list_level,
+                        list_id,
                         line_spacing,
                         space_before,
                         space_after,
