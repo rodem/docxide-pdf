@@ -17,6 +17,9 @@ pub(super) struct DocumentSettings {
     /// `compressPunctuationAndJapaneseKana`: Word may squeeze full-width East
     /// Asian punctuation to keep one more character on a line.
     pub compress_punctuation: bool,
+    /// `w:compat/w:compatSetting[@w:name="compatibilityMode"]`: 15 = Word 2013+
+    /// layout, 14 = Word 2010, lower or 0 (absent) = older.
+    pub compat_mode: u32,
 }
 
 impl Default for DocumentSettings {
@@ -31,6 +34,7 @@ impl Default for DocumentSettings {
             auto_hyphenation: false,
             default_lang: None,
             compress_punctuation: false,
+            compat_mode: 0,
         }
     }
 }
@@ -72,5 +76,12 @@ pub(super) fn parse_settings<R: Read + Seek>(
         default_lang,
         compress_punctuation: wml_attr(root, "characterSpacingControl")
             .is_some_and(|v| v.starts_with("compressPunctuation")),
+        compat_mode: wml(root, "compat")
+            .into_iter()
+            .flat_map(|c| c.children())
+            .find(|n| n.attribute((WML_NS, "name")) == Some("compatibilityMode"))
+            .and_then(|n| n.attribute((WML_NS, "val")))
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0),
     }
 }

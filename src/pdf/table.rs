@@ -1427,11 +1427,13 @@ pub(super) fn render_table(
             // When absent, or when tblInd ≈ cm.left (common in
             // LibreOffice-generated DOCX), legacy behavior subtracts
             // cm.left so first-cell text aligns with the page margin.
+            // Word 2013+ layout (compat 15) never outdents: the border
+            // sits at the margin and the text inside it.
             TableAlignment::Left => {
                 let ind = table.table_indent;
                 let explicit_real_indent = table.table_indent_explicit
                     && (ind - cm.left).abs() > 1.0;
-                if explicit_real_indent {
+                if explicit_real_indent || ctx.compat_mode >= 15 {
                     area_left + ind
                 } else {
                     area_left + ind - cm.left
@@ -1829,6 +1831,7 @@ pub(super) fn render_header_footer_table(
         match table.alignment {
             TableAlignment::Center => sp.margin_left + (text_width - table_total_w) / 2.0,
             TableAlignment::Right => sp.margin_left + text_width - table_total_w,
+            TableAlignment::Left if ctx.compat_mode >= 15 => sp.margin_left + table.table_indent,
             TableAlignment::Left => sp.margin_left + table.table_indent - cm.left,
         }
     };

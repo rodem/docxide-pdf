@@ -86,6 +86,8 @@ pub(super) struct RenderContext<'a> {
     /// Display numbers of footnote and endnote reference marks, by note id.
     pub(super) footnote_marks: &'a HashMap<u32, String>,
     pub(super) endnote_marks: &'a HashMap<u32, String>,
+    /// Word's `compatibilityMode` (see `docx::settings`).
+    pub(super) compat_mode: u32,
 }
 
 impl RenderContext<'_> {
@@ -3048,6 +3050,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         compress_punctuation: doc.compress_punctuation,
         footnote_marks: &footnote_display_order,
         endnote_marks: &endnote_display_order,
+        compat_mode: doc.compat_mode,
     };
 
     let bookmark_positions = compute_bookmark_positions(doc, &ctx);

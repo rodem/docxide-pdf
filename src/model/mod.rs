@@ -241,6 +241,8 @@ pub struct Document {
     /// Word's `compressPunctuation` character-spacing control (see
     /// `docx::settings`); drives full-width punctuation squeezing in line breaking.
     pub compress_punctuation: bool,
+    /// Word's `compatibilityMode` (see `docx::settings`).
+    pub compat_mode: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
