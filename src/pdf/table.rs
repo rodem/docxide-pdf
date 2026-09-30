@@ -1446,6 +1446,18 @@ pub(super) fn render_table(
     // For non-floating tables, prev_space_after offsets the table start.
     // For floating tables, it was already consumed into the saved cursor position.
     pb.slot_top -= prev_space_after;
+    // The outer border bands sit inside the table's flow height: the top band
+    // starts where the previous text ends and the next paragraph starts below
+    // the bottom band. The row insets hold the inner halves (docx::tables).
+    let outer_band = |row: Option<&crate::model::TableRow>, top: bool| {
+        row.map_or(0.0, |r| {
+            r.cells
+                .iter()
+                .map(|c| if top { c.borders.top.band() } else { c.borders.bottom.band() })
+                .fold(0.0f32, f32::max)
+        })
+    };
+    pb.slot_top -= outer_band(table.rows.first(), true) / 2.0;
 
     // Count contiguous header rows from the start of the table (per OOXML spec,
     // only contiguous header rows starting from row 0 are repeated).
@@ -1732,6 +1744,7 @@ pub(super) fn render_table(
             );
         }
     }
+    pb.slot_top -= outer_band(table.rows.last(), false) / 2.0;
 
     if let Some((saved, table_top_y)) = saved_slot_top {
         if did_flush_while_floating {

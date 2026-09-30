@@ -861,6 +861,20 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
     }
     resolve_h_border_conflicts(&mut rows);
     propagate_vmerge_borders(&mut rows);
+    // Word lays cell content between the border bands, not under them: the
+    // first line box starts at the top border's lower edge and the next border
+    // starts where the content ends. Borders are drawn centred on the row edge,
+    // so each side's inset grows by half its band (measured in reference PDFs:
+    // rehab_centre 2.25pt rows pitch 3×12.07 + 2.25, case6 0.5pt rows 14.65 + 0.5).
+    for cell in rows.iter_mut().flat_map(|r| r.cells.iter_mut()) {
+        let (top, bottom) = (cell.borders.top.band(), cell.borders.bottom.band());
+        if top > 0.0 || bottom > 0.0 {
+            let mut m = cell.cell_margins.unwrap_or(cell_margins);
+            m.top += top / 2.0;
+            m.bottom += bottom / 2.0;
+            cell.cell_margins = Some(m);
+        }
+    }
 
     Table {
         col_widths,

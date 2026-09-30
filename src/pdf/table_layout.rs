@@ -791,10 +791,9 @@ pub(super) fn compute_row_layouts(
                                         && para.content_height == 0.0
                                     {
                                         // End-of-cell mark directly after a nested
-                                        // table: Word hides it. The mark glyph
-                                        // height is covered by the +0.5pt row
-                                        // addition; space_after is suppressed in
-                                        // the trailing-space block below.
+                                        // table: Word hides it; space_after is
+                                        // suppressed in the trailing-space block
+                                        // below.
                                     } else if para.content_height > 0.0 {
                                         // Image paragraph: the image is line 1; each
                                         // trailing w:br adds a further blank line
@@ -952,9 +951,9 @@ pub(super) fn compute_row_layouts(
                 })
                 .collect();
 
-            // Word's row height includes the end-of-cell paragraph mark glyph,
-            // adding roughly 0.5pt beyond the content metrics.
-            let content_h = max_h + 0.5;
+            // Border bands are already in the cell insets (docx::tables); the
+            // 0.5pt once added here was Table Grid's border width.
+            let content_h = max_h;
             let height = match (row.height, row.height_exact) {
                 (Some(h), true) => h,
                 (Some(h), false) => content_h.max(h),

@@ -65,6 +65,16 @@ impl CellBorder {
             is_override: false,
         }
     }
+
+    /// Thickness of the band the border paints: two lines and the gap between
+    /// them for a double border (see `draw_border`), one line otherwise.
+    pub fn band(&self) -> f32 {
+        match (self.present, self.style) {
+            (false, _) => 0.0,
+            (true, BorderStyle::Double) => 3.0 * self.width.max(0.25),
+            (true, _) => self.width,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
