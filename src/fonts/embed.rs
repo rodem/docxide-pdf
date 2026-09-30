@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use pdf_writer::types::{CidFontType, FontFlags, SystemInfo, UnicodeCmap};
 use pdf_writer::{Filter, Name, Pdf, Rect, Ref, Str};
@@ -143,9 +143,16 @@ pub(super) fn embed_truetype(
     let cmap_name = format!("{}-UTF16", ps_name);
     let mut cmap = UnicodeCmap::new(Name(cmap_name.as_bytes()), system_info);
     let is_symbol = font_name.eq_ignore_ascii_case("symbol");
+    // Several characters can share a glyph (hyphen variants, no-break space)
+    // but a CID maps to one character: keep the lowest code point, the plain
+    // form, instead of whichever the HashMap happened to yield last.
+    let mut cid_unicode: BTreeMap<u16, char> = BTreeMap::new();
     for (&ch, &new_gid) in &char_to_gid {
         let uni = if is_symbol { symbol_font_unicode(ch).unwrap_or(ch) } else { ch };
-        cmap.pair(new_gid, uni);
+        cid_unicode.entry(new_gid).and_modify(|c| *c = (*c).min(uni)).or_insert(uni);
+    }
+    for (cid, uni) in cid_unicode {
+        cmap.pair(cid, uni);
     }
     pdf.stream(tounicode_ref, cmap.finish().as_slice());
 
