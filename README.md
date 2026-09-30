@@ -47,6 +47,8 @@ A Rust library and CLI tool for converting DOCX files to PDF, with the goal of m
 
 **Small files:** Output PDFs should be the same size or smaller than Word's export.
 
+**Accessible:** Output PDFs should be just as accessible as Word's export, or better: tagged structure, reading order, language and metadata that pass the same PDF/UA checks.
+
 *<sub>Reference PDFs are generated using Microsoft Word for Mac (16.106.1) with the "Best for electronic distribution and accessibility (uses Microsoft online service)" export option.</sub>
 
 ## AI usage disclaimer 🤖
