@@ -878,7 +878,7 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
         subject,
         keywords,
         auto_hyphenation: settings.auto_hyphenation,
-        default_lang: settings.default_lang,
+        default_lang: styles.defaults.lang.clone().or(settings.default_lang),
         compress_punctuation: settings.compress_punctuation,
     })
 }

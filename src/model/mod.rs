@@ -237,7 +237,6 @@ pub struct Document {
     pub keywords: Option<String>,
     #[allow(dead_code)]
     pub auto_hyphenation: bool,
-    #[allow(dead_code)]
     pub default_lang: Option<String>,
     /// Word's `compressPunctuation` character-spacing control (see
     /// `docx::settings`); drives full-width punctuation squeezing in line breaking.

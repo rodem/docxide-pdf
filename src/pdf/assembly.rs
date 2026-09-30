@@ -77,6 +77,39 @@ fn render_page_borders(pb: &PageBorders, sp: &SectionProperties) -> Content {
     content
 }
 
+/// XMP packet for the catalog `/Metadata` stream; PDF/UA wants dc:title here,
+/// not only in the Info dictionary.
+fn xmp_packet(doc: &Document, lang: &str) -> String {
+    let esc = |s: &str| {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+    };
+    let mut props = format!(
+        "<pdf:Producer>docxside-pdf</pdf:Producer>\
+         <dc:language><rdf:Bag><rdf:li>{}</rdf:li></rdf:Bag></dc:language>",
+        esc(lang)
+    );
+    if let Some(t) = &doc.title {
+        props += &format!(
+            "<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">{}</rdf:li></rdf:Alt></dc:title>",
+            esc(t)
+        );
+    }
+    if let Some(a) = &doc.author {
+        props += &format!("<dc:creator><rdf:Seq><rdf:li>{}</rdf:li></rdf:Seq></dc:creator>", esc(a));
+    }
+    format!(
+        "<?xpacket begin=\"\u{feff}\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\
+         <x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\
+         <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\
+         <rdf:Description rdf:about=\"\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" \
+         xmlns:pdf=\"http://ns.adobe.com/pdf/1.3/\">{props}</rdf:Description>\
+         </rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>"
+    )
+}
+
 fn srgb_to_linear(s: f32) -> f32 {
     if s <= 0.04045 {
         s / 12.92
@@ -457,6 +490,10 @@ pub(super) fn assemble_pdf_pages(
         None
     };
 
+    // Word's own default when a document declares no language.
+    let lang = doc.default_lang.as_deref().unwrap_or("en-US");
+    let metadata_id = alloc();
+    pdf.metadata(metadata_id, xmp_packet(doc, lang).as_bytes());
     {
         let mut catalog = pdf.catalog(catalog_id);
         catalog.pages(pages_id);
@@ -464,6 +501,8 @@ pub(super) fn assemble_pdf_pages(
             catalog.outlines(oid)
                 .page_mode(pdf_writer::types::PageMode::UseOutlines);
         }
+        catalog.lang(TextStr(lang)).metadata(metadata_id);
+        catalog.viewer_preferences().display_doc_title(true);
     }
 
     if doc.title.is_some() || doc.author.is_some() || doc.subject.is_some() || doc.keywords.is_some() {
@@ -499,7 +538,8 @@ pub(super) fn assemble_pdf_pages(
         let mut page = pdf.page(page_ids[i]);
         page.media_box(Rect::new(0.0, 0.0, sp.page_width, sp.page_height))
             .parent(pages_id)
-            .contents(content_ids[i]);
+            .contents(content_ids[i])
+            .tab_order(pdf_writer::types::TabOrder::StructureOrder);
         if !page_annot_refs[i].is_empty() {
             page.annotations(page_annot_refs[i].iter().copied());
         }

@@ -88,6 +88,7 @@ pub(super) struct StyleDefaults {
     pub(super) double_underline: bool,
     pub(super) color: Option<[u8; 3]>,
     pub(super) char_spacing: f32,
+    pub(super) lang: Option<String>,
     pub(super) widow_control: bool,
     pub(super) indent_left: f32,
     pub(super) indent_right: f32,
@@ -506,6 +507,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
         double_underline: false,
         color: None,
         char_spacing: 0.0,
+        lang: None,
         widow_control: true,
         indent_left: 0.0,
         indent_right: 0.0,
@@ -562,6 +564,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
             defaults.double_underline = parse_double_underline(rpr).unwrap_or(false);
             defaults.color = wml_attr(rpr, "color").and_then(parse_text_color);
             defaults.char_spacing = parse_char_spacing(rpr).unwrap_or(0.0);
+            defaults.lang = wml_attr(rpr, "lang").map(str::to_string);
         }
         let default_ppr = wml(doc_defaults, "pPrDefault").and_then(|n| wml(n, "pPr"));
         if let Some(wc) = default_ppr.and_then(|ppr| wml_bool(ppr, "widowControl")) {
