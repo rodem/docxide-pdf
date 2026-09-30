@@ -79,7 +79,7 @@ pub(super) fn textbox_height(tb: &Textbox, ctx: &RenderContext) -> f32 {
             } else {
                 build_paragraph_lines(
                     &tp.runs, ctx.fonts, tw, hang, &empty_imgs, &empty_fx, None, None, None,
-                    ctx.cjk(true),
+                    ctx.cjk(true, tp.alignment),
                 )
             };
             let (fs, lhr, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
@@ -240,7 +240,7 @@ pub(super) fn render_single_textbox(
                 } else {
                     build_paragraph_lines(
                         &tp.runs, ctx.fonts, tp_text_w, text_hanging, &empty_inline_imgs_pre, &empty_fx_pre, None, None, None,
-                        ctx.cjk(true),
+                        ctx.cjk(true, tp.alignment),
                     )
                 };
                 let (fs, lhr, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
@@ -423,7 +423,7 @@ pub(super) fn render_textbox_paragraphs(
         } else {
             build_paragraph_lines(
                 &tp.runs, ctx.fonts, tp_text_w, text_hanging, &inline_imgs, &empty_fx, None, None, None,
-                ctx.cjk(true),
+                ctx.cjk(true, tp.alignment),
             )
         };
         if tb_lines.is_empty() {

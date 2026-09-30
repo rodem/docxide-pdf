@@ -844,16 +844,37 @@ pub(super) struct CjkLayout {
     /// punctuation to keep one more character on the line.
     pub(super) compress_punct: bool,
     /// Justified paragraph under Word 2013+ layout (compatibilityMode 15): a
-    /// word that overflows stays on the line when the line's spaces can
-    /// shrink to make room (see `SPACE_SQUEEZE`).
+    /// word that overflows stays on the line when its middle is still inside
+    /// the measure and the line's spaces can shrink to make room (see
+    /// `SPACE_SQUEEZE`).
     pub(super) squeeze_spaces: bool,
 }
 
 /// How far Word 2013+ narrows the spaces of a justified line to keep its
 /// last word: to 75% of their width. Measured, not from the spec: over 4,216
 /// squeezed lines in 207 Word PDFs the per-line space ratio piles up at 0.75
-/// with almost nothing below it, and only compat-15 documents squeeze.
+/// with almost nothing below it, and only compat-15 documents squeeze. Of
+/// 14,122 line-end decisions in those PDFs, "within this cap and the word's
+/// midpoint inside the margin" reproduces 94.6%; either condition alone ~90%.
 const SPACE_SQUEEZE: f32 = 0.25;
+
+/// Per chunk, how many word spaces precede it on the line. Justification
+/// stretches or squeezes those, not the joins between runs inside a word: a
+/// space is a gap between chunks or a chunk that is itself a space (spaces
+/// carrying underline or shading are text-less chunks of their own).
+fn spaces_before_each(chunks: &[WordChunk]) -> Vec<usize> {
+    chunks
+        .iter()
+        .scan((0usize, None::<(f32, bool)>), |(n, prev), c| {
+            if prev.is_some_and(|(end, was_space)| was_space || c.x_offset > end + 0.01) {
+                *n += 1;
+            }
+            let is_space = c.inline_image_name.is_none() && c.text.chars().all(is_break_space);
+            *prev = Some((c.x_offset + c.width, is_space));
+            Some(*n)
+        })
+        .collect()
+}
 
 /// Total inter-word space already on a line: the gaps between its chunks.
 fn line_space_width(chunks: &[WordChunk]) -> f32 {
@@ -1182,6 +1203,7 @@ pub(super) fn build_paragraph_lines(
                 && cjk.squeeze_spaces
                 && need_space
                 && !in_right_region
+                && proposed_x + ww / 2.0 <= cur_max
                 && proposed_x + ww - cur_max
                     <= SPACE_SQUEEZE * (line_space_width(&current_chunks) + pending_space_w)
             {
@@ -1974,21 +1996,7 @@ pub(super) fn render_paragraph_lines(
         let left_chunk_count = line.right_region.as_ref()
             .map(|rr| rr.first_chunk_idx)
             .unwrap_or(line.chunks.len());
-        // Justification stretches or squeezes the spaces between words, not the
-        // joins between runs inside a word: count, per chunk, the spaces before
-        // it — a gap between chunks, or a chunk that is itself a space (spaces
-        // carrying underline or shading are text-less chunks of their own).
-        let gaps_before: Vec<usize> = line.chunks[..left_chunk_count]
-            .iter()
-            .scan((0usize, None::<(f32, bool)>), |(n, prev), c| {
-                if prev.is_some_and(|(end, was_space)| was_space || c.x_offset > end + 0.01) {
-                    *n += 1;
-                }
-                let is_space = c.inline_image_name.is_none() && c.text.chars().all(is_break_space);
-                *prev = Some((c.x_offset + c.width, is_space));
-                Some(*n)
-            })
-            .collect();
+        let gaps_before = spaces_before_each(&line.chunks[..left_chunk_count]);
         let left_gaps = gaps_before.last().copied().unwrap_or(0);
 
         // CJK justification: distribute space between every character, not just chunks.
@@ -2740,6 +2748,25 @@ pub(super) fn grid_snapped_line_h(
 mod tests {
     use super::*;
     use crate::model::VertAlign;
+
+    #[test]
+    fn justify_counts_word_spaces_not_run_joins() {
+        let entry = stub_font_entry();
+        let chunk = |text: &str, x: f32, w: f32| {
+            let mut c = WordChunk::tab_underline(&entry, 12.0, None, false, None, x, w);
+            c.text = text.to_string();
+            c
+        };
+        // "ab" split across two runs, a gap, then "cd", an underlined space chunk, "ef"
+        let chunks = vec![
+            chunk("a", 0.0, 6.0),
+            chunk("b", 6.0, 6.0),
+            chunk("cd", 15.0, 12.0),
+            chunk("", 27.0, 3.0),
+            chunk("ef", 30.0, 12.0),
+        ];
+        assert_eq!(spaces_before_each(&chunks), vec![0, 0, 1, 1, 2]);
+    }
 
     #[test]
     fn compress_punctuation_trims_marks_evenly_and_shifts_followers() {

@@ -45,13 +45,14 @@ fn layout_paragraph(
     ctx: &RenderContext,
     text_width: f32,
     first_line_hanging: f32,
+    alignment: crate::model::Alignment,
 ) -> Option<ParagraphLayout> {
     if is_text_empty(runs) {
         return None;
     }
     let (fs, tallest_lhr, tallest_ar) = tallest_run_metrics(runs, ctx.fonts);
     let lh = resolve_line_h(line_spacing, fs, tallest_lhr);
-    let lines = build_paragraph_lines(runs, ctx.fonts, text_width, first_line_hanging, &HashMap::new(), &HashMap::new(), None, None, None, ctx.cjk(true));
+    let lines = build_paragraph_lines(runs, ctx.fonts, text_width, first_line_hanging, &HashMap::new(), &HashMap::new(), None, None, None, ctx.cjk(true, alignment));
     if lines.is_empty() {
         return None;
     }
@@ -83,7 +84,7 @@ pub(super) fn compute_footnote_height(
         let para_text_width =
             (text_width - para.indent_left - para.indent_right).max(1.0);
         let hanging = super::compute_text_hanging(para, 0.0);
-        let layout = layout_paragraph(&para.runs, ls, ctx, para_text_width, hanging);
+        let layout = layout_paragraph(&para.runs, ls, ctx, para_text_width, hanging, para.alignment);
         if layout.is_none() && para.paragraph_mark_vanish {
             continue;
         }
@@ -240,7 +241,7 @@ fn render_notes_downward(
                 (text_width - para.indent_left - para.indent_right).max(1.0);
 
             let hanging = super::compute_text_hanging(para, 0.0);
-            let layout = layout_paragraph(&runs, ls, ctx, para_text_width, hanging);
+            let layout = layout_paragraph(&runs, ls, ctx, para_text_width, hanging, para.alignment);
             if layout.is_none() && para.paragraph_mark_vanish {
                 continue;
             }

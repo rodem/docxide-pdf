@@ -767,7 +767,7 @@ pub(super) fn compute_row_layouts(
                                             None,
                                             None,
                                             None,
-                                            ctx.cjk(para.auto_space_de || para.auto_space_dn),
+                                            ctx.cjk(para.auto_space_de || para.auto_space_dn, para.alignment),
                                         )
                                     };
                                     if is_rotated {

@@ -115,8 +115,13 @@ impl RenderContext<'_> {
     }
     /// East Asian switches for `build_paragraph_lines`: the paragraph's autospace
     /// choice plus the document-wide punctuation compression.
-    fn cjk(&self, auto_space: bool) -> CjkLayout {
-        CjkLayout { auto_space, compress_punct: self.compress_punctuation, squeeze_spaces: false }
+    fn cjk(&self, auto_space: bool, alignment: crate::model::Alignment) -> CjkLayout {
+        CjkLayout {
+            auto_space,
+            compress_punct: self.compress_punctuation,
+            squeeze_spaces: self.compat_mode >= 15
+                && matches!(alignment, crate::model::Alignment::Justify),
+        }
     }
 }
 
@@ -1118,7 +1123,7 @@ fn compute_bookmark_positions(
                         build_paragraph_lines(
                             &para.runs, ctx.fonts, para_w, hanging, &empty_imgs,
                             &empty_fx, None, None, None,
-                            ctx.cjk(para.auto_space_de || para.auto_space_dn),
+                            ctx.cjk(para.auto_space_de || para.auto_space_dn, para.alignment),
                         )
                     };
                     let num_lines = lines.len().max(1);
@@ -1575,7 +1580,7 @@ fn render_paragraph_block(
         }
     }
 
-    let cjk = ctx.cjk(para.auto_space_de || para.auto_space_dn);
+    let cjk = ctx.cjk(para.auto_space_de || para.auto_space_dn, para.alignment);
 
     // Look-ahead: a wrapping float anchored in the *next* block (an image-only
     // paragraph) sits at that block's top, which Word computes from this

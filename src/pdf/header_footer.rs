@@ -289,8 +289,9 @@ fn build_lines(
     indent_left: f32,
     indent_right: f32,
     text_hanging: f32,
+    alignment: crate::model::Alignment,
 ) -> Vec<TextLine> {
-    build_lines_with_float(runs, ctx, tab_stops, text_width, inline_images, indent_left, indent_right, text_hanging, None)
+    build_lines_with_float(runs, ctx, tab_stops, text_width, inline_images, indent_left, indent_right, text_hanging, None, alignment)
 }
 
 fn build_lines_with_float(
@@ -303,13 +304,14 @@ fn build_lines_with_float(
     indent_right: f32,
     text_hanging: f32,
     per_line_widths: Option<&[f32]>,
+    alignment: crate::model::Alignment,
 ) -> Vec<TextLine> {
     let empty_fx: HashMap<usize, super::images::EffectXObjs> = HashMap::new();
     let has_tabs = runs.iter().any(|r| r.is_tab);
     if has_tabs {
         build_tabbed_line(runs, ctx.fonts, tab_stops, indent_left, text_width, indent_right, text_hanging, inline_images, &empty_fx, ctx.default_tab_stop, &[])
     } else {
-        build_paragraph_lines(runs, ctx.fonts, text_width, text_hanging, inline_images, &empty_fx, None, per_line_widths, None, ctx.cjk(true))
+        build_paragraph_lines(runs, ctx.fonts, text_width, text_hanging, inline_images, &empty_fx, None, per_line_widths, None, ctx.cjk(true, alignment))
     }
 }
 
@@ -389,7 +391,7 @@ pub(super) fn render_header_footer(
                 let lines = build_lines(
                     &substituted_runs, ctx, &para.tab_stops,
                     text_width, &empty_inline_imgs,
-                    0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, para.alignment,
                 );
                 let content_width = lines.iter()
                     .map(|l| l.total_width)
@@ -564,6 +566,7 @@ pub(super) fn render_header_footer(
                                     tp.indent_left,
                                     tp.indent_right,
                                     tp_hanging,
+                                    tp.alignment,
                                 );
                                 if tb_lines.is_empty() {
                                     let (fs, _, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
@@ -660,6 +663,7 @@ pub(super) fn render_header_footer(
                             tp.indent_left,
                             tp.indent_right,
                             tp_hanging,
+                            tp.alignment,
                         );
                         if tb_lines.is_empty() {
                             let (fs, _, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
@@ -1014,6 +1018,7 @@ pub(super) fn render_header_footer(
                     para.indent_right,
                     text_hanging,
                     per_line_widths.as_deref(),
+                    para.alignment,
                 );
 
                 // Inline pictures sit on the baseline and grow their line upward.
