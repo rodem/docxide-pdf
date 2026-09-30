@@ -1,5 +1,5 @@
 {
-  "next_id": 242,
+  "next_id": 250,
   "annotations": [
     {
       "id": 208,
@@ -43,7 +43,7 @@
       "y_pt": 572.0255,
       "note": "Looks like each bullet point causes a slightly larger vertical drift from the reference. This acumulates. Do not brush this off or defer it. Do a thorough examination and compare to reference.\n\nFIXED (2026-09-18): measured every baseline on page 1 (mutool stext, fonts dir set). Non-list lines matched Word within 0.06pt; each bullet line was 0.50pt short (15.50 vs Word's 16.00). Word sizes the line as marker ascent (Symbol 11.06pt) + text descent (Calibri 2.95pt) x 1.15 = 16.115 -> 16.0 on its grid; we took the larger of the two fonts' whole line heights (15.50). label_boosted_line_h now combines ascent and descent, and the first baseline drops by the marker's extra ascent as in Word (first bullet step 26.03 = ref 26.03). Result: bullet pitch 16.12, post-list drift +0.14pt (was -1.71). The marker's own descent is not counted: Courier New sub-bullets (streamnet p5) and Symbol on Arial (dialysis) confirmed Word ignores it.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 82,
@@ -142,7 +142,7 @@
       "y_pt": 691.51483,
       "note": "Text on the paragraph above the rectangle should also wrap around it.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 158,
@@ -153,7 +153,7 @@
       "y_pt": 284.4301,
       "note": "Generally the \"Las Vegas, NV ...\" text looks different,\n\nFIXED (2026-09-18): the document's font is \"Bosch Office Sans\" (fontTable w:family=\"auto\"), which is not installed; Word's export substituted Calibri while we picked Arial (about 8% wider, so every line rewrapped). A corpus survey (bosch, centrifugal_water_chillers, run-borders, youtube_channel_link, german_mezzo_soprano) shows Word substitutes the document theme's body font for a missing family=\"auto\" font: Calibri here, Arial for german_mezzo. register_font now falls back to the theme body font, then Calibri. Same size as before (10.5pt); font and wrapping now match. Bosch SSIM +21pp.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 167,
@@ -219,7 +219,7 @@
       "y_pt": 752.8874,
       "note": "\"Bosch gebruikt\" -text looks too large? Also too high up.\n\nFIXED (2026-09-18): two causes. Size: the run is 15pt in both, but our Arial substitute for the missing \"Bosch Office Sans\" was wider than Word's Calibri; the theme-body-font rule (see #158) picks Calibri now. Position: the first-page header holds a 106pt-tall \"Persbericht\" frame at 33pt from the page top with w:wrap=\"notBeside\"; Word flows the header's 14.75pt lines from the top and pushes the one that would overlap the frame below it, so the header ends at 153.75pt and the body starts there instead of at the 86pt top margin. compute_header_height and the header renderer now apply that per-line rule (FrameProperties gained height and text_below). Body baseline 168.0 vs Word 167.8 (was 100.0).",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 200,
@@ -230,7 +230,7 @@
       "y_pt": 391.03726,
       "note": "Green text box should be broken across two pages here, not pushed to the next.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 201,
@@ -395,7 +395,7 @@
       "y_pt": 205.5987,
       "note": "We split the table at the wrong place here, compared to reference. Q3 should be on page 6.\n\nFIXED (2026-09-18, by the earlier row-split work): re-measured at HEAD, the Q3 row starts on page 6 in both (ref baseline 618.5pt from top, ours 615.3pt) and page 7 begins with the same content. The rows have no trHeight/cantSplit so they split like Word's. Remaining difference on page 6 is font-width wrapping (Q1-Q3 each take one extra line with our substitute face).",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 221,
@@ -406,7 +406,7 @@
       "y_pt": 170.67145,
       "note": "Footnotes fall on the wrong page, this page should have 4, 5, 6 too",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 222,
@@ -439,7 +439,7 @@
       "y_pt": 222.80783,
       "note": "Spurious grey line rendered above \"Medarbeiderens\" here.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 225,
@@ -450,7 +450,7 @@
       "y_pt": 180.95215,
       "note": "Broklen textbox should still have bottom border here",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 226,
@@ -461,7 +461,7 @@
       "y_pt": 778.27716,
       "note": "Broken text box should have top border here",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 227,
@@ -516,7 +516,7 @@
       "y_pt": 32.92572,
       "note": "Logo is rendered as a black square\n\nFIXED (2026-09-15): EMF footer logo uses EMR_SELECTCLIPPATH; the ignored clip rectangle stayed an open PDF path and merged into the next FILLPATH, painting the whole logo box black. The translator now emits W n / W* n for it (and n for ABORTPATH).",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 232,
@@ -527,7 +527,7 @@
       "y_pt": 693.08057,
       "note": "This table should start on page 1 and be broken across pages",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 233,
@@ -549,7 +549,7 @@
       "y_pt": 73.54114,
       "note": "Missing footnote here. Also footnote horizontal line is too low.\n\nFIXED (2026-09-15): The footnote body is a two-cell table (footnoteRef in a 170-twip cell, text in the next); parse_notes_simple only read w:p children, so the note had no visible content and its separator was placed for a near-empty footnote. Table rows in footnotes are now flattened to one paragraph each (cells joined by a space), which brings back the text and moves the separator up to Word's position.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 235,
@@ -560,7 +560,7 @@
       "y_pt": 412.85886,
       "note": "Table segment that neither starts or ends on this page should still be rendered with top and bottom border. At least in this case. Confirm if this is always the rule.\n\nFIXED (2026-09-15): Same root cause as #236. Rule confirmed on this fixture: Word draws each row's own borders on every page, so at a page split the continuation's first row shows its top border and the last row on the previous page its bottom border. For rows inside the table those resolve to insideH, not the table's outer top/bottom; a table with insideH=nil shows no line at the split.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 236,
@@ -571,7 +571,7 @@
       "y_pt": 395.67072,
       "note": "Table is missing internal horizontal and vertical borders.\n\nFIXED (2026-09-15): The table's own tblBorders named only top/left/bottom/right, and the parser let that element replace the Table Grid style's border set wholesale, dropping the style's insideH/insideV. Inline tblBorders now merge with the style side by side (merge_table_borders in docx/tables.rs).",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 237,
@@ -582,7 +582,7 @@
       "y_pt": 175.3728,
       "note": "Content of this cell \"Banksia Park International High School in South Australia ....\" should start on this page, as there is plenty of room.\n\nFIXED (2026-09-18): the row has no trHeight/cantSplit so it did split, but only between paragraphs: the 10-line body paragraph did not fit the ~90pt left and moved whole to page 5, leaving the row's third column empty (the document ran to 9 pages vs Word's 7). find_cell_split now breaks inside a paragraph between lines, keeping at least two lines on each side (Word's widow control), and the partial-row renderer draws line ranges (label and anchored pictures only with the first line). Page 4 now shows the heading plus seven body lines like the reference; 7 pages.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 238,
@@ -615,7 +615,7 @@
       "y_pt": 708.9523,
       "note": "Page 6: ... - content should start above paragraph, not above imarge. Compare with reference.\n\nFIXED (2026-09-18): the look-ahead that wraps the paragraph before an anchored float around it (annotation #152) only fired when the next paragraph was image-only; page 6's anchor paragraph carries text too, so the preceding paragraph stayed full width (1 line instead of Word's 2 beside the image) and everything below sat one line high. The guard now accepts text-carrying anchor paragraphs, the anchor paragraph's own wrap zone uses the handed-forward anchor top, and the look-ahead only fires when the float leaves at least 48pt beside it for text (case41 p3 wraps with 64.8pt free; brazilian p9's 364pt figure with 37.5pt beside it leaves the preceding caption alone, as Word does). Page 6 line count now matches (13).",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 241,
@@ -626,6 +626,94 @@
       "y_pt": 557.9524,
       "note": "Vertical arrow on the far left should be broken up by the \"70 ... \" text\n\nFIXED (2026-09-18): the \"70cm\" label is an opaque PNG anchored in the same cell paragraph as the arrow, with a higher relativeHeight. The cell path drew every floating picture before the paragraph's connectors/textboxes regardless of z-order, so the arrow painted over the label. Cell pictures now carry z_index and those above the paragraph's shapes are drawn after them.",
       "fixed": true,
+      "cleared": true
+    },
+    {
+      "id": 242,
+      "case": "new/japanese_land_development_sign_form",
+      "page": 0,
+      "source": "Generated",
+      "x_pt": 455.71875,
+      "y_pt": 245.04272,
+      "note": "shaded box/bar should extend further right.",
+      "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 243,
+      "case": "new/family_kinship_lesson_plan",
+      "page": 3,
+      "source": "Generated",
+      "x_pt": 232.70312,
+      "y_pt": 596.5206,
+      "note": "This image should be centered.",
+      "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 244,
+      "case": "new/family_kinship_lesson_plan",
+      "page": 3,
+      "source": "Generated",
+      "x_pt": 279.68832,
+      "y_pt": 285.521,
+      "note": "Dotted lines should be in two columns here.",
+      "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 245,
+      "case": "scraped/italian_evaluation_minutes",
+      "page": 0,
+      "source": "Generated",
+      "x_pt": 72.83587,
+      "y_pt": 749.3187,
+      "note": "This line should proably fit on one line, not two? Font issue? Line break logic? Kerning? Figure out why.",
+      "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 246,
+      "case": "scraped/education_consultant_posting",
+      "page": 0,
+      "source": "Generated",
+      "x_pt": 185.86977,
+      "y_pt": 196.14069,
+      "note": "Table breaks very differently from reference",
+      "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 247,
+      "case": "new/ut_koer_annual_meeting_minutes",
+      "page": 2,
+      "source": "Generated",
+      "x_pt": 154.81268,
+      "y_pt": 796.3466,
+      "note": "Dark thick lines is placed wrong relative to the music notes here. See reference.",
+      "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 248,
+      "case": "new/scottish_fundraising_awards_campaign",
+      "page": 0,
+      "source": "Generated",
+      "x_pt": 303.32812,
+      "y_pt": 458.20145,
+      "note": "Spurious sqare thing after \"date.\" here. Not present in reference.",
+      "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 249,
+      "case": "new/french_sexual_health_youth_strategy",
+      "page": 1,
+      "source": "Generated",
+      "x_pt": 181.97098,
+      "y_pt": 692.10095,
+      "note": "\"Bullet points\" with arrows are rendered all wrong, overlaps text and the logo. Not enough margin between logo and text either.",
+      "fixed": false,
       "cleared": false
     }
   ]
