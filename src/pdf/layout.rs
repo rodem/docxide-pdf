@@ -621,6 +621,9 @@ pub(super) struct TextLine {
     /// Used to compute the correct line height for break-created lines
     /// (Word uses the break run's font metrics, not the paragraph's).
     pub(super) break_font_size: Option<f32>,
+    /// The breaker kept this line's last word by narrowing its spaces
+    /// (`SPACE_SQUEEZE`), so it is wider than the measure until justified.
+    pub(super) squeezed: bool,
 }
 
 /// True when a paragraph has no visible text (may still have phantom font-info runs).
@@ -823,13 +826,7 @@ fn is_cjk_punctuation(ch: char) -> bool {
 
 fn finish_line(chunks: &mut Vec<WordChunk>) -> TextLine {
     let total_width = chunks.last().map(|c| c.x_offset + c.width).unwrap_or(0.0);
-    TextLine {
-        chunks: std::mem::take(chunks),
-        total_width,
-        ends_with_break: false,
-        right_region: None,
-        break_font_size: None,
-    }
+    TextLine { chunks: std::mem::take(chunks), total_width, ..TextLine::default() }
 }
 
 fn finish_line_with_break(chunks: &mut Vec<WordChunk>) -> TextLine {
@@ -838,7 +835,7 @@ fn finish_line_with_break(chunks: &mut Vec<WordChunk>) -> TextLine {
     line
 }
 
-/// East Asian line-breaking switches for `build_paragraph_lines`.
+/// Paragraph line-breaking switches for `build_paragraph_lines`.
 #[derive(Clone, Copy)]
 pub(super) struct CjkLayout {
     /// `w:autoSpaceDE`/`DN`: quarter-em gap where Latin text meets ideographs.
@@ -846,6 +843,24 @@ pub(super) struct CjkLayout {
     /// `w:characterSpacingControl compressPunctuation`: squeeze full-width
     /// punctuation to keep one more character on the line.
     pub(super) compress_punct: bool,
+    /// Justified paragraph under Word 2013+ layout (compatibilityMode 15): a
+    /// word that overflows stays on the line when the line's spaces can
+    /// shrink to make room (see `SPACE_SQUEEZE`).
+    pub(super) squeeze_spaces: bool,
+}
+
+/// How far Word 2013+ narrows the spaces of a justified line to keep its
+/// last word: to 75% of their width. Measured, not from the spec: over 4,216
+/// squeezed lines in 207 Word PDFs the per-line space ratio piles up at 0.75
+/// with almost nothing below it, and only compat-15 documents squeeze.
+const SPACE_SQUEEZE: f32 = 0.25;
+
+/// Total inter-word space already on a line: the gaps between its chunks.
+fn line_space_width(chunks: &[WordChunk]) -> f32 {
+    chunks
+        .windows(2)
+        .map(|w| (w[1].x_offset - (w[0].x_offset + w[0].width)).max(0.0))
+        .sum()
 }
 
 /// Full-width East Asian closing punctuation whose right half is blank, which
@@ -925,6 +940,8 @@ pub(super) fn build_paragraph_lines(
     cjk: CjkLayout,
 ) -> Vec<TextLine> {
     let mut lines: Vec<TextLine> = Vec::new();
+    // Indices of lines that kept a word by squeezing their spaces.
+    let mut squeezed_lines: Vec<usize> = Vec::new();
     let mut current_chunks: Vec<WordChunk> = Vec::new();
     let mut current_x: f32 = 0.0;
     let mut pending_space_w: f32 = 0.0;
@@ -1160,7 +1177,17 @@ pub(super) fn build_paragraph_lines(
             };
 
             // Small tolerance for floating-point width accumulation over many glyphs
-            let overflows = proposed_x + ww > cur_max + 0.05;
+            let mut overflows = proposed_x + ww > cur_max + 0.05;
+            if overflows
+                && cjk.squeeze_spaces
+                && need_space
+                && !in_right_region
+                && proposed_x + ww - cur_max
+                    <= SPACE_SQUEEZE * (line_space_width(&current_chunks) + pending_space_w)
+            {
+                overflows = false;
+                squeezed_lines.push(lines.len());
+            }
 
             // compressPunctuation: before wrapping, make room for this word by
             // squeezing the full-width punctuation already on the line.
@@ -1289,23 +1316,16 @@ pub(super) fn build_paragraph_lines(
         let break_fs = runs.iter().rev()
             .find(|r| r.is_line_break)
             .map(|r| r.font_size);
-        lines.push(TextLine {
-            chunks: vec![],
-            total_width: 0.0,
-            ends_with_break: false,
-            right_region: None,
-            break_font_size: break_fs,
-        });
+        lines.push(TextLine { break_font_size: break_fs, ..TextLine::default() });
     }
 
     if lines.is_empty() {
-        lines.push(TextLine {
-            chunks: vec![],
-            total_width: 0.0,
-            ends_with_break: false,
-            right_region: None,
-            break_font_size: None,
-        });
+        lines.push(TextLine::default());
+    }
+    for i in squeezed_lines {
+        if let Some(line) = lines.get_mut(i) {
+            line.squeezed = true;
+        }
     }
     lines
 }
@@ -1741,13 +1761,7 @@ pub(super) fn build_tabbed_line(
     if !all_chunks.is_empty() {
         result_lines.push(finish_line(&mut all_chunks));
     } else if result_lines.is_empty() {
-        result_lines.push(TextLine {
-            chunks: vec![],
-            total_width: 0.0,
-            ends_with_break: false,
-            right_region: None,
-            break_font_size: None,
-        });
+        result_lines.push(TextLine::default());
     }
 
     // Trailing break creates an empty line (same as build_paragraph_lines)
@@ -1755,13 +1769,7 @@ pub(super) fn build_tabbed_line(
         let break_fs = runs.iter().rev()
             .find(|r| r.is_line_break)
             .map(|r| r.font_size);
-        result_lines.push(TextLine {
-            chunks: vec![],
-            total_width: 0.0,
-            ends_with_break: false,
-            right_region: None,
-            break_font_size: break_fs,
-        });
+        result_lines.push(TextLine { break_font_size: break_fs, ..TextLine::default() });
     }
 
     result_lines
@@ -1966,6 +1974,22 @@ pub(super) fn render_paragraph_lines(
         let left_chunk_count = line.right_region.as_ref()
             .map(|rr| rr.first_chunk_idx)
             .unwrap_or(line.chunks.len());
+        // Justification stretches or squeezes the spaces between words, not the
+        // joins between runs inside a word: count, per chunk, the spaces before
+        // it — a gap between chunks, or a chunk that is itself a space (spaces
+        // carrying underline or shading are text-less chunks of their own).
+        let gaps_before: Vec<usize> = line.chunks[..left_chunk_count]
+            .iter()
+            .scan((0usize, None::<(f32, bool)>), |(n, prev), c| {
+                if prev.is_some_and(|(end, was_space)| was_space || c.x_offset > end + 0.01) {
+                    *n += 1;
+                }
+                let is_space = c.inline_image_name.is_none() && c.text.chars().all(is_break_space);
+                *prev = Some((c.x_offset + c.width, is_space));
+                Some(*n)
+            })
+            .collect();
+        let left_gaps = gaps_before.last().copied().unwrap_or(0);
 
         // CJK justification: distribute space between every character, not just chunks.
         // Word treats CJK inter-character gaps the same as word gaps for justify.
@@ -1980,8 +2004,12 @@ pub(super) fn render_paragraph_lines(
         // Soft line breaks (w:br) should still be justified — only the
         // paragraph's true last line suppresses justification. `distribute`
         // stretches every line, last one included (§17.18.44).
+        // A line wider than the measure only exists where the breaker kept a
+        // word by squeezing spaces (`SPACE_SQUEEZE`); Word paints those spaces
+        // narrower even on the paragraph's last line (mongolian_human_rights).
+        let squeezed = line.squeezed && left_gaps > 0;
         let can_justify = match *alignment {
-            Alignment::Justify => global_line_idx != last_line_idx,
+            Alignment::Justify => global_line_idx != last_line_idx || squeezed,
             Alignment::Distribute => true,
             _ => false,
         };
@@ -1990,7 +2018,7 @@ pub(super) fn render_paragraph_lines(
             char_justify_gaps(*alignment, can_justify, has_cjk_content, left_char_count);
         let is_char_justified = char_justify_gaps.is_some();
         let is_justified = is_char_justified
-            || (can_justify && left_chunk_count > 1);
+            || (can_justify && left_gaps > 0);
 
         let line_start_x = match alignment {
             Alignment::Center => eff_margin + (eff_width - left_content_width) / 2.0,
@@ -2006,7 +2034,8 @@ pub(super) fn render_paragraph_lines(
         };
 
         let extra_per_gap = if is_justified && !is_char_justified {
-            ((eff_width - left_content_width) / (left_chunk_count - 1).max(1) as f32).max(0.0)
+            let per_gap = (eff_width - left_content_width) / left_gaps.max(1) as f32;
+            if squeezed { per_gap } else { per_gap.max(0.0) }
         } else {
             0.0
         };
@@ -2046,7 +2075,7 @@ pub(super) fn render_paragraph_lines(
                     .sum();
                 line_start_x + chunk.x_offset + chars_before as f32 * justify_tc
             } else {
-                line_start_x + chunk.x_offset + chunk_idx as f32 * extra_per_gap
+                line_start_x + chunk.x_offset + gaps_before[chunk_idx] as f32 * extra_per_gap
             }
         };
 

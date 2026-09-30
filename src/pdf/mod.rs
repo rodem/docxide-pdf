@@ -116,7 +116,7 @@ impl RenderContext<'_> {
     /// East Asian switches for `build_paragraph_lines`: the paragraph's autospace
     /// choice plus the document-wide punctuation compression.
     fn cjk(&self, auto_space: bool) -> CjkLayout {
-        CjkLayout { auto_space, compress_punct: self.compress_punctuation }
+        CjkLayout { auto_space, compress_punct: self.compress_punctuation, squeeze_spaces: false }
     }
 }
 
