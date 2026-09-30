@@ -122,6 +122,15 @@ pub(super) fn compute_header_height(
                         continue;
                     }
                     let fi_h = match fi.v_position {
+                        // A paragraph-relative float raised above its paragraph
+                        // ends that much higher (americas_counter_terrorism: a
+                        // -9pt logo ends 0.35pt above the body top, which Word
+                        // leaves in place).
+                        VerticalPosition::Offset(o)
+                            if matches!(fi.v_relative_from, VRelativeFrom::Paragraph) =>
+                        {
+                            (o + fi.image.display_height).max(0.0)
+                        }
                         VerticalPosition::Offset(o) => o.max(0.0) + fi.image.display_height,
                         _ => fi.image.display_height,
                     };
