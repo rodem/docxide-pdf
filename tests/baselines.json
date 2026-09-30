@@ -36,8 +36,8 @@
     "convert_ms": 7.5
   },
   "cases/case16": {
-    "jaccard": 0.9324,
-    "ssim": 0.8221,
+    "jaccard": 0.9897,
+    "ssim": 0.9859,
     "text_boundary": 1.0,
     "convert_ms": 51.2
   },
@@ -126,8 +126,8 @@
     "convert_ms": 6.9
   },
   "cases/case3": {
-    "jaccard": 0.2742,
-    "ssim": 0.8941,
+    "jaccard": 0.6209,
+    "ssim": 0.8934,
     "text_boundary": 0.6,
     "convert_ms": 2.5
   },
@@ -150,8 +150,8 @@
     "convert_ms": 5.2
   },
   "cases/case33": {
-    "jaccard": 0.5743,
-    "ssim": 0.9541,
+    "jaccard": 0.7842,
+    "ssim": 0.9538,
     "text_boundary": 0.7273,
     "convert_ms": 7.2
   },
@@ -203,13 +203,13 @@
     "text_boundary": 0.5
   },
   "cases/case41": {
-    "jaccard": 0.8642,
-    "ssim": 0.8628,
+    "jaccard": 0.9337,
+    "ssim": 0.9554,
     "text_boundary": 0.6702
   },
   "cases/case42": {
-    "jaccard": 0.4636,
-    "ssim": 0.498,
+    "jaccard": 0.4616,
+    "ssim": 0.4944,
     "text_boundary": 0.1707
   },
   "cases/case43": {
@@ -391,8 +391,8 @@
     "text_boundary": 1.0
   },
   "cases/case77": {
-    "jaccard": 0.5148,
-    "ssim": 0.7046
+    "jaccard": 0.5184,
+    "ssim": 0.7047
   },
   "cases/case78": {
     "jaccard": 0.9962,
@@ -496,13 +496,13 @@
     "text_boundary": 0.9259
   },
   "new/arizona_physical..": {
-    "jaccard": 0.7163,
+    "jaccard": 0.7195,
     "ssim": 0.8889,
     "text_boundary": 0.9064
   },
   "new/auditor_regulato..": {
-    "jaccard": 0.4225,
-    "ssim": 0.579,
+    "jaccard": 0.4205,
+    "ssim": 0.5818,
     "text_boundary": 0.5942
   },
   "new/bahamas_sustaina..": {
@@ -521,8 +521,8 @@
     "text_boundary": 0.9846
   },
   "new/bosch_software_a..": {
-    "jaccard": 0.0517,
-    "ssim": 0.1837,
+    "jaccard": 0.0846,
+    "ssim": 0.3924,
     "text_boundary": 0.0201
   },
   "new/candidate_refere..": {
@@ -536,8 +536,8 @@
     "text_boundary": 0.4458
   },
   "new/chinese_student_..": {
-    "jaccard": 0.1059,
-    "ssim": 0.3806,
+    "jaccard": 0.1347,
+    "ssim": 0.4402,
     "text_boundary": 0.8033
   },
   "new/construction_bat..": {
@@ -556,8 +556,8 @@
     "text_boundary": 0.9492
   },
   "new/croatian_thesis_..": {
-    "jaccard": 0.1874,
-    "ssim": 0.4184,
+    "jaccard": 0.2159,
+    "ssim": 0.5053,
     "text_boundary": 0.5385
   },
   "new/czech_census_202..": {
@@ -566,23 +566,23 @@
     "text_boundary": 0.6667
   },
   "new/czech_crisis_mea..": {
-    "jaccard": 0.4186,
-    "ssim": 0.677,
+    "jaccard": 0.5165,
+    "ssim": 0.6769,
     "text_boundary": 0.4662
   },
   "new/czech_works_cont..": {
-    "jaccard": 0.4663,
+    "jaccard": 0.4698,
     "ssim": 0.632,
     "text_boundary": 0.6508
   },
   "new/dental_amalgam_r..": {
-    "jaccard": 0.2017,
-    "ssim": 0.7795,
+    "jaccard": 0.3039,
+    "ssim": 0.8952,
     "text_boundary": 0.8056
   },
   "new/dialysis_treatme..": {
-    "jaccard": 0.5682,
-    "ssim": 0.8032,
+    "jaccard": 0.5834,
+    "ssim": 0.8029,
     "text_boundary": 0.5556
   },
   "new/dutch_council_me..": {
@@ -601,8 +601,8 @@
     "text_boundary": 0.8
   },
   "new/english_town_cou..": {
-    "jaccard": 0.2717,
-    "ssim": 0.413,
+    "jaccard": 0.2875,
+    "ssim": 0.4128,
     "text_boundary": 0.7628
   },
   "new/environmental_la..": {
@@ -611,13 +611,13 @@
     "text_boundary": 0.0328
   },
   "new/erasmus_plus_sta..": {
-    "jaccard": 0.2017,
-    "ssim": 0.5467,
+    "jaccard": 0.1991,
+    "ssim": 0.5346,
     "text_boundary": 0.3043
   },
   "new/family_kinship_l..": {
-    "jaccard": 0.2293,
-    "ssim": 0.3896,
+    "jaccard": 0.2297,
+    "ssim": 0.3895,
     "text_boundary": 0.3188
   },
   "new/french_lease_ear..": {
@@ -626,8 +626,8 @@
     "text_boundary": 0.82
   },
   "new/french_sexual_he..": {
-    "jaccard": 0.1989,
-    "ssim": 0.2646,
+    "jaccard": 0.1992,
+    "ssim": 0.2641,
     "text_boundary": 0.8269
   },
   "new/handels_messiah_..": {
@@ -636,13 +636,13 @@
     "text_boundary": 1.0
   },
   "new/indigenous_innov..": {
-    "jaccard": 0.1215,
-    "ssim": 0.2257,
+    "jaccard": 0.1835,
+    "ssim": 0.3229,
     "text_boundary": 0.0065
   },
   "new/international_te..": {
-    "jaccard": 0.081,
-    "ssim": 0.197,
+    "jaccard": 0.2691,
+    "ssim": 0.4539,
     "text_boundary": 0.1661
   },
   "new/irish_school_enr..": {
@@ -651,18 +651,18 @@
     "text_boundary": 0.7054
   },
   "new/isla_language_le..": {
-    "jaccard": 0.4236,
+    "jaccard": 0.4539,
     "ssim": 0.6346,
     "text_boundary": 0.7744
   },
   "new/japanese_land_de..": {
-    "jaccard": 0.0973,
-    "ssim": 0.295,
+    "jaccard": 0.128,
+    "ssim": 0.4674,
     "text_boundary": 0.1111
   },
   "new/japanese_medical..": {
-    "jaccard": 0.0431,
-    "ssim": 0.1789,
+    "jaccard": 0.0614,
+    "ssim": 0.2302,
     "text_boundary": 0.4634
   },
   "new/k4_regulations_s..": {
@@ -696,7 +696,7 @@
     "text_boundary": 0.8343
   },
   "new/old_blue_truck_g..": {
-    "jaccard": 0.7475,
+    "jaccard": 0.7517,
     "ssim": 0.9378,
     "text_boundary": 1.0
   },
@@ -716,18 +716,18 @@
     "text_boundary": 0.9412
   },
   "new/polish_procureme..": {
-    "jaccard": 0.2749,
-    "ssim": 0.5632,
+    "jaccard": 0.2827,
+    "ssim": 0.5634,
     "text_boundary": 0.48
   },
   "new/romanian_quality..": {
-    "jaccard": 0.3188,
-    "ssim": 0.5059,
+    "jaccard": 0.5293,
+    "ssim": 0.7291,
     "text_boundary": 0.4859
   },
   "new/russian_chess_pa..": {
-    "jaccard": 0.5805,
-    "ssim": 0.6376,
+    "jaccard": 0.6065,
+    "ssim": 0.6653,
     "text_boundary": 0.8958
   },
   "new/russian_construc..": {
@@ -746,8 +746,8 @@
     "text_boundary": 0.9402
   },
   "new/russian_voluntee..": {
-    "jaccard": 0.6696,
-    "ssim": 0.8446,
+    "jaccard": 0.6833,
+    "ssim": 0.8445,
     "text_boundary": 0.1174
   },
   "new/school_meal_assi..": {
@@ -756,8 +756,8 @@
     "text_boundary": 0.3465
   },
   "new/scottish_fundrai..": {
-    "jaccard": 0.2534,
-    "ssim": 0.5299,
+    "jaccard": 0.255,
+    "ssim": 0.5275,
     "text_boundary": 0.7612
   },
   "new/slovak_constitut..": {
@@ -771,8 +771,8 @@
     "text_boundary": 0.3861
   },
   "new/slovak_eu_direct..": {
-    "jaccard": 0.1297,
-    "ssim": 0.2139,
+    "jaccard": 0.1682,
+    "ssim": 0.2749,
     "text_boundary": 0.1629
   },
   "new/slovak_fuel_pric..": {
@@ -791,18 +791,18 @@
     "text_boundary": 1.0
   },
   "new/streamnet_steeri..": {
-    "jaccard": 0.5364,
-    "ssim": 0.8863,
+    "jaccard": 0.6682,
+    "ssim": 0.8481,
     "text_boundary": 0.9264
   },
   "new/taiwanese_educat..": {
-    "jaccard": 0.1138,
-    "ssim": 0.2066,
+    "jaccard": 0.1629,
+    "ssim": 0.3066,
     "text_boundary": 0.1875
   },
   "new/tokyo_welfare_in..": {
-    "jaccard": 0.1429,
-    "ssim": 0.4085,
+    "jaccard": 0.1765,
+    "ssim": 0.4901,
     "text_boundary": 0.5455
   },
   "new/turkish_chemistr..": {
@@ -816,8 +816,8 @@
     "text_boundary": 0.9231
   },
   "new/ut_koer_annual_m..": {
-    "jaccard": 0.1372,
-    "ssim": 0.3741,
+    "jaccard": 0.1645,
+    "ssim": 0.3749,
     "text_boundary": 0.3448
   },
   "new/victorian_univer..": {
@@ -826,7 +826,7 @@
     "text_boundary": 0.7645
   },
   "new/western_australi..": {
-    "jaccard": 0.3595,
+    "jaccard": 0.3596,
     "ssim": 0.5991,
     "text_boundary": 0.524
   },
@@ -865,14 +865,14 @@
     "text_boundary": 0.1752
   },
   "samples/sample500kB": {
-    "jaccard": 0.3359,
+    "jaccard": 0.3364,
     "ssim": 0.5256,
     "text_boundary": 0.7816,
     "convert_ms": 18.3
   },
   "samples/samtale": {
-    "jaccard": 0.3254,
-    "ssim": 0.5511,
+    "jaccard": 0.3666,
+    "ssim": 0.9111,
     "text_boundary": 0.8627,
     "convert_ms": 11.0
   },
@@ -907,8 +907,8 @@
     "convert_ms": 59.6
   },
   "scraped/croatian_grant_g..": {
-    "jaccard": 0.0753,
-    "ssim": 0.1872,
+    "jaccard": 0.0788,
+    "ssim": 0.195,
     "text_boundary": 0.0129,
     "convert_ms": 270.5
   },
@@ -958,14 +958,14 @@
     "text_boundary": 1.0
   },
   "scraped/east_asia_confer..": {
-    "jaccard": 0.0855,
-    "ssim": 0.2126,
+    "jaccard": 0.1196,
+    "ssim": 0.3287,
     "text_boundary": 0.619,
     "convert_ms": 22.0
   },
   "scraped/education_consul..": {
-    "jaccard": 0.1166,
-    "ssim": 0.3003,
+    "jaccard": 0.1158,
+    "ssim": 0.2996,
     "text_boundary": 0.2899,
     "convert_ms": 47.1
   },
@@ -982,8 +982,8 @@
     "convert_ms": 305.8
   },
   "scraped/german_mezzo_sop..": {
-    "jaccard": 0.5581,
-    "ssim": 0.76,
+    "jaccard": 0.555,
+    "ssim": 0.7824,
     "text_boundary": 0.8276,
     "convert_ms": 33.4
   },
@@ -994,14 +994,14 @@
     "convert_ms": 70.6
   },
   "scraped/indonesian_bench..": {
-    "jaccard": 0.4166,
-    "ssim": 0.5612,
+    "jaccard": 0.4444,
+    "ssim": 0.5611,
     "text_boundary": 0.4351,
     "convert_ms": 170.5
   },
   "scraped/italian_evaluati..": {
-    "jaccard": 0.3401,
-    "ssim": 0.4383,
+    "jaccard": 0.3407,
+    "ssim": 0.44,
     "text_boundary": 0.5768,
     "convert_ms": 115.1
   },
@@ -1012,14 +1012,14 @@
     "convert_ms": 2.4
   },
   "scraped/japanese_interli..": {
-    "jaccard": 0.0508,
-    "ssim": 0.273,
+    "jaccard": 0.1629,
+    "ssim": 0.5561,
     "text_boundary": 0.2381,
     "convert_ms": 4.5
   },
   "scraped/korean_japanese_..": {
-    "jaccard": 0.0987,
-    "ssim": 0.1866,
+    "jaccard": 0.1227,
+    "ssim": 0.2482,
     "text_boundary": 0.8571,
     "convert_ms": 18.4
   },
@@ -1048,8 +1048,8 @@
     "convert_ms": 43.3
   },
   "scraped/mongolian_human_..": {
-    "jaccard": 0.141,
-    "ssim": 0.2162,
+    "jaccard": 0.1413,
+    "ssim": 0.2163,
     "text_boundary": 0.1949,
     "convert_ms": 32.0
   },
@@ -1060,14 +1060,14 @@
     "convert_ms": 97.8
   },
   "scraped/polish_archery_r..": {
-    "jaccard": 0.3786,
+    "jaccard": 0.4115,
     "ssim": 0.7687,
     "text_boundary": 0.6294,
     "convert_ms": 16.3
   },
   "scraped/polish_building_..": {
-    "jaccard": 0.1825,
-    "ssim": 0.3325,
+    "jaccard": 0.1616,
+    "ssim": 0.3073,
     "text_boundary": 0.215,
     "convert_ms": 56.9
   },
@@ -1084,14 +1084,14 @@
     "convert_ms": 11.8
   },
   "scraped/polish_tender_de..": {
-    "jaccard": 0.3243,
+    "jaccard": 0.337,
     "ssim": 0.4195,
     "text_boundary": 0.4366,
     "convert_ms": 19.0
   },
   "scraped/rehab_centre_phy..": {
-    "jaccard": 0.0987,
-    "ssim": 0.3131,
+    "jaccard": 0.109,
+    "ssim": 0.3066,
     "text_boundary": 0.6341,
     "convert_ms": 9.8
   },
@@ -1107,8 +1107,8 @@
     "text_boundary": 0.9574
   },
   "scraped/russian_universi..": {
-    "jaccard": 0.2457,
-    "ssim": 0.5046,
+    "jaccard": 0.2411,
+    "ssim": 0.5047,
     "text_boundary": 0.5934,
     "convert_ms": 23.3
   },
@@ -1136,19 +1136,19 @@
     "text_boundary": 1.0
   },
   "scraped/stem_partnership..": {
-    "jaccard": 0.2583,
-    "ssim": 0.3091,
+    "jaccard": 0.288,
+    "ssim": 0.3812,
     "text_boundary": 0.3098,
     "convert_ms": 32.2
   },
   "scraped/traditional_skil..": {
-    "jaccard": 0.1551,
-    "ssim": 0.4784,
+    "jaccard": 0.1594,
+    "ssim": 0.4887,
     "text_boundary": 0.7614,
     "convert_ms": 22.0
   },
   "scraped/transition_to_wo..": {
-    "jaccard": 0.4016,
+    "jaccard": 0.4015,
     "ssim": 0.5123,
     "text_boundary": 0.3971,
     "convert_ms": 493.0
@@ -1178,8 +1178,8 @@
     "convert_ms": 12.9
   },
   "scraped/usep_handbook": {
-    "jaccard": 0.5447,
-    "ssim": 0.7393,
+    "jaccard": 0.8706,
+    "ssim": 0.9484,
     "text_boundary": 0.6171,
     "convert_ms": 38.6
   },
