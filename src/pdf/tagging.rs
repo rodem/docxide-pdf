@@ -190,6 +190,16 @@ impl CellTagger<'_> {
         self.tags.begin(content, self.page, node);
     }
 
+    /// Structure for a table nested in this cell: a Table inside the cell
+    /// element, between the paragraphs around it. It ends the cell's list.
+    pub(super) fn nested_table(&mut self, table: &crate::model::Table) -> TableTags {
+        if let Some(lists) = self.table.lists.get_mut(&(self.row, self.cell)) {
+            lists.close();
+        }
+        let cell = self.table.cell(self.tags, self.row, self.cell, self.col_span);
+        TableTags::for_table(self.tags, cell, table)
+    }
+
     /// The cell element alone: Word keeps a vertically merged cell's
     /// continuation as an empty cell so every row has all its columns.
     pub(super) fn empty_cell(&mut self) {

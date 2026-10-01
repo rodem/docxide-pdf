@@ -12,7 +12,7 @@ use super::color::{fill_rgb, stroke_rgb};
 use super::header_footer::{compute_effective_margin_bottom, effective_slot_top};
 
 use super::RenderContext;
-use super::tagging::{CellTagger, Tags};
+use super::tagging::{CellTagger, TableTags, Tags};
 use super::layout::{
     LinkAnnotation, LinkTagger, encode_text_for_pdf, render_paragraph_lines,
 };
@@ -515,6 +515,8 @@ fn render_cell_content(
                         &mut cursor_y,
                         ctx,
                         gradient_specs,
+                        links,
+                        &mut tagger,
                     );
                 } else {
                     cursor_y -= height;
@@ -654,6 +656,10 @@ fn render_table_rows(
     cursor_y: &mut f32,
     ctx: &RenderContext,
     gradient_specs: &mut Vec<super::GradientSpec>,
+    links: &mut Vec<LinkAnnotation>,
+    // (tags, this table's structure, page) for a nested table in a tagged
+    // cell; header/footer tables stay artifacts.
+    mut tag: Option<(&mut Tags, &mut TableTags, usize)>,
 ) {
     let cm = &table.cell_margins;
     for (ri, (row, layout)) in table.rows.iter().zip(row_layouts.iter()).enumerate() {
@@ -662,14 +668,25 @@ fn render_table_rows(
         let row_bottom = row_top - row_h;
 
         let mut grid_col = 0usize;
-        for (cell, cell_layout) in row.cells.iter().zip(layout.cells.iter()) {
+        for (ci, (cell, cell_layout)) in row.cells.iter().zip(layout.cells.iter()).enumerate() {
             let span = cell.grid_span.max(1) as usize;
             let col_w = cell_span_width(col_widths, grid_col, span);
             let cx = cell_x_offset(col_widths, table_left, grid_col);
             let cell_grid_col = grid_col;
             grid_col += span;
+            let tagger = tag.as_mut().map(|(tags, table_tags, page)| CellTagger {
+                tags: &mut **tags,
+                table: &mut **table_tags,
+                page: *page,
+                row: ri,
+                cell: ci,
+                col_span: row_tag_span(row, ci, span, col_widths.len(), grid_col),
+            });
 
             if cell.v_merge == VMerge::Continue {
+                if let Some(mut t) = tagger {
+                    t.empty_cell();
+                }
                 continue;
             }
 
@@ -700,10 +717,14 @@ fn render_table_rows(
                     ecm,
                     ctx,
                     gradient_specs,
-                    &mut Vec::new(),
-                    // ponytail: nested and header/footer tables stay artifacts
-                    None,
+                    links,
+                    tagger,
                 );
+            } else if let Some(mut t) = tagger {
+                // Like body cells: an empty cell keeps its element (with an
+                // empty P) so every row has all its columns.
+                t.begin(content, 0, None, false);
+                Tags::end(content);
             }
         }
 
@@ -749,6 +770,9 @@ fn render_nested_table(
     cursor_y: &mut f32,
     ctx: &RenderContext,
     gradient_specs: &mut Vec<super::GradientSpec>,
+    links: &mut Vec<LinkAnnotation>,
+    // The parent cell's tagger: the nested table is tagged inside that cell.
+    tagger: &mut Option<CellTagger<'_>>,
 ) {
     let mut col_widths = auto_fit_columns(table, ctx.fonts, Some(available_w), None);
     apply_pct_width(table, &mut col_widths, available_w);
@@ -762,6 +786,8 @@ fn render_nested_table(
 
     let merge_spans = compute_merge_spans(table, &row_layouts);
 
+    let mut nested = tagger.as_mut().map(|t| t.nested_table(table));
+    let tag = tagger.as_mut().zip(nested.as_mut()).map(|(t, n)| (&mut *t.tags, n, t.page));
     render_table_rows(
         table,
         &row_layouts,
@@ -772,7 +798,12 @@ fn render_nested_table(
         cursor_y,
         ctx,
         gradient_specs,
+        links,
+        tag,
     );
+    if let (Some(t), Some(n)) = (tagger.as_mut(), nested) {
+        n.finish(t.tags);
+    }
 }
 
 fn render_partial_cell_content(
@@ -908,7 +939,7 @@ fn render_partial_cell_content(
                 if let Some(Block::Table(table)) = blocks.get(bi) {
                     render_nested_table(
                         table, content, cell_x + cm.left, col_w - cm.left - cm.right,
-                        &mut cursor_y, ctx, gradient_specs,
+                        &mut cursor_y, ctx, gradient_specs, links, &mut tagger,
                     );
                 } else {
                     cursor_y -= height;
@@ -1832,5 +1863,7 @@ pub(super) fn render_header_footer_table(
         cursor_y,
         ctx,
         gradient_specs,
+        &mut Vec::new(),
+        None,
     );
 }
