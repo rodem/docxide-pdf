@@ -485,6 +485,13 @@ pub(super) fn parse_line_spacing(spacing_node: roxmltree::Node, line_val: f32) -
     }
 }
 
+/// Word gives its built-in "heading N" styles outline level N−1 even when the
+/// style omits `w:outlineLvl` (it tags and bookmarks them as headings).
+fn builtin_heading_level(name: &str) -> Option<u8> {
+    let level = name.to_ascii_lowercase().strip_prefix("heading ")?.parse::<u8>().ok()?;
+    (1..=9).contains(&level).then(|| level - 1)
+}
+
 pub(super) fn parse_styles<R: Read + Seek>(
     zip: &mut zip::ZipArchive<R>,
     theme: &ThemeFonts,
@@ -711,7 +718,8 @@ pub(super) fn parse_styles<R: Read + Seek>(
                 let outline_level = ppr
                     .and_then(|p| wml_attr(p, "outlineLvl"))
                     .and_then(|v| v.parse::<u8>().ok())
-                    .filter(|&lvl| lvl <= 9);
+                    .filter(|&lvl| lvl <= 9)
+                    .or_else(|| builtin_heading_level(wml_attr(style_node, "name")?));
 
                 let snap_to_grid = ppr.and_then(|ppr| wml_bool(ppr, "snapToGrid"));
                 let auto_space_de = ppr.and_then(|ppr| wml_bool(ppr, "autoSpaceDE"));
@@ -1091,5 +1099,14 @@ mod tests {
         assert_eq!(parse_alignment("left"), Alignment::Left);
         assert_eq!(parse_alignment("start"), Alignment::Left); // unknown → Left
         assert_eq!(parse_alignment(""), Alignment::Left);
+    }
+
+    #[test]
+    fn builtin_heading_styles_have_outline_levels() {
+        assert_eq!(builtin_heading_level("heading 1"), Some(0));
+        assert_eq!(builtin_heading_level("Heading 9"), Some(8));
+        assert_eq!(builtin_heading_level("heading 10"), None);
+        assert_eq!(builtin_heading_level("Heading"), None);
+        assert_eq!(builtin_heading_level("TOC Heading"), None);
     }
 }
