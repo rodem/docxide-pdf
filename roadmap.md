@@ -151,7 +151,17 @@ scratchpad; rebuild them from `tests/common/a11y.rs` if needed):**
 6. `/ListNumbering` on L, `w:softHyphen` dropped, `w:noBreakHyphen` →
    U+002D, Wingdings bullets extract as private-use code points;
    `w:lang/@bidi` (complex-script text) ignored.
-7. Test-run time: with Microsoft Defender scanning `tests/output` and a
+7. Language Spans trust the docDefaults `w:lang`: lithuanian_public_information_law
+   (catalog lt-LT from its 198 `lt-LT` runs) gets ~157 `/Lang en-US` Spans
+   around Lithuanian text, because its 1,181 runs without `w:lang` inherit
+   docDefaults `en-US` — the author's Word UI language, not the text's. A
+   screen reader would switch to an English voice there (Word does the same).
+   Fix: only a language from the run or its styles opens a Span; text that
+   only inherits docDefaults counts as the document language (and arguably
+   shouldn't vote in `document_lang` either). Needs `Run` to know where its
+   language came from (`docx/runs.rs` `resolve_run_format`, `layout.rs`
+   `chunk_lang`).
+8. Test-run time: with Microsoft Defender scanning `tests/output` and a
    concurrent worktree run, the full suite took >60 min (normally ~6–10).
 
 **Harness side findings (2026-10-01):** `tests/text_boundary.rs` has had no
