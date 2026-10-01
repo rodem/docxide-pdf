@@ -111,11 +111,11 @@ fn natural_widths(table: &Table, fonts: &HashMap<String, FontEntry>, cm: &crate:
                     };
                     if run.small_caps {
                         para_w += super::layout::smallcaps_segments(&text, fs).iter().map(|(seg, seg_fs, _)| {
-                            let kern = run.kern_threshold.is_some_and(|t| *seg_fs >= t);
+                            let kern = run.kerns_at(*seg_fs);
                             entry.word_width(seg, *seg_fs, kern)
                         }).sum::<f32>();
                     } else {
-                        let kern = run.kern_threshold.is_some_and(|t| fs >= t);
+                        let kern = run.kerns_at(fs);
                         para_w += entry.word_width(&text, fs, kern);
                     }
                 }
@@ -252,11 +252,11 @@ pub(super) fn auto_fit_columns(table: &Table, fonts: &HashMap<String, FontEntry>
                     for word in text.split_whitespace() {
                         let ww = if run.small_caps {
                             super::layout::smallcaps_segments(word, fs).iter().map(|(seg, seg_fs, _)| {
-                                let kern = run.kern_threshold.is_some_and(|t| *seg_fs >= t);
+                                let kern = run.kerns_at(*seg_fs);
                                 entry.word_width(seg, *seg_fs, kern)
                             }).sum::<f32>() + h_pad
                         } else {
-                            let kern = run.kern_threshold.is_some_and(|t| fs >= t);
+                            let kern = run.kerns_at(fs);
                             entry.word_width(word, fs, kern) + h_pad
                         };
                         min_widths[grid_col] = min_widths[grid_col].max(ww);

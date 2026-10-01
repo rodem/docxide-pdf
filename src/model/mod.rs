@@ -435,6 +435,7 @@ pub struct Run {
     pub is_footnote_ref_mark: bool,
     pub endnote_id: Option<u32>,
     pub is_endnote_ref_mark: bool,
+    /// `w:kern` in points; see `Run::kerns_at`.
     pub kern_threshold: Option<f32>,
     pub char_style_id: Option<String>,
     pub text_outline: Option<TextOutline>,
@@ -458,6 +459,15 @@ pub struct Run {
     /// Cambria Math) has very tall metrics for big operators; such runs must not
     /// inflate the surrounding text line height.
     pub is_math: bool,
+}
+
+impl Run {
+    /// `w:kern`: pair kerning applies at this size and above, and a value of 0
+    /// switches it off — Word writes 0 for an unticked "Kerning for fonts", so
+    /// a Normal style's 0 overrides docDefaults' 1pt (slovak_pedagogical).
+    pub fn kerns_at(&self, font_size: f32) -> bool {
+        self.kern_threshold.is_some_and(|t| t > 0.0 && font_size >= t)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

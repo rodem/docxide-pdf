@@ -746,7 +746,7 @@ fn word_width_for_run(
 ) -> f32 {
     if run.small_caps {
         smallcaps_segments(word, eff_fs).iter().map(|(seg, fs, _)| {
-            let seg_kern = run.kern_threshold.is_some_and(|t| *fs >= t);
+            let seg_kern = run.kerns_at(*fs);
             entry.word_width(seg, *fs, seg_kern) * ts + cs * seg.chars().count() as f32
         }).sum()
     } else {
@@ -801,7 +801,7 @@ fn push_word_chunks(
         let segs = smallcaps_segments(word, eff_fs);
         let mut seg_x = x_start;
         for (seg_text, seg_fs, source) in &segs {
-            let seg_kern = run.kern_threshold.is_some_and(|t| *seg_fs >= t);
+            let seg_kern = run.kerns_at(*seg_fs);
             let ts = run.text_scale / 100.0;
             let seg_w = entry.word_width(seg_text, *seg_fs, seg_kern) * ts
                 + cs * seg_text.chars().count() as f32;
@@ -1220,7 +1220,7 @@ pub(super) fn build_paragraph_lines(
                 && !current_chunks.is_empty();
             is_first_word_in_run = false;
 
-            let kern = run.kern_threshold.is_some_and(|t| eff_fs >= t);
+            let kern = run.kerns_at(eff_fs);
             let ww = word_width_for_run(entry, run, word, eff_fs, kern, cs, ts);
             prev_last_char = word.chars().last();
 
@@ -1444,7 +1444,7 @@ fn segment_width(runs: &[&Run], seen_fonts: &HashMap<String, FontEntry>) -> f32 
             if !first || i > 0 {
                 w += space_w;
             }
-            let kern = run.kern_threshold.is_some_and(|t| eff_fs >= t);
+            let kern = run.kerns_at(eff_fs);
             w += entry.word_width(word, eff_fs, kern) * ts + cs * word.chars().count() as f32;
             first = false;
         }
@@ -1477,7 +1477,7 @@ fn decimal_before_width(runs: &[&Run], seen_fonts: &HashMap<String, FontEntry>) 
             chars_remaining = 0;
             s
         };
-        let kern = run.kern_threshold.is_some_and(|t| eff_fs >= t);
+        let kern = run.kerns_at(eff_fs);
         w += entry.word_width(text_to_measure, eff_fs, kern) * ts
             + cs * text_to_measure.chars().count() as f32;
         if chars_remaining == 0 {
@@ -1762,7 +1762,7 @@ pub(super) fn build_tabbed_line(
                 let shown = caps_word(run, source);
                 let word: &str = &shown;
                 let original = run.caps.then_some(source);
-                let kern = run.kern_threshold.is_some_and(|t| eff_fs >= t);
+                let kern = run.kerns_at(eff_fs);
                 let ww = word_width_for_run(entry, run, word, eff_fs, kern, cs, ts);
                 pending_space_w += space_count as f32 * space_w_cs;
                 if space_count > 0 {
