@@ -336,8 +336,14 @@ Open findings (not done):
   does not set the line's ascent in Word; whether it counts for anything is
   open (counting it as text made the line too low).
 - covid_insomnia two-column flow regressed with the squeeze.
-- Tracked changes: Word's PDF export can show revision markup (balloons);
-  we always render the final view. Not started.
+- Tracked changes: see "Tracked-Changes (Redline) Rendering" below.
+- **fontTable altName order (TODO)**: we try a font's `w:altName` BEFORE the
+  requested name (since fcb84c7e, for a Korean localized name, "바탕"). Word
+  uses the altName only when the font is missing (the spec's meaning too): a
+  document asking for Source Sans Pro, altName Corbel, is drawn in Source
+  Sans Pro by Word and in Corbel by us. Fix: requested name first, altName
+  as the fallback, keeping altName-first only for non-ASCII localized names;
+  check the Korean fixtures and the full suite.
 - Below compat 15 without `overrideTableStyleFontSizeAndJustification`, a
   table style's font size beats Normal's (unless it is 10pt); we always let
   Normal win.
@@ -1086,13 +1092,43 @@ All 8 chart types are supported (bar, line, pie, area, doughnut, radar, scatter,
 - **Legend placement fine-tuning**: small positional offsets vs Word. Centering formula and spacing need per-chart-type calibration.
 - **Font selection in chart labels**: picks arbitrary font from seen_fonts, not theme font
 
-## Track Changes Remaining Work
+## Tracked-Changes (Redline) Rendering (TODO — HIGH IMPACT for documents with revisions)
 
-Final mode (insertions included, deletions removed) is done. Remaining:
+A document with tracked changes ("redline") keeps each edit as a revision:
+`w:ins` / `w:del` runs, `w:moveFrom` / `w:moveTo`, and property changes
+(`w:rPrChange`, `w:pPrChange`, …). Word's PDF export shows them marked up;
+we render the final text (insertions plain, deletions dropped), which is
+Word's "No Markup" view. Comments already render as Word does (scaled page,
+balloon pane, `pdf/comments.rs`).
 
-- **Markup mode** — rendering deletions with red strikethrough, insertions with red underline (for documents exported with markup visible)
-- **Paragraph-level changes** — `w:ins`/`w:del` wrapping entire `w:p` elements at `w:body` level
-- **Property changes** — `w:rPrChange`, `w:pPrChange`, `w:sectPrChange`, `w:tblPrChange` (formatting revisions)
+What Word's markup export looks like (seen in reference PDFs):
+- Inserted text in the author's colour, underlined.
+- Deleted text in the author's colour, struck through, and still laid out:
+  it takes space, so lines wrap and pages break differently from the final
+  text.
+- A change bar in the outside margin next to every changed line.
+- One colour per author (measure the palette and its order from references).
+- With comments present the page is scaled for the balloon pane, and
+  deletions / formatting changes can move into balloons.
+
+Measured on 100 tracked-changes documents against Word's exports: Jaccard
+≈ 25, SSIM ≈ 35, page count wrong on 36 — because we draw the final text.
+
+Plan, in order:
+1. Inline markup for `w:ins` / `w:del` runs: colour + underline /
+   strikethrough, deleted runs kept in layout (`docx/runs.rs` skips `w:del`
+   today).
+2. Change bars beside changed lines.
+3. Per-author colours.
+4. Paragraph-level revisions (`w:ins` / `w:del` on paragraph marks and whole
+   `w:p` at body level), moves (`w:moveFrom` / `w:moveTo`).
+5. Property changes (`w:rPrChange`, `w:pPrChange`, `w:sectPrChange`,
+   `w:tblPrChange`): no inline mark, only balloons in Word's balloon view.
+6. Deletion / formatting balloons when the document also has comments.
+
+Keep the final view selectable (Word's "No Markup"); which one is the
+default is open. Creating redlines (comparing two documents into a
+tracked-changes .docx) is a separate tool and out of scope.
 
 ## WordArt Remaining Work (LOW IMPACT)
 
