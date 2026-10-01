@@ -37,7 +37,7 @@ pub(crate) struct Tags {
     next_mcid: Vec<i32>,
     /// (endnote?, note id) → its Note element.
     notes: HashMap<(bool, u32), usize>,
-    /// Document-level elements for floating content (textboxes), drawn while
+    /// Document-level elements for floating content (textboxes, pictures), drawn while
     /// their anchor paragraph renders but placed after its element, like Word.
     hoisted: Vec<usize>,
 }
@@ -262,10 +262,20 @@ impl Tags {
     }
 
     /// A document-level element that joins the tree at `attach_hoisted`.
+    // ponytail: hoisted in drawing order (behind-text layer first, pictures
+    // before textboxes), not the anchors' document order; an anchor index on
+    // FloatingImage/Textbox fixes it if mixed paragraphs matter (3 fixtures)
     pub(super) fn hoist(&mut self, kind: &'static str) -> usize {
         let id = self.nodes.len();
         self.nodes.push(Node { kind, parent: ROOT, kids: Vec::new(), cell: None, alt: None, id: None });
         self.hoisted.push(id);
+        id
+    }
+
+    /// A hoisted Figure with the picture's alt text when it has one.
+    pub(super) fn hoist_figure(&mut self, alt: Option<&str>) -> usize {
+        let id = self.hoist("Figure");
+        self.nodes[id].alt = alt.map(str::to_string);
         id
     }
 
@@ -362,6 +372,8 @@ impl Tags {
         page_ids: &[Ref],
         annots: &[(usize, usize, Ref)],
     ) -> Ref {
+        // An unattached element would name a parent that doesn't list it.
+        debug_assert!(self.hoisted.is_empty(), "hoisted elements never attached");
         let root = alloc();
         let refs: Vec<Ref> = self.nodes.iter().map(|_| alloc()).collect();
         let mut owners: Vec<Vec<Option<Ref>>> =

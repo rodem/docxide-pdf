@@ -9,6 +9,7 @@ use crate::model::{
 
 use super::color::{fill_rgb, stroke_rgb};
 use super::helpers::draw_circle;
+use super::tagging::Tags;
 
 pub(crate) fn resolve_h_position(
     h_relative_from: HRelativeFrom,
@@ -111,6 +112,7 @@ pub(super) fn render_floating_images(
     text_width: f32,
     slot_top: f32,
     content: &mut Content,
+    mut tag: Option<(&mut Tags, usize)>,
 ) {
     for (fi_idx, fi) in floating_images.iter().enumerate() {
         if fi.behind_doc != behind_doc {
@@ -118,7 +120,7 @@ pub(super) fn render_floating_images(
         }
         render_one_floating_image(
             fi, fi_idx, global_block_idx, pdf_names, effect_pdf_names, sp, col_x, col_w,
-            text_width, slot_top, content,
+            text_width, slot_top, content, tag.as_mut().map(|(tags, page)| (&mut **tags, *page)),
         );
     }
 }
@@ -141,6 +143,7 @@ pub(super) fn render_foreground_floating_images_deferred(
     text_width: f32,
     slot_top: f32,
     deferred: &mut Vec<(u32, Content)>,
+    mut tag: Option<(&mut Tags, usize)>,
 ) {
     for (fi_idx, fi) in floating_images.iter().enumerate() {
         if fi.behind_doc {
@@ -149,7 +152,7 @@ pub(super) fn render_foreground_floating_images_deferred(
         let mut buf = super::tagging::artifact_content();
         if render_one_floating_image(
             fi, fi_idx, global_block_idx, pdf_names, effect_pdf_names, sp, col_x, col_w,
-            text_width, slot_top, &mut buf,
+            text_width, slot_top, &mut buf, tag.as_mut().map(|(tags, page)| (&mut **tags, *page)),
         ) {
             deferred.push((fi.z_index, buf));
         }
@@ -171,6 +174,9 @@ fn render_one_floating_image(
     text_width: f32,
     slot_top: f32,
     content: &mut Content,
+    // (tags, page): tag the picture as a Figure hoisted after its anchor, like
+    // Word; `content` must then be inside the default artifact.
+    tag: Option<(&mut Tags, usize)>,
 ) -> bool {
     let Some(pdf_name) = pdf_names.get(&(global_block_idx, fi_idx)) else {
         return false;
@@ -208,11 +214,19 @@ fn render_one_floating_image(
         );
     }
 
+    // Only the picture itself: its shadow, glow, reflection and border are decoration.
+    let figure = tag.filter(|_| !img.decorative).map(|(tags, page)| {
+        let figure = tags.hoist_figure(img.alt.as_deref());
+        tags.begin(content, page, figure);
+    });
     super::smartart::render_image_with_clip(
         content, pdf_name, fi_x, fi_y_bottom,
         img.display_width, img.display_height,
         img.clip_geometry.as_ref(),
     );
+    if figure.is_some() {
+        Tags::end(content);
+    }
 
     if let Some(ref inner) = img.inner_shadow {
         super::color::draw_inner_shadow(

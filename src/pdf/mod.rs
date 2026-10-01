@@ -2444,6 +2444,7 @@ fn render_paragraph_block(
     state.pb.pending_float_anchor = lookahead.map(|(anchor_top, _)| anchor_top);
 
     // Render behind-doc layer: floating images + textboxes
+    let page = state.pb.all_contents.len();
     render_floating_images(
         &para.floating_images,
         true,
@@ -2456,8 +2457,8 @@ fn render_paragraph_block(
         text_width,
         float_anchor_top,
         &mut state.pb.content,
+        Some((&mut state.pb.tags, page)),
     );
-    let page = state.pb.all_contents.len();
     for tb in sorted_by_z(para.textboxes.iter().filter(|t| t.behind_doc)) {
         let tb_col_x = if tb.indent_relative {
             col_x + para.indent_left
@@ -2527,6 +2528,7 @@ fn render_paragraph_block(
         text_width,
         float_anchor_top,
         &mut state.pb.deferred_shapes,
+        Some((&mut state.pb.tags, page)),
     );
 
     // Set FloatZone for wrapping floating images

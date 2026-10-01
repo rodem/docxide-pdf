@@ -208,6 +208,9 @@ pub(super) struct WordChunk {
     pub(super) inline_image_size: (f32, f32),
     /// Clockwise degrees (OOXML).
     pub(super) inline_image_rotation_deg: f32,
+    /// The picture's `docPr@descr` and adec:decorative flag, for tagging.
+    pub(super) inline_image_alt: Option<String>,
+    pub(super) inline_image_decorative: bool,
     pub(super) synthetic_bold: bool,
     pub(super) text_outline: Option<TextOutline>,
     pub(super) text_fill: Option<TextFill>,
@@ -292,6 +295,8 @@ impl WordChunk {
             inline_image_clip: None,
             inline_image_size: (0.0, 0.0),
             inline_image_rotation_deg: 0.0,
+            inline_image_alt: None,
+            inline_image_decorative: false,
             punct_compressed: 0.0,
             synthetic_bold: entry.synthetic_bold,
             text_outline: run.text_outline.clone(),
@@ -339,6 +344,8 @@ impl WordChunk {
             inline_image_clip: img.clip_geometry.clone(),
             inline_image_size: (img.display_width, img.display_height),
             inline_image_rotation_deg: img.rotation_deg,
+            inline_image_alt: img.alt.clone(),
+            inline_image_decorative: img.decorative,
             punct_compressed: 0.0,
             synthetic_bold: false,
             text_outline: None,
@@ -386,6 +393,8 @@ impl WordChunk {
             inline_image_clip: None,
             inline_image_size: (0.0, 0.0),
             inline_image_rotation_deg: 0.0,
+            inline_image_alt: None,
+            inline_image_decorative: false,
             punct_compressed: 0.0,
             synthetic_bold: false,
             text_outline: None,
@@ -438,6 +447,8 @@ impl WordChunk {
             inline_image_clip: None,
             inline_image_size: (0.0, 0.0),
             inline_image_rotation_deg: 0.0,
+            inline_image_alt: None,
+            inline_image_decorative: false,
             punct_compressed: 0.0,
             synthetic_bold: false,
             text_outline: None,
@@ -496,6 +507,27 @@ impl<'a> LinkTagger<'a> {
         self.tags.begin(content, self.page, node);
         content.begin_text();
         true
+    }
+
+    /// The element the current text belongs to.
+    fn open(&self) -> usize {
+        self.link.as_ref().map_or(self.para, |&(_, n)| n)
+    }
+
+    /// Before drawing an inline picture (outside a text object): a Figure
+    /// inside the open element, read where the picture sits in the text, or
+    /// an artifact when the picture is decorative.
+    fn begin_picture(&mut self, content: &mut Content, alt: Option<&str>, decorative: bool) {
+        if decorative {
+            super::tagging::Tags::end(content);
+        } else {
+            let figure = self.tags.add_figure(self.open(), alt);
+            self.tags.begin(content, self.page, figure);
+        }
+    }
+
+    fn end_picture(&mut self, content: &mut Content) {
+        self.tags.begin(content, self.page, self.open());
     }
 
     fn finish(mut self, content: &mut Content) {
@@ -2330,6 +2362,9 @@ pub(super) fn render_paragraph_lines(
         // baseline (see inline_image_line_extra), whatever its height.
         for (chunk_idx, chunk) in line.chunks.iter().enumerate() {
             if let Some(ref img_name) = chunk.inline_image_name {
+                if let Some(lt) = link_tags.as_mut() {
+                    lt.begin_picture(content, chunk.inline_image_alt.as_deref(), chunk.inline_image_decorative);
+                }
                 let box_x = chunk_abs_x(chunk_idx, chunk);
                 let box_bottom = y;
 
@@ -2376,6 +2411,9 @@ pub(super) fn render_paragraph_lines(
                 }
                 if turned {
                     content.restore_state();
+                }
+                if let Some(lt) = link_tags.as_mut() {
+                    lt.end_picture(content);
                 }
             }
         }
