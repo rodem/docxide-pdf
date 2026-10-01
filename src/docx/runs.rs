@@ -1221,6 +1221,14 @@ pub(super) fn parse_runs<R: Read + Seek>(
                         });
                     }
                 },
+                // A carriage return breaks the line like a text-wrapping br (§17.3.3.4).
+                "cr" if field_stack.is_empty() => {
+                    flush_pending(&mut pending_text, &mut runs);
+                    runs.push(Run {
+                        is_line_break: true,
+                        ..fmt.minimal_run()
+                    });
+                }
                 "drawing" if !field_stack.is_empty() => {}
                 "drawing" => {
                     flush_pending(&mut pending_text, &mut runs);
