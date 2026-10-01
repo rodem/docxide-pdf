@@ -220,7 +220,7 @@ Column auto-fit still measures cells without the marks (a mark's width).
 
 Rules derived from Word reference PDFs (borders, text positions measured with
 `mutool trace`/`stext`), one commit each. Fixture Jaccard over the round:
-cases 69.9 → 74.1, scraped 39.9 → 55.8, new 38.5 → 53.7, samples 35.4 → 52.8,
+cases 69.9 → 74.3, scraped 39.9 → 57.7, new 38.5 → 55.9, samples 35.4 → 55.9,
 hyphenation 61.2 → 63.2.
 
 1. **compatibilityMode** is parsed (`docx::settings`). Compat 15 tables sit at
@@ -287,16 +287,40 @@ hyphenation 61.2 → 63.2.
     next paragraph is laid out to count).
 34. **contextualSpacing** drops spacing only beside a same-style paragraph
     (§17.3.1.9), not whenever both neighbours carry the flag.
+35. A table style's bold/italic never overrides the run's own `w:b`/`w:i`
+    (direct formatting is absolute for toggle properties, §17.7.3).
+36. **docGrid lines**: a grid-snapped line's glyph box (win ascent + descent)
+    is centred in the cells it occupies; a Latin font keeps its line gap above
+    the ascent, an East Asian font has none. 12pt TNR on an 18pt grid 13.56
+    (Word 13.63), 16pt MS Gothic on two cells 23.75 (23.67), 16pt YaHei 24.37
+    (24.53), 10.5pt Yu Mincho 12.69 (12.74). The baseline used to sit one
+    pitch below the line top.
+37. A word split over several runs wraps like a word inside one run: the run
+    boundary breaks exactly where the two characters would break inside a
+    run, and a word that continues across it moves to the next line whole
+    (after the justified squeeze had its chance) instead of overflowing.
+38. A word wider than the line breaks at the margin of the line it wraps to,
+    not only when it starts an empty line.
+39. Small caps are drawn at 80% (12pt text: 9.6pt capitals, one fixture with
+    29 runs); the old 2pt reduction was never measured.
+40. Footnotes use the same-style contextualSpacing rule (no fixture changes).
+41. **A cell's first baseline** sits the font's ascent (line gap included)
+    below the cell top, as in body text, not a full em (10pt TNR: 9.38).
+    East Asian fonts keep the em (11pt MS Mincho: 11.0).
 
 Remaining gaps are mostly fonts we lack and small cumulative vertical drift
 (≈1–2px) that Jaccard punishes.
 
 Open findings (not done):
-- docGrid type="lines" with Latin text: Word places a 12pt TNR baseline 13.63pt
-  into an 18pt cell (physical_therapy); neither centring nor leading-above fits;
-  too few Latin grid samples to derive the rule.
-- Empty table-cell paragraph height (turkish_journal: Word 11.84 for 10pt TNR,
-  we 11.5) — exposed by the border-band fix.
+- docGrid placement (36) rests on four fixtures; a dedicated fixture with
+  several Latin and East Asian fonts and sizes would pin the line-gap term.
+- An at-least trHeight row with top/bottom cell margins: romanian_quality's
+  header row is 67.5pt in Word = trHeight 60.2 + both 3.6pt margins, though
+  its content is shorter (we give it 60.2). One sample; the usual reading is
+  that the height includes the margins.
+- Some table rows run slightly short (slovak_eu_directive: ~0.03pt per row)
+  and a vMerge/colspan test table gets a far too narrow column; fix 41 lost
+  the offset that used to hide both.
 - Table cells don't use per-line heights yet (`table_layout` sums
   `lines × line_h`).
 - A whitespace-only run between bold and italic runs (slovak_constitution)
@@ -315,7 +339,6 @@ Open findings (not done):
   references drawn in them get Arial/TNR. Indexing them needs care: Mac Word
   uses its own Microsoft Symbol, and its Helvetica line is 1.2 em (neither
   hhea 1.0 nor win 1.175).
-- Footnotes still drop contextual spacing when both paragraphs carry the flag.
 
 ## Annotation Fixes 2026-09-18 (5 fixes, one commit each)
 
