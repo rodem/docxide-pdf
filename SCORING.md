@@ -1,6 +1,6 @@
 # Scoring
 
-How we measure our PDFs against Microsoft Word's, in plain words.
+How we measure our PDFs against Microsoft Word's.
 
 Every test fixture is a folder in `tests/fixtures/<group>/<case>/` holding an
 `input.docx` and a `reference.pdf` that Word exported from it. The test suite

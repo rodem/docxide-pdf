@@ -199,7 +199,7 @@ cargo test ssim_comparison -- --nocapture
 
 Results are appended to `tests/output/results.csv` and `tests/output/ssim_results.csv`. Run `python tools/graph.py` to see a live-updating graph of scores over time.
 
-[SCORING.md](SCORING.md) explains every score in plain words: the visual metrics, the accessibility metrics and what fails the suite.
+[SCORING.md](SCORING.md) explains every score: the visual metrics, the accessibility metrics and what fails the suite.
 
 ## Debugging Tools
 
