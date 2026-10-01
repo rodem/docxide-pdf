@@ -216,6 +216,87 @@ the marks get their Link to the note. Visual output changed in the 6
 fixtures with marks in cells (baselines accepted in `7879bc7f`).
 Column auto-fit still measures cells without the marks (a mark's width).
 
+## Layout accuracy round (2026-10-01)
+
+Rules derived from Word reference PDFs (borders, text positions measured with
+`mutool trace`/`stext`), one commit each. Fixture Jaccard over the round:
+cases 69.9 → 74.1, scraped 39.9 → 55.7, new 38.5 → 52.5, samples 35.4 → 52.8,
+hyphenation 61.2 → 63.2.
+
+1. **compatibilityMode** is parsed (`docx::settings`). Compat 15 tables sit at
+   margin + tblInd (no cell-margin outdent).
+2. Header floats: a negative paragraph-relative offset counts toward the
+   header's extent.
+3. Table-cell list lines get the marker-ascent boost body lines already had.
+4. **Border bands**: cell content sits between horizontal border bands (row =
+   content + half of each band; table flow includes the outer halves). The old
+   flat +0.5pt per row was Table Grid's border width.
+5. Justification spreads slack over word spaces only (space gaps and text-less
+   space chunks), not run joins inside a word.
+6. **Justified squeeze (compat 15)**: a word stays on the line if its midpoint
+   is inside the measure and the spaces can shrink to ≥ 75% (`SPACE_SQUEEZE`;
+   94.6% of 14,122 measured Word line-end decisions; either condition alone
+   ~90%). Older compat modes never squeeze.
+7. **Per-line heights**: each body line is sized by its own runs (max top + max
+   bottom, run-border pads included, math excluded); grid/exact paragraphs
+   keep one box.
+8. Compat 15 tables: the left border band starts at the indent (shift by half
+   a band).
+9. `w:kern w:val="0"` means kerning off (it overrides docDefaults).
+10. Paragraph borders: the top band lies inside the paragraph like the bottom.
+11. Lines span max ascent + max descent across their runs (case8: a pixel font
+    with no descent beside Arial); sub/superscript offsets don't grow the box.
+12. docDefaults without pPrDefault → Word's built-in 8pt after, line 278;
+    an empty pPrDefault stays OOXML single/0.
+13. HTML auto spacing (before/afterAutospacing) = 14pt, not at document start,
+    not between items of one list (same numId), not at a cell's edges.
+14. At-least trHeight bounds the row between its border bands (rows step
+    trHeight + band); exact trHeight is the border-to-border pitch.
+15. Negative pgMar top/bottom = absolute value, header/footer never push (§17.6.11).
+16. A picture-only paragraph taller than its line gets its own mark's
+    line-spacing leading (replaces the next paragraph's `after_image_boost`).
+17. A body line of only spaces/breaks takes its height from a break run (it
+    sizes the line it ends) or else the paragraph mark, whose font now
+    inherits style → docDefaults and resolves theme fonts.
+18. Leading spaces indent an inline picture as they indent a word.
+19. `w:shd` `solid`/`pctNN` paint `w:color` over `w:fill` (auto black over
+    auto white) for runs, paragraphs, styles and cells.
+20. An empty paragraph's synthetic run takes the mark's font even when the
+    mark sets no size (a Calibri mark in a Times style).
+21. A tab never raises its line (12pt tabs among 11pt footer text leave the
+    footer at the 11pt line); a line of only tabs still takes their size.
+22. beforeAutospacing is dropped on a header/footer's first paragraph too.
+23. `w:cr` is a text-wrapping break (§17.3.3.4).
+24. **`w:linkStyles` without `w:attachedTemplate`**: Word reloads the styles
+    from the stock Normal.dotm on open — its docDefaults (12pt, 8pt after,
+    278 auto) and a Normal with no formatting of its own.
+25. `doNotExpandShiftReturn`: justified lines ending in a manual break keep
+    their natural width (no fixture changes; spec setting).
+26. GIF and TIFF pictures are transcoded to PNG on load.
+
+Remaining gaps are mostly fonts we lack and small cumulative vertical drift
+(≈1–2px) that Jaccard punishes.
+
+Open findings (not done):
+- docGrid type="lines" with Latin text: Word places a 12pt TNR baseline 13.63pt
+  into an 18pt cell (physical_therapy); neither centring nor leading-above fits;
+  too few Latin grid samples to derive the rule.
+- Empty table-cell paragraph height (turkish_journal: Word 11.84 for 10pt TNR,
+  we 11.5) — exposed by the border-band fix.
+- Table cells don't use per-line heights yet (`table_layout` sums
+  `lines × line_h`).
+- A whitespace-only run between bold and italic runs (slovak_constitution)
+  does not set the line's ascent in Word; whether it counts for anything is
+  open (counting it as text made the line too low).
+- covid_insomnia two-column flow regressed with the squeeze.
+- Tracked changes: Word's PDF export can show revision markup (balloons);
+  we always render the final view. Not started.
+- Below compat 15 without `overrideTableStyleFontSizeAndJustification`, a
+  table style's font size beats Normal's (unless it is 10pt); we always let
+  Normal win.
+- A nested header table (logo beside a title table) can sit 5–7pt low,
+  pushing the body down.
+
 ## Annotation Fixes 2026-09-18 (5 fixes, one commit each)
 
 Baseline for the round: HEAD 2c0706d, 170 tests passing. Every fix verified by
