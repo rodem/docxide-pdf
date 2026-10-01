@@ -212,6 +212,10 @@ fn lookup_font_table<'a>(
     })
 }
 
+/// For a font that resolves nowhere else: Arial, then its metric clones, then
+/// what a bare Linux or macOS box has.
+const LAST_RESORT_FONTS: &[&str] = &["Arial", "Liberation Sans", "Arimo", "Helvetica", "DejaVu Sans"];
+
 fn family_fallback(family: FontFamily) -> Option<&'static str> {
     match family {
         FontFamily::Roman => Some("Times New Roman"),
@@ -467,15 +471,16 @@ pub(crate) fn register_font(
     let substituted = std::cell::Cell::new(false);
     // List order, not glyph coverage: Word substitutes the whole run by script and
     // family and rescues single missing glyphs per character (`cjk_rescue_fonts`).
-    let try_cjk_fallback = |tc: &mut dyn FnMut(&str) -> Option<ResolvedFont>| {
-        cjk_fallback_fonts(script, serif).iter().find_map(|cjk_font| {
-            log::debug!("Trying CJK fallback \"{cjk_font}\" for \"{primary}\"");
-            let m = tc(cjk_font)?;
-            log::info!("Font substitution: {primary} → CJK fallback \"{cjk_font}\"");
+    let try_list = |label: &str, names: &[&str], tc: &mut dyn FnMut(&str) -> Option<ResolvedFont>| {
+        names.iter().find_map(|&name| {
+            log::debug!("Trying {label} \"{name}\" for \"{primary}\"");
+            let m = tc(name)?;
+            log::info!("Font substitution: {primary} → {label} \"{name}\"");
             substituted.set(true);
             Some(m)
         })
     };
+    let cjk_fonts = cjk_fallback_fonts(script, serif);
 
     // If the fontTable provides an altName, try it first — it's the document's
     // explicit mapping and more reliable than the system font index (which may
@@ -525,7 +530,7 @@ pub(crate) fn register_font(
             // Try CJK fallback before family fallback — family fonts (TNR, Courier)
             // lack CJK glyphs and would produce squares
             if needs_cjk {
-                if let Some(m) = try_cjk_fallback(&mut try_candidate) {
+                if let Some(m) = try_list("CJK fallback", cjk_fonts, &mut try_candidate) {
                     return Some(m);
                 }
             }
@@ -554,8 +559,12 @@ pub(crate) fn register_font(
             if !needs_cjk {
                 return None;
             }
-            try_cjk_fallback(&mut try_candidate)
-        });
+            try_list("CJK fallback", cjk_fonts, &mut try_candidate)
+        })
+        // A real font before the standard-14 Helvetica, which is neither
+        // embedded nor ToUnicode-mapped (PDF/UA 7.21.4.1). Word gives an
+        // unknown font Arial: case60's SmartArt "Futura Medium" embeds ArialMT.
+        .or_else(|| try_list("last resort", LAST_RESORT_FONTS, &mut try_candidate));
 
     // Compute which CJK chars are missing from the resolved font
     let missing_cjk = if needs_cjk {
