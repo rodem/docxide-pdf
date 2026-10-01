@@ -81,7 +81,6 @@ fn file_size_within_threshold() {
         .collect();
     results.sort_by(|a, b| a.name.cmp(&b.name));
 
-    let ts = common::timestamp();
     let name_w = results
         .iter()
         .map(|r| r.name.len())
@@ -105,15 +104,6 @@ fn file_size_within_threshold() {
             human_size(r.gen_bytes),
             human_size(r.ref_bytes),
             colored_ratio
-        );
-
-        common::log_csv(
-            "file_size_results.csv",
-            "timestamp,case,gen_bytes,ref_bytes,ratio,pass",
-            &format!(
-                "{},{},{},{},{:.2},{}",
-                ts, r.name, r.gen_bytes, r.ref_bytes, r.ratio, r.pass
-            ),
         );
     }
 

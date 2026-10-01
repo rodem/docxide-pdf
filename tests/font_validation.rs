@@ -548,8 +548,6 @@ struct FixtureResult {
     group: String,
     docx_fonts: BTreeSet<String>,
     pdf_fonts: BTreeSet<String>,
-    missing: BTreeSet<String>,
-    unexpected_fallbacks: BTreeSet<String>,
     pass: bool,
 }
 
@@ -614,8 +612,6 @@ fn analyze_fixture(fixture_dir: &Path) -> Option<FixtureResult> {
         group,
         docx_fonts,
         pdf_fonts,
-        missing,
-        unexpected_fallbacks,
         pass,
     })
 }
@@ -634,7 +630,6 @@ fn font_families_match_docx() {
         .collect();
     results.sort_by(|a, b| a.name.cmp(&b.name));
 
-    let ts = common::timestamp();
     let name_w = results
         .iter()
         .map(|r| r.name.len())
@@ -691,25 +686,6 @@ fn font_families_match_docx() {
         println!(
             "  {:<name_w$}  {:<4}  {:<match_w$}  {}",
             r.name, status, row.matched, row.diff
-        );
-
-        common::log_csv(
-            "font_validation_results.csv",
-            "timestamp,case,pass,docx_fonts,pdf_fonts,missing,unexpected_fallbacks",
-            &format!(
-                "{},{},{},{},{},{},{}",
-                ts,
-                r.name,
-                r.pass,
-                r.docx_fonts.iter().cloned().collect::<Vec<_>>().join(";"),
-                r.pdf_fonts.iter().cloned().collect::<Vec<_>>().join(";"),
-                r.missing.iter().cloned().collect::<Vec<_>>().join(";"),
-                r.unexpected_fallbacks
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(";"),
-            ),
         );
     }
 

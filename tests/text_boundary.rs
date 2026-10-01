@@ -96,20 +96,6 @@ fn text_boundaries_match() {
             "  {:<name_w$}  {:>5}  {:>6}  {:>12}  {:>5}  {:>5}  {:<9}",
             r.name, pages_str, breaks_str, drift_str, r.tb.total_lines, line_pct_str, delta
         );
-
-        common::log_csv(
-            "text_boundary_results.csv",
-            "timestamp,case,ref_pages,gen_pages,max_drift,line_match_pct",
-            &format!(
-                "{},{},{},{},{},{:.4}",
-                common::timestamp(),
-                r.name,
-                r.tb.ref_pages,
-                r.tb.gen_pages,
-                r.tb.max_break_drift,
-                line_pct
-            ),
-        );
     }
 
     let mut baseline_updates: HashMap<String, common::Baselines> = HashMap::new();

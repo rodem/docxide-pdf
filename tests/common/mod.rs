@@ -4,10 +4,8 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, io};
 
 pub mod a11y;
@@ -129,28 +127,6 @@ pub fn discover_fixtures() -> io::Result<Vec<PathBuf>> {
     }
     fixtures.sort_by(|a, b| natural_cmp(a, b));
     Ok(fixtures)
-}
-
-pub fn timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-}
-
-pub fn log_csv(csv_name: &str, header: &str, row: &str) {
-    let csv_path = PathBuf::from("tests/output").join(csv_name);
-    fs::create_dir_all("tests/output").ok();
-    let write_header = !csv_path.exists();
-    let mut file = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&csv_path)
-        .expect("Cannot open CSV file");
-    if write_header {
-        writeln!(file, "{header}").unwrap();
-    }
-    writeln!(file, "{row}").unwrap();
 }
 
 pub fn read_baselines() -> HashMap<String, Baselines> {

@@ -316,7 +316,6 @@ struct FixtureResult {
     name: String,
     jaccard: f64,
     ssim: f64,
-    page_count: usize,
     ref_pages: usize,
     gen_pages: usize,
     jaccard_ms: u64,
@@ -413,7 +412,6 @@ fn score_fixture(fixture: &FixturePages) -> Option<FixtureResult> {
         name: fixture.name.clone(),
         jaccard: avg_jaccard,
         ssim: avg_ssim,
-        page_count: page_timings.len(),
         ref_pages: fixture.ref_pages.len(),
         gen_pages: fixture.gen_pages.len(),
         jaccard_ms,
@@ -460,33 +458,6 @@ fn visual_comparison() {
         .collect();
     let _score_ms = t_score.elapsed().as_millis() as u64;
     results.sort_by(|a, b| a.name.cmp(&b.name));
-
-    for r in &results {
-        let jaccard_pass = r.jaccard >= SIMILARITY_THRESHOLD;
-        common::log_csv(
-            "results.csv",
-            "timestamp,case,pages,avg_jaccard,pass",
-            &format!(
-                "{},{},{},{:.4},{}",
-                common::timestamp(),
-                r.name,
-                r.page_count,
-                r.jaccard,
-                jaccard_pass
-            ),
-        );
-        common::log_csv(
-            "ssim_results.csv",
-            "timestamp,case,pages,avg_ssim",
-            &format!(
-                "{},{},{},{:.4}",
-                common::timestamp(),
-                r.name,
-                r.page_count,
-                r.ssim
-            ),
-        );
-    }
 
     let mut baseline_updates: HashMap<String, common::Baselines> = HashMap::new();
     for r in &results {
