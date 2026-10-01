@@ -89,6 +89,8 @@ pub(super) struct RenderContext<'a> {
     pub(super) endnote_marks: &'a HashMap<u32, String>,
     /// Word's `compatibilityMode` (see `docx::settings`).
     pub(super) compat_mode: u32,
+    /// Word's `doNotExpandShiftReturn` (see `docx::settings`).
+    pub(super) do_not_expand_shift_return: bool,
 }
 
 impl RenderContext<'_> {
@@ -122,6 +124,7 @@ impl RenderContext<'_> {
             compress_punct: self.compress_punctuation,
             squeeze_spaces: self.compat_mode >= 15
                 && matches!(alignment, crate::model::Alignment::Justify),
+            expand_shift_return: !self.do_not_expand_shift_return,
         }
     }
 }
@@ -3044,6 +3047,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         footnote_marks: &footnote_display_order,
         endnote_marks: &endnote_display_order,
         compat_mode: doc.compat_mode,
+        do_not_expand_shift_return: doc.do_not_expand_shift_return,
     };
 
     let bookmark_positions = compute_bookmark_positions(doc, &ctx);

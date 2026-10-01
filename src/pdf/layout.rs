@@ -630,6 +630,8 @@ pub(super) struct TextLine {
     /// The breaker kept this line's last word by narrowing its spaces
     /// (`SPACE_SQUEEZE`), so it is wider than the measure until justified.
     pub(super) squeezed: bool,
+    /// Left at natural width although justified (`doNotExpandShiftReturn`).
+    pub(super) natural_width: bool,
     /// This line's own advance when its tallest face differs from the
     /// paragraph's (see `size_lines_by_own_runs`); None uses the paragraph pitch.
     pub(super) pitch: Option<f32>,
@@ -908,6 +910,9 @@ pub(super) struct CjkLayout {
     /// the measure and the line's spaces can shrink to make room (see
     /// `SPACE_SQUEEZE`).
     pub(super) squeeze_spaces: bool,
+    /// Justify a line that ends in a manual break, as Word does unless
+    /// `doNotExpandShiftReturn` is set.
+    pub(super) expand_shift_return: bool,
 }
 
 /// How far Word 2013+ narrows the spaces of a justified line to keep its
@@ -1404,6 +1409,11 @@ pub(super) fn build_paragraph_lines(
     for i in squeezed_lines {
         if let Some(line) = lines.get_mut(i) {
             line.squeezed = true;
+        }
+    }
+    if !cjk.expand_shift_return {
+        for line in lines.iter_mut().filter(|l| l.ends_with_break) {
+            line.natural_width = true;
         }
     }
     lines
@@ -2076,7 +2086,9 @@ pub(super) fn render_paragraph_lines(
         // narrower even on the paragraph's last line (mongolian_human_rights).
         let squeezed = line.squeezed && left_gaps > 0;
         let can_justify = match *alignment {
-            Alignment::Justify => global_line_idx != last_line_idx || squeezed,
+            Alignment::Justify => {
+                (global_line_idx != last_line_idx || squeezed) && !line.natural_width
+            }
             Alignment::Distribute => true,
             _ => false,
         };

@@ -24,6 +24,9 @@ pub(super) struct DocumentSettings {
     /// the styles from its own Normal.dotm when it opens the file. A named
     /// template lives on the author's machine and can't be loaded.
     pub styles_from_normal_template: bool,
+    /// `w:compat/w:doNotExpandShiftReturn`: a justified line ending in a
+    /// manual break keeps its natural width.
+    pub do_not_expand_shift_return: bool,
 }
 
 impl Default for DocumentSettings {
@@ -40,6 +43,7 @@ impl Default for DocumentSettings {
             compress_punctuation: false,
             compat_mode: 0,
             styles_from_normal_template: false,
+            do_not_expand_shift_return: false,
         }
     }
 }
@@ -90,5 +94,8 @@ pub(super) fn parse_settings<R: Read + Seek>(
             .unwrap_or(0),
         styles_from_normal_template: wml_bool(root, "linkStyles").unwrap_or(false)
             && wml(root, "attachedTemplate").is_none(),
+        do_not_expand_shift_return: wml(root, "compat")
+            .and_then(|c| wml_bool(c, "doNotExpandShiftReturn"))
+            .unwrap_or(false),
     }
 }

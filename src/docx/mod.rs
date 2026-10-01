@@ -929,6 +929,7 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
         default_lang: styles.defaults.lang.clone().or(settings.default_lang),
         compress_punctuation: settings.compress_punctuation,
         compat_mode: settings.compat_mode,
+        do_not_expand_shift_return: settings.do_not_expand_shift_return,
     })
 }
 

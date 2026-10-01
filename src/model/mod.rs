@@ -247,6 +247,8 @@ pub struct Document {
     pub compress_punctuation: bool,
     /// Word's `compatibilityMode` (see `docx::settings`).
     pub compat_mode: u32,
+    /// Word's `doNotExpandShiftReturn` (see `docx::settings`).
+    pub do_not_expand_shift_return: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
