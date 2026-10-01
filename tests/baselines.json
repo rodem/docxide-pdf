@@ -66,7 +66,7 @@
     "convert_ms": 51.2,
     "ua_fail": 3,
     "ua_deficit": 0,
-    "a11y_struct": 0.9167,
+    "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "cases/case17": {
@@ -327,18 +327,18 @@
     "jaccard": 0.9337,
     "ssim": 0.9554,
     "text_boundary": 0.6702,
-    "ua_fail": 2,
+    "ua_fail": 3,
     "ua_deficit": 0,
-    "a11y_struct": 0.675,
+    "a11y_struct": 0.85,
     "a11y_text": 1.0
   },
   "cases/case42": {
     "jaccard": 0.4616,
     "ssim": 0.4944,
     "text_boundary": 0.1707,
-    "ua_fail": 2,
+    "ua_fail": 3,
     "ua_deficit": 0,
-    "a11y_struct": 0.8571,
+    "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "cases/case43": {
@@ -381,9 +381,9 @@
     "jaccard": 0.8214,
     "ssim": 0.8977,
     "text_boundary": 0.9381,
-    "ua_fail": 2,
+    "ua_fail": 3,
     "ua_deficit": 0,
-    "a11y_struct": 0.5156,
+    "a11y_struct": 0.7656,
     "a11y_text": 1.0
   },
   "cases/case48": {
@@ -863,7 +863,7 @@
     "text_boundary": 1.0,
     "ua_fail": 1,
     "ua_deficit": 0,
-    "a11y_struct": 0.9766,
+    "a11y_struct": 0.9844,
     "a11y_text": 1.0
   },
   "new/biochemistry_pen..": {
@@ -1014,9 +1014,9 @@
     "jaccard": 0.2875,
     "ssim": 0.4128,
     "text_boundary": 0.7628,
-    "ua_fail": 1,
+    "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.7959,
+    "a11y_struct": 0.8008,
     "a11y_text": 0.9924
   },
   "new/environmental_la..": {
@@ -1136,7 +1136,7 @@
     "text_boundary": 1.0,
     "ua_fail": 1,
     "ua_deficit": 0,
-    "a11y_struct": 0.7778,
+    "a11y_struct": 0.8889,
     "a11y_text": 1.0
   },
   "new/lithuanian_excis..": {
@@ -1176,18 +1176,18 @@
     "jaccard": 0.7517,
     "ssim": 0.9378,
     "text_boundary": 1.0,
-    "ua_fail": 2,
+    "ua_fail": 3,
     "ua_deficit": 0,
-    "a11y_struct": 0.9238,
+    "a11y_struct": 1.0,
     "a11y_text": 0.9935
   },
   "new/pendulum_mechani..": {
     "jaccard": 0.1554,
     "ssim": 0.3484,
     "text_boundary": 0.3043,
-    "ua_fail": 3,
+    "ua_fail": 4,
     "ua_deficit": 1,
-    "a11y_struct": 0.8768,
+    "a11y_struct": 0.8913,
     "a11y_text": 0.711
   },
   "new/physical_therapy..": {
@@ -1331,7 +1331,7 @@
     "text_boundary": 1.0,
     "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.9932,
+    "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "new/streamnet_steeri..": {
@@ -1391,7 +1391,7 @@
     "text_boundary": 0.7645,
     "ua_fail": 1,
     "ua_deficit": 0,
-    "a11y_struct": 0.8876,
+    "a11y_struct": 0.8878,
     "a11y_text": 0.8763
   },
   "new/western_australi..": {
@@ -1493,7 +1493,7 @@
     "convert_ms": 744.0,
     "ua_fail": 3,
     "ua_deficit": 0,
-    "a11y_struct": 0.9448,
+    "a11y_struct": 0.9621,
     "a11y_text": 0.9928
   },
   "scraped/bush_fires_act_c..": {
@@ -1503,7 +1503,7 @@
     "convert_ms": 248.6,
     "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.8088,
+    "a11y_struct": 0.8096,
     "a11y_text": 0.9985
   },
   "scraped/centrifugal_wate..": {
@@ -1521,7 +1521,7 @@
     "ssim": 0.9629,
     "text_boundary": 0.2609,
     "convert_ms": 59.6,
-    "ua_fail": 3
+    "ua_fail": 4
   },
   "scraped/croatian_grant_g..": {
     "jaccard": 0.0788,
@@ -1637,9 +1637,9 @@
     "ssim": 0.7824,
     "text_boundary": 0.8276,
     "convert_ms": 33.4,
-    "ua_fail": 2,
+    "ua_fail": 3,
     "ua_deficit": 0,
-    "a11y_struct": 0.9714,
+    "a11y_struct": 0.9429,
     "a11y_text": 1.0
   },
   "scraped/go_math_grade4_g..": {
@@ -1661,7 +1661,7 @@
     "ssim": 0.44,
     "text_boundary": 0.5768,
     "convert_ms": 115.1,
-    "ua_fail": 1
+    "ua_fail": 2
   },
   "scraped/italian_project_..": {
     "jaccard": 0.2586,
@@ -1723,9 +1723,9 @@
     "ssim": 0.2163,
     "text_boundary": 0.1949,
     "convert_ms": 32.0,
-    "ua_fail": 2,
+    "ua_fail": 3,
     "ua_deficit": 0,
-    "a11y_struct": 0.9624,
+    "a11y_struct": 0.9586,
     "a11y_text": 1.0
   },
   "scraped/parish_housing_d..": {
@@ -1864,7 +1864,7 @@
     "convert_ms": 22.0,
     "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.6819,
+    "a11y_struct": 0.6851,
     "a11y_text": 1.0
   },
   "scraped/transition_to_wo..": {
