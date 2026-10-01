@@ -704,8 +704,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
                 let borders = ppr.and_then(parse_paragraph_borders).unwrap_or_default();
                 let shading = ppr
                     .and_then(|n| wml(n, "shd"))
-                    .and_then(|shd| shd.attribute((WML_NS, "fill")))
-                    .and_then(parse_hex_color);
+                    .and_then(super::shd_color);
 
                 let rpr = wml(style_node, "rPr");
 
@@ -943,8 +942,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
                         });
                     let cond_shading = wml(child, "tcPr")
                         .and_then(|tc| wml(tc, "shd"))
-                        .and_then(|shd| shd.attribute((WML_NS, "fill")))
-                        .and_then(parse_hex_color);
+                        .and_then(super::shd_color);
                     let cond_rpr = wml(child, "rPr");
                     let cond_bold = cond_rpr.and_then(|rpr| wml_bool(rpr, "b"));
                     let cond_italic = cond_rpr.and_then(|rpr| wml_bool(rpr, "i"));

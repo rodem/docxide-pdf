@@ -17,23 +17,18 @@ use super::{
     wml, wml_attr, wml_bool,
 };
 
-/// Approximate a `w:shd` pattern fill (stripes/cross/pctNN) as a solid color,
-/// since the renderer only does solid cell fills. The pattern ink (`w:color`)
-/// defaults to black and the background to white when `auto`; `pctNN` blends by
-/// its percentage, named patterns by an estimated coverage. Returns `None` for
-/// `clear`/`solid`/`nil` (no pattern tint to approximate).
+/// Approximate a `w:shd` stripe/cross pattern as a solid color for render
+/// paths that don't hatch. The pattern ink (`w:color`) defaults to black;
+/// named patterns blend by an estimated coverage (`solid`/`pctNN` go through
+/// `shd_color`).
 fn approx_pattern_shade(val: &str, color: Option<[u8; 3]>) -> Option<[u8; 3]> {
-    let coverage = if let Some(rest) = val.strip_prefix("pct") {
-        (rest.parse::<f32>().ok()? / 100.0).clamp(0.0, 1.0)
-    } else {
-        match val {
-            "thinHorzStripe" | "thinVertStripe" | "thinDiagStripe"
-            | "thinReverseDiagStripe" => 0.30,
-            "horzStripe" | "vertStripe" | "diagStripe" | "reverseDiagStripe" => 0.45,
-            "thinHorzCross" | "thinDiagCross" => 0.40,
-            "horzCross" | "diagCross" => 0.55,
-            _ => return None,
-        }
+    let coverage = match val {
+        "thinHorzStripe" | "thinVertStripe" | "thinDiagStripe"
+        | "thinReverseDiagStripe" => 0.30,
+        "horzStripe" | "vertStripe" | "diagStripe" | "reverseDiagStripe" => 0.45,
+        "thinHorzCross" | "thinDiagCross" => 0.40,
+        "horzCross" | "diagCross" => 0.55,
+        _ => return None,
     };
     let fg = color.unwrap_or([0, 0, 0]);
     let blend = |bg: u8, ink: u8| {
@@ -635,10 +630,8 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                     });
                     // Solid fallback for any render path that doesn't hatch.
                     pattern_shading = approx_pattern_shade(val, ink).or(bg);
-                } else if let Some(c) = bg {
-                    pattern_shading = Some(c);
                 } else {
-                    pattern_shading = approx_pattern_shade(val, ink);
+                    pattern_shading = super::shd_color(shd);
                 }
             }
             // A direct cell <w:shd> overrides table-style conditional banding —

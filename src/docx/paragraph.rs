@@ -8,7 +8,7 @@ use super::runs::{parse_runs, push_textbox};
 use super::styles::{parse_alignment, parse_font_size, resolve_font_from_node_opt};
 use super::textbox::collect_textboxes_from_paragraph;
 use super::{
-    ParseContext, WML_NS, extract_indents, parse_frame_props, parse_hex_color,
+    ParseContext, WML_NS, extract_indents, parse_frame_props,
     merge_tab_stops, parse_paragraph_borders, parse_paragraph_spacing, parse_tab_stops_with_clears,
     wml, wml_attr,
     wml_bool,
@@ -89,8 +89,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
     let para_shading = if inline_shd_node.is_some() {
         // Inline w:shd present — use it even if fill="auto" (None), don't inherit
         inline_shd_node
-            .and_then(|shd| shd.attribute((WML_NS, "fill")))
-            .and_then(parse_hex_color)
+            .and_then(super::shd_color)
     } else {
         // No inline w:shd — inherit from paragraph style
         para_style.and_then(|s| s.shading)

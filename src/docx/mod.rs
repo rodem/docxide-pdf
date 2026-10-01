@@ -201,19 +201,39 @@ pub(super) fn parse_text_color(val: &str) -> Option<[u8; 3]> {
 /// `w:fill="auto"` are *not* treated as overrides that clear inherited
 /// shading — they simply mean "no color specified here."
 ///
-/// Pattern values other than `nil`/`clear`/`solid` (e.g. `pct25`, `diagStripe`)
-/// are approximated by returning the `w:fill` color as a solid — TODO: real
-/// pattern rendering. `w:themeFill` resolution is also TODO.
+/// `w:themeFill` resolution is TODO.
 pub(super) fn parse_run_shd(parent: roxmltree::Node) -> Option<[u8; 3]> {
-    let shd = wml(parent, "shd")?;
-    if shd.attribute((WML_NS, "val")) == Some("nil") {
-        return None;
+    wml(parent, "shd").and_then(shd_color)
+}
+
+/// The solid color a `w:shd` paints: its `solid`/`pctNN` pattern of `w:color`
+/// (auto = black) laid over `w:fill` (auto = white), §17.18.78. A `solid`
+/// shd paints `w:color` alone (CC99FF over fill auto is CC99FF).
+pub(super) fn shd_color(shd: roxmltree::Node) -> Option<[u8; 3]> {
+    let fill = shd
+        .attribute((WML_NS, "fill"))
+        .filter(|f| *f != "auto" && *f != "none")
+        .and_then(parse_hex_color);
+    let coverage = match shd.attribute((WML_NS, "val")) {
+        Some("nil") => return None,
+        Some("solid") => 1.0,
+        Some(v) => v
+            .strip_prefix("pct")
+            .and_then(|p| p.parse::<f32>().ok())
+            .map_or(0.0, |p| (p / 100.0).clamp(0.0, 1.0)),
+        None => 0.0,
+    };
+    if coverage == 0.0 {
+        return fill;
     }
-    let fill = shd.attribute((WML_NS, "fill"))?;
-    if fill == "auto" || fill == "none" {
-        return None;
-    }
-    parse_hex_color(fill)
+    let ink = shd
+        .attribute((WML_NS, "color"))
+        .and_then(parse_hex_color)
+        .unwrap_or([0, 0, 0]);
+    let bg = fill.unwrap_or([255, 255, 255]);
+    Some(std::array::from_fn(|i| {
+        (bg[i] as f32 * (1.0 - coverage) + ink[i] as f32 * coverage).round() as u8
+    }))
 }
 
 pub(super) fn highlight_color(name: &str) -> Option<[u8; 3]> {
@@ -985,11 +1005,18 @@ mod tests {
         let doc = roxmltree::Document::parse(&xml).unwrap();
         assert_eq!(parse_run_shd(doc.root_element()), None);
 
-        // Pattern value (pct25) with fill → approximated as solid fill
+        // pct25 of auto (black) over CCCCCC
         let xml =
             format!(r#"<w:rPr xmlns:w="{ns}"><w:shd w:val="pct25" w:fill="CCCCCC"/></w:rPr>"#);
         let doc = roxmltree::Document::parse(&xml).unwrap();
-        assert_eq!(parse_run_shd(doc.root_element()), Some([0xCC, 0xCC, 0xCC]));
+        assert_eq!(parse_run_shd(doc.root_element()), Some([153, 153, 153]));
+
+        // solid paints the pattern color over an auto fill
+        let xml = format!(
+            r#"<w:rPr xmlns:w="{ns}"><w:shd w:val="solid" w:color="CC99FF" w:fill="auto"/></w:rPr>"#
+        );
+        let doc = roxmltree::Document::parse(&xml).unwrap();
+        assert_eq!(parse_run_shd(doc.root_element()), Some([0xCC, 0x99, 0xFF]));
     }
 
     #[test]
