@@ -11,7 +11,7 @@ use super::images::{
 };
 use super::is_east_asian_char;
 use super::styles::{
-    CharacterStyle, ParagraphStyle, StyleDefaults, ThemeFonts, parse_char_spacing, parse_font_size,
+    CharacterStyle, ParagraphStyle, StyleDefaults, ThemeFonts, parse_char_spacing, parse_font_size, parse_lang,
     resolve_east_asia_font_from_node, resolve_font_from_node, resolve_font_from_node_opt,
 };
 use super::textbox::parse_textbox_from_vml;
@@ -120,6 +120,8 @@ struct RunFormat {
     text_shadow: Option<TextShadow>,
     text_glow: Option<TextGlow>,
     lang: Option<String>,
+    text_lang: Option<String>,
+    text_lang_east_asia: Option<String>,
     /// True when font_size came only from ParagraphRunDefaults (doc defaults / para style),
     /// not from inline rPr or character style.
     font_size_from_default: bool,
@@ -158,6 +160,8 @@ impl RunFormat {
             text_shadow: self.text_shadow.clone(),
             text_glow: self.text_glow.clone(),
             lang: self.lang.clone(),
+            text_lang: self.text_lang.clone(),
+            text_lang_east_asia: self.text_lang_east_asia.clone(),
             font_size_from_default: self.font_size_from_default,
             font_name_from_default: self.font_name_from_default,
             hyperlink_url,
@@ -249,6 +253,8 @@ struct ParagraphRunDefaults {
     text_fill: Option<TextFill>,
     text_shadow: Option<TextShadow>,
     text_glow: Option<TextGlow>,
+    lang: Option<String>,
+    lang_east_asia: Option<String>,
 }
 
 impl ParagraphRunDefaults {
@@ -291,6 +297,10 @@ impl ParagraphRunDefaults {
             char_spacing: para_style
                 .and_then(|s| s.char_spacing)
                 .unwrap_or(defaults.char_spacing),
+            lang: para_style.and_then(|s| s.lang.clone()).or_else(|| defaults.lang.clone()),
+            lang_east_asia: para_style
+                .and_then(|s| s.lang_east_asia.clone())
+                .or_else(|| defaults.lang_east_asia.clone()),
             kern_threshold: para_style
                 .and_then(|s| s.kern_threshold)
                 .or(defaults.kern_threshold),
@@ -312,6 +322,7 @@ impl ParagraphRunDefaults {
         theme: &ThemeFonts,
     ) -> RunFormat {
         let rfonts_node = rpr.and_then(|n| wml(n, "rFonts"));
+        let run_lang = rpr.map(parse_lang).unwrap_or_default();
         let explicit_font_size = rpr.and_then(parse_font_size);
         let char_style_font_size = char_style.and_then(|cs| cs.font_size);
         let explicit_font_name =
@@ -472,6 +483,14 @@ impl ParagraphRunDefaults {
                 .and_then(|n| wml(n, "lang"))
                 .and_then(|n| n.attribute((WML_NS, "val")))
                 .map(|s| s.to_string()),
+            text_lang: run_lang
+                .0
+                .or_else(|| char_style.and_then(|cs| cs.lang.clone()))
+                .or_else(|| self.lang.clone()),
+            text_lang_east_asia: run_lang
+                .1
+                .or_else(|| char_style.and_then(|cs| cs.lang_east_asia.clone()))
+                .or_else(|| self.lang_east_asia.clone()),
             font_size_from_default,
             font_name_from_default,
         }

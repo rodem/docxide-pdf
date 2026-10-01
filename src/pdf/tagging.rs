@@ -31,11 +31,13 @@ struct Node {
     id: Option<String>,
     /// `/ActualText`: the source letters of a caps/small-caps Span.
     actual: Option<String>,
+    /// `/Lang` of a Span in another language than the document's.
+    lang: Option<String>,
 }
 
 impl Node {
     fn new(kind: &'static str, parent: usize) -> Self {
-        Self { kind, parent, kids: Vec::new(), cell: None, alt: None, id: None, actual: None }
+        Self { kind, parent, kids: Vec::new(), cell: None, alt: None, id: None, actual: None, lang: None }
     }
 
     fn child_nodes(&self) -> impl DoubleEndedIterator<Item = usize> + '_ {
@@ -55,6 +57,8 @@ pub(crate) struct Tags {
     /// Document-level elements for floating content (textboxes, pictures), drawn while
     /// their anchor paragraph renders but placed after its element, like Word.
     hoisted: Vec<usize>,
+    /// The document's language; text in another one gets a Span with `/Lang`.
+    lang: String,
 }
 
 /// Open list levels for L/LI nesting. Word nests a deeper level's L inside the
@@ -276,6 +280,8 @@ impl Tags {
             next_mcid: Vec::new(),
             notes: HashMap::new(),
             hoisted: Vec::new(),
+            // Word's own default when a document declares no language.
+            lang: "en-US".to_string(),
         }
     }
 
@@ -344,6 +350,26 @@ impl Tags {
 
     pub(super) fn push_actual(&mut self, node: usize, text: &str) {
         self.nodes[node].actual.get_or_insert_with(String::new).push_str(text);
+    }
+
+    pub(super) fn set_lang(&mut self, node: usize, lang: &str) {
+        self.nodes[node].lang = Some(lang.to_string());
+    }
+
+    /// The document's language (the catalog `/Lang`).
+    pub(super) fn lang(&self) -> &str {
+        &self.lang
+    }
+
+    pub(super) fn set_document_lang(&mut self, lang: &str) {
+        self.lang = lang.to_string();
+    }
+
+    /// True when `lang` is the document's language, by primary subtag: en-GB
+    /// text in an en-US document needs no Span, French text does.
+    pub(super) fn is_document_lang(&self, lang: &str) -> bool {
+        let primary = |l: &str| l.split('-').next().unwrap_or(l).to_ascii_lowercase();
+        primary(&self.lang) == primary(lang)
     }
 
     /// LI for list `id` at `level` (a new L under `parent` when the list
@@ -456,6 +482,9 @@ impl Tags {
             }
             if let Some(actual) = &node.actual {
                 elem.actual_text(TextStr(actual));
+            }
+            if let Some(lang) = &node.lang {
+                elem.lang(TextStr(lang));
             }
             if let Some(id) = &node.id {
                 elem.id(Str(id.as_bytes()));

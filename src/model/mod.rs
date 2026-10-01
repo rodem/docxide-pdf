@@ -440,6 +440,11 @@ pub struct Run {
     pub text_shadow: Option<TextShadow>,
     pub text_glow: Option<TextGlow>,
     pub lang: Option<String>,
+    /// The language of the run's Latin and East Asian text, inherited (run,
+    /// character style, paragraph style, docDefaults); `lang` is the run's own
+    /// value only, which run merging compares.
+    pub text_lang: Option<String>,
+    pub text_lang_east_asia: Option<String>,
     /// True when font_size was inherited from defaults, not set by inline rPr or char style.
     pub font_size_from_default: bool,
     /// True when font_name was inherited from defaults, not set by inline rPr or char style.
@@ -523,6 +528,8 @@ impl Default for Run {
             text_shadow: None,
             text_glow: None,
             lang: None,
+            text_lang: None,
+            text_lang_east_asia: None,
             font_size_from_default: false,
             font_name_from_default: false,
             comment_ids: Vec::new(),

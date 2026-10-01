@@ -950,6 +950,52 @@ fn compute_text_hanging(para: &Paragraph, default_tab_stop: f32) -> f32 {
 
 /// Pre-compute bookmark page positions so PAGEREF fields (e.g. TOC) can
 /// show correct page numbers. Simulates page layout without rendering.
+/// The catalog `/Lang`: the language most of the body text is in (by letters,
+/// East Asian ones by their own language), so only passages in another one
+/// need a `/Lang` Span. The most common primary subtag wins (en-US and en-GB
+/// together outvote fr-FR), then its most common tag; else the declared
+/// default, else Word's en-US.
+fn document_lang(doc: &Document) -> String {
+    let mut letters: HashMap<&str, usize> = HashMap::new();
+    for section in &doc.sections {
+        for block in &section.blocks {
+            let paragraphs: Vec<&Paragraph> = match block {
+                Block::Paragraph(p) => vec![p],
+                Block::Table(t) => t.rows.iter().flat_map(|r| r.cells.iter()).flat_map(|c| c.all_paragraphs()).collect(),
+            };
+            for run in paragraphs.iter().flat_map(|p| p.runs.iter()) {
+                for ch in run.text.chars().filter(|c| c.is_alphabetic()) {
+                    let lang = if crate::docx::is_east_asian_char(ch) {
+                        run.text_lang_east_asia.as_deref().or(run.text_lang.as_deref())
+                    } else {
+                        run.text_lang.as_deref()
+                    };
+                    if let Some(lang) = lang {
+                        *letters.entry(lang).or_default() += 1;
+                    }
+                }
+            }
+        }
+    }
+    let primary = |l: &str| l.split('-').next().unwrap_or(l).to_ascii_lowercase();
+    let mut by_primary: HashMap<String, usize> = HashMap::new();
+    for (&lang, &n) in &letters {
+        *by_primary.entry(primary(lang)).or_default() += n;
+    }
+    // Ties go to the alphabetically first, so the output doesn't follow hash order.
+    let winner = by_primary.into_iter().max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0))).map(|(p, _)| p);
+    winner
+        .and_then(|p| {
+            letters
+                .into_iter()
+                .filter(|(l, _)| primary(l) == p)
+                .max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(a.0)))
+                .map(|(l, _)| l.to_string())
+        })
+        .or_else(|| doc.default_lang.clone())
+        .unwrap_or_else(|| "en-US".to_string())
+}
+
 fn compute_bookmark_positions(
     doc: &Document,
     ctx: &RenderContext,
@@ -3034,6 +3080,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         bookmark_positions,
         line_number_counter: 0,
     };
+    state.pb.tags.set_document_lang(&document_lang(doc));
 
     for (sect_idx, section) in doc.sections.iter().enumerate() {
         let sp = &section.properties;

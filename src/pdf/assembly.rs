@@ -508,8 +508,9 @@ pub(super) fn assemble_pdf_pages(
         None
     };
 
-    // Word's own default when a document declares no language.
-    let lang = doc.default_lang.as_deref().unwrap_or("en-US");
+    // The language most of the text is in (`document_lang`); passages in
+    // another one carry their own `/Lang`.
+    let lang = tags.lang();
     // Claim PDF/UA-1 only when every machine check that depends on the
     // document is known to pass: a title, alt on every Figure, heading order,
     // all fonts embedded (no standard-14 fallback) and no .notdef drawn. The

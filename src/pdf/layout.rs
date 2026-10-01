@@ -227,6 +227,9 @@ pub(super) struct WordChunk {
     /// The source letters when caps/small caps draw different ones, given to
     /// text extraction and screen readers as `/ActualText`.
     pub(super) actual_text: Option<String>,
+    /// The language of this text (`w:lang`), for a `/Lang` Span when it isn't
+    /// the document's.
+    pub(super) lang: Option<String>,
     /// Points already trimmed from a trailing full-width punctuation mark by
     /// `compress_punctuation`; caps further squeezing at half an em.
     pub(super) punct_compressed: f32,
@@ -311,6 +314,7 @@ impl WordChunk {
             footnote_id: run.footnote_id,
             endnote_id: run.endnote_id,
             actual_text: None,
+            lang: chunk_lang(run, word),
             space_after: false,
         }
     }
@@ -362,6 +366,7 @@ impl WordChunk {
             footnote_id: None,
             endnote_id: None,
             actual_text: None,
+            lang: None,
             space_after: false,
         }
     }
@@ -413,6 +418,7 @@ impl WordChunk {
             footnote_id: None,
             endnote_id: None,
             actual_text: None,
+            lang: None,
             space_after: false,
         }
     }
@@ -469,6 +475,7 @@ impl WordChunk {
             footnote_id: None,
             endnote_id: None,
             actual_text: None,
+            lang: None,
             space_after: false,
         }
     }
@@ -490,8 +497,9 @@ pub(super) struct LinkTagger<'a> {
     pub(super) page: usize,
     pub(super) para: usize,
     link: Option<(String, usize)>,
-    /// The open caps/small-caps Span (see `caps_span`).
-    span: Option<usize>,
+    /// The open Span (see `span`): its element, its `/Lang`, and whether it
+    /// carries `/ActualText`.
+    span: Option<(usize, Option<String>, bool)>,
 }
 
 impl<'a> LinkTagger<'a> {
@@ -499,35 +507,40 @@ impl<'a> LinkTagger<'a> {
         Self { tags, page, para, link: None, span: None }
     }
 
-    /// Caps and small caps draw other letters than the source has: such
-    /// chunks go in a Span (one per stretch of them, inside the open Link or
-    /// paragraph) whose `/ActualText` carries the source. A structure element,
-    /// not nested marked content, which Poppler's structure reader loses text
-    /// after. Returns true when the marked content switched (the text matrix
-    /// is reset).
-    fn caps_span(&mut self, content: &mut Content, actual: Option<&str>) -> bool {
-        match (self.span, actual) {
-            (Some(span), Some(text)) => {
-                self.tags.push_actual(span, text);
-                false
+    /// Text in another language than the document's goes in a Span with
+    /// `/Lang`, so a screen reader switches voice; caps and small caps, which
+    /// draw other letters than the source has, in one whose `/ActualText`
+    /// carries the source. One Span per stretch of chunks that need the same,
+    /// inside the open Link or paragraph: a structure element, not nested
+    /// marked content, which Poppler's structure reader loses text after.
+    /// Returns true when the marked content switched (the text matrix is
+    /// reset).
+    fn span(&mut self, content: &mut Content, lang: Option<&str>, actual: Option<&str>) -> bool {
+        let lang = lang.filter(|l| !self.tags.is_document_lang(l));
+        let wanted = (lang.is_some() || actual.is_some()).then_some((lang, actual.is_some()));
+        if wanted == self.span.as_ref().map(|(_, l, a)| (l.as_deref(), *a)) {
+            if let (Some((span, ..)), Some(text)) = (&self.span, actual) {
+                self.tags.push_actual(*span, text);
             }
-            (None, None) => false,
-            (None, Some(text)) => {
-                content.end_text();
+            return false;
+        }
+        content.end_text();
+        match wanted {
+            None => self.resume(content),
+            Some((lang, has_actual)) => {
                 let span = self.tags.add_span(self.open());
-                self.tags.push_actual(span, text);
+                if let Some(l) = lang {
+                    self.tags.set_lang(span, l);
+                }
+                if let Some(text) = actual {
+                    self.tags.push_actual(span, text);
+                }
                 self.tags.begin(content, self.page, span);
-                content.begin_text();
-                self.span = Some(span);
-                true
-            }
-            (Some(_), None) => {
-                content.end_text();
-                self.resume(content);
-                content.begin_text();
-                true
+                self.span = Some((span, lang.map(str::to_string), has_actual));
             }
         }
+        content.begin_text();
+        true
     }
 
     /// Switch the open marked content to the chunk's Link (or back to the
@@ -693,6 +706,16 @@ fn word_width_for_run(
 fn mark_space_after(chunks: &mut [WordChunk]) {
     if let Some(c) = chunks.iter_mut().rev().find(|c| !c.text.is_empty()) {
         c.space_after = true;
+    }
+}
+
+/// The language of `text` in `run`: Word takes East Asian text's from
+/// `w:lang/@eastAsia`, the rest from `@val`.
+fn chunk_lang(run: &Run, text: &str) -> Option<String> {
+    if text.chars().any(crate::docx::is_east_asian_char) {
+        run.text_lang_east_asia.clone().or_else(|| run.text_lang.clone())
+    } else {
+        run.text_lang.clone()
     }
 }
 
@@ -2202,11 +2225,11 @@ pub(super) fn render_paragraph_lines(
                 let boundary_space = chunk.space_after
                     && primary_entry
                         .is_none_or(|e| e.char_to_gid.as_ref().is_none_or(|m| m.contains_key(&' ')));
-                // A caps Span's /ActualText covers the boundary space the Tj carries too.
+                // A Span's /ActualText covers the boundary space the Tj carries too.
                 if let Some(lt) = link_tags.as_mut().filter(|_| !chunk.text.is_empty()) {
                     let actual =
                         chunk.actual_text.as_ref().map(|t| if boundary_space { format!("{t} ") } else { t.clone() });
-                    if lt.caps_span(content, actual.as_deref()) {
+                    if lt.span(content, chunk.lang.as_deref(), actual.as_deref()) {
                         td_x = 0.0;
                         td_y = 0.0;
                     }
@@ -2968,9 +2991,9 @@ mod tests {
         tags.begin(&mut content, 0, p);
         content.begin_text();
         let mut lt = LinkTagger::new(&mut tags, 0, p);
-        assert!(lt.caps_span(&mut content, Some("Pirmasis ")), "opens a Span");
-        assert!(!lt.caps_span(&mut content, Some("skirsnis")), "extends it");
-        assert!(lt.caps_span(&mut content, None), "back to the paragraph");
+        assert!(lt.span(&mut content, None, Some("Pirmasis ")), "opens a Span");
+        assert!(!lt.span(&mut content, None, Some("skirsnis")), "extends it");
+        assert!(lt.span(&mut content, None, None), "back to the paragraph");
         content.end_text();
         lt.finish(&mut content);
         let stream = String::from_utf8_lossy(&content.finish()).into_owned();
@@ -2986,6 +3009,37 @@ mod tests {
         tags.write(&mut pdf, &mut alloc, &[pdf_writer::Ref::new(1)], &[]);
         let bytes = pdf.finish();
         assert!(bytes.windows(19).any(|w| w == b"(Pirmasis skirsnis)"));
+    }
+
+    #[test]
+    fn another_language_gets_a_lang_span() {
+        use super::super::tagging::{self, Tags, ROOT};
+        let mut tags = Tags::new();
+        tags.set_document_lang("en-US");
+        let p = tags.add(ROOT, "P");
+        let mut content = tagging::artifact_content();
+        tags.begin(&mut content, 0, p);
+        content.begin_text();
+        let mut lt = LinkTagger::new(&mut tags, 0, p);
+        assert!(!lt.span(&mut content, Some("en-GB"), None), "same language, no Span");
+        assert!(lt.span(&mut content, Some("fr-FR"), None), "French opens one");
+        assert!(!lt.span(&mut content, Some("fr-FR"), None), "and keeps it");
+        assert!(lt.span(&mut content, Some("fr-FR"), Some("Bonjour")), "caps need their own");
+        assert!(lt.span(&mut content, None, None), "back to the paragraph");
+        content.end_text();
+        lt.finish(&mut content);
+
+        let mut pdf = pdf_writer::Pdf::new();
+        let mut next = 1;
+        let mut alloc = || {
+            next += 1;
+            pdf_writer::Ref::new(next)
+        };
+        tags.write(&mut pdf, &mut alloc, &[pdf_writer::Ref::new(1)], &[]);
+        let bytes = pdf.finish();
+        let count = |pat: &[u8]| bytes.windows(pat.len()).filter(|w| *w == pat).count();
+        assert_eq!(count(b"/Lang (fr-FR)"), 2);
+        assert_eq!(count(b"/ActualText (Bonjour)"), 1);
     }
 
     #[test]

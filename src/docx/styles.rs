@@ -34,6 +34,24 @@ fn script_font_typeface<'a>(font_group: roxmltree::Node<'a, 'a>, script: &str) -
         .filter(|tf| !tf.is_empty())
 }
 
+/// `w:lang`: the languages of Latin (`val`) and East Asian (`eastAsia`) text.
+/// Only well-formed tags: Word writes "x-none" for "no language".
+// ponytail: w:bidi (complex-script text) ignored until RTL runs are tagged
+pub(super) fn parse_lang(rpr: roxmltree::Node) -> (Option<String>, Option<String>) {
+    let Some(lang) = wml(rpr, "lang") else {
+        return (None, None);
+    };
+    let tag = |attr| lang.attribute((WML_NS, attr)).filter(|v| is_lang_tag(v)).map(str::to_string);
+    (tag("val"), tag("eastAsia"))
+}
+
+/// A BCP 47-shaped language tag: a 2–3 letter language, then alphanumeric subtags.
+fn is_lang_tag(tag: &str) -> bool {
+    let mut parts = tag.split('-');
+    parts.next().is_some_and(|p| (2..=3).contains(&p.len()) && p.chars().all(|c| c.is_ascii_alphabetic()))
+        && parts.all(|p| (1..=8).contains(&p.len()) && p.chars().all(|c| c.is_ascii_alphanumeric()))
+}
+
 fn lang_to_script(lang: &str) -> &'static str {
     if lang.starts_with("ja") {
         "Jpan"
@@ -89,6 +107,7 @@ pub(super) struct StyleDefaults {
     pub(super) color: Option<[u8; 3]>,
     pub(super) char_spacing: f32,
     pub(super) lang: Option<String>,
+    pub(super) lang_east_asia: Option<String>,
     pub(super) widow_control: bool,
     pub(super) indent_left: f32,
     pub(super) indent_right: f32,
@@ -106,6 +125,8 @@ pub(super) struct ParagraphStyle {
     pub(super) italic: Option<bool>,
     pub(super) caps: Option<bool>,
     pub(super) small_caps: Option<bool>,
+    pub(super) lang: Option<String>,
+    pub(super) lang_east_asia: Option<String>,
     pub(super) vanish: Option<bool>,
     pub(super) underline: Option<bool>,
     pub(super) double_underline: Option<bool>,
@@ -158,6 +179,8 @@ pub(super) struct CharacterStyle {
     pub(super) strikethrough: Option<bool>,
     pub(super) caps: Option<bool>,
     pub(super) small_caps: Option<bool>,
+    pub(super) lang: Option<String>,
+    pub(super) lang_east_asia: Option<String>,
     pub(super) vanish: Option<bool>,
     pub(super) color: Option<[u8; 3]>,
     pub(super) highlight: Option<[u8; 3]>,
@@ -515,6 +538,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
         color: None,
         char_spacing: 0.0,
         lang: None,
+        lang_east_asia: None,
         widow_control: true,
         indent_left: 0.0,
         indent_right: 0.0,
@@ -571,7 +595,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
             defaults.double_underline = parse_double_underline(rpr).unwrap_or(false);
             defaults.color = wml_attr(rpr, "color").and_then(parse_text_color);
             defaults.char_spacing = parse_char_spacing(rpr).unwrap_or(0.0);
-            defaults.lang = wml_attr(rpr, "lang").map(str::to_string);
+            (defaults.lang, defaults.lang_east_asia) = parse_lang(rpr);
         }
         let default_ppr = wml(doc_defaults, "pPrDefault").and_then(|n| wml(n, "pPr"));
         if let Some(wc) = default_ppr.and_then(|ppr| wml_bool(ppr, "widowControl")) {
@@ -662,6 +686,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
                 let italic = rpr.and_then(|n| wml_bool(n, "i"));
                 let caps = rpr.and_then(|n| wml_bool(n, "caps"));
                 let small_caps = rpr.and_then(|n| wml_bool(n, "smallCaps"));
+                let (lang, lang_east_asia) = rpr.map(parse_lang).unwrap_or_default();
                 let vanish = rpr.and_then(|n| wml_bool(n, "vanish"));
                 let underline = rpr.and_then(parse_underline);
                 let double_underline = rpr.and_then(parse_double_underline);
@@ -744,6 +769,8 @@ pub(super) fn parse_styles<R: Read + Seek>(
                         italic,
                         caps,
                         small_caps,
+                        lang,
+                        lang_east_asia,
                         vanish,
                         underline,
                         double_underline,
@@ -803,6 +830,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
                 let strikethrough = wml_bool(rpr, "strike");
                 let caps = wml_bool(rpr, "caps");
                 let small_caps = wml_bool(rpr, "smallCaps");
+                let (lang, lang_east_asia) = parse_lang(rpr);
                 let vanish = wml_bool(rpr, "vanish");
                 let color = wml_attr(rpr, "color").and_then(parse_text_color);
                 let highlight = wml_attr(rpr, "highlight").and_then(highlight_color);
@@ -827,6 +855,8 @@ pub(super) fn parse_styles<R: Read + Seek>(
                         strikethrough,
                         caps,
                         small_caps,
+                        lang,
+                        lang_east_asia,
                         vanish,
                         color,
                         highlight,
@@ -990,6 +1020,8 @@ fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
                     italic,
                     caps,
                     small_caps,
+                    lang,
+                    lang_east_asia,
                     vanish,
                     underline,
                     double_underline,
