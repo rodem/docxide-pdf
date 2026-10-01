@@ -12,7 +12,7 @@ use super::images::{
 use super::is_east_asian_char;
 use super::styles::{
     CharacterStyle, ParagraphStyle, StyleDefaults, ThemeFonts, parse_char_spacing, parse_font_size, parse_lang,
-    resolve_east_asia_font_from_node, resolve_font_from_node, resolve_font_from_node_opt,
+    resolve_east_asia_font_from_node, resolve_font_from_node_opt,
 };
 use super::textbox::parse_textbox_from_vml;
 use super::wordart::{parse_text_fill, parse_text_glow, parse_text_outline, parse_text_shadow};
@@ -541,13 +541,18 @@ fn ensure_nonempty_paragraph(
     }
     // The mark's own font and size each override the style's on their own
     // (a Calibri mark with no w:sz in a Times New Roman style).
+    // Like a real run, an unset size or font inherits and so takes a table
+    // style's (empty 10pt Table Grid cell paragraphs).
     let mark_rpr = ppr.and_then(|ppr| wml(ppr, "rPr"));
+    let mark_size = mark_rpr.and_then(parse_font_size);
+    let mark_font = mark_rpr
+        .and_then(|n| wml(n, "rFonts"))
+        .and_then(|rfonts| resolve_font_from_node_opt(rfonts, theme));
     runs.push(Run {
-        font_size: mark_rpr.and_then(parse_font_size).unwrap_or(defaults.font_size),
-        font_name: mark_rpr
-            .and_then(|n| wml(n, "rFonts"))
-            .map(|rfonts| resolve_font_from_node(rfonts, theme, &defaults.font_name))
-            .unwrap_or_else(|| defaults.font_name.clone()),
+        font_size: mark_size.unwrap_or(defaults.font_size),
+        font_size_from_default: mark_size.is_none() && defaults.font_size_is_doc_default,
+        font_name_from_default: mark_font.is_none() && defaults.font_name_is_doc_default,
+        font_name: mark_font.unwrap_or_else(|| defaults.font_name.clone()),
         bold: defaults.bold,
         italic: defaults.italic,
         ..Run::default()
