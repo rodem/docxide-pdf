@@ -666,6 +666,10 @@ fn collect_run_nodes<'a>(
                 continue;
             }
             out.push((child, None, false, active_comments.clone()));
+        } else if is_wml && name == "br" {
+            // A w:br straight under w:p is malformed, but Word breaks there
+            // (a citation's URL then starts the next line).
+            out.push((child, None, false, active_comments.clone()));
         } else if is_wml && name == "hyperlink" {
             let has_rid = child.attribute((REL_NS, "id")).is_some();
             let has_anchor = child.attribute((WML_NS, "anchor")).is_some();
@@ -1043,7 +1047,8 @@ pub(super) fn parse_runs<R: Read + Seek>(
         };
 
         let mut pending_text = String::new();
-        for child in run_node.children() {
+        let bare_break = (run_node.tag_name().name() == "br").then_some(run_node);
+        for child in bare_break.into_iter().chain(run_node.children()) {
             let child_ns = child.tag_name().namespace();
             if child_ns == Some(MC_NS_TOP) && child.tag_name().name() == "AlternateContent" {
                 let choice = child.children().find(|n| {
