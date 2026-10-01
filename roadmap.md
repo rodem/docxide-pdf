@@ -141,10 +141,17 @@ scratchpad; rebuild them from `tests/common/a11y.rs` if needed):**
 5. slovak_eu_directive: we emit 9 table rows where Word has 14 (table model).
 6. Links in headers/footers and footnote text are still dropped; link rects and
    outline destinations ignore `BODY_SCALE`/vAlign (`assembly.rs`).
-7. Per-run language (`/Lang` on spans), caps/small caps `/ActualText`,
-   `/ListNumbering` on L, `w:softHyphen` dropped, `w:noBreakHyphen` → U+002D,
-   Wingdings bullets extract as private-use code points.
-8. Test-run time: with Microsoft Defender scanning `tests/output` and a
+7. Per-run language (`/Lang` on spans), `/ListNumbering` on L,
+   `w:softHyphen` dropped, `w:noBreakHyphen` → U+002D, Wingdings bullets
+   extract as private-use code points.
+8. Legacy text shadow (`w:shadow`/`emboss`/`imprint`) draws a gray copy of
+   the glyphs inside the paragraph, so case66 reads "ShadowShadow
+   effecteffect". Fix: give a shadowed chunk `actual_text = text` so the caps
+   Span (`LinkTagger::caps_span`) covers copy and glyphs with one reading.
+   (Caps/small caps `/ActualText` done 2026-10-01: a Span structure element
+   per caps stretch, not nested marked content — Poppler's structure reader
+   drops a section's text after a nested `/ActualText` span.)
+9. Test-run time: with Microsoft Defender scanning `tests/output` and a
    concurrent worktree run, the full suite took >60 min (normally ~6–10).
 
 **Harness side findings (2026-10-01):** `tests/text_boundary.rs` has had no

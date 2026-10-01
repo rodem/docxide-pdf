@@ -29,11 +29,13 @@ struct Node {
     alt: Option<String>,
     /// Structure element ID; PDF/UA requires one on every Note.
     id: Option<String>,
+    /// `/ActualText`: the source letters of a caps/small-caps Span.
+    actual: Option<String>,
 }
 
 impl Node {
     fn new(kind: &'static str, parent: usize) -> Self {
-        Self { kind, parent, kids: Vec::new(), cell: None, alt: None, id: None }
+        Self { kind, parent, kids: Vec::new(), cell: None, alt: None, id: None, actual: None }
     }
 
     fn child_nodes(&self) -> impl DoubleEndedIterator<Item = usize> + '_ {
@@ -334,6 +336,16 @@ impl Tags {
         id
     }
 
+    /// A Span whose `/ActualText` replaces its glyphs for text extraction and
+    /// screen readers; `push_actual` adds to it as its content is drawn.
+    pub(super) fn add_span(&mut self, parent: usize) -> usize {
+        self.add(parent, "Span")
+    }
+
+    pub(super) fn push_actual(&mut self, node: usize, text: &str) {
+        self.nodes[node].actual.get_or_insert_with(String::new).push_str(text);
+    }
+
     /// LI for list `id` at `level` (a new L under `parent` when the list
     /// starts); returns (Lbl when the label is drawn separately, LBody).
     pub(super) fn list_item(
@@ -441,6 +453,9 @@ impl Tags {
             elem.parent(if i == ROOT { root } else { refs[node.parent] });
             if let Some(alt) = &node.alt {
                 elem.alt(TextStr(alt));
+            }
+            if let Some(actual) = &node.actual {
+                elem.actual_text(TextStr(actual));
             }
             if let Some(id) = &node.id {
                 elem.id(Str(id.as_bytes()));

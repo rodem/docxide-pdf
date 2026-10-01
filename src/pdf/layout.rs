@@ -224,6 +224,9 @@ pub(super) struct WordChunk {
     pub(super) footnote_id: Option<u32>,
     /// Endnote this chunk is the reference mark of (tagging only).
     pub(super) endnote_id: Option<u32>,
+    /// The source letters when caps/small caps draw different ones, given to
+    /// text extraction and screen readers as `/ActualText`.
+    pub(super) actual_text: Option<String>,
     /// Points already trimmed from a trailing full-width punctuation mark by
     /// `compress_punctuation`; caps further squeezing at half an em.
     pub(super) punct_compressed: f32,
@@ -307,6 +310,7 @@ impl WordChunk {
             comment_ids: run.comment_ids.clone(),
             footnote_id: run.footnote_id,
             endnote_id: run.endnote_id,
+            actual_text: None,
             space_after: false,
         }
     }
@@ -357,6 +361,7 @@ impl WordChunk {
             comment_ids: Vec::new(),
             footnote_id: None,
             endnote_id: None,
+            actual_text: None,
             space_after: false,
         }
     }
@@ -407,6 +412,7 @@ impl WordChunk {
             comment_ids: Vec::new(),
             footnote_id: None,
             endnote_id: None,
+            actual_text: None,
             space_after: false,
         }
     }
@@ -462,6 +468,7 @@ impl WordChunk {
             comment_ids: Vec::new(),
             footnote_id: None,
             endnote_id: None,
+            actual_text: None,
             space_after: false,
         }
     }
@@ -483,11 +490,44 @@ pub(super) struct LinkTagger<'a> {
     pub(super) page: usize,
     pub(super) para: usize,
     link: Option<(String, usize)>,
+    /// The open caps/small-caps Span (see `caps_span`).
+    span: Option<usize>,
 }
 
 impl<'a> LinkTagger<'a> {
     pub(super) fn new(tags: &'a mut super::tagging::Tags, page: usize, para: usize) -> Self {
-        Self { tags, page, para, link: None }
+        Self { tags, page, para, link: None, span: None }
+    }
+
+    /// Caps and small caps draw other letters than the source has: such
+    /// chunks go in a Span (one per stretch of them, inside the open Link or
+    /// paragraph) whose `/ActualText` carries the source. A structure element,
+    /// not nested marked content, which Poppler's structure reader loses text
+    /// after. Returns true when the marked content switched (the text matrix
+    /// is reset).
+    fn caps_span(&mut self, content: &mut Content, actual: Option<&str>) -> bool {
+        match (self.span, actual) {
+            (Some(span), Some(text)) => {
+                self.tags.push_actual(span, text);
+                false
+            }
+            (None, None) => false,
+            (None, Some(text)) => {
+                content.end_text();
+                let span = self.tags.add_span(self.open());
+                self.tags.push_actual(span, text);
+                self.tags.begin(content, self.page, span);
+                content.begin_text();
+                self.span = Some(span);
+                true
+            }
+            (Some(_), None) => {
+                content.end_text();
+                self.resume(content);
+                content.begin_text();
+                true
+            }
+        }
     }
 
     /// Switch the open marked content to the chunk's Link (or back to the
@@ -499,6 +539,7 @@ impl<'a> LinkTagger<'a> {
             return false;
         }
         content.end_text();
+        self.span = None;
         let node = match url {
             Some(u) => {
                 let n = self.tags.add(self.para, "Link");
@@ -532,8 +573,9 @@ impl<'a> LinkTagger<'a> {
         }
     }
 
-    /// Back to the open element after a picture or an artifact.
+    /// Back to the open element after a picture, an artifact or a Span.
     fn resume(&mut self, content: &mut Content) {
+        self.span = None;
         self.tags.begin(content, self.page, self.open());
     }
 
@@ -546,7 +588,7 @@ impl<'a> LinkTagger<'a> {
     }
 
     fn finish(mut self, content: &mut Content) {
-        if self.link.take().is_some() {
+        if self.link.take().is_some() | self.span.take().is_some() {
             self.tags.begin(content, self.page, self.para);
         }
     }
@@ -594,6 +636,15 @@ fn effective_text(run: &Run) -> Cow<'_, str> {
         Cow::Borrowed(&run.text)
     }
     // Note: smallCaps uppercasing is handled per-segment via smallcaps_segments()
+}
+
+/// The source words of a `w:caps` run, matching `split_preserving_spaces` of
+/// its uppercased `effective_text` one for one (uppercasing never adds or
+/// removes a space).
+fn caps_originals<'a>(run: &'a Run, shown: &[(usize, &str)]) -> Option<Vec<(usize, &'a str)>> {
+    run.caps
+        .then(|| split_preserving_spaces(&run.text))
+        .filter(|o| o.len() == shown.len())
 }
 
 /// Split a word into (text, font_size) segments for smallCaps rendering.
@@ -645,31 +696,68 @@ fn mark_space_after(chunks: &mut [WordChunk]) {
     }
 }
 
+/// The runs of lowercase vs other characters that `smallcaps_segments` sizes
+/// separately: the source letters behind each segment.
+fn case_groups(word: &str) -> Vec<&str> {
+    let mut groups = Vec::new();
+    let mut start = 0;
+    let mut prev = None;
+    for (i, ch) in word.char_indices() {
+        let lower = ch.is_lowercase();
+        if prev.is_some_and(|p| p != lower) {
+            groups.push(&word[start..i]);
+            start = i;
+        }
+        prev = Some(lower);
+    }
+    if !word.is_empty() {
+        groups.push(&word[start..]);
+    }
+    groups
+}
+
 /// Push WordChunks for a word, splitting into per-segment chunks for smallCaps.
+/// `original` is the word before `w:caps` uppercased it.
 fn push_word_chunks(
     chunks: &mut Vec<WordChunk>,
     entry: &FontEntry,
     run: &Run,
     word: &str,
+    original: Option<&str>,
     eff_fs: f32,
     cs: f32,
     y_off: f32,
     x_start: f32,
     total_ww: f32,
 ) {
+    let actual = |shown: &str, source: &str| (shown != source).then(|| source.to_string());
     if run.small_caps {
         let segs = smallcaps_segments(word, eff_fs);
+        // With caps on too the word is all capitals: one segment, whose
+        // source is the caps original.
+        let sources = case_groups(word);
+        let sources_match = sources.len() == segs.len();
         let mut seg_x = x_start;
-        for (seg_text, seg_fs) in &segs {
+        for (i, (seg_text, seg_fs)) in segs.iter().enumerate() {
             let seg_kern = run.kern_threshold.is_some_and(|t| *seg_fs >= t);
             let ts = run.text_scale / 100.0;
             let seg_w = entry.word_width(seg_text, *seg_fs, seg_kern) * ts
                 + cs * seg_text.chars().count() as f32;
-            chunks.push(WordChunk::text(entry, run, seg_text, *seg_fs, cs, y_off, seg_x, seg_w));
+            let mut chunk = WordChunk::text(entry, run, seg_text, *seg_fs, cs, y_off, seg_x, seg_w);
+            if sources_match {
+                let source = match original {
+                    Some(o) if segs.len() == 1 => o,
+                    _ => sources[i],
+                };
+                chunk.actual_text = actual(seg_text, source);
+            }
+            chunks.push(chunk);
             seg_x += seg_w;
         }
     } else {
-        chunks.push(WordChunk::text(entry, run, word, eff_fs, cs, y_off, x_start, total_ww));
+        let mut chunk = WordChunk::text(entry, run, word, eff_fs, cs, y_off, x_start, total_ww);
+        chunk.actual_text = original.and_then(|o| actual(word, o));
+        chunks.push(chunk);
     }
 }
 
@@ -980,7 +1068,10 @@ pub(super) fn build_paragraph_lines(
         let space_w_cs = space_w * ts + cs;
 
         let mut is_first_word_in_run = true;
-        for (space_count, word) in split_preserving_spaces(&text) {
+        let words = split_preserving_spaces(&text);
+        let originals = caps_originals(run, &words);
+        for (wi, &(space_count, word)) in words.iter().enumerate() {
+            let original = originals.as_ref().map(|o| o[wi].1);
             pending_space_w += space_count as f32 * space_w_cs;
             if space_count > 0 {
                 pending_real_space = true;
@@ -1080,7 +1171,7 @@ pub(super) fn build_paragraph_lines(
             {
                 lines.push(finish_dual_line(&mut current_chunks, &mut in_right_region, &mut cur_right_info));
                 pending_space_w = 0.0;
-                push_word_chunks(&mut current_chunks, entry, run, word, eff_fs, cs, y_off, 0.0, ww);
+                push_word_chunks(&mut current_chunks, entry, run, word, original, eff_fs, cs, y_off, 0.0, ww);
                 current_x = ww;
                 continue;
             }
@@ -1111,7 +1202,7 @@ pub(super) fn build_paragraph_lines(
                             0.0
                         };
                         pending_space_w = 0.0;
-                        push_word_chunks(&mut current_chunks, entry, run, word, eff_fs, cs, y_off, start_x, ww);
+                        push_word_chunks(&mut current_chunks, entry, run, word, original, eff_fs, cs, y_off, start_x, ww);
                         current_x = start_x + ww;
                         continue;
                     }
@@ -1128,7 +1219,7 @@ pub(super) fn build_paragraph_lines(
                         cur_right_info = Some((0, rx, rw));
                         in_right_region = true;
                         pending_space_w = 0.0;
-                        push_word_chunks(&mut current_chunks, entry, run, word, eff_fs, cs, y_off, 0.0, ww);
+                        push_word_chunks(&mut current_chunks, entry, run, word, original, eff_fs, cs, y_off, 0.0, ww);
                         current_x = ww;
                         continue;
                     }
@@ -1152,7 +1243,7 @@ pub(super) fn build_paragraph_lines(
             }
             pending_space_w = 0.0;
 
-            push_word_chunks(&mut current_chunks, entry, run, word, eff_fs, cs, y_off, current_x, ww);
+            push_word_chunks(&mut current_chunks, entry, run, word, original, eff_fs, cs, y_off, current_x, ww);
             current_x += ww;
         }
 
@@ -1556,7 +1647,9 @@ pub(super) fn build_tabbed_line(
             let ts = run.text_scale / 100.0;
             let space_w_cs = space_w * ts + cs;
             let segments = split_preserving_spaces(&text);
+            let originals = caps_originals(run, &segments);
             for (seg_idx, &(space_count, word)) in segments.iter().enumerate() {
+                let original = originals.as_ref().map(|o| o[seg_idx].1);
                 let kern = run.kern_threshold.is_some_and(|t| eff_fs >= t);
                 let ww = word_width_for_run(entry, run, word, eff_fs, kern, cs, ts);
                 pending_space_w += space_count as f32 * space_w_cs;
@@ -1603,7 +1696,7 @@ pub(super) fn build_tabbed_line(
                     current_x = 0.0;
                     is_first_line = false;
                 }
-                push_word_chunks(&mut all_chunks, entry, run, word, eff_fs, cs, y_off, current_x, ww);
+                push_word_chunks(&mut all_chunks, entry, run, word, original, eff_fs, cs, y_off, current_x, ww);
                 current_x += ww;
             }
             // Accumulate trailing whitespace for the next run (or the next tab stop)
@@ -2093,6 +2186,21 @@ pub(super) fn render_paragraph_lines(
                     td_x = 0.0;
                     td_y = 0.0;
                 }
+                let primary_entry = pdf_name_to_entry.get(chunk.pdf_font.as_str());
+                // The next chunk is positioned from the line start, so the
+                // space's advance moves nothing; it only marks the word boundary.
+                let boundary_space = chunk.space_after
+                    && primary_entry
+                        .is_none_or(|e| e.char_to_gid.as_ref().is_none_or(|m| m.contains_key(&' ')));
+                // A caps Span's /ActualText covers the boundary space the Tj carries too.
+                if let Some(lt) = link_tags.as_mut().filter(|_| !chunk.text.is_empty()) {
+                    let actual =
+                        chunk.actual_text.as_ref().map(|t| if boundary_space { format!("{t} ") } else { t.clone() });
+                    if lt.caps_span(content, actual.as_deref()) {
+                        td_x = 0.0;
+                        td_y = 0.0;
+                    }
+                }
                 // The Note goes inside the link on its reference mark (Word nests it there).
                 if let (Some(lt), Some((endnote, id))) = (link_tags.as_mut(), note) {
                     let parent = lt.open();
@@ -2211,17 +2319,11 @@ pub(super) fn render_paragraph_lines(
                 // Per-character font fallback: if some chars are missing
                 // from the primary font, split into segments and render
                 // missing chars with the CJK fallback font.
-                let primary_entry = pdf_name_to_entry.get(chunk.pdf_font.as_str());
                 let has_missing = primary_entry
                     .is_some_and(|e| !e.missing_cjk_chars.is_empty());
                 let fallback_entry = has_missing
                     .then(|| seen_fonts.get("__cjk_fallback"))
                     .flatten();
-                // The next chunk is positioned from the line start, so the
-                // space's advance moves nothing; it only marks the word boundary.
-                let boundary_space = chunk.space_after
-                    && primary_entry
-                        .is_none_or(|e| e.char_to_gid.as_ref().is_none_or(|m| m.contains_key(&' ')));
 
                 if let (Some(primary), Some(fallback)) = (primary_entry, fallback_entry) {
                     let _primary_gids = primary.char_to_gid.as_ref();
@@ -2816,6 +2918,59 @@ mod tests {
         assert_eq!(segs.len(), 2);
         assert_eq!(segs[0], ("A1".to_string(), 12.0));  // uppercase + digit both at base size
         assert_eq!(segs[1], ("B".to_string(), 10.0));    // lowercase → uppercase at reduced size
+    }
+
+    #[test]
+    fn caps_and_small_caps_keep_their_source_letters() {
+        let entry = stub_font_entry();
+        let chunks_for = |run: &Run, word: &str, original: Option<&str>| {
+            let mut chunks = Vec::new();
+            push_word_chunks(&mut chunks, &entry, run, word, original, 12.0, 0.0, 0.0, 0.0, 30.0);
+            chunks.into_iter().map(|c| (c.text, c.actual_text)).collect::<Vec<_>>()
+        };
+        let small_caps = Run { small_caps: true, ..Run::default() };
+        assert_eq!(
+            chunks_for(&small_caps, "Hello", None),
+            [("H".into(), None), ("ELLO".into(), Some("ello".into()))]
+        );
+        let caps = Run { caps: true, text: "Pirmasis skirsnis".into(), ..Run::default() };
+        let shown = split_preserving_spaces("PIRMASIS SKIRSNIS");
+        let originals = caps_originals(&caps, &shown).unwrap();
+        assert_eq!(originals[1].1, "skirsnis");
+        assert_eq!(chunks_for(&caps, "PIRMASIS", Some("Pirmasis")), [("PIRMASIS".into(), Some("Pirmasis".into()))]);
+        // Both on: the word is already all capitals, one segment, the caps original.
+        let both = Run { caps: true, small_caps: true, ..Run::default() };
+        assert_eq!(chunks_for(&both, "PIRMASIS", Some("Pirmasis")), [("PIRMASIS".into(), Some("Pirmasis".into()))]);
+        assert_eq!(chunks_for(&Run::default(), "plain", None), [("plain".into(), None)]);
+    }
+
+    #[test]
+    fn caps_span_groups_chunks_and_returns_to_the_paragraph() {
+        use super::super::tagging::{self, Tags, ROOT};
+        let mut tags = Tags::new();
+        let p = tags.add(ROOT, "P");
+        let mut content = tagging::artifact_content();
+        tags.begin(&mut content, 0, p);
+        content.begin_text();
+        let mut lt = LinkTagger::new(&mut tags, 0, p);
+        assert!(lt.caps_span(&mut content, Some("Pirmasis ")), "opens a Span");
+        assert!(!lt.caps_span(&mut content, Some("skirsnis")), "extends it");
+        assert!(lt.caps_span(&mut content, None), "back to the paragraph");
+        content.end_text();
+        lt.finish(&mut content);
+        let stream = String::from_utf8_lossy(&content.finish()).into_owned();
+        assert_eq!(stream.matches("/Span").count(), 1);
+        assert_eq!(stream.matches("BDC").count(), 3, "P, Span, P again");
+
+        let mut pdf = pdf_writer::Pdf::new();
+        let mut next = 1;
+        let mut alloc = || {
+            next += 1;
+            pdf_writer::Ref::new(next)
+        };
+        tags.write(&mut pdf, &mut alloc, &[pdf_writer::Ref::new(1)], &[]);
+        let bytes = pdf.finish();
+        assert!(bytes.windows(19).any(|w| w == b"(Pirmasis skirsnis)"));
     }
 
     #[test]
