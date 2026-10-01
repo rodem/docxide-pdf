@@ -148,13 +148,19 @@ pub(super) fn embed_truetype(
     let tounicode_ref = alloc();
     let cmap_name = format!("{}-UTF16", ps_name);
     let mut cmap = UnicodeCmap::new(Name(cmap_name.as_bytes()), system_info);
-    let is_symbol = font_name.eq_ignore_ascii_case("symbol");
+    let pua_unicode: Option<fn(char) -> Option<char>> = if font_name.eq_ignore_ascii_case("symbol") {
+        Some(symbol_font_unicode)
+    } else if font_name.eq_ignore_ascii_case("wingdings") {
+        Some(wingdings_unicode)
+    } else {
+        None
+    };
     // Several characters can share a glyph (hyphen variants, no-break space)
     // but a CID maps to one character: keep the lowest code point, the plain
     // form, instead of whichever the HashMap happened to yield last.
     let mut cid_unicode: BTreeMap<u16, char> = BTreeMap::new();
     for (&ch, &new_gid) in &char_to_gid {
-        let uni = if is_symbol { symbol_font_unicode(ch).unwrap_or(ch) } else { ch };
+        let uni = pua_unicode.and_then(|f| f(ch)).unwrap_or(ch);
         cid_unicode.entry(new_gid).and_modify(|c| *c = (*c).min(uni)).or_insert(uni);
     }
     for (cid, uni) in cid_unicode {
@@ -210,6 +216,40 @@ fn symbol_font_unicode(ch: char) -> Option<char> {
         0xF0D7 => '⋅',
         0xF0D8 => '¬',
         0xF0E0 => '◊',
+        _ => return None,
+    })
+}
+
+/// Unicode for the Wingdings codes documents use as bullets and signs, from
+/// the font's own glyph names (0xA7 `square4` → ▪). Word's export maps them to
+/// the code's low byte as Latin-1, so a screen reader says "u umlaut" for ✔.
+// ponytail: the corpus's codes only (no Wingdings 2/3, Webdings); add the
+// full table when other symbols show up
+fn wingdings_unicode(ch: char) -> Option<char> {
+    // Runs can hold the low byte itself; the font maps both to one glyph.
+    let code = match ch as u32 {
+        c @ 0x20..=0xFF => c | 0xF000,
+        c => c,
+    };
+    Some(match code {
+        0xF021 => '✏',
+        0xF026 => '📖',
+        0xF04A => '☺',
+        0xF06C => '●',
+        0xF06E => '■',
+        0xF06F => '□',
+        0xF071 => '❑',
+        0xF076 => '❖',
+        0xF09E => '·',
+        0xF09F => '•',
+        0xF0A7 => '▪',
+        0xF0A8 => '◻',
+        0xF0B2 => '⟡',
+        0xF0D8 => '➢',
+        0xF0E0 | 0xF0E8 => '→',
+        0xF0E4 => '↗',
+        0xF0FC => '✔',
+        0xF0FE => '☑',
         _ => return None,
     })
 }
@@ -400,4 +440,18 @@ fn plain_line_metrics(face: &Face, units: f32) -> (f32, f32, Option<f32>) {
         face.ascender() as f32 / units,
         None,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wingdings_bullets_extract_as_unicode() {
+        assert_eq!(wingdings_unicode('\u{F0A7}'), Some('▪'));
+        assert_eq!(wingdings_unicode('\u{F0FC}'), Some('✔'));
+        assert_eq!(wingdings_unicode('§'), Some('▪'));
+        assert_eq!(wingdings_unicode(' '), None);
+        assert_eq!(wingdings_unicode('\u{F0FA}'), None);
+    }
 }
