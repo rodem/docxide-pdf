@@ -244,15 +244,24 @@ def timed(convert, *args) -> tuple[bool, float | None]:
     # ponytail: measured under --jobs parallel conversions; use --jobs 1 for clean absolute numbers.
     """
     pdf: Path = args[-1]
+    docx: Path = args[-2]
     stamp = pdf.with_suffix(".time")
     if pdf.exists() and not stamp.exists():
         pdf.unlink()
+    # A timeout leaves no PDF to cache, so without this marker the engine would hang for the full
+    # timeout on the same document every run (minipdf: 2 × 300 s per run). Retried once the
+    # document changes; an engine upgrade starts from a cold cache anyway.
+    timeout_marker = pdf.with_suffix(".timeout")
+    if is_fresh(timeout_marker, docx):
+        return False, None
     before = pdf.stat().st_mtime if pdf.exists() else None
     t = time.perf_counter()
     try:
         ok = convert(*args)
     except subprocess.TimeoutExpired as e:  # one hung engine must not drop the whole case
         print(f"  {convert.__name__.removeprefix('convert_')} timed out after {e.timeout:.0f} s on {pdf.parent.name}")
+        pdf.parent.mkdir(parents=True, exist_ok=True)
+        timeout_marker.write_text(f"{e.timeout:.0f}")
         return False, None
     if ok and pdf.stat().st_mtime != before:
         stamp.write_text(f"{time.perf_counter() - t:.3f}")
