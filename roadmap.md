@@ -122,6 +122,18 @@ scratchpad; rebuild them from `tests/common/a11y.rs` if needed):**
 `engine_compare.py` `pdf_creator()` truncates Quartz producers at the escaped
 paren.
 
+## Deterministic Output (TODO — LOW EFFORT, found 2026-10-01)
+
+The same binary converting the same DOCX twice gives different bytes. The
+differences sit inside the embedded font programs (likely subsetting or
+table order driven by hash-map iteration), so the size varies by up to
+~±500 bytes per file and ~±20 KB over the corpus (case1: same size, different
+bytes; brazilian_logistics_study: 777,478 vs 777,044). Pixels and visual
+hashes are unaffected. It makes corpus-wide size deltas under ~20 KB
+meaningless (compare per file instead) and output non-reproducible. Find the
+unordered iteration in `fonts/embed.rs` (subset glyph set / table order) and
+make it sorted; check with two renders + `cmp`.
+
 ## Annotation Fixes 2026-09-18 (5 fixes, one commit each)
 
 Baseline for the round: HEAD 2c0706d, 170 tests passing. Every fix verified by
