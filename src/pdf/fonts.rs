@@ -303,7 +303,7 @@ fn collect_used_chars(doc: &Document, all_runs: &[&Run]) -> HashMap<String, Hash
             }
         }
         if !chart_label_chars.is_empty() {
-            used.entry(doc.chart_font_name.clone())
+            used.entry(doc.theme_minor_font.clone())
                 .or_default()
                 .extend(chart_label_chars);
         }
@@ -395,7 +395,7 @@ pub(super) fn collect_and_register_fonts(
                 &doc.embedded_fonts,
                 &used,
                 &doc.font_table,
-                &doc.chart_font_name,
+                &doc.theme_minor_font,
             );
             font_order.push(key_owned.clone());
             seen_fonts.insert(key_owned, entry);
@@ -420,7 +420,7 @@ pub(super) fn collect_and_register_fonts(
         let pdf_name = format!("F{}", font_order.len() + 1);
         let entry = register_font(
             pdf, base, bold, italic, pdf_name, alloc,
-            &doc.embedded_fonts, used, &doc.font_table, &doc.chart_font_name,
+            &doc.embedded_fonts, used, &doc.font_table, &doc.theme_minor_font,
         );
         seen_fonts.insert(key.clone(), entry);
         font_order.push(key.clone());
@@ -446,7 +446,7 @@ pub(super) fn collect_and_register_fonts(
             &doc.embedded_fonts,
             &all_missing_cjk,
             &doc.font_table,
-            &doc.chart_font_name,
+            &doc.theme_minor_font,
         );
         font_order.push(fallback_key.clone());
         seen_fonts.insert(fallback_key, entry);
@@ -482,7 +482,7 @@ pub(super) fn collect_and_register_fonts(
             &doc.embedded_fonts,
             &HashSet::new(),
             &doc.font_table,
-            &doc.chart_font_name,
+            &doc.theme_minor_font,
         );
         seen_fonts.insert("Helvetica".to_string(), entry);
         font_order.push("Helvetica".to_string());

@@ -95,6 +95,21 @@ fn drop_url_breaks(text: &str, breaks: &mut Vec<usize>) {
     breaks.retain(|&b| !urls.iter().any(|u| u.start < b && b < u.end) || text[..b].ends_with('-'));
 }
 
+/// True when `split_preserving_spaces` would break between `a` and `b` inside one
+/// run: UAX #14 plus the ellipsis rule (the URL rule needs more than two
+/// characters). Run boundaries call this for every glued word, so it stays
+/// off the heap.
+fn breaks_between(a: char, b: char) -> bool {
+    let mut buf = [0u8; 8];
+    let la = a.encode_utf8(&mut buf).len();
+    let lb = b.encode_utf8(&mut buf[la..]).len();
+    let Ok(pair) = std::str::from_utf8(&buf[..la + lb]) else {
+        return false;
+    };
+    unicode_linebreak::linebreaks(pair).any(|(pos, _)| pos == la)
+        && !(matches!(a, '\u{2024}' | '\u{2025}' | '\u{2026}') && !b.is_whitespace())
+}
+
 /// Split text into (preceding_space_count, word) segments using UAX #14 line break rules.
 /// Handles CJK character boundaries, hyphens, and punctuation break opportunities
 /// in addition to whitespace. Non-breaking spaces (U+00A0) and ideographic spaces
@@ -1238,7 +1253,7 @@ pub(super) fn build_paragraph_lines(
                 && !current_chunks.is_empty()
                 && !prev_last_char
                     .zip(shown.chars().next())
-                    .is_some_and(|(a, b)| split_preserving_spaces(&format!("{a}{b}")).len() > 1);
+                    .is_some_and(|(a, b)| breaks_between(a, b));
             is_first_word_in_run = false;
 
             let kern = run.kerns_at(eff_fs);
@@ -2799,10 +2814,7 @@ pub(super) fn tallest_glyph_run_metrics(
     runs: &[Run],
     seen_fonts: &HashMap<String, FontEntry>,
 ) -> (f32, Option<f32>, Option<f32>) {
-    let glyph_runs = runs
-        .iter()
-        .filter(|r| !r.is_tab && (r.text.is_empty() || !r.text.trim().is_empty()));
-    tallest_by_ascent(glyph_runs, seen_fonts)
+    tallest_by_ascent(runs.iter().filter(|r| sizes_line(r)), seen_fonts)
         .unwrap_or((runs.first().map_or(12.0, |r| r.font_size), None, None))
 }
 
@@ -2871,11 +2883,22 @@ pub(super) fn picture_line_bottom(
 /// Empty text — a tab, a paragraph mark, the blank line after a break — keeps
 /// the font's real metrics: those lines are sized by the East Asian font itself.
 pub(super) fn run_line_metrics(entry: &FontEntry, text: &str) -> (Option<f32>, Option<f32>) {
-    if !text.is_empty() && text.chars().all(is_break_space) {
-        (entry.plain_line_h_ratio, entry.plain_ascender_ratio)
-    } else {
+    if east_asian_leading(entry, text) {
         (entry.line_h_ratio, entry.ascender_ratio)
+    } else {
+        (entry.plain_line_h_ratio, entry.plain_ascender_ratio)
     }
+}
+
+/// Whether a run of `text` in `entry` gets Word's East Asian 1.3× leading.
+pub(super) fn east_asian_leading(entry: &FontEntry, text: &str) -> bool {
+    entry.east_asian && (text.is_empty() || !text.chars().all(is_break_space))
+}
+
+/// A run whose glyphs can size its line: not a tab, and empty (a paragraph
+/// mark) or holding more than whitespace.
+fn sizes_line(r: &Run) -> bool {
+    !r.is_tab && (r.text.is_empty() || !r.text.trim().is_empty())
 }
 
 /// Grid-snapped line height: Word counts docGrid cells with each font's
@@ -2921,12 +2944,7 @@ pub(super) fn grid_baseline_offset(
     let mut key_buf = String::new();
     runs.iter()
         .filter(|r| {
-            r.inline_image.is_none()
-                && !r.vanish
-                && !r.is_line_break
-                && !r.is_math
-                && !r.is_tab
-                && (r.text.is_empty() || !r.text.trim().is_empty())
+            r.inline_image.is_none() && !r.vanish && !r.is_line_break && !r.is_math && sizes_line(r)
         })
         .filter_map(|r| {
             let shift = seen_fonts.get(font_key_buf(r, &mut key_buf))?.grid_baseline_shift?;
@@ -3079,6 +3097,17 @@ mod tests {
     }
 
     #[test]
+    fn breaks_between_matches_splitting_inside_a_run() {
+        let chars = ['a', 'Z', '-', '/', ',', '(', ')', '…', '⁞', '中', '文', '。', '「', 'é', '1', '%', '$'];
+        for a in chars {
+            for b in chars {
+                let split = split_preserving_spaces(&format!("{a}{b}")).len() > 1;
+                assert_eq!(breaks_between(a, b), split, "{a:?}{b:?}");
+            }
+        }
+    }
+
+    #[test]
     fn word_split_over_runs_wraps_as_a_whole() {
         let mut fonts = HashMap::new();
         fonts.insert("Arial".to_string(), stub_font_entry());
@@ -3181,6 +3210,7 @@ mod tests {
             grid_line_ratio: None,
             plain_line_h_ratio: None,
             grid_baseline_shift: None,
+            east_asian: false,
             plain_ascender_ratio: None,
             char_to_gid: None,
             char_widths_1000: None,

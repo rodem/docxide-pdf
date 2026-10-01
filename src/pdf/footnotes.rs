@@ -4,6 +4,7 @@ use pdf_writer::Content;
 
 use crate::model::{Footnote, LineSpacing, Paragraph, Run};
 
+use super::helpers::drops_contextual_spacing;
 use super::RenderContext;
 use super::layout::{
     TextLine, build_paragraph_lines, is_text_empty, render_paragraph_lines, tallest_run_metrics,
@@ -78,7 +79,7 @@ pub(super) fn compute_footnote_height(
 ) -> f32 {
     let mut total = 0.0f32;
     let mut prev_space_after = 0.0f32;
-    let mut prev_style: Option<&str> = None;
+    let mut prev_para = None;
     for (i, para) in footnote.paragraphs.iter().enumerate() {
         let ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
         let para_text_width =
@@ -89,7 +90,7 @@ pub(super) fn compute_footnote_height(
             continue;
         }
         if i > 0 {
-            let effective_sb = if para.contextual_spacing && prev_style == para.style_id.as_deref() {
+            let effective_sb = if drops_contextual_spacing(para, prev_para) {
                 0.0
             } else {
                 para.space_before
@@ -100,14 +101,12 @@ pub(super) fn compute_footnote_height(
             || empty_paragraph_line_h(para, ls, ctx),
             |l| l.lines.len().max(1) as f32 * l.line_height,
         );
-        prev_space_after = if para.contextual_spacing
-            && footnote.paragraphs.get(i + 1).is_some_and(|p| p.style_id == para.style_id)
-        {
+        prev_space_after = if drops_contextual_spacing(para, footnote.paragraphs.get(i + 1)) {
             0.0
         } else {
             para.space_after
         };
-        prev_style = para.style_id.as_deref();
+        prev_para = Some(para);
     }
     total
 }
@@ -231,7 +230,7 @@ fn render_notes_downward(
             .unwrap_or_else(|| "1".to_string());
 
         let mut prev_space_after = 0.0f32;
-        let mut prev_style: Option<&str> = None;
+        let mut prev_para = None;
         for (pi, para) in footnote.paragraphs.iter().enumerate() {
             let runs = substitute_ref_marks(&para.runs, &display_num);
             let ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
@@ -248,7 +247,7 @@ fn render_notes_downward(
 
             // Inter-paragraph spacing within the footnote
             if pi > 0 {
-                let effective_sb = if para.contextual_spacing && prev_style == para.style_id.as_deref() {
+                let effective_sb = if drops_contextual_spacing(para, prev_para) {
                     0.0
                 } else {
                     para.space_before
@@ -298,14 +297,12 @@ fn render_notes_downward(
             } else {
                 fn_y -= empty_paragraph_line_h(para, ls, ctx);
             }
-            prev_space_after = if para.contextual_spacing
-                && footnote.paragraphs.get(pi + 1).is_some_and(|p| p.style_id == para.style_id)
-            {
+            prev_space_after = if drops_contextual_spacing(para, footnote.paragraphs.get(pi + 1)) {
                 0.0
             } else {
                 para.space_after
             };
-            prev_style = para.style_id.as_deref();
+            prev_para = Some(para);
         }
     }
     tops

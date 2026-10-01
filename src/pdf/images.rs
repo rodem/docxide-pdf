@@ -834,10 +834,9 @@ pub(super) fn embed_all_images(
         }
     }
 
+    // ponytail: textbox images get no shadow/glow effects; embed them with
+    // embed_image_effects and draw them in textbox_render if they matter.
     let mut textbox_image_names: HashMap<usize, String> = HashMap::new();
-    // ponytail: textbox image effects are embedded but never drawn; pass this map
-    // into textbox_render if shadow/glow on textbox images matters.
-    let mut effect_textbox_names: HashMap<usize, EffectXObjs> = HashMap::new();
     {
         let mut all_textboxes: Vec<&Textbox> = Vec::new();
         for section in &doc.sections {
@@ -862,15 +861,7 @@ pub(super) fn embed_all_images(
         }
 
         for tb in all_textboxes {
-            embed_textbox_images(
-                tb,
-                &mut textbox_image_names,
-                &mut effect_textbox_names,
-                &mut image_xobjects,
-                &mut effect_counter,
-                pdf,
-                alloc,
-            );
+            embed_textbox_images(tb, &mut textbox_image_names, &mut image_xobjects, pdf, alloc);
         }
     }
 
@@ -938,30 +929,21 @@ fn push_block_textboxes<'a>(block: &'a Block, out: &mut Vec<&'a Textbox>) {
 fn embed_keyed_image(
     img: &EmbeddedImage,
     image_names: &mut HashMap<usize, String>,
-    effect_names: &mut HashMap<usize, EffectXObjs>,
     image_xobjects: &mut Vec<(String, Ref)>,
-    effect_counter: &mut usize,
     pdf: &mut Pdf,
     alloc: &mut impl FnMut() -> Ref,
 ) {
     let key = std::sync::Arc::as_ptr(&img.data) as usize;
-    if image_names.contains_key(&key) {
-        return;
-    }
-    let name = embed_single_image(img, image_xobjects, pdf, alloc);
-    image_names.insert(key, name);
-    let fx = embed_image_effects(img, image_xobjects, effect_counter, pdf, alloc);
-    if fx.has_any() {
-        effect_names.insert(key, fx);
+    if !image_names.contains_key(&key) {
+        let name = embed_single_image(img, image_xobjects, pdf, alloc);
+        image_names.insert(key, name);
     }
 }
 
 fn embed_textbox_images(
     tb: &Textbox,
     image_names: &mut HashMap<usize, String>,
-    effect_names: &mut HashMap<usize, EffectXObjs>,
     image_xobjects: &mut Vec<(String, Ref)>,
-    effect_counter: &mut usize,
     pdf: &mut Pdf,
     alloc: &mut impl FnMut() -> Ref,
 ) {
@@ -969,21 +951,15 @@ fn embed_textbox_images(
     while let Some(paras) = stack.pop() {
         for para in paras {
             if let Some(img) = &para.image {
-                embed_keyed_image(
-                    img, image_names, effect_names, image_xobjects, effect_counter, pdf, alloc,
-                );
+                embed_keyed_image(img, image_names, image_xobjects, pdf, alloc);
             }
             for run in &para.runs {
                 if let Some(img) = &run.inline_image {
-                    embed_keyed_image(
-                        img, image_names, effect_names, image_xobjects, effect_counter, pdf, alloc,
-                    );
+                    embed_keyed_image(img, image_names, image_xobjects, pdf, alloc);
                 }
             }
             for fi in &para.floating_images {
-                embed_keyed_image(
-                    &fi.image, image_names, effect_names, image_xobjects, effect_counter, pdf, alloc,
-                );
+                embed_keyed_image(&fi.image, image_names, image_xobjects, pdf, alloc);
             }
             for nested in &para.textboxes {
                 stack.push(&nested.paragraphs);

@@ -42,7 +42,7 @@ use header_footer::{
     resolve_footer_for_page, resolve_header_for_page,
 };
 pub(super) use helpers::resolve_line_h;
-use helpers::joins_border_group;
+use helpers::{drops_contextual_spacing, joins_border_group};
 use positioning::{
     render_connector, render_floating_images, render_foreground_floating_images_deferred,
     resolve_fi_x, wraps_in_column,
@@ -382,41 +382,41 @@ impl FloatZone {
         (self.obj_left, self.obj_right)
     }
 
-    /// Narrow paragraph geometry to fit beside this floating object.
-    /// Returns `Some((para_text_x, para_text_width, label_x))` if the zone
-    /// is active at `slot_top`, or `None` if no narrowing is needed.
-    #[allow(dead_code)]
-    fn narrow_paragraph_geometry(
+    /// Narrow a paragraph's text box (`text_x`, `text_w`, `label_x`) to fit
+    /// beside this floating object when `y`, the paragraph's first line top,
+    /// is inside the zone. Leaves the box as it is otherwise, or when no side
+    /// is wide enough.
+    #[allow(clippy::too_many_arguments)]
+    fn narrow_paragraph(
         &self,
-        slot_top: f32,
+        y: f32,
         col_x: f32,
         col_w: f32,
-        indent_left: f32,
-        indent_right: f32,
-        indent_hanging: f32,
-    ) -> Option<(f32, f32, f32)> {
-        if !(slot_top <= self.top_y && slot_top > self.bottom_y) {
-            return None;
+        para: &Paragraph,
+        text_x: &mut f32,
+        text_w: &mut f32,
+        label_x: &mut f32,
+    ) {
+        if !(y <= self.top_y && y > self.bottom_y) {
+            return;
         }
         let col_right = col_x + col_w;
-        let (ex_left, ex_right) = self.exclusion_at_y(slot_top);
+        let (ex_left, ex_right) = self.exclusion_at_y(y);
         let space_right = col_right - (ex_right + self.right_from_text);
         let space_left = (ex_left - self.left_from_text) - col_x;
 
-        let mut para_text_x = col_x + indent_left;
-        let mut para_text_width = (col_w - indent_left - indent_right).max(1.0);
-        let mut label_x = col_x + indent_left - indent_hanging;
-
         if self.wrap_text == WrapText::BothSides {
-            let lw = (space_left - indent_left).max(0.0);
-            let rw = (space_right - indent_right).max(0.0);
+            // For bothSides, use the wider region as primary text width (dual
+            // geometry handles both regions per-line).
+            let lw = (space_left - para.indent_left).max(0.0);
+            let rw = (space_right - para.indent_right).max(0.0);
             if rw > lw {
                 let new_left = ex_right + self.right_from_text;
-                para_text_width = rw.max(1.0);
-                para_text_x = new_left + indent_left;
-                label_x = new_left + indent_left - indent_hanging;
+                *text_w = rw.max(1.0);
+                *text_x = new_left + para.indent_left;
+                *label_x = new_left + para.indent_left - para.indent_hanging;
             } else if lw > 0.0 {
-                para_text_width = lw.max(1.0);
+                *text_w = lw.max(1.0);
             }
         } else {
             let use_right = match self.wrap_text {
@@ -431,16 +431,14 @@ impl FloatZone {
             };
             if use_right {
                 let new_left = ex_right + self.right_from_text;
-                para_text_width = (col_right - new_left - indent_right).max(1.0);
-                para_text_x = new_left + indent_left;
-                label_x = new_left + indent_left - indent_hanging;
+                *text_w = (col_right - new_left - para.indent_right).max(1.0);
+                *text_x = new_left + para.indent_left;
+                *label_x = new_left + para.indent_left - para.indent_hanging;
             } else if use_left {
                 let avail_right = ex_left - self.left_from_text;
-                para_text_width =
-                    (avail_right - col_x - indent_left - indent_right).max(1.0);
+                *text_w = (avail_right - col_x - para.indent_left - para.indent_right).max(1.0);
             }
         }
-        Some((para_text_x, para_text_width, label_x))
     }
 }
 
@@ -939,15 +937,17 @@ fn per_line_footnote_extra(
     (per_line, total)
 }
 
-/// Compute effective first-line hanging indent for a paragraph.
 /// Lines of an `n`-line paragraph that must share a page with what precedes
 /// it: one, or with widow control two — all of them when it has three or
-/// fewer, since any split would leave a lone line.
-fn lines_kept_together(widow_control: bool, n: usize) -> usize {
-    match (widow_control, n) {
-        (false, _) => 1,
-        (true, n) if n <= 3 => n.max(1),
-        (true, _) => 2,
+/// fewer, since any split would leave a lone line. `n` is only counted when
+/// widow control needs it.
+fn lines_kept_together(widow_control: bool, n: impl FnOnce() -> usize) -> usize {
+    if !widow_control {
+        return 1;
+    }
+    match n() {
+        n if n <= 3 => n.max(1),
+        _ => 2,
     }
 }
 
@@ -972,6 +972,7 @@ fn line_count(para: &Paragraph, ctx: &RenderContext, col_w: f32) -> usize {
     .len()
 }
 
+/// Compute effective first-line hanging indent for a paragraph.
 fn compute_text_hanging(para: &Paragraph, default_tab_stop: f32) -> f32 {
     if !para.list_label.is_empty() {
         if let Some(nts) = para.num_level_tab_stop {
@@ -1090,7 +1091,7 @@ fn compute_bookmark_positions(
     let mut slot_top = effective_slot_top(sp, true, ctx);
     let mut margin_bottom = compute_effective_margin_bottom(sp, true, ctx);
     let mut prev_space_after: f32 = 0.0;
-    let mut prev_style: Option<&str> = None;
+    let mut prev_para: Option<&Paragraph> = None;
     let empty_imgs: HashMap<usize, String> = HashMap::new();
     let empty_fx: HashMap<usize, images::EffectXObjs> = HashMap::new();
 
@@ -1187,15 +1188,16 @@ fn compute_bookmark_positions(
                     } else {
                         num_lines as f32 * line_h
                     };
-                    let effective_sb = if para.contextual_spacing && prev_style == para.style_id.as_deref() {
+                    let effective_sb = if drops_contextual_spacing(para, prev_para) {
                         0.0
                     } else {
                         para.space_before
                     };
-                    let next_same_style = blocks.get(bi + 1).is_some_and(|b| {
-                        matches!(b, Block::Paragraph(p) if p.style_id == para.style_id)
-                    });
-                    let effective_sa = if para.contextual_spacing && next_same_style {
+                    let next_para = match blocks.get(bi + 1) {
+                        Some(Block::Paragraph(p)) => Some(p),
+                        _ => None,
+                    };
+                    let effective_sa = if drops_contextual_spacing(para, next_para) {
                         0.0
                     } else {
                         para.space_after
@@ -1214,7 +1216,7 @@ fn compute_bookmark_positions(
                         slot_top -= inter_gap + content_h;
                     }
                     prev_space_after = effective_sa;
-                    prev_style = para.style_id.as_deref();
+                    prev_para = Some(para);
                 }
                 Block::Table(table) => {
                     let para_count: usize = table
@@ -1234,7 +1236,7 @@ fn compute_bookmark_positions(
                     }
                     slot_top -= est_h;
                     prev_space_after = 0.0;
-                    prev_style = None;
+                    prev_para = None;
                 }
             }
         }
@@ -1352,18 +1354,12 @@ fn render_paragraph_block(
         None
     };
 
-    // §17.3.1.9: contextualSpacing drops the spacing next to a paragraph of
-    // the same style (a Title line keeps it beside a Normal one).
-    let effective_space_before = if para.contextual_spacing
-        && prev_para.is_some_and(|p| p.style_id == para.style_id)
-    {
+    let effective_space_before = if drops_contextual_spacing(para, prev_para) {
         0.0
     } else {
         para.space_before
     };
-    let effective_space_after = if para.contextual_spacing
-        && next_para.is_some_and(|p| p.style_id == para.style_id)
-    {
+    let effective_space_after = if drops_contextual_spacing(para, next_para) {
         0.0
     } else {
         para.space_after
@@ -1392,7 +1388,10 @@ fn render_paragraph_block(
     } else {
         line_h
     };
-    let grid_baseline = grid_baseline_offset(&para.runs, ctx.fonts, line_h).unwrap_or(sp.line_pitch);
+    let grid_baseline = grid_snapped
+        .then(|| grid_baseline_offset(&para.runs, ctx.fonts, line_h))
+        .flatten()
+        .unwrap_or(sp.line_pitch);
 
     // Word bottom-aligns text within an exact-height line box: the baseline
     // sits winDescent above the box bottom (identity: line_h_ratio −
@@ -1419,55 +1418,7 @@ fn render_paragraph_block(
     // a logo sits clear of it once the 8pt after-space is counted.
     let first_line_top = state.pb.slot_top - inter_gap;
     if let Some(ref fz) = state.pb.float_zone {
-        if first_line_top <= fz.top_y && first_line_top > fz.bottom_y {
-            let col_right = col_x + col_w;
-            let (ex_left, ex_right) = fz.exclusion_at_y(first_line_top);
-            let space_right =
-                col_right - (ex_right + fz.right_from_text);
-            let space_left = (ex_left - fz.left_from_text) - col_x;
-
-            if fz.wrap_text == WrapText::BothSides {
-                // For bothSides, use the wider region as
-                // primary text width (dual geometry handles
-                // both regions per-line).
-                let lw = (space_left - para.indent_left).max(0.0);
-                let rw = (space_right - para.indent_right).max(0.0);
-                if rw > lw {
-                    let new_left = ex_right + fz.right_from_text;
-                    para_text_width = rw.max(1.0);
-                    para_text_x = new_left + para.indent_left;
-                    label_x =
-                        new_left + para.indent_left - para.indent_hanging;
-                } else if lw > 0.0 {
-                    para_text_width = lw.max(1.0);
-                }
-            } else {
-                let use_right = match fz.wrap_text {
-                    WrapText::Right => space_right >= 1.0,
-                    WrapText::Left => !(space_left >= 1.0),
-                    _ => space_right >= space_left && space_right >= 72.0,
-                };
-                let use_left = match fz.wrap_text {
-                    WrapText::Left => space_left >= 1.0,
-                    WrapText::Right => false,
-                    _ => space_left >= 72.0,
-                };
-                if use_right {
-                    let new_left = ex_right + fz.right_from_text;
-                    para_text_width =
-                        (col_right - new_left - para.indent_right).max(1.0);
-                    para_text_x = new_left + para.indent_left;
-                    label_x =
-                        new_left + para.indent_left - para.indent_hanging;
-                } else if use_left {
-                    let avail_right = ex_left - fz.left_from_text;
-                    para_text_width = (avail_right - col_x
-                        - para.indent_left
-                        - para.indent_right)
-                        .max(1.0);
-                }
-            }
-        }
+        fz.narrow_paragraph(first_line_top, col_x, col_w, para, &mut para_text_x, &mut para_text_width, &mut label_x);
     }
 
     let text_hanging = compute_text_hanging(para, ctx.default_tab_stop);
@@ -1534,60 +1485,7 @@ fn render_paragraph_block(
             // Re-narrow para_text_x / para_text_width using the
             // new float zone (same logic as the block above).
             let fz = state.pb.float_zone.as_ref().unwrap();
-            if first_line_top <= fz.top_y && first_line_top > fz.bottom_y
-            {
-                let col_right = col_x + col_w;
-                let (ex_left, ex_right) =
-                    fz.exclusion_at_y(first_line_top);
-                let space_right = col_right
-                    - (ex_right + fz.right_from_text);
-                let space_left =
-                    (ex_left - fz.left_from_text) - col_x;
-
-                if fz.wrap_text == WrapText::BothSides {
-                    let lw = (space_left - para.indent_left).max(0.0);
-                    let rw = (space_right - para.indent_right).max(0.0);
-                    if rw > lw {
-                        let new_left = ex_right + fz.right_from_text;
-                        para_text_width = rw.max(1.0);
-                        para_text_x = new_left + para.indent_left;
-                        label_x = new_left + para.indent_left
-                            - para.indent_hanging;
-                    } else if lw > 0.0 {
-                        para_text_width = lw.max(1.0);
-                    }
-                } else {
-                    let use_right = match fz.wrap_text {
-                        WrapText::Right => space_right >= 1.0,
-                        WrapText::Left => !(space_left >= 1.0),
-                        _ => space_right >= space_left && space_right >= 72.0,
-                    };
-                    let use_left = match fz.wrap_text {
-                        WrapText::Left => space_left >= 1.0,
-                        WrapText::Right => false,
-                        _ => space_left >= 72.0,
-                    };
-                    if use_right {
-                        let new_left =
-                            ex_right + fz.right_from_text;
-                        para_text_width = (col_right
-                            - new_left
-                            - para.indent_right)
-                            .max(1.0);
-                        para_text_x =
-                            new_left + para.indent_left;
-                        label_x = new_left + para.indent_left
-                            - para.indent_hanging;
-                    } else if use_left {
-                        let avail_right =
-                            ex_left - fz.left_from_text;
-                        para_text_width = (avail_right - col_x
-                            - para.indent_left
-                            - para.indent_right)
-                            .max(1.0);
-                    }
-                }
-            }
+            fz.narrow_paragraph(first_line_top, col_x, col_w, para, &mut para_text_x, &mut para_text_width, &mut label_x);
         }
     }
 
@@ -2211,7 +2109,7 @@ fn render_paragraph_block(
         0.0
     };
 
-    let keep_next_extra = if para.keep_next {
+    let keep_next_extra = if para.keep_next && !at_page_top {
         let mut extra = 0.0;
         let mut prev_sa = effective_space_after;
         let mut i = block_idx + 1;
@@ -2231,10 +2129,9 @@ fn render_paragraph_block(
                 // can't split without leaving a lone line). lithuanian's
                 // headings end on an empty paragraph and fit at the foot;
                 // western_australia's end on a three-line item and move.
-                let needed = lines_kept_together(
-                    next.widow_control,
-                    line_count(next, ctx, col_geometry[state.current_col].1),
-                );
+                let needed = lines_kept_together(next.widow_control, || {
+                    line_count(next, ctx, col_geometry[state.current_col].1)
+                });
                 let next_ls = next.line_spacing.unwrap_or(ctx.doc_line_spacing);
                 extra += next_inter
                     + next_first_line_h
@@ -2495,52 +2392,7 @@ fn render_paragraph_block(
     // Re-apply float zone adjustment after potential column change
     let first_line_top = state.pb.slot_top - inter_gap;
     if let Some(ref fz) = state.pb.float_zone {
-        if first_line_top <= fz.top_y && first_line_top > fz.bottom_y {
-            let col_right = col_x + col_w;
-            let (ex_left, ex_right) = fz.exclusion_at_y(first_line_top);
-            let space_right =
-                col_right - (ex_right + fz.right_from_text);
-            let space_left = (ex_left - fz.left_from_text) - col_x;
-
-            if fz.wrap_text == WrapText::BothSides {
-                let lw = (space_left - para.indent_left).max(0.0);
-                let rw = (space_right - para.indent_right).max(0.0);
-                if rw > lw {
-                    let new_left = ex_right + fz.right_from_text;
-                    para_text_width = rw.max(1.0);
-                    para_text_x = new_left + para.indent_left;
-                    label_x =
-                        new_left + para.indent_left - para.indent_hanging;
-                } else if lw > 0.0 {
-                    para_text_width = lw.max(1.0);
-                }
-            } else {
-                let use_right = match fz.wrap_text {
-                    WrapText::Right => space_right >= 1.0,
-                    WrapText::Left => !(space_left >= 1.0),
-                    _ => space_right >= space_left && space_right >= 72.0,
-                };
-                let use_left = match fz.wrap_text {
-                    WrapText::Left => space_left >= 1.0,
-                    WrapText::Right => false,
-                    _ => space_left >= 72.0,
-                };
-                if use_right {
-                    let new_left = ex_right + fz.right_from_text;
-                    para_text_width =
-                        (col_right - new_left - para.indent_right).max(1.0);
-                    para_text_x = new_left + para.indent_left;
-                    label_x =
-                        new_left + para.indent_left - para.indent_hanging;
-                } else if use_left {
-                    let avail_right = ex_left - fz.left_from_text;
-                    para_text_width = (avail_right - col_x
-                        - para.indent_left
-                        - para.indent_right)
-                        .max(1.0);
-                }
-            }
-        }
+        fz.narrow_paragraph(first_line_top, col_x, col_w, para, &mut para_text_x, &mut para_text_width, &mut label_x);
     }
 
     // A floating table pushed onto a fresh page hands its anchor paragraph the
@@ -3092,7 +2944,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         table_cell_image_names: &table_cell_image_names,
         effect_table_names: &effect_table_names,
         textbox_image_names: &textbox_image_names,
-        chart_font_name: &doc.chart_font_name,
+        chart_font_name: &doc.theme_minor_font,
         compress_punctuation: doc.compress_punctuation,
         footnote_marks: &footnote_display_order,
         endnote_marks: &endnote_display_order,
@@ -3728,10 +3580,10 @@ mod tests {
 
     #[test]
     fn keep_with_next_needs_an_unsplittable_paragraph_whole() {
-        assert_eq!(lines_kept_together(false, 5), 1);
-        assert_eq!(lines_kept_together(true, 1), 1);
-        assert_eq!(lines_kept_together(true, 3), 3);
-        assert_eq!(lines_kept_together(true, 4), 2);
+        assert_eq!(lines_kept_together(false, || 5), 1);
+        assert_eq!(lines_kept_together(true, || 1), 1);
+        assert_eq!(lines_kept_together(true, || 3), 3);
+        assert_eq!(lines_kept_together(true, || 4), 2);
     }
 
     #[test]
@@ -3763,6 +3615,7 @@ mod tests {
             grid_line_ratio: None,
             plain_line_h_ratio: Some(lhr),
             grid_baseline_shift: None,
+            east_asian: false,
             plain_ascender_ratio: Some(ar),
             char_to_gid: None,
             char_widths_1000: None,

@@ -183,6 +183,7 @@ pub(super) fn embed_truetype(
         grid_line_ratio: lm.grid_line_ratio,
         plain_line_h_ratio: lm.plain_line_h_ratio,
         grid_baseline_shift: lm.grid_baseline_shift,
+        east_asian: lm.east_asian,
         plain_ascender_ratio: lm.plain_ascender_ratio,
         char_to_gid,
         char_widths_1000,
@@ -394,6 +395,8 @@ pub(super) struct LineMetrics {
     pub(super) plain_ascender_ratio: f32,
     /// How far below a docGrid cell's centre Word puts the baseline, per em.
     pub(super) grid_baseline_shift: f32,
+    /// Laid out by Word's East Asian rules (1.3× leading, see above).
+    pub(super) east_asian: bool,
 }
 
 /// Has glyphs for CJK ideographs, Hangul or kana — what Word treats as an East Asian font.
@@ -440,6 +443,7 @@ fn compute_line_metrics(face: &Face, units: f32) -> LineMetrics {
         plain_line_h_ratio,
         plain_ascender_ratio,
         grid_baseline_shift,
+        east_asian: east_asian.is_some(),
     }
 }
 

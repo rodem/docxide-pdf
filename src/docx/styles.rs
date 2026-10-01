@@ -579,7 +579,7 @@ fn with_normal_template(xml: &str) -> String {
     if let Some(normal) = root.children().find(|n| {
         n.tag_name().name() == "style"
             && n.attribute((WML_NS, "type")) == Some("paragraph")
-            && n.attribute((WML_NS, "default")).is_some_and(|v| v == "1" || v == "true")
+            && n.attribute((WML_NS, "default")).is_some_and(super::parse_on_off)
     }) {
         for pr in ["pPr", "rPr"].into_iter().filter_map(|name| wml(normal, name)) {
             edits.push((pr.range(), String::new()));
@@ -746,7 +746,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
 
         match style_node.attribute((WML_NS, "type")) {
             Some("paragraph") => {
-                if style_node.attribute((WML_NS, "default")) == Some("1") {
+                if style_node.attribute((WML_NS, "default")).is_some_and(super::parse_on_off) {
                     default_paragraph_style_id = style_id.to_string();
                 }
 

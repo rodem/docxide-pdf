@@ -48,6 +48,12 @@ pub(super) fn borders_match(a: &ParagraphBorders, b: &ParagraphBorders) -> bool 
 /// border *and* indentation settings are identical (Paragraph dialog's Indentation
 /// group); a differing indent — even by a few twips — starts a new border group
 /// that gets its own top/bottom rule.
+/// §17.3.1.9: contextualSpacing drops a paragraph's spacing next to a paragraph
+/// of the same style (a Title line keeps it beside a Normal one).
+pub(super) fn drops_contextual_spacing(para: &Paragraph, neighbour: Option<&Paragraph>) -> bool {
+    para.contextual_spacing && neighbour.is_some_and(|n| n.style_id == para.style_id)
+}
+
 pub(super) fn joins_border_group(a: &Paragraph, b: &Paragraph) -> bool {
     let same = |x: f32, y: f32| (x - y).abs() < 0.01;
     borders_match(&a.borders, &b.borders)

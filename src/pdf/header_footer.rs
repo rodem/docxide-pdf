@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use pdf_writer::Content;
 
 use crate::model::{
-    Alignment, Block, Document, FieldCode, HRelativeFrom, HeaderFooter, HorizontalPosition,
-    Paragraph, Run, SectionProperties, TextAnchor, VRelativeFrom, VerticalPosition, WrapType,
+    Alignment, Block, Document, FieldCode, FrameProperties, HRelativeFrom, HeaderFooter,
+    HorizontalPosition, Paragraph, Run, SectionProperties, TextAnchor, VRelativeFrom, VerticalPosition, WrapType,
 };
 
 use super::layout::{
@@ -64,15 +64,18 @@ fn blocking_frame_bands(hf: &HeaderFooter, sp: &SectionProperties) -> Vec<(f32, 
             _ => None,
         })
         .filter(|fp| fp.text_below && fp.height > 0.0)
-        .filter_map(|fp| {
-            let top = match fp.v_relative_from {
-                VRelativeFrom::Page => fp.y_offset,
-                VRelativeFrom::Margin | VRelativeFrom::TopMargin => sp.margin_top + fp.y_offset,
-                VRelativeFrom::Paragraph => return None,
-            };
-            Some((top, top + fp.height))
-        })
+        .filter_map(|fp| anchored_frame_top(fp, sp).map(|top| (top, top + fp.height)))
         .collect()
+}
+
+/// A page- or margin-anchored frame's top, down from the page top; None for a
+/// paragraph-anchored frame, which stays in the flow.
+fn anchored_frame_top(fp: &FrameProperties, sp: &SectionProperties) -> Option<f32> {
+    match fp.v_relative_from {
+        VRelativeFrom::Page => Some(fp.y_offset),
+        VRelativeFrom::Margin | VRelativeFrom::TopMargin => Some(sp.margin_top + fp.y_offset),
+        VRelativeFrom::Paragraph => None,
+    }
 }
 
 /// Where a line of height `line_h` whose top sits `top` below the page top
@@ -428,13 +431,8 @@ pub(super) fn render_header_footer(
                 // vAnchor + w:y pin the frame top to the page/margin, independent
                 // of the flowing header/footer cursor. Paragraph-anchored frames
                 // keep the in-flow position.
-                let frame_top = match fp.v_relative_from {
-                    VRelativeFrom::Page => sp.page_height - fp.y_offset,
-                    VRelativeFrom::Margin | VRelativeFrom::TopMargin => {
-                        sp.page_height - sp.margin_top - fp.y_offset
-                    }
-                    VRelativeFrom::Paragraph => cursor_y,
-                };
+                let frame_top =
+                    anchored_frame_top(fp, sp).map_or(cursor_y, |top| sp.page_height - top);
                 let frame_baseline = frame_top - font_size * ascender_ratio;
 
                 // Frame text carries no inline pictures, so no descent is needed.

@@ -15,7 +15,7 @@ use crate::model::{
 use super::RenderContext;
 use super::header_footer::substitute_hf_runs;
 use super::layout::{
-    TextLine, build_paragraph_lines, build_tabbed_line, is_text_empty, run_line_metrics,
+    TextLine, build_paragraph_lines, build_tabbed_line, east_asian_leading, is_text_empty, run_line_metrics,
 };
 use super::resolve_line_h;
 
@@ -682,8 +682,9 @@ pub(super) fn compute_row_layouts(
                                 // text; one em for an East Asian font, whose 1.3×
                                 // leading Word keeps out of the cell's top
                                 // (japanese_interlibrary: 11pt MS Mincho 11.0).
-                                let east_asian = metric_font
-                                    .is_some_and(|e| tallest_ar.is_some() && tallest_ar != e.plain_ascender_ratio);
+                                let east_asian = metric_run
+                                    .zip(metric_font)
+                                    .is_some_and(|(r, e)| east_asian_leading(e, &r.text));
                                 let ascender_ratio =
                                     if east_asian { 1.0 } else { tallest_ar.unwrap_or(0.75) };
                                 // Win-path metrics identity: line_h_ratio −
