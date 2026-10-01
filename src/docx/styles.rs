@@ -1074,6 +1074,8 @@ fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
             s.italic = s.italic.or(inh.italic);
             s.caps = s.caps.or(inh.caps);
             s.small_caps = s.small_caps.or(inh.small_caps);
+            s.lang = s.lang.take().or(inh.lang);
+            s.lang_east_asia = s.lang_east_asia.take().or(inh.lang_east_asia);
             s.vanish = s.vanish.or(inh.vanish);
             s.underline = s.underline.or(inh.underline);
             s.double_underline = s.double_underline.or(inh.double_underline);
@@ -1140,5 +1142,25 @@ mod tests {
         assert_eq!(builtin_heading_level("heading 10"), None);
         assert_eq!(builtin_heading_level("Heading"), None);
         assert_eq!(builtin_heading_level("TOC Heading"), None);
+    }
+
+    #[test]
+    fn based_on_styles_inherit_language() {
+        let mut styles = HashMap::new();
+        styles.insert(
+            "Normal".to_string(),
+            ParagraphStyle {
+                lang: Some("lt-LT".into()),
+                lang_east_asia: Some("ja-JP".into()),
+                ..Default::default()
+            },
+        );
+        styles.insert(
+            "BodyText3".to_string(),
+            ParagraphStyle { based_on: Some("Normal".into()), ..Default::default() },
+        );
+        resolve_based_on(&mut styles);
+        assert_eq!(styles["BodyText3"].lang.as_deref(), Some("lt-LT"));
+        assert_eq!(styles["BodyText3"].lang_east_asia.as_deref(), Some("ja-JP"));
     }
 }
