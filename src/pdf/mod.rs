@@ -50,7 +50,7 @@ use positioning::{
 pub(super) use positioning::{resolve_h_position, resolve_fi_y_top};
 use images::{EffectXObjs, EmbeddedImages, embed_all_images};
 use layout::{
-    CjkLayout, DualRegion, LineNumberArg, LinkAnnotation, TextLine, build_paragraph_lines,
+    CjkLayout, DualRegion, LineNumberArg, LinkAnnotation, LinkTagger, TextLine, build_paragraph_lines,
     build_tabbed_line, descender_ratio,
     grid_snapped_line_h, inline_image_line_extra, is_text_empty, line_max_image_h,
     lines_height, picture_line_bottom, render_paragraph_lines, run_line_metrics,
@@ -2228,6 +2228,7 @@ fn render_paragraph_block(
                     continuous_offset,
                     right_x,
                 }),
+                Some(LinkTagger::new(&mut state.pb.tags, state.pb.all_contents.len(), tag)),
             );
             state.pb.end_tag();
 
@@ -2287,6 +2288,7 @@ fn render_paragraph_block(
                     continuous_offset,
                     right_x,
                 }),
+                Some(LinkTagger::new(&mut state.pb.tags, state.pb.all_contents.len(), tag)),
             );
             state.pb.end_tag();
 
@@ -2730,6 +2732,7 @@ fn render_paragraph_block(
                 continuous_offset,
                 right_x,
             }),
+            Some(LinkTagger::new(&mut state.pb.tags, state.pb.all_contents.len(), tags.1)),
         );
         state.pb.end_tag();
     } else {

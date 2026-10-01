@@ -277,7 +277,15 @@ impl Tags {
     }
 
     /// Write the elements and parent tree; returns the StructTreeRoot ref.
-    pub(super) fn write(&self, pdf: &mut Pdf, alloc: &mut impl FnMut() -> Ref, page_ids: &[Ref]) -> Ref {
+    /// `annots`: (Link element, page, annotation) in `/StructParent` key order,
+    /// keys starting after the pages' keys.
+    pub(super) fn write(
+        &self,
+        pdf: &mut Pdf,
+        alloc: &mut impl FnMut() -> Ref,
+        page_ids: &[Ref],
+        annots: &[(usize, usize, Ref)],
+    ) -> Ref {
         let root = alloc();
         let refs: Vec<Ref> = self.nodes.iter().map(|_| alloc()).collect();
         let mut owners: Vec<Vec<Option<Ref>>> =
@@ -325,6 +333,9 @@ impl Tags {
                     }
                 }
             }
+            for &(_, page, annot) in annots.iter().filter(|&&(node, ..)| node == i) {
+                kids.object_ref().object(annot).page(page_ids[page]);
+            }
         }
 
         let arrays: Vec<(i32, Ref)> = owners
@@ -345,8 +356,11 @@ impl Tags {
             for (key, id) in arrays {
                 nums.insert(key, id);
             }
+            for (k, &(node, ..)) in annots.iter().enumerate() {
+                nums.insert((page_ids.len() + k) as i32, refs[node]);
+            }
         }
-        tree.parent_tree_next_key(page_ids.len() as i32);
+        tree.parent_tree_next_key((page_ids.len() + annots.len()) as i32);
         root
     }
 }

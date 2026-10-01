@@ -271,6 +271,7 @@ fn render_notes_downward(
                     gradient_specs,
                     None,
                     None,
+                    None,
                 );
 
                 fn_y -= line_count as f32 * layout.line_height;

@@ -453,6 +453,56 @@ impl WordChunk {
 pub(crate) struct LinkAnnotation {
     pub(super) rect: Rect,
     pub(super) url: String,
+    /// Link structure element the annotation belongs to (tagged body text).
+    pub(super) node: Option<usize>,
+    /// Link text, for the annotation's /Contents description.
+    pub(super) text: String,
+}
+
+/// Tags a body paragraph's hyperlinks as Link elements with their own marked
+/// content while its lines are drawn (see `tagging`).
+pub(super) struct LinkTagger<'a> {
+    pub(super) tags: &'a mut super::tagging::Tags,
+    pub(super) page: usize,
+    pub(super) para: usize,
+    link: Option<(String, usize)>,
+}
+
+impl<'a> LinkTagger<'a> {
+    pub(super) fn new(tags: &'a mut super::tagging::Tags, page: usize, para: usize) -> Self {
+        Self { tags, page, para, link: None }
+    }
+
+    /// Switch the open marked content to the chunk's Link (or back to the
+    /// paragraph). Like Word, marked content never changes inside a text
+    /// object, so it is ended and reopened around the switch; returns true
+    /// when it did (the text matrix is reset).
+    fn enter(&mut self, content: &mut Content, url: Option<&str>) -> bool {
+        if self.link.as_ref().map(|(u, _)| u.as_str()) == url {
+            return false;
+        }
+        content.end_text();
+        let node = match url {
+            Some(u) => {
+                let n = self.tags.add(self.para, "Link");
+                self.link = Some((u.to_string(), n));
+                n
+            }
+            None => {
+                self.link = None;
+                self.para
+            }
+        };
+        self.tags.begin(content, self.page, node);
+        content.begin_text();
+        true
+    }
+
+    fn finish(mut self, content: &mut Content) {
+        if self.link.take().is_some() {
+            self.tags.begin(content, self.page, self.para);
+        }
+    }
 }
 
 /// When a line spans two text regions (bothSides wrapping around a float),
@@ -1655,6 +1705,7 @@ pub(super) fn render_paragraph_lines(
     gradient_specs: &mut Vec<super::GradientSpec>,
     mut comment_anchors: Option<&mut Vec<(u32, f32, f32, f32)>>,
     mut line_numbering: Option<LineNumberArg<'_>>,
+    mut link_tags: Option<LinkTagger<'_>>,
 ) {
     let mut current_color: Option<[u8; 3]> = None;
     let mut pattern_fill_active = false;
@@ -1973,6 +2024,13 @@ pub(super) fn render_paragraph_lines(
                 if chunk.inline_image_name.is_some() {
                     continue;
                 }
+                // Glyph-less chunks (underline bridges over spaces) don't break a link.
+                if let Some(lt) = link_tags.as_mut().filter(|_| !chunk.text.is_empty())
+                    && lt.enter(content, chunk.hyperlink_url.as_deref())
+                {
+                    td_x = 0.0;
+                    td_y = 0.0;
+                }
 
                 let x = chunk_abs_x(chunk_idx, chunk);
                 let cy = y + chunk.y_offset;
@@ -2209,16 +2267,28 @@ pub(super) fn render_paragraph_lines(
                 if let Some(ref url) = chunk.hyperlink_url {
                     let bottom = y - chunk.font_size * 0.2;
                     let top = y + chunk.font_size * 0.8;
+                    let node = link_tags.as_ref().and_then(|lt| lt.link.as_ref().map(|&(_, n)| n));
                     let merged = links
                         .last_mut()
                         .filter(|prev| prev.url == *url && (prev.rect.y1 - bottom).abs() < 1.0);
-                    if let Some(prev) = merged {
-                        prev.rect.x2 = x + chunk.width;
-                    } else {
-                        links.push(LinkAnnotation {
-                            rect: Rect::new(x, bottom, x + chunk.width, top),
-                            url: url.clone(),
-                        });
+                    let link = match merged {
+                        Some(prev) => {
+                            prev.rect.x2 = x + chunk.width;
+                            prev
+                        }
+                        None => {
+                            links.push(LinkAnnotation {
+                                rect: Rect::new(x, bottom, x + chunk.width, top),
+                                url: url.clone(),
+                                node,
+                                text: String::new(),
+                            });
+                            links.last_mut().unwrap()
+                        }
+                    };
+                    link.text.push_str(&chunk.text);
+                    if chunk.space_after {
+                        link.text.push(' ');
                     }
                 }
             }
@@ -2316,6 +2386,9 @@ pub(super) fn render_paragraph_lines(
     }
     if current_color.is_some() {
         content.set_fill_gray(0.0);
+    }
+    if let Some(lt) = link_tags {
+        lt.finish(content);
     }
 }
 

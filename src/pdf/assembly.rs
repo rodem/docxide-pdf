@@ -158,43 +158,57 @@ pub(super) fn assemble_pdf_pages(
     let has_any_comments = !doc.comments.is_empty()
         && all_page_comment_anchors.iter().any(|p| !p.is_empty());
 
+    // (Link element, page, annotation) for the structure tree's OBJR kids; the
+    // annotations' /StructParent keys follow the pages' keys.
+    let mut tagged_annots: Vec<(usize, usize, Ref)> = Vec::new();
     let page_annot_refs: Vec<Vec<Ref>> = all_page_links
         .iter()
-        .map(|links| {
+        .enumerate()
+        .map(|(page, links)| {
             links
                 .iter()
                 .filter_map(|link| {
+                    // An internal link to a bookmark that doesn't exist gets no annotation.
+                    let dest = match link.url.strip_prefix('#') {
+                        Some(anchor) => Some(*bookmark_positions.get(anchor)?),
+                        None => None,
+                    };
                     let annot_ref = alloc();
                     let mut annot = pdf.annotation(annot_ref);
                     annot
                         .subtype(pdf_writer::types::AnnotationType::Link)
                         .rect(link.rect)
                         .border(0.0, 0.0, 0.0, None);
-                    if let Some(anchor) = link.url.strip_prefix('#') {
-                        if let Some(&(dest_page_idx, dest_y)) = bookmark_positions.get(anchor) {
-                            debug_assert!(
-                                dest_page_idx < page_ids.len(),
-                                "bookmark '{anchor}' points to page {dest_page_idx} but only {} pages exist",
-                                page_ids.len(),
-                            );
-                            let safe_idx = dest_page_idx.min(page_ids.len().saturating_sub(1));
-                            annot
-                                .action()
-                                .action_type(pdf_writer::types::ActionType::GoTo)
-                                .destination()
-                                .page(page_ids[safe_idx])
-                                .xyz(0.0, dest_y, None);
-                            Some(annot_ref)
-                        } else {
-                            None
-                        }
+                    // PDF/UA 7.18.5-2: a description of the link (Word omits it).
+                    let text = link.text.trim();
+                    if !text.is_empty() {
+                        annot.contents(TextStr(text));
+                    }
+                    if let Some(node) = link.node {
+                        annot.struct_parent((n + tagged_annots.len()) as i32);
+                        tagged_annots.push((node, page, annot_ref));
+                    }
+                    if let Some((dest_page_idx, dest_y)) = dest {
+                        debug_assert!(
+                            dest_page_idx < page_ids.len(),
+                            "bookmark '{}' points to page {dest_page_idx} but only {} pages exist",
+                            link.url,
+                            page_ids.len(),
+                        );
+                        let safe_idx = dest_page_idx.min(page_ids.len().saturating_sub(1));
+                        annot
+                            .action()
+                            .action_type(pdf_writer::types::ActionType::GoTo)
+                            .destination()
+                            .page(page_ids[safe_idx])
+                            .xyz(0.0, dest_y, None);
                     } else {
                         annot
                             .action()
                             .action_type(pdf_writer::types::ActionType::Uri)
                             .uri(Str(link.url.as_bytes()));
-                        Some(annot_ref)
                     }
+                    Some(annot_ref)
                 })
                 .collect()
         })
@@ -495,7 +509,7 @@ pub(super) fn assemble_pdf_pages(
     let lang = doc.default_lang.as_deref().unwrap_or("en-US");
     let metadata_id = alloc();
     pdf.metadata(metadata_id, xmp_packet(doc, lang).as_bytes());
-    let struct_root = (!tags.is_empty()).then(|| tags.write(pdf, alloc, &page_ids));
+    let struct_root = (!tags.is_empty()).then(|| tags.write(pdf, alloc, &page_ids, &tagged_annots));
     {
         let mut catalog = pdf.catalog(catalog_id);
         catalog.pages(pages_id);

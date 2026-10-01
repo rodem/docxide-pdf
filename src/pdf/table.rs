@@ -448,6 +448,7 @@ fn render_cell_content(
                     gradient_specs,
                     None,
                     None,
+                    None,
                 );
                 end_cell_tag(content, &tagger);
 
@@ -860,6 +861,7 @@ fn render_partial_cell_content(
                     ctx.fonts,
                     None,
                     gradient_specs,
+                    None,
                     None,
                     None,
                 );

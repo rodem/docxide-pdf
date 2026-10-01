@@ -433,6 +433,7 @@ pub(super) fn render_header_footer(
                     gradient_specs,
                     None,
                     None,
+                    None,
                 );
                 // Frame paragraphs are out-of-flow: do not advance cursor_y
                 pi += 1;
@@ -693,6 +694,7 @@ pub(super) fn render_header_footer(
                             ctx.fonts,
                             None,
                             gradient_specs,
+                            None,
                             None,
                             None,
                         );
@@ -1030,6 +1032,7 @@ pub(super) fn render_header_footer(
                     ctx.fonts,
                     hdr_line_geom.as_deref(),
                     gradient_specs,
+                    None,
                     None,
                     None,
                 );
