@@ -429,8 +429,8 @@
     "text_boundary": 0.8286,
     "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.5439,
-    "a11y_text": 0.8443
+    "a11y_struct": 0.8702,
+    "a11y_text": 1.0
   },
   "cases/case52": {
     "jaccard": 0.7064,
@@ -632,8 +632,8 @@
     "text_boundary": 1.0,
     "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.7,
-    "a11y_text": 0.9263
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case75": {
     "jaccard": 0.6619,
@@ -641,8 +641,8 @@
     "text_boundary": 1.0,
     "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.7,
-    "a11y_text": 0.9281
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case76": {
     "jaccard": 0.7767,
@@ -650,7 +650,7 @@
     "text_boundary": 1.0,
     "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.7778,
+    "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "cases/case77": {
@@ -845,7 +845,7 @@
     "text_boundary": 0.5942,
     "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.7576,
+    "a11y_struct": 0.7879,
     "a11y_text": 0.9879
   },
   "new/bahamas_sustaina..": {
@@ -861,9 +861,9 @@
     "jaccard": 0.2124,
     "ssim": 0.5195,
     "text_boundary": 1.0,
-    "ua_fail": 1,
+    "ua_fail": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.9844,
+    "a11y_struct": 0.9922,
     "a11y_text": 1.0
   },
   "new/biochemistry_pen..": {
@@ -879,7 +879,7 @@
     "jaccard": 0.0846,
     "ssim": 0.3924,
     "text_boundary": 0.0201,
-    "ua_fail": 2
+    "ua_fail": 0
   },
   "new/candidate_refere..": {
     "jaccard": 0.2129,
@@ -956,7 +956,7 @@
     "text_boundary": 0.4662,
     "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.8084,
+    "a11y_struct": 0.8299,
     "a11y_text": 0.9193
   },
   "new/czech_works_cont..": {
@@ -1016,8 +1016,8 @@
     "text_boundary": 0.7628,
     "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.8008,
-    "a11y_text": 0.9924
+    "a11y_struct": 0.8519,
+    "a11y_text": 0.9972
   },
   "new/environmental_la..": {
     "jaccard": 0.2126,
@@ -1025,7 +1025,7 @@
     "text_boundary": 0.0328,
     "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.8395,
+    "a11y_struct": 0.9926,
     "a11y_text": 0.9905
   },
   "new/erasmus_plus_sta..": {
@@ -1034,8 +1034,8 @@
     "text_boundary": 0.3043,
     "ua_fail": 3,
     "ua_deficit": 0,
-    "a11y_struct": 0.6639,
-    "a11y_text": 0.5299
+    "a11y_struct": 0.7049,
+    "a11y_text": 0.6802
   },
   "new/family_kinship_l..": {
     "jaccard": 0.2297,
@@ -1049,15 +1049,15 @@
     "text_boundary": 0.82,
     "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.9481,
+    "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "new/french_sexual_he..": {
     "jaccard": 0.1992,
     "ssim": 0.2641,
     "text_boundary": 0.8269,
-    "ua_fail": 3,
-    "ua_deficit": 1,
+    "ua_fail": 2,
+    "ua_deficit": 0,
     "a11y_struct": 0.8537,
     "a11y_text": 0.999
   },
@@ -1074,10 +1074,10 @@
     "jaccard": 0.1835,
     "ssim": 0.3229,
     "text_boundary": 0.0065,
-    "ua_fail": 3,
-    "ua_deficit": 1,
-    "a11y_struct": 0.7384,
-    "a11y_text": 0.8844
+    "ua_fail": 2,
+    "ua_deficit": 0,
+    "a11y_struct": 0.7518,
+    "a11y_text": 0.8846
   },
   "new/international_te..": {
     "jaccard": 0.2691,
@@ -1092,8 +1092,8 @@
     "jaccard": 0.3376,
     "ssim": 0.5307,
     "text_boundary": 0.7054,
-    "ua_fail": 3,
-    "ua_deficit": 1,
+    "ua_fail": 2,
+    "ua_deficit": 0,
     "a11y_struct": 0.925,
     "a11y_text": 0.9615
   },
@@ -1134,7 +1134,7 @@
     "jaccard": 0.7137,
     "ssim": 0.9569,
     "text_boundary": 1.0,
-    "ua_fail": 1,
+    "ua_fail": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8889,
     "a11y_text": 1.0
@@ -1167,9 +1167,9 @@
     "jaccard": 0.1618,
     "ssim": 0.3189,
     "text_boundary": 0.8343,
-    "ua_fail": 3,
-    "ua_deficit": 1,
-    "a11y_struct": 0.6112,
+    "ua_fail": 2,
+    "ua_deficit": 0,
+    "a11y_struct": 0.6168,
     "a11y_text": 0.9179
   },
   "new/old_blue_truck_g..": {
@@ -1185,8 +1185,8 @@
     "jaccard": 0.1554,
     "ssim": 0.3484,
     "text_boundary": 0.3043,
-    "ua_fail": 4,
-    "ua_deficit": 1,
+    "ua_fail": 3,
+    "ua_deficit": 0,
     "a11y_struct": 0.8913,
     "a11y_text": 0.711
   },
@@ -1221,7 +1221,7 @@
     "jaccard": 0.5293,
     "ssim": 0.7291,
     "text_boundary": 0.4859,
-    "ua_fail": 3
+    "ua_fail": 2
   },
   "new/russian_chess_pa..": {
     "jaccard": 0.6065,
@@ -1233,7 +1233,7 @@
     "jaccard": 0.4201,
     "ssim": 0.7758,
     "text_boundary": 0.95,
-    "ua_fail": 1,
+    "ua_fail": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.6923,
     "a11y_text": 1.0
@@ -1259,7 +1259,7 @@
     "text_boundary": 0.1174,
     "ua_fail": 3,
     "ua_deficit": 0,
-    "a11y_struct": 0.9651,
+    "a11y_struct": 0.9976,
     "a11y_text": 0.9918
   },
   "new/school_meal_assi..": {
@@ -1311,9 +1311,9 @@
     "jaccard": 0.5928,
     "ssim": 0.8885,
     "text_boundary": 1.0,
-    "ua_fail": 1,
+    "ua_fail": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.9933,
+    "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "new/slovak_pedagogic..": {
@@ -1373,7 +1373,7 @@
     "text_boundary": 0.9231,
     "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.9718,
+    "a11y_struct": 1.0,
     "a11y_text": 0.9825
   },
   "new/ut_koer_annual_m..": {
@@ -1389,7 +1389,7 @@
     "jaccard": 0.3896,
     "ssim": 0.7138,
     "text_boundary": 0.7645,
-    "ua_fail": 1,
+    "ua_fail": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8878,
     "a11y_text": 0.8763
@@ -1425,7 +1425,7 @@
     "jaccard": 0.5285,
     "ssim": 0.8029,
     "text_boundary": 0.9669,
-    "ua_fail": 1,
+    "ua_fail": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9948,
     "a11y_text": 1.0
@@ -1434,9 +1434,9 @@
     "jaccard": 0.2446,
     "ssim": 0.4227,
     "text_boundary": 0.3403,
-    "ua_fail": 1,
+    "ua_fail": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.9259,
+    "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "samples/CV": {
@@ -1457,7 +1457,7 @@
     "jaccard": 0.363,
     "ssim": 0.5044,
     "text_boundary": 0.1752,
-    "ua_fail": 1
+    "ua_fail": 0
   },
   "samples/sample500kB": {
     "jaccard": 0.3364,
@@ -1471,8 +1471,8 @@
     "ssim": 0.9111,
     "text_boundary": 0.8627,
     "convert_ms": 11.0,
-    "ua_fail": 3,
-    "ua_deficit": 1,
+    "ua_fail": 2,
+    "ua_deficit": 0,
     "a11y_struct": 0.991,
     "a11y_text": 0.9565
   },
@@ -1493,7 +1493,7 @@
     "convert_ms": 744.0,
     "ua_fail": 3,
     "ua_deficit": 0,
-    "a11y_struct": 0.9621,
+    "a11y_struct": 0.9897,
     "a11y_text": 0.9928
   },
   "scraped/bush_fires_act_c..": {
@@ -1521,7 +1521,7 @@
     "ssim": 0.9629,
     "text_boundary": 0.2609,
     "convert_ms": 59.6,
-    "ua_fail": 4
+    "ua_fail": 3
   },
   "scraped/croatian_grant_g..": {
     "jaccard": 0.0788,
@@ -1530,7 +1530,7 @@
     "convert_ms": 270.5,
     "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.906,
+    "a11y_struct": 0.9081,
     "a11y_text": 0.9004
   },
   "scraped/croatian_regulat..": {
@@ -1616,7 +1616,7 @@
     "ssim": 0.2996,
     "text_boundary": 0.2899,
     "convert_ms": 47.1,
-    "ua_fail": 4
+    "ua_fail": 3
   },
   "scraped/federal_procurem..": {
     "jaccard": 0.5505,
@@ -1725,7 +1725,7 @@
     "convert_ms": 32.0,
     "ua_fail": 3,
     "ua_deficit": 0,
-    "a11y_struct": 0.9586,
+    "a11y_struct": 0.9812,
     "a11y_text": 1.0
   },
   "scraped/parish_housing_d..": {
@@ -1743,7 +1743,7 @@
     "ssim": 0.7687,
     "text_boundary": 0.6294,
     "convert_ms": 16.3,
-    "ua_fail": 1
+    "ua_fail": 0
   },
   "scraped/polish_building_..": {
     "jaccard": 0.1616,
@@ -1760,7 +1760,7 @@
     "ssim": 0.4679,
     "text_boundary": 0.3902,
     "convert_ms": 10.4,
-    "ua_fail": 1,
+    "ua_fail": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9811,
     "a11y_text": 1.0
@@ -1855,7 +1855,7 @@
     "ssim": 0.3812,
     "text_boundary": 0.3098,
     "convert_ms": 32.2,
-    "ua_fail": 2
+    "ua_fail": 0
   },
   "scraped/traditional_skil..": {
     "jaccard": 0.1594,
@@ -1899,10 +1899,10 @@
     "ssim": 0.2369,
     "text_boundary": 0.0911,
     "convert_ms": 326.3,
-    "ua_fail": 1,
+    "ua_fail": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.7784,
-    "a11y_text": 0.7484
+    "a11y_struct": 0.799,
+    "a11y_text": 0.7493
   },
   "scraped/ukraine_humanita..": {
     "jaccard": 0.3816,
