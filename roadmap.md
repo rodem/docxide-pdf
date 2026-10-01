@@ -2,10 +2,18 @@
 
 ## Accessibility (IN PROGRESS — started 2026-10-01)
 
-Goal: our PDFs are at least as accessible as Word's own export. Measured by
+Goal: our PDFs are accessible on their own merits; Word's export is a floor,
+not the target, and where we can do better than Word we do (line numbers as
+artifacts, three-level tables kept). Failures that come from the DOCX lacking
+something (no title → 7.1-9, picture without `descr` → 7.3-1, headings that
+skip a level → 7.4.2-1) are expected: we never invent titles or alt text or
+renumber headings; the baselines absorb them. Measured by
 `./tools/run-tests.sh --test accessibility` (needs `brew install verapdf poppler`;
-the test skips with a notice when they are missing). Three reference-relative
-metrics per fixture, in `baselines.json` like Jaccard/SSIM:
+the test skips with a notice when they are missing). Every fixture gets
+**`ua_fail`** (PDF/UA-1 rules our PDF fails on its own, any increase is a
+regression; a PDF claiming PDF/UA must fail none), plus three
+reference-relative metrics where Word's reference is tagged, all in
+`baselines.json` like Jaccard/SSIM (explained in `SCORING.md`):
 
 - **`ua_deficit`** — veraPDF PDF/UA-1 (`-f ua1`, forced because Word writes no
   pdfuaid) rules we fail where Word passes, or where we fail a larger share of
@@ -77,10 +85,25 @@ OBJR + `/Contents` · TOC/TOCI inside TOC fields · PAGEREF `\h` links ·
 outlineLvl 9 = body text · built-in "heading N" levels · footnote/endnote
 Notes · cell links, notes and lists.
 
-Progress over the 173 tagged references: struct 0 → 90.9%, text 0 → 92.2%,
-ua_deficit 1165 → 13 (162 fixtures fail no PDF/UA-1 rule Word passes);
-LibreOffice's own tagged export scores 76% / 84% on the same yardstick.
-Output size: 24.76 MB untagged → 24.33 MB tagged (object streams).
+**Done, round 2 (2026-10-01, `dad4444`..`6e50ff06`, no visual change):**
+`ua_fail` scored on all 221 fixtures · textboxes → `Sect > P` hoisted after
+the anchor paragraph (`Tags::hoist`) · floating pictures → hoisted Figure,
+inline pictures → Figure inside their P (effects stay artifacts) · line
+numbers as artifacts · nested tables inside their TD/TH · footnote/endnote
+marks → Link with a GoTo to the note, holding the Note ("Footnote 3"
+/Contents) · symbol-font glyph widths in `/W` (7.21.5-1) · `pdfuaid:part=1`
+claimed only when title, Figure alt, heading order, embedded fonts and no
+.notdef all hold (13 fixtures, all clean). Harness: `run-tests.sh` runs every
+suite even when one fails; compact report shows `UaFail`.
+
+Progress over the 173 tagged references: struct 0 → 94.7%, text 0 → 95.0%,
+ua_deficit 1165 → 6 (169 fixtures fail no PDF/UA-1 rule Word passes);
+LibreOffice's own tagged export scores 76% / 84% on the same yardstick. Over
+all 221: ua_fail 469, 13 PDFs claim PDF/UA-1 and pass all 106 rules; what
+remains is 5-1 (no claim, 208), 7.1-9 (198), 7.3-1 (29) and 7.4.2-1 (24),
+all source-limited, plus 7.21.x in 5 fixtures (missing-font fallback).
+Output size: 24.76 MB untagged → ~24.4 MB tagged (object streams; ±20 KB
+run-to-run noise, see Deterministic Output).
 
 **How Word tags things (learned the hard way):**
 - Pictures, charts and SmartArt: the paragraph's own (empty) P, then a
@@ -103,17 +126,24 @@ Output size: 24.76 MB untagged → 24.33 MB tagged (object streams).
 
 **Backlog, ordered by gap data (`tag_gaps.py` / `text_gaps.py` in the session
 scratchpad; rebuild them from `tests/common/a11y.rs` if needed):**
-1. Footnote reference marks as Links (Word wraps each Note in one: ~335
-   missing Link tokens) — needs a GoTo to the note's position.
-2. Textboxes (102 Sect tokens) — deferred shapes are artifacts.
-3. Pictures inside text paragraphs and floating pictures (~70 Figures).
-4. slovak_eu_directive: we emit 9 table rows where Word has 14 (table model).
-5. Nested tables and header/footer tables are artifacts.
-6. Links in headers/footers and footnotes are still dropped; link rects and
+1. Missing-font fallback (7.21.4.1-1 / 7.21.7-1 / 7.21.8-1 / 7.21.5-1, 5
+   fixtures): the standard-14 Helvetica fallback is neither embedded nor
+   ToUnicode-mapped, and a character the font lacks draws `.notdef`. Needs an
+   embedded fallback font (see Bundled Fallback Fonts).
+2. Hoisted elements follow drawing order (behind-text layer first, pictures
+   before textboxes), not the anchors' document order: german_mezzo_soprano_bio
+   struct −2.9pp. Needs an anchor index on FloatingImage/Textbox (`docx/`,
+   ~10 construction sites); 3 fixtures have such paragraphs.
+3. Note marks in table cells aren't drawn at all (see its own section), so
+   they can't be linked; erasmus_plus endnotes 2–5.
+4. Textbox lists are tagged P (not L/LI); table-cell and header/footer
+   textboxes and floats stay artifacts; WordArt / text on a path has no text.
+5. slovak_eu_directive: we emit 9 table rows where Word has 14 (table model).
+6. Links in headers/footers and footnote text are still dropped; link rects and
    outline destinations ignore `BODY_SCALE`/vAlign (`assembly.rs`).
-7. Font rules: widths ≠ glyph widths (7.21.5-1, 7 fixtures), base-14
-   fallback without ToUnicode or embedding, `.notdef` for missing chars,
-   `w:softHyphen` dropped, `w:noBreakHyphen` → U+002D.
+7. Per-run language (`/Lang` on spans), caps/small caps `/ActualText`,
+   `/ListNumbering` on L, `w:softHyphen` dropped, `w:noBreakHyphen` → U+002D,
+   Wingdings bullets extract as private-use code points.
 8. Test-run time: with Microsoft Defender scanning `tests/output` and a
    concurrent worktree run, the full suite took >60 min (normally ~6–10).
 
@@ -130,9 +160,23 @@ table order driven by hash-map iteration), so the size varies by up to
 ~±500 bytes per file and ~±20 KB over the corpus (case1: same size, different
 bytes; brazilian_logistics_study: 777,478 vs 777,044). Pixels and visual
 hashes are unaffected. It makes corpus-wide size deltas under ~20 KB
-meaningless (compare per file instead) and output non-reproducible. Find the
-unordered iteration in `fonts/embed.rs` (subset glyph set / table order) and
-make it sorted; check with two renders + `cmp`.
+meaningless (compare per file instead) and output non-reproducible. Likely
+cause: `embed_truetype` (`fonts/embed.rs`) iterates `used_chars: &HashSet<char>`
+straight into `subsetter::GlyphRemapper::remap`, so the subset's glyph order
+(and every CID) follows hash order. Sort the chars first; check with two
+renders + `cmp`.
+
+## Note Marks in Table Cells (TODO — VISUAL BUG, found 2026-10-01)
+
+Footnote and endnote reference marks inside table cells are drawn empty:
+erasmus_plus_staff_mobility_agreement shows "Seniority" where Word shows
+"Seniority²". Body paragraphs replace the reference run's text with the
+note's display number (`render_paragraph_block`, `effective_runs` in
+`pdf/mod.rs`); the table cell layout never does, and the run's text is empty
+(`docx/runs.rs` `footnoteReference`/`endnoteReference`). Apply the same
+substitution to cell paragraphs. Once drawn, the marks also get their
+Link-to-note tagging for free (`layout.rs`), and the cell's endnotes stop
+falling back to document-level Notes.
 
 ## Annotation Fixes 2026-09-18 (5 fixes, one commit each)
 

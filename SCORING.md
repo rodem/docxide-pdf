@@ -179,8 +179,11 @@ description, it fails 7.3-1. If the headings skip a level, it fails 7.4.2-1.
 We don't make up a title or alt text. The baseline simply absorbs these. What
 matters is that the count never goes up.
 
-One rule (5-1, "declares PDF/UA conformance") fails everywhere for now,
-because we don't claim conformance yet.
+Rule 5-1 ("declares PDF/UA conformance") fails unless we claim conformance.
+We claim it only when everything the document controls checks out: it has a
+title, every picture has alt text, the headings are in order, every font is
+embedded and no character is missing from its font. A PDF that claims
+PDF/UA must then fail no rule at all, or the suite fails.
 
 ### `ua_deficit` — rules where we do worse than Word
 
