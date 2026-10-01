@@ -2691,21 +2691,27 @@ pub(super) fn render_paragraph_lines(
 
 /// Compute the effective font_size, line_h_ratio, and ascender_ratio for a set of runs
 /// by picking the run that produces the tallest visual ascent (font_size * ascender_ratio).
+/// A tab never raises its line (mandated_reporter: 12pt tabs between 11pt
+/// footer text leave Word's footer baseline at the 11pt line), but sizes a
+/// line of nothing else.
 pub(super) fn tallest_run_metrics(
     runs: &[Run],
     seen_fonts: &HashMap<String, FontEntry>,
 ) -> (f32, Option<f32>, Option<f32>) {
-    tallest_by_ascent(runs.iter(), seen_fonts)
+    tallest_by_ascent(runs.iter().filter(|r| !r.is_tab), seen_fonts)
+        .or_else(|| tallest_by_ascent(runs.iter(), seen_fonts))
         .unwrap_or((runs.first().map_or(12.0, |r| r.font_size), None, None))
 }
 
-/// `tallest_run_metrics` for a body paragraph, where a run of only spaces
-/// sizes nothing; with nothing left the caller falls back to the mark.
+/// `tallest_run_metrics` for a body paragraph, where a run of only spaces or
+/// tabs sizes nothing; with nothing left the caller falls back to the mark.
 pub(super) fn tallest_glyph_run_metrics(
     runs: &[Run],
     seen_fonts: &HashMap<String, FontEntry>,
 ) -> (f32, Option<f32>, Option<f32>) {
-    let glyph_runs = runs.iter().filter(|r| r.text.is_empty() || !r.text.trim().is_empty());
+    let glyph_runs = runs
+        .iter()
+        .filter(|r| !r.is_tab && (r.text.is_empty() || !r.text.trim().is_empty()));
     tallest_by_ascent(glyph_runs, seen_fonts)
         .unwrap_or((runs.first().map_or(12.0, |r| r.font_size), None, None))
 }
