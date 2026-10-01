@@ -77,33 +77,22 @@ fn is_break_space(c: char) -> bool {
     c.is_whitespace() && c != '\u{00a0}' && c != '\u{3000}'
 }
 
-/// Insert extra UAX #14 break positions inside URL-like tokens. UAX #14 is
-/// conservative around `://` and percent-encoded runs, so a long URL ends up
-/// as a single unbreakable word that overflows the right margin. Break
-/// opportunities after `/`, `?`, `#`, `&`, `=`, `;` (skipping the `://`) let
-/// the line breaker wrap URLs the way Word does.
-fn augment_url_breaks(text: &str, breaks: &mut Vec<usize>) {
-    let bytes = text.as_bytes();
-    let mut search_from = 0;
-    while let Some(rel) = text[search_from..].find("://") {
-        let scheme_end = search_from + rel + 3;
-        // Break after each URL-structure char, but stop at the next whitespace
-        // — that terminates the URL token.
-        let mut i = scheme_end;
-        while i < bytes.len() {
-            let b = bytes[i];
-            if b.is_ascii_whitespace() {
-                break;
-            }
-            if matches!(b, b'/' | b'?' | b'#' | b'&' | b'=' | b';') {
-                breaks.push(i + 1);
-            }
-            i += 1;
-        }
-        search_from = i;
+/// Word wraps a URL only after a hyphen, or at the margin once it is wider
+/// than the line: over 102 URL line ends in Word PDFs, 2 fall after a `/`.
+/// UAX #14 also allows breaks after `/`, `?` and the like, so those go.
+fn drop_url_breaks(text: &str, breaks: &mut Vec<usize>) {
+    let mut urls = Vec::new();
+    let mut from = 0;
+    while let Some(rel) = [text[from..].find("://"), text[from..].find("www.")].into_iter().flatten().min() {
+        let at = from + rel;
+        let start = text[..at]
+            .rfind(|c: char| !c.is_ascii_alphanumeric())
+            .map_or(0, |i| i + 1);
+        let end = text[at..].find(char::is_whitespace).map_or(text.len(), |i| at + i);
+        urls.push(start..end);
+        from = end;
     }
-    breaks.sort_unstable();
-    breaks.dedup();
+    breaks.retain(|&b| !urls.iter().any(|u| u.start < b && b < u.end) || text[..b].ends_with('-'));
 }
 
 /// Split text into (preceding_space_count, word) segments using UAX #14 line break rules.
@@ -123,7 +112,7 @@ fn split_preserving_spaces(text: &str) -> Vec<(usize, &str)> {
     let mut breaks: Vec<usize> = unicode_linebreak::linebreaks(text)
         .map(|(pos, _)| pos)
         .collect();
-    augment_url_breaks(text, &mut breaks);
+    drop_url_breaks(text, &mut breaks);
     // UAX #14 class IN allows a break after ellipses before digits, but Word
     // keeps tokens like TOC dot-leaders typed as "…………45" unbreakable.
     breaks.retain(|&b| {
@@ -2946,18 +2935,19 @@ mod tests {
     }
 
     #[test]
-    fn test_url_breaks_split_into_chunks() {
+    fn url_wraps_only_after_hyphens() {
         let words: Vec<&str> = split_preserving_spaces(
             "see https://example.com/foo/bar?x=1&y=2#frag after",
         )
         .into_iter()
         .map(|(_, w)| w)
         .collect();
-        // The URL must be broken at /, ?, #, &, = so the line wrapper
-        // can split it across lines if needed.
-        assert!(words.iter().any(|w| w.ends_with('/')), "no break after /: {:?}", words);
-        assert!(words.iter().any(|w| w.ends_with('?')), "no break after ?: {:?}", words);
-        assert!(words.iter().any(|w| w.ends_with('#')), "no break after #: {:?}", words);
+        assert_eq!(words, vec!["see", "https://example.com/foo/bar?x=1&y=2#frag", "after"]);
+        let words: Vec<&str> = split_preserving_spaces("www.gov.hr/pristup-informacijama/ x")
+            .into_iter()
+            .map(|(_, w)| w)
+            .collect();
+        assert_eq!(words, vec!["www.gov.hr/pristup-", "informacijama/", "x"]);
     }
 
     #[test]
