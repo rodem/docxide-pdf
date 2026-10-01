@@ -14,7 +14,7 @@ use super::header_footer::{compute_effective_margin_bottom, effective_slot_top};
 use super::RenderContext;
 use super::tagging::{CellTagger, Tags};
 use super::layout::{
-    encode_text_for_pdf, render_paragraph_lines,
+    LinkAnnotation, LinkTagger, encode_text_for_pdf, render_paragraph_lines,
 };
 use super::table_layout::{
     CellContentItem, CellCursor, CellFloatingImageLayout, CellLayout, CellParagraphLayout,
@@ -320,6 +320,12 @@ fn row_tag_span(row: &TableRow, ci: usize, span: usize, grid_cols: usize, grid_c
     span as i32
 }
 
+/// Links and footnote references in a tagged cell paragraph nest in its P.
+fn cell_link_tagger<'a>(tagger: &'a mut Option<CellTagger<'_>>, para: Option<usize>) -> Option<LinkTagger<'a>> {
+    let t = tagger.as_mut()?;
+    Some(LinkTagger::new(&mut *t.tags, t.page, para?))
+}
+
 fn end_cell_tag(content: &mut Content, tagger: &Option<CellTagger<'_>>) {
     if tagger.is_some() {
         Tags::end(content);
@@ -340,6 +346,7 @@ fn render_cell_content(
     cm: &CellMargins,
     ctx: &RenderContext,
     gradient_specs: &mut Vec<super::GradientSpec>,
+    links: &mut Vec<LinkAnnotation>,
     mut tagger: Option<CellTagger<'_>>,
 ) {
     let mut cursor_y = cursor_y_start;
@@ -360,9 +367,7 @@ fn render_cell_content(
                 }
 
                 // Word tags every cell paragraph, empty ones included.
-                if let Some(t) = tagger.as_mut() {
-                    t.begin(content, item_idx);
-                }
+                let cell_para = tagger.as_mut().map(|t| t.begin(content, item_idx));
                 let para_top = cursor_y;
                 if !para_has_visible_content(para)
                     && !para.has_textboxes
@@ -441,14 +446,14 @@ fn render_cell_content(
                     (para.font_size, para.font_size * para.descender_ratio),
                     para.lines.len(),
                     0,
-                    &mut Vec::new(),
+                    links,
                     first_line_hanging,
                     ctx.fonts,
                     None,
                     gradient_specs,
                     None,
                     None,
-                    None,
+                    cell_link_tagger(&mut tagger, cell_para),
                 );
                 end_cell_tag(content, &tagger);
 
@@ -669,6 +674,7 @@ fn render_table_rows(
                     ecm,
                     ctx,
                     gradient_specs,
+                    &mut Vec::new(),
                     // ponytail: nested and header/footer tables stay artifacts
                     None,
                 );
@@ -755,6 +761,7 @@ fn render_partial_cell_content(
     cm: &CellMargins,
     ctx: &RenderContext,
     gradient_specs: &mut Vec<super::GradientSpec>,
+    links: &mut Vec<LinkAnnotation>,
     mut tagger: Option<CellTagger<'_>>,
 ) {
     let mut cursor_y = cursor_y_start;
@@ -790,9 +797,7 @@ fn render_partial_cell_content(
             CellContentItem::Paragraph(para) => {
                 let sb = if pi == start.item { 0.0 } else { para.space_before };
 
-                if let Some(t) = tagger.as_mut() {
-                    t.begin(content, pi);
-                }
+                let cell_para = tagger.as_mut().map(|t| t.begin(content, pi));
                 if !para_has_visible_content(para) {
                     cursor_y -= sb + para_block_height(para);
                     end_cell_tag(content, &tagger);
@@ -856,14 +861,14 @@ fn render_partial_cell_content(
                     (para.font_size, para.font_size * para.descender_ratio),
                     para.lines.len(),
                     l0,
-                    &mut Vec::new(),
+                    links,
                     first_line_hanging,
                     ctx.fonts,
                     None,
                     gradient_specs,
                     None,
                     None,
-                    None,
+                    cell_link_tagger(&mut tagger, cell_para),
                 );
                 end_cell_tag(content, &tagger);
 
@@ -966,6 +971,7 @@ fn render_table_row(
         let has_content = cell_has_visible_content(&cell_layout.items);
         let ecm = cell.cell_margins.as_ref().unwrap_or(cm);
         let page = pb.all_contents.len();
+        let mut no_links = Vec::new();
         let tagger = pb.table_tags.as_mut().filter(|t| !t.repeating).map(|table| CellTagger {
             tags: &mut pb.tags,
             table,
@@ -1015,6 +1021,8 @@ fn render_table_row(
                 ecm,
                 ctx,
                 &mut pb.gradient_specs,
+                // Repeated header rows are untagged artifacts: no link annotations.
+                if tagger.is_some() { &mut pb.links } else { &mut no_links },
                 tagger,
             );
         }
@@ -1223,6 +1231,7 @@ fn render_partial_row(
             });
 
         let page = pb.all_contents.len();
+        let mut no_links = Vec::new();
         let tagger = pb.table_tags.as_mut().filter(|t| !t.repeating).map(|table| CellTagger {
             tags: &mut pb.tags,
             table,
@@ -1244,6 +1253,7 @@ fn render_partial_row(
                 cm,
                 ctx,
                 &mut pb.gradient_specs,
+                if tagger.is_some() { &mut pb.links } else { &mut no_links },
                 tagger,
             );
         } else if let Some(mut t) = tagger.filter(|_| start == CellCursor::default()) {

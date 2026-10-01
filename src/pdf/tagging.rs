@@ -148,9 +148,11 @@ pub(super) struct CellTagger<'a> {
 }
 
 impl CellTagger<'_> {
-    pub(super) fn begin(&mut self, content: &mut Content, item: usize) {
+    /// Open the cell paragraph's P; returns it for links and notes inside.
+    pub(super) fn begin(&mut self, content: &mut Content, item: usize) -> usize {
         let p = self.table.para(self.tags, self.row, self.cell, self.col_span, item);
         self.tags.begin(content, self.page, p);
+        p
     }
 
     /// The cell element alone: Word keeps a vertically merged cell's
