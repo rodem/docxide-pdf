@@ -7,6 +7,9 @@
 //! everything drawn between regions (shading, borders, rules, separators) is
 //! never untagged content.
 
+use std::collections::HashMap;
+
+use pdf_writer::types::TableHeaderScope;
 use pdf_writer::writers::StructTreeRoot;
 use pdf_writer::{Content, Name, Pdf, Ref};
 
@@ -21,6 +24,8 @@ struct Node {
     kind: &'static str,
     parent: usize,
     kids: Vec<Kid>,
+    /// Table cell attributes: header scope and column span.
+    cell: Option<(Option<TableHeaderScope>, i32)>,
 }
 
 pub(crate) struct Tags {
@@ -42,6 +47,111 @@ impl Lists {
     pub(super) fn close(&mut self) {
         self.stack.clear();
         self.id = None;
+    }
+}
+
+/// Structure of the table being rendered. A row split across pages looks its
+/// TR/TH/TD/P up again, so a cell paragraph continued on the next page stays
+/// one element. Repeated header rows are drawn with tagging suspended.
+pub(crate) struct TableTags {
+    table: usize,
+    head_rows: usize,
+    first_col_header: bool,
+    head: Option<usize>,
+    body: Option<usize>,
+    rows: HashMap<usize, usize>,
+    cells: HashMap<(usize, usize), usize>,
+    paras: HashMap<(usize, usize, usize), usize>,
+    pub(super) repeating: bool,
+}
+
+impl TableTags {
+    /// Word puts the repeated `tblHeader` rows (else the first row, when
+    /// tblLook marks it) in THead as TH cells, and makes the first cell of the
+    /// other rows a TH when the first column is a header.
+    pub(super) fn for_table(tags: &mut Tags, parent: usize, table: &crate::model::Table) -> Self {
+        let repeated = table.rows.iter().take_while(|r| r.is_header).count();
+        Self {
+            table: tags.add(parent, "Table"),
+            head_rows: if repeated > 0 { repeated } else { usize::from(table.header_first_row) },
+            first_col_header: table.header_first_col,
+            head: None,
+            body: None,
+            rows: HashMap::new(),
+            cells: HashMap::new(),
+            paras: HashMap::new(),
+            repeating: false,
+        }
+    }
+
+    /// Word gives a table whose rows are all headers an empty TBody (PDF/UA 7.2-14).
+    pub(super) fn finish(self, tags: &mut Tags) {
+        if self.head.is_some() && self.body.is_none() {
+            tags.add(self.table, "TBody");
+        }
+    }
+
+    fn cell(&mut self, tags: &mut Tags, row: usize, cell: usize, col_span: i32) -> usize {
+        if let Some(&c) = self.cells.get(&(row, cell)) {
+            return c;
+        }
+        let in_head = row < self.head_rows;
+        let tr = match self.rows.get(&row) {
+            Some(&tr) => tr,
+            None => {
+                let table = self.table;
+                let (slot, kind) = if in_head { (&mut self.head, "THead") } else { (&mut self.body, "TBody") };
+                let section = *slot.get_or_insert_with(|| tags.add(table, kind));
+                let tr = tags.add(section, "TR");
+                self.rows.insert(row, tr);
+                tr
+            }
+        };
+        // Word leaves TH without /Scope (PDF/UA 7.5-1); the scope is known here.
+        let (kind, scope) = if in_head {
+            ("TH", Some(TableHeaderScope::Column))
+        } else if cell == 0 && self.first_col_header {
+            ("TH", Some(TableHeaderScope::Row))
+        } else {
+            ("TD", None)
+        };
+        let c = tags.add(tr, kind);
+        tags.nodes[c].cell = Some((scope, col_span));
+        self.cells.insert((row, cell), c);
+        c
+    }
+
+    fn para(&mut self, tags: &mut Tags, row: usize, cell: usize, col_span: i32, item: usize) -> usize {
+        if let Some(&p) = self.paras.get(&(row, cell, item)) {
+            return p;
+        }
+        let c = self.cell(tags, row, cell, col_span);
+        let p = tags.add(c, "P");
+        self.paras.insert((row, cell, item), p);
+        p
+    }
+}
+
+/// Tags one cell's paragraphs as they are drawn into a body stream.
+pub(super) struct CellTagger<'a> {
+    pub(super) tags: &'a mut Tags,
+    pub(super) table: &'a mut TableTags,
+    pub(super) page: usize,
+    pub(super) row: usize,
+    pub(super) cell: usize,
+    pub(super) col_span: i32,
+}
+
+impl CellTagger<'_> {
+    pub(super) fn begin(&mut self, content: &mut Content, item: usize) {
+        let p = self.table.para(self.tags, self.row, self.cell, self.col_span, item);
+        self.tags.begin(content, self.page, p);
+    }
+
+    /// The cell element alone: Word keeps a vertically merged cell's
+    /// continuation as an empty cell so every row has all its columns.
+    pub(super) fn empty_cell(&mut self) {
+        self.table.cell(self.tags, self.row, self.cell, self.col_span);
     }
 }
 
@@ -84,7 +194,7 @@ pub(super) fn strip_empty_artifacts(raw: &[u8]) -> Vec<u8> {
 impl Tags {
     pub(super) fn new() -> Self {
         Self {
-            nodes: vec![Node { kind: "Document", parent: ROOT, kids: Vec::new() }],
+            nodes: vec![Node { kind: "Document", parent: ROOT, kids: Vec::new(), cell: None }],
             next_mcid: Vec::new(),
         }
     }
@@ -95,7 +205,7 @@ impl Tags {
 
     pub(super) fn add(&mut self, parent: usize, kind: &'static str) -> usize {
         let id = self.nodes.len();
-        self.nodes.push(Node { kind, parent, kids: Vec::new() });
+        self.nodes.push(Node { kind, parent, kids: Vec::new(), cell: None });
         self.nodes[parent].kids.push(Kid::Node(id));
         id
     }
@@ -169,6 +279,16 @@ impl Tags {
             let mut elem = pdf.struct_element(refs[i]);
             elem.custom_kind(Name(node.kind.as_bytes()));
             elem.parent(if i == ROOT { root } else { refs[node.parent] });
+            if let Some((scope, col_span)) = node.cell.filter(|&(s, span)| s.is_some() || span > 1) {
+                let mut attrs = elem.attributes();
+                let mut table = attrs.push().table();
+                if let Some(scope) = scope {
+                    table.scope(scope);
+                }
+                if col_span > 1 {
+                    table.col_span(col_span);
+                }
+            }
             // Content on the element's own /Pg is a bare MCID; only a paragraph
             // continued on the next page needs full marked-content references.
             let first_page = node.kids.iter().find_map(|k| match k {

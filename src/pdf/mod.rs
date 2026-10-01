@@ -586,6 +586,8 @@ pub(super) struct PageBuilder {
     all_first_styleref: Vec<HashMap<String, String>>,
     pub(super) tags: tagging::Tags,
     pub(super) lists: tagging::Lists,
+    /// Structure of the body table being rendered (see `table::render_table`).
+    pub(super) table_tags: Option<tagging::TableTags>,
 }
 
 impl PageBuilder {
@@ -622,6 +624,7 @@ impl PageBuilder {
             all_first_styleref: Vec::new(),
             tags: tagging::Tags::new(),
             lists: tagging::Lists::default(),
+            table_tags: None,
         }
     }
 
@@ -3189,6 +3192,8 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                     } else {
                         None
                     };
+                    let table_tags = tagging::TableTags::for_table(&mut state.pb.tags, tagging::ROOT, table);
+                    state.pb.table_tags = Some(table_tags);
                     render_table(
                         table,
                         sp,
@@ -3201,6 +3206,9 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                         &mut state.effective_margin_bottom,
                         col_bounds,
                     );
+                    if let Some(tags) = state.pb.table_tags.take() {
+                        tags.finish(&mut state.pb.tags);
+                    }
                     state.prev_space_after = 0.0;
 
                     // Update styleref tracking (footnotes are already tracked

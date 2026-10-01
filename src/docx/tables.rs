@@ -876,6 +876,8 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
         auto_width,
         width_pct,
         grid_inferred,
+        header_first_row: tbl_look_node.is_none() || look_first_row,
+        header_first_col: tbl_look_node.is_none() || look_first_col,
     }
 }
 

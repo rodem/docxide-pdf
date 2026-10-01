@@ -12,6 +12,7 @@ use super::color::{fill_rgb, stroke_rgb};
 use super::header_footer::{compute_effective_margin_bottom, effective_slot_top};
 
 use super::RenderContext;
+use super::tagging::{CellTagger, Tags};
 use super::layout::{
     encode_text_for_pdf, render_paragraph_lines,
 };
@@ -311,6 +312,20 @@ fn cell_has_visible_content(items: &[CellContentItem]) -> bool {
     })
 }
 
+/// Column span to tag a cell with. A row that stops short of the grid
+/// (`w:gridAfter`) lends the rest to its last cell, so every TR spans the
+/// table's columns (PDF/UA 7.2-42/43).
+fn row_tag_span(row: &TableRow, ci: usize, span: usize, grid_cols: usize, grid_col_after: usize) -> i32 {
+    let span = if ci + 1 == row.cells.len() { span + grid_cols.saturating_sub(grid_col_after) } else { span };
+    span as i32
+}
+
+fn end_cell_tag(content: &mut Content, tagger: &Option<CellTagger<'_>>) {
+    if tagger.is_some() {
+        Tags::end(content);
+    }
+}
+
 fn render_cell_content(
     content: &mut Content,
     items: &[CellContentItem],
@@ -325,11 +340,12 @@ fn render_cell_content(
     cm: &CellMargins,
     ctx: &RenderContext,
     gradient_specs: &mut Vec<super::GradientSpec>,
+    mut tagger: Option<CellTagger<'_>>,
 ) {
     let mut cursor_y = cursor_y_start;
     let mut block_idx = 0;
 
-    for item in items {
+    for (item_idx, item) in items.iter().enumerate() {
         match item {
             CellContentItem::Paragraph(para) => {
                 // Advance block_idx past the corresponding Block::Paragraph
@@ -343,12 +359,17 @@ fn render_cell_content(
                     block_idx += 1;
                 }
 
+                // Word tags every cell paragraph, empty ones included.
+                if let Some(t) = tagger.as_mut() {
+                    t.begin(content, item_idx);
+                }
                 let para_top = cursor_y;
                 if !para_has_visible_content(para)
                     && !para.has_textboxes
                     && !para.has_connectors
                 {
                     cursor_y -= para.space_before + para_block_height(para);
+                    end_cell_tag(content, &tagger);
                     continue;
                 }
 
@@ -380,6 +401,7 @@ fn render_cell_content(
                     cursor_y -= render_cell_inline_image(
                         content, para, img_name, cell_x, col_w, cursor_y, cm,
                     );
+                    end_cell_tag(content, &tagger);
                     continue;
                 }
 
@@ -427,6 +449,7 @@ fn render_cell_content(
                     None,
                     None,
                 );
+                end_cell_tag(content, &tagger);
 
                 cursor_y -= para.lines.len() as f32 * para.line_h;
 
@@ -645,6 +668,8 @@ fn render_table_rows(
                     ecm,
                     ctx,
                     gradient_specs,
+                    // ponytail: nested and header/footer tables stay artifacts
+                    None,
                 );
             }
         }
@@ -729,6 +754,7 @@ fn render_partial_cell_content(
     cm: &CellMargins,
     ctx: &RenderContext,
     gradient_specs: &mut Vec<super::GradientSpec>,
+    mut tagger: Option<CellTagger<'_>>,
 ) {
     let mut cursor_y = cursor_y_start;
     // Build a mapping from item index to block index
@@ -763,8 +789,12 @@ fn render_partial_cell_content(
             CellContentItem::Paragraph(para) => {
                 let sb = if pi == start.item { 0.0 } else { para.space_before };
 
+                if let Some(t) = tagger.as_mut() {
+                    t.begin(content, pi);
+                }
                 if !para_has_visible_content(para) {
                     cursor_y -= sb + para_block_height(para);
+                    end_cell_tag(content, &tagger);
                     continue;
                 }
 
@@ -782,6 +812,7 @@ fn render_partial_cell_content(
                     cursor_y -= render_cell_inline_image(
                         content, para, img_name, cell_x, col_w, cursor_y, cm,
                     );
+                    end_cell_tag(content, &tagger);
                     continue;
                 }
 
@@ -832,6 +863,7 @@ fn render_partial_cell_content(
                     None,
                     None,
                 );
+                end_cell_tag(content, &tagger);
 
                 cursor_y -= (l1 - l0) as f32 * para.line_h;
             }
@@ -896,14 +928,19 @@ fn render_table_row(
     let row_bottom = row_top - row_h;
 
     let mut grid_col = 0usize;
-    for (cell, cell_layout) in row.cells.iter().zip(layout.cells.iter()) {
+    for (ci, (cell, cell_layout)) in row.cells.iter().zip(layout.cells.iter()).enumerate() {
         let span = cell.grid_span.max(1) as usize;
         let col_w = cell_span_width(col_widths, grid_col, span);
         let cell_x = cell_x_offset(col_widths, table_left, grid_col);
         let cell_grid_col = grid_col;
         grid_col += span;
+        let tag_span = row_tag_span(row, ci, span, col_widths.len(), grid_col);
 
         if cell.v_merge == VMerge::Continue {
+            if let Some(table) = pb.table_tags.as_mut().filter(|t| !t.repeating) {
+                CellTagger { tags: &mut pb.tags, table, page: 0, row: row_idx, cell: ci, col_span: tag_span }
+                    .empty_cell();
+            }
             continue;
         }
 
@@ -926,6 +963,15 @@ fn render_table_row(
 
         let has_content = cell_has_visible_content(&cell_layout.items);
         let ecm = cell.cell_margins.as_ref().unwrap_or(cm);
+        let page = pb.all_contents.len();
+        let tagger = pb.table_tags.as_mut().filter(|t| !t.repeating).map(|table| CellTagger {
+            tags: &mut pb.tags,
+            table,
+            page,
+            row: row_idx,
+            cell: ci,
+            col_span: tag_span,
+        });
 
         if has_content && cell_layout.text_direction == TextDirection::TbRl {
             render_vertical_cjk_cell(
@@ -939,7 +985,17 @@ fn render_table_row(
                 ecm,
                 ctx,
             );
-        } else if has_content {
+            // ponytail: vertical cell text stays an artifact; the TD keeps rows the same width
+            if let Some(mut t) = tagger {
+                t.begin(&mut pb.content, 0);
+                Tags::end(&mut pb.content);
+            }
+        } else if !has_content {
+            if let Some(mut t) = tagger {
+                t.begin(&mut pb.content, 0);
+                Tags::end(&mut pb.content);
+            }
+        } else {
             let content_h = cell_content_h_for_valign(&cell_layout.items);
 
             let avail = effective_h - ecm.top - ecm.bottom;
@@ -957,6 +1013,7 @@ fn render_table_row(
                 ecm,
                 ctx,
                 &mut pb.gradient_specs,
+                tagger,
             );
         }
     }
@@ -1109,6 +1166,7 @@ fn render_partial_row(
     ctx: &RenderContext,
     starts: &[CellCursor],
     ends: &[CellCursor],
+    row_idx: usize,
 ) {
     let mut max_h: f32 = cm.top + cm.bottom;
     for (ci, cell_layout) in layout.cells.iter().enumerate() {
@@ -1132,8 +1190,13 @@ fn render_partial_row(
         let col_w = cell_span_width(col_widths, grid_col, span);
         let cell_x = cell_x_offset(col_widths, table_left, grid_col);
         grid_col += span;
+        let tag_span = row_tag_span(row, ci, span, col_widths.len(), grid_col);
 
         if cell.v_merge == VMerge::Continue {
+            if let Some(table) = pb.table_tags.as_mut().filter(|t| !t.repeating) {
+                CellTagger { tags: &mut pb.tags, table, page: 0, row: row_idx, cell: ci, col_span: tag_span }
+                    .empty_cell();
+            }
             continue;
         }
 
@@ -1157,6 +1220,15 @@ fn render_partial_row(
                 CellContentItem::NestedTable { height } => *height > 0.0,
             });
 
+        let page = pb.all_contents.len();
+        let tagger = pb.table_tags.as_mut().filter(|t| !t.repeating).map(|table| CellTagger {
+            tags: &mut pb.tags,
+            table,
+            page,
+            row: row_idx,
+            cell: ci,
+            col_span: tag_span,
+        });
         if has_content {
             render_partial_cell_content(
                 &mut pb.content,
@@ -1170,7 +1242,12 @@ fn render_partial_row(
                 cm,
                 ctx,
                 &mut pb.gradient_specs,
+                tagger,
             );
+        } else if let Some(mut t) = tagger.filter(|_| start == CellCursor::default()) {
+            // An empty cell still gets its TD (and P), keeping rows the same width.
+            t.begin(&mut pb.content, 0);
+            Tags::end(&mut pb.content);
         }
     }
 
@@ -1211,6 +1288,10 @@ fn render_header_rows(
     merge_spans: &HashMap<(usize, usize), f32>,
     header_count: usize,
 ) {
+    // Repeated header rows are page furniture: tagged once, where they first appear.
+    if let Some(t) = pb.table_tags.as_mut() {
+        t.repeating = true;
+    }
     for hi in 0..header_count {
         render_table_row(
             &table.rows[hi],
@@ -1223,6 +1304,9 @@ fn render_header_rows(
             hi,
             merge_spans,
         );
+    }
+    if let Some(t) = pb.table_tags.as_mut() {
+        t.repeating = false;
     }
 }
 
@@ -1403,7 +1487,7 @@ pub(super) fn render_table(
 
             render_partial_row(
                 row, layout, &col_widths, cm, table_left,
-                pb, ctx, &starts, &ends,
+                pb, ctx, &starts, &ends, ri,
             );
 
             if all_done {

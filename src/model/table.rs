@@ -129,6 +129,11 @@ pub struct Table {
     /// True when the required `w:tblGrid` was missing and col_widths were
     /// synthesized from row cell widths.
     pub grid_inferred: bool,
+    /// `tblLook` firstRow / firstColumn for tagging: Word's tagged export
+    /// treats them as on when `tblLook` is absent (header row → THead/TH,
+    /// first column → TH).
+    pub header_first_row: bool,
+    pub header_first_col: bool,
 }
 
 pub struct TableRow {
