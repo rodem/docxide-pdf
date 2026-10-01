@@ -188,7 +188,7 @@ def convert_ours(docx: Path, pdf: Path) -> bool:
 
 
 def convert_libreoffice(soffice: Path, docx: Path, pdf: Path) -> bool:
-    if is_fresh(pdf, docx):
+    if is_fresh(pdf, docx) and is_fresh(pdf, soffice):  # an upgraded engine reconverts
         return True
     out = pdf.parent
     out.mkdir(parents=True, exist_ok=True)
@@ -207,7 +207,7 @@ def convert_libreoffice(soffice: Path, docx: Path, pdf: Path) -> bool:
 
 
 def convert_minipdf(minipdf: Path, docx: Path, pdf: Path) -> bool:
-    if is_fresh(pdf, docx):
+    if is_fresh(pdf, docx) and is_fresh(pdf, minipdf):
         return True
     pdf.parent.mkdir(parents=True, exist_ok=True)
     # Same Word fonts as the other engines. Without --fonts, minipdf 0.6 registers a hard-coded list of
@@ -219,7 +219,7 @@ def convert_minipdf(minipdf: Path, docx: Path, pdf: Path) -> bool:
 
 
 def convert_rdocx(rdocx: Path, docx: Path, pdf: Path) -> bool:
-    if is_fresh(pdf, docx):
+    if is_fresh(pdf, docx) and is_fresh(pdf, rdocx):
         return True
     pdf.parent.mkdir(parents=True, exist_ok=True)
     r = subprocess.run([str(rdocx), "convert", "--to", "pdf", "--output", str(pdf), str(docx)],
@@ -228,7 +228,7 @@ def convert_rdocx(rdocx: Path, docx: Path, pdf: Path) -> bool:
 
 
 def convert_office2pdf(office2pdf: Path, docx: Path, pdf: Path) -> bool:
-    if is_fresh(pdf, docx):
+    if is_fresh(pdf, docx) and is_fresh(pdf, office2pdf):
         return True
     pdf.parent.mkdir(parents=True, exist_ok=True)
     # Same Word fonts as the other engines; otherwise it uses whatever the host happens to have installed.
@@ -245,14 +245,15 @@ def timed(convert, *args) -> tuple[bool, float | None]:
     """
     pdf: Path = args[-1]
     docx: Path = args[-2]
+    engine: Path = args[0] if len(args) == 3 else OURS_BIN  # convert_ours takes no binary argument
     stamp = pdf.with_suffix(".time")
     if pdf.exists() and not stamp.exists():
         pdf.unlink()
     # A timeout leaves no PDF to cache, so without this marker the engine would hang for the full
     # timeout on the same document every run (minipdf: 2 × 300 s per run). Retried once the
-    # document changes; an engine upgrade starts from a cold cache anyway.
+    # document or the engine changes.
     timeout_marker = pdf.with_suffix(".timeout")
-    if is_fresh(timeout_marker, docx):
+    if is_fresh(timeout_marker, docx) and is_fresh(timeout_marker, engine):
         return False, None
     before = pdf.stat().st_mtime if pdf.exists() else None
     t = time.perf_counter()
