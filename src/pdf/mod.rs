@@ -2126,14 +2126,22 @@ fn render_paragraph_block(
     let next_borders_match = next_para.is_some_and(|np| joins_border_group(para, np));
     let bottom_collapses = next_borders_match;
 
+    // The top border's band sits inside the paragraph, like the bottom one
+    // (`bdr_bottom_extent`): case17's 0.5pt and 1pt boxes start their band at
+    // the paragraph top and their text `space` below its lower edge.
     let bdr_top_pad = if prev_borders_match {
         0.0
     } else {
         para.borders
             .top
             .as_ref()
-            .map(|b| b.space_pt + b.width_pt / 2.0)
+            .map(|b| b.space_pt + b.width_pt)
             .unwrap_or(0.0)
+    };
+    let bdr_top_half_band = if prev_borders_match {
+        0.0
+    } else {
+        para.borders.top.as_ref().map_or(0.0, |b| b.width_pt / 2.0)
     };
     let bdr_bottom_pad = if bottom_collapses {
         0.0
@@ -2847,7 +2855,7 @@ fn render_paragraph_block(
     // from the text area so text inside stays aligned with text outside
     {
         let bdr = &para.borders;
-        let box_top = state.pb.slot_top;
+        let box_top = state.pb.slot_top - bdr_top_half_band;
         let box_bottom =
             state.pb.slot_top - bdr_top_pad - content_h - bdr_bottom_pad;
         let bdr_left_outset = bdr
