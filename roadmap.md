@@ -122,7 +122,7 @@ nowhere gets Arial/Liberation Sans/Arimo/Helvetica/DejaVu Sans before Type1
 not `.notdef` (U+202F in macOS Arial 5.01, Aptos Italic). One commit each,
 plus a `/simplify` pass (one field list in `resolve_based_on`).
 
-Progress over the 173 tagged references: struct 0 → 94.8%, text 0 → 95.1%,
+Progress over the 173 tagged references: struct 0 → 94.8%, text 0 → 95.2%,
 ua_deficit 1165 → 0 (every fixture fails no PDF/UA-1 rule Word passes);
 LibreOffice's own tagged export scores 76% / 84% on the same yardstick. Over
 all 221: ua_fail 459, 13 PDFs claim PDF/UA-1 and pass all 106 rules; what
@@ -130,13 +130,15 @@ remains is 5-1 (no claim, 208), 7.1-9 (198), 7.3-1 (29) and 7.4.2-1 (24),
 all source-limited; every font is embedded. Output size ~24.0 MB (round 4
 +37 KB: real fonts embedded where Type1 Helvetica was).
 
-**Pending baselines (round 4, need approval):** irish_school_enrollment_form
-text 96.2 → 82.3% (its reference keeps Wingdings U+F0A8, we now give ◻);
-multi_font SSIM 42.6 → 39.2% (Copperplate Gothic Light now falls back to Arial
-instead of approximate-width Type1 Helvetica; Word embedded the real face —
-vendoring CopperplateGothic-Light in the assets repo is the faithful fix).
-Improved and also to accept: the 3 theme-slot fixtures, case60, scottish and
-learning_cultures (ua_fail), german_mezzo, samtale.
+**Pending baselines (round 4, need approval):** multi_font SSIM 42.6 →
+39.2%: Copperplate Gothic Light now falls back to Arial with real widths and
+fits on one line, where the approximate-width Type1 Helvetica wrapped it like
+Word's real (wide) face does; our page 1 also runs ~14pt taller than Word's,
+pushing its last line (Bodoni MT) to page 2. Vendoring CopperplateGothic-Light
+in the assets repo is the faithful fix. Improved and also to accept: the 3
+theme-slot fixtures, case60, scottish and learning_cultures (ua_fail),
+german_mezzo, samtale. (irish_school's text drop is gone: `a11y_text` now
+folds symbol glyphs, see SCORING.md.)
 
 **How Word tags things (learned the hard way):**
 - Pictures, charts and SmartArt: the paragraph's own (empty) P, then a
