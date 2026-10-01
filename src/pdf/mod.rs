@@ -83,9 +83,34 @@ pub(super) struct RenderContext<'a> {
     pub(super) chart_font_name: &'a str,
     /// Word's `compressPunctuation` setting (see `docx::settings`).
     pub(super) compress_punctuation: bool,
+    /// Display numbers of footnote and endnote reference marks, by note id.
+    pub(super) footnote_marks: &'a HashMap<u32, String>,
+    pub(super) endnote_marks: &'a HashMap<u32, String>,
 }
 
 impl RenderContext<'_> {
+    /// The text a note reference mark run shows: its note's number. The run's
+    /// own text is empty (`docx::runs` `footnoteReference`).
+    fn note_mark_text(&self, run: &Run) -> Option<String> {
+        let (marks, id) = match (run.footnote_id, run.endnote_id) {
+            (Some(id), _) => (self.footnote_marks, id),
+            (None, Some(id)) => (self.endnote_marks, id),
+            (None, None) => return None,
+        };
+        Some(marks.get(&id).cloned().unwrap_or_default())
+    }
+
+    /// `runs` with every note reference mark showing its number, when any has one.
+    pub(super) fn with_note_marks(&self, runs: &[Run]) -> Option<Vec<Run>> {
+        runs.iter().any(|r| r.footnote_id.is_some() || r.endnote_id.is_some()).then(|| {
+            runs.iter()
+                .map(|r| match self.note_mark_text(r) {
+                    Some(text) => Run { text, ..r.clone() },
+                    None => r.clone(),
+                })
+                .collect()
+        })
+    }
     /// East Asian switches for `build_paragraph_lines`: the paragraph's autospace
     /// choice plus the document-wide punctuation compression.
     fn cjk(&self, auto_space: bool) -> CjkLayout {
@@ -1137,8 +1162,6 @@ fn render_paragraph_block(
     effect_names: &HashMap<usize, EffectXObjs>,
     effect_floating_names: &HashMap<(usize, usize), EffectXObjs>,
     effect_inline_names: &HashMap<(usize, usize), EffectXObjs>,
-    footnote_display_order: &HashMap<u32, String>,
-    endnote_display_order: &HashMap<u32, String>,
     doc: &Document,
     smartart_font_key: &str,
     smartart_image_names: &HashMap<usize, String>,
@@ -1356,14 +1379,8 @@ fn render_paragraph_block(
             .runs
             .iter()
             .map(|run| {
-                if let Some(id) = run.footnote_id {
-                    let mut r = run.clone();
-                    r.text = footnote_display_order.get(&id).cloned().unwrap_or_default();
-                    r
-                } else if let Some(id) = run.endnote_id {
-                    let mut r = run.clone();
-                    r.text = endnote_display_order.get(&id).cloned().unwrap_or_default();
-                    r
+                if let Some(text) = ctx.note_mark_text(run) {
+                    Run { text, ..run.clone() }
                 } else if let Some(FieldCode::PageRef(ref bookmark)) = run.field_code {
                     let mut r = run.clone();
                     if let Some(&(page_idx, _)) = state.bookmark_positions.get(bookmark) {
@@ -2927,17 +2944,6 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         effect_table_names,
     } = embed_all_images(doc, &mut pdf, &mut alloc);
 
-    let ctx = RenderContext {
-        fonts: &seen_fonts,
-        doc_line_spacing: doc.line_spacing,
-        default_tab_stop: doc.default_tab_stop,
-        table_cell_image_names: &table_cell_image_names,
-        effect_table_names: &effect_table_names,
-        textbox_image_names: &textbox_image_names,
-        chart_font_name: &doc.chart_font_name,
-        compress_punctuation: doc.compress_punctuation,
-    };
-
     let t_images = t0.elapsed();
 
     // Pre-compute footnote and endnote display order: scan body runs for
@@ -2998,6 +3004,19 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             }
         }
     }
+
+    let ctx = RenderContext {
+        fonts: &seen_fonts,
+        doc_line_spacing: doc.line_spacing,
+        default_tab_stop: doc.default_tab_stop,
+        table_cell_image_names: &table_cell_image_names,
+        effect_table_names: &effect_table_names,
+        textbox_image_names: &textbox_image_names,
+        chart_font_name: &doc.chart_font_name,
+        compress_punctuation: doc.compress_punctuation,
+        footnote_marks: &footnote_display_order,
+        endnote_marks: &endnote_display_order,
+    };
 
     let bookmark_positions = compute_bookmark_positions(doc, &ctx);
 
@@ -3189,8 +3208,6 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                         &effect_names,
                         &effect_floating_names,
                         &effect_inline_names,
-                        &footnote_display_order,
-                        &endnote_display_order,
                         doc,
                         smartart_font_key,
                         &smartart_image_names,

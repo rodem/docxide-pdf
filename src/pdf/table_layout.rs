@@ -608,6 +608,11 @@ pub(super) fn compute_row_layouts(
                                         sub.page_num_format,
                                     );
                                     &substituted
+                                } else if let Some(marked) = ctx.with_note_marks(&para.runs) {
+                                    // A note reference mark's run is empty until it
+                                    // shows its note's number, as in body paragraphs.
+                                    substituted = marked;
+                                    &substituted
                                 } else {
                                     &para.runs
                                 };
