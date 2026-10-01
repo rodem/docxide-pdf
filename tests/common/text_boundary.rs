@@ -4,38 +4,58 @@
 use std::path::Path;
 use std::process::Command;
 
-pub fn extract_page_words(pdf: &Path, page: usize) -> Vec<String> {
+/// Words per page from one `mutool draw -F text` run over the whole document. mutool ends every
+/// page with a form feed, and the whole-document output is byte-identical to the per-page outputs
+/// concatenated, so this is the same tokenisation as one run per page at a fraction of the cost:
+/// mutool parses the PDF once instead of once per page (on a 200-page document the per-page
+/// spawns were two thirds of the metric's time).
+pub fn extract_all_pages(pdf: &Path) -> Vec<Vec<String>> {
     let output = Command::new("mutool")
-        .args([
-            "draw",
-            "-F",
-            "text",
-            pdf.to_str().unwrap(),
-            &page.to_string(),
-        ])
+        .args(["draw", "-F", "text", pdf.to_str().unwrap()])
         .output()
         .expect("Failed to run mutool draw");
-    String::from_utf8_lossy(&output.stdout)
-        .split_whitespace()
-        .map(String::from)
-        .collect()
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut pages: Vec<Vec<String>> = text
+        .split('\x0c')
+        .map(|page| page.split_whitespace().map(String::from).collect())
+        .collect();
+    if pages.last().is_some_and(|p| p.is_empty()) {
+        pages.pop(); // after the last page's form feed
+    }
+    pages
 }
 
-pub fn extract_page_lines(pdf: &Path, page: usize) -> Vec<String> {
+/// Text lines per page from one `mutool draw -F stext` run over the whole document, each page
+/// parsed by [`stext_lines`].
+pub fn extract_all_page_lines(pdf: &Path) -> Vec<Vec<String>> {
     let output = Command::new("mutool")
-        .args([
-            "draw",
-            "-F",
-            "stext",
-            pdf.to_str().unwrap(),
-            &page.to_string(),
-        ])
+        .args(["draw", "-F", "stext", pdf.to_str().unwrap()])
         .output()
         .expect("Failed to run mutool draw -F stext");
     let xml = String::from_utf8_lossy(&output.stdout);
-    let mut lines: Vec<(f64, f64, String)> = Vec::new(); // (x_left, y_top, text)
+    let mut pages = Vec::new();
+    let mut page: Option<Vec<&str>> = None;
     for xml_line in xml.lines() {
         let trimmed = xml_line.trim();
+        if trimmed.starts_with("<page ") {
+            page = Some(Vec::new());
+        } else if trimmed == "</page>" {
+            if let Some(p) = page.take() {
+                pages.push(stext_lines(p));
+            }
+        } else if let Some(p) = page.as_mut() {
+            p.push(trimmed);
+        }
+    }
+    pages
+}
+
+/// The text lines of one stext page, in reading order: lines sorted by y, clustered within an
+/// 8pt y-tolerance, each cluster sorted by x so super/subscript fragments recombine
+/// left-to-right (e.g. "xi" + "2 + yj" + "3 = zk").
+fn stext_lines(xml_lines: Vec<&str>) -> Vec<String> {
+    let mut lines: Vec<(f64, f64, String)> = Vec::new(); // (x_left, y_top, text)
+    for trimmed in xml_lines {
         if let Some(rest) = trimmed.strip_prefix("<line ") {
             let bbox_vals: Option<(f64, f64)> = rest.strip_prefix("bbox=\"").and_then(|b| {
                 let mut parts = b.split_whitespace();
@@ -56,9 +76,6 @@ pub fn extract_page_lines(pdf: &Path, page: usize) -> Vec<String> {
             }
         }
     }
-    // Sort by y, cluster lines within 8pt y-tolerance, then sort each
-    // cluster by x so super/subscript fragments recombine left-to-right
-    // (e.g. "xi" + "2 + yj" + "3 = zk").
     lines.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
     let mut clusters: Vec<Vec<(f64, f64, String)>> = Vec::new();
     for item in lines {
@@ -81,11 +98,6 @@ pub fn extract_page_lines(pdf: &Path, page: usize) -> Vec<String> {
                 .join(" ")
         })
         .collect()
-}
-
-pub fn extract_all_pages(pdf: &Path) -> Vec<Vec<String>> {
-    let n = super::pdf_page_count(pdf).unwrap_or(0);
-    (1..=n).map(|p| extract_page_words(pdf, p)).collect()
 }
 
 pub fn break_positions(pages: &[Vec<String>]) -> Vec<usize> {
@@ -169,11 +181,14 @@ pub fn analyze(reference_pdf: &Path, generated_pdf: &Path) -> TextBoundary {
         .max_by_key(|d| d.unsigned_abs())
         .unwrap_or(0);
 
+    let ref_line_pages = extract_all_page_lines(reference_pdf);
+    let gen_line_pages = extract_all_page_lines(generated_pdf);
     let mut total_lines = 0;
     let mut matching_lines = 0;
-    for p in 1..=common_pages {
-        let ref_lines = extract_page_lines(reference_pdf, p);
-        let gen_lines = extract_page_lines(generated_pdf, p);
+    for p in 0..common_pages {
+        let (Some(ref_lines), Some(gen_lines)) = (ref_line_pages.get(p), gen_line_pages.get(p)) else {
+            break;
+        };
 
         let max_count = ref_lines.len().max(gen_lines.len());
         let min_count = ref_lines.len().min(gen_lines.len());

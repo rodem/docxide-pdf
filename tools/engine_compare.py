@@ -31,8 +31,10 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import webbrowser
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from fnmatch import fnmatch
 from pathlib import Path
@@ -59,6 +61,25 @@ ENGINES = [
     ("office2pdf", "office2pdf"),
 ]
 COMPETITORS = [k for k, _ in ENGINES if k != "reference"]
+
+
+# Seconds spent per phase, summed over the worker threads, so a CI log says where a run's time went.
+SPENT: Counter = Counter()
+_SPENT_LOCK = threading.Lock()
+
+
+def spent(phase: str, fn, *args):
+    t = time.perf_counter()
+    try:
+        return fn(*args)
+    finally:
+        with _SPENT_LOCK:
+            SPENT[phase] += time.perf_counter() - t
+
+
+def report_spent() -> None:
+    if SPENT:
+        print("time spent (thread-seconds): " + ", ".join(f"{k} {v:.0f}" for k, v in SPENT.most_common()))
 
 
 def find_soffice() -> Path | None:
@@ -289,7 +310,7 @@ def process_fixture(fixture: Path, group: str, tools: dict, opts) -> dict | None
 
     def add(key: str, pdf: Path, png_dir: Path) -> None:
         pdfs[key] = pdf
-        pages[key] = screenshot(pdf, png_dir)
+        pages[key] = spent("screenshot", screenshot, pdf, png_dir)
 
     # Word reference
     ref_dir = harness / "reference" if any((harness / "reference").glob("page_*.png")) else mine / "reference"
@@ -299,14 +320,15 @@ def process_fixture(fixture: Path, group: str, tools: dict, opts) -> dict | None
     # but always time a conversion of our own so every engine's speed is measured by this script.
     times: dict[str, float | None] = {}
     if tools.get("ours"):
-        ok, times["generated"] = timed(convert_ours, docx, mine / "generated.pdf")
+        ok, times["generated"] = spent("convert generated", timed, convert_ours, docx, mine / "generated.pdf")
         if (harness / "generated.pdf").exists():
             add("generated", harness / "generated.pdf", harness / "generated")
         elif ok:
             add("generated", mine / "generated.pdf", mine / "generated")
 
     if tools.get("soffice"):
-        ok, times["libreoffice"] = timed(convert_libreoffice, tools["soffice"], docx, mine / "libreoffice.pdf")
+        ok, times["libreoffice"] = spent("convert libreoffice", timed, convert_libreoffice, tools["soffice"], docx,
+                                         mine / "libreoffice.pdf")
         if (harness / "libreoffice.pdf").exists():
             add("libreoffice", harness / "libreoffice.pdf", harness / "libreoffice")
         elif ok:
@@ -315,7 +337,7 @@ def process_fixture(fixture: Path, group: str, tools: dict, opts) -> dict | None
     for key, convert in (("minipdf", convert_minipdf), ("rdocx", convert_rdocx),
                          ("office2pdf", convert_office2pdf)):
         if tools.get(key):
-            ok, times[key] = timed(convert, tools[key], docx, mine / f"{key}.pdf")
+            ok, times[key] = spent(f"convert {key}", timed, convert, tools[key], docx, mine / f"{key}.pdf")
             if ok:
                 add(key, mine / f"{key}.pdf", mine / key)
 
@@ -323,7 +345,7 @@ def process_fixture(fixture: Path, group: str, tools: dict, opts) -> dict | None
     if not opts.no_scores:
         for key in COMPETITORS:
             if pages.get(key):
-                m = engine_metrics(ref_pdf, pdfs[key], ref_dir, pages[key][0].parent)
+                m = spent("score", engine_metrics, ref_pdf, pdfs[key], ref_dir, pages[key][0].parent)
                 if m:
                     scores[key] = m
 
@@ -659,7 +681,7 @@ def build_site(results: list[dict], versions: dict, fmt: str, jobs: int) -> None
 
     print(f"site: {len(jobs_list)} images to encode into {SITE}")
     with ThreadPoolExecutor(max_workers=jobs) as pool:
-        list(pool.map(transfer, jobs_list))
+        spent("encode", lambda: list(pool.map(transfer, jobs_list)))
     write_html(rewritten, versions, SITE / "index.html")
     (SITE / ".nojekyll").touch()  # GitHub Pages: serve as-is, no Jekyll pass over 9k files
     (SITE / ".gitignore").write_text("/work/\n")  # deploy_comparison.sh commits this folder; keep the cache out
@@ -696,7 +718,7 @@ def main() -> None:
     opts = ap.parse_args()
 
     def load_manifest() -> dict:
-        m = json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {}
+        m = json.loads(MANIFEST.read_text()) if MANIFEST.exists() else []
         return {"versions": {}, "cases": m} if isinstance(m, list) else m  # pre-versions manifests were a bare list
 
     def finish(results: list[dict], versions: dict) -> None:
@@ -711,6 +733,7 @@ def main() -> None:
         MANIFEST.write_text(json.dumps({"versions": versions, "cases": results}))  # --html-only rebuilds from this
         print(f"{len(results)} cases; engines: " + ", ".join(f"{k} {v}" for k, v in versions.items()))
         build_site(results, versions, opts.format, opts.jobs)
+        report_spent()
         if opts.open:
             webbrowser.open((SITE / "index.html").as_uri())
 
