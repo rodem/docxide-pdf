@@ -169,19 +169,18 @@ scratchpad; rebuild them from `tests/common/a11y.rs` if needed):**
 `engine_compare.py` `pdf_creator()` truncates Quartz producers at the escaped
 paren.
 
-## Deterministic Output (TODO — LOW EFFORT, found 2026-10-01)
+## Deterministic Output (DONE — 2026-10-01, `6f64723a`)
 
-The same binary converting the same DOCX twice gives different bytes. The
-differences sit inside the embedded font programs (likely subsetting or
-table order driven by hash-map iteration), so the size varies by up to
-~±500 bytes per file and ~±20 KB over the corpus (case1: same size, different
-bytes; brazilian_logistics_study: 777,478 vs 777,044). Pixels and visual
-hashes are unaffected. It makes corpus-wide size deltas under ~20 KB
-meaningless (compare per file instead) and output non-reproducible. Likely
-cause: `embed_truetype` (`fonts/embed.rs`) iterates `used_chars: &HashSet<char>`
-straight into `subsetter::GlyphRemapper::remap`, so the subset's glyph order
-(and every CID) follows hash order. Sort the chars first; check with two
-renders + `cmp`.
+All 226 fixtures convert to identical bytes across runs (three renders + `cmp`).
+Three hash-order sources: `embed_truetype` fed `used_chars` (a `HashSet`) into the
+glyph remapper; `collect_and_register_fonts` registered fonts seen outside runs
+(SmartArt etc.) in `HashMap` order, shuffling F-names and font objects; and the
+alpha ExtGStates were allocated and listed in `HashSet` order. Mattered beyond
+reproducibility: the harness keeps a byte-identical `generated.pdf` (and its
+screenshots, diffs, veraPDF results), which non-deterministic output defeated —
+a `src/` touch with no output change took 2m25s, now 42s (warm 32s, cold 2m27s).
+Corpus 0.7% smaller (sorted glyphs compress better); scores and conversion time
+unchanged. Any new `HashMap`/`HashSet` iteration that reaches the PDF must sort.
 
 ## Note Marks in Table Cells (DONE — 2026-10-01, `a950737d`)
 
