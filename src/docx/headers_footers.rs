@@ -53,11 +53,17 @@ pub(super) fn parse_header_footer_xml<R: Read + Seek>(
                 blocks.push(Block::Table(table));
             }
             "p" => {
-                let para = super::paragraph::build_paragraph(
+                let mut para = super::paragraph::build_paragraph(
                     node, ctx, &mut counters, &mut last_seen_level,
                     &mut applied_overrides,
                     &super::paragraph::ParagraphOptions::default(),
                 );
+                // Auto spacing opens no story, as at the top of the body
+                // (a header line with beforeAutospacing sits at the header
+                // distance).
+                if blocks.is_empty() && para.space_before_auto {
+                    para.space_before = 0.0;
+                }
                 blocks.push(Block::Paragraph(para));
             }
             _ => {}
