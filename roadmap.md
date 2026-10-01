@@ -96,6 +96,15 @@ claimed only when title, Figure alt, heading order, embedded fonts and no
 .notdef all hold (13 fixtures, all clean). Harness: `run-tests.sh` runs every
 suite even when one fails; compact report shows `UaFail`.
 
+**Done, round 3 (2026-10-01, `7587e1d9`..`b9909a03`):** caps/small caps
+keep their source letters as `/ActualText` on a Span structure element (not
+nested marked content, which Poppler's structure reader truncates after) ·
+text-shadowed words read once · note marks drawn and linked in table cells
+(the only visual change: 6 fixtures) · per-run language: inherited
+`w:lang`, catalog `/Lang` = the text's dominant language (`document_lang`),
+`/Lang` Spans for passages in another language. Scores unchanged except the
+cell marks (erasmus_plus text 68 → 81%).
+
 Progress over the 173 tagged references: struct 0 → 94.7%, text 0 → 95.0%,
 ua_deficit 1165 → 6 (169 fixtures fail no PDF/UA-1 rule Word passes);
 LibreOffice's own tagged export scores 76% / 84% on the same yardstick. Over
@@ -134,24 +143,15 @@ scratchpad; rebuild them from `tests/common/a11y.rs` if needed):**
    before textboxes), not the anchors' document order: german_mezzo_soprano_bio
    struct −2.9pp. Needs an anchor index on FloatingImage/Textbox (`docx/`,
    ~10 construction sites); 3 fixtures have such paragraphs.
-3. Note marks in table cells aren't drawn at all (see its own section), so
-   they can't be linked; erasmus_plus endnotes 2–5.
-4. Textbox lists are tagged P (not L/LI); table-cell and header/footer
+3. Textbox lists are tagged P (not L/LI); table-cell and header/footer
    textboxes and floats stay artifacts; WordArt / text on a path has no text.
-5. slovak_eu_directive: we emit 9 table rows where Word has 14 (table model).
-6. Links in headers/footers and footnote text are still dropped; link rects and
+4. slovak_eu_directive: we emit 9 table rows where Word has 14 (table model).
+5. Links in headers/footers and footnote text are still dropped; link rects and
    outline destinations ignore `BODY_SCALE`/vAlign (`assembly.rs`).
-7. Per-run language (`/Lang` on spans), `/ListNumbering` on L,
-   `w:softHyphen` dropped, `w:noBreakHyphen` → U+002D, Wingdings bullets
-   extract as private-use code points.
-8. Legacy text shadow (`w:shadow`/`emboss`/`imprint`) draws a gray copy of
-   the glyphs inside the paragraph, so case66 reads "ShadowShadow
-   effecteffect". Fix: give a shadowed chunk `actual_text = text` so the caps
-   Span (`LinkTagger::caps_span`) covers copy and glyphs with one reading.
-   (Caps/small caps `/ActualText` done 2026-10-01: a Span structure element
-   per caps stretch, not nested marked content — Poppler's structure reader
-   drops a section's text after a nested `/ActualText` span.)
-9. Test-run time: with Microsoft Defender scanning `tests/output` and a
+6. `/ListNumbering` on L, `w:softHyphen` dropped, `w:noBreakHyphen` →
+   U+002D, Wingdings bullets extract as private-use code points;
+   `w:lang/@bidi` (complex-script text) ignored.
+7. Test-run time: with Microsoft Defender scanning `tests/output` and a
    concurrent worktree run, the full suite took >60 min (normally ~6–10).
 
 **Harness side findings (2026-10-01):** `tests/text_boundary.rs` has had no
@@ -173,17 +173,15 @@ straight into `subsetter::GlyphRemapper::remap`, so the subset's glyph order
 (and every CID) follows hash order. Sort the chars first; check with two
 renders + `cmp`.
 
-## Note Marks in Table Cells (TODO — VISUAL BUG, found 2026-10-01)
+## Note Marks in Table Cells (DONE — 2026-10-01, `a950737d`)
 
-Footnote and endnote reference marks inside table cells are drawn empty:
-erasmus_plus_staff_mobility_agreement shows "Seniority" where Word shows
-"Seniority²". Body paragraphs replace the reference run's text with the
-note's display number (`render_paragraph_block`, `effective_runs` in
-`pdf/mod.rs`); the table cell layout never does, and the run's text is empty
-(`docx/runs.rs` `footnoteReference`/`endnoteReference`). Apply the same
-substitution to cell paragraphs. Once drawn, the marks also get their
-Link-to-note tagging for free (`layout.rs`), and the cell's endnotes stop
-falling back to document-level Notes.
+Footnote and endnote reference marks inside table cells were drawn empty
+(erasmus_plus_staff_mobility_agreement "Seniority" vs Word's "Seniority²"):
+cell layout never replaced the empty mark run with the note's number.
+`RenderContext::with_note_marks` now does it for cells and body alike, and
+the marks get their Link to the note. Visual output changed in the 6
+fixtures with marks in cells; their visual baselines await acceptance.
+Column auto-fit still measures cells without the marks (a mark's width).
 
 ## Annotation Fixes 2026-09-18 (5 fixes, one commit each)
 
