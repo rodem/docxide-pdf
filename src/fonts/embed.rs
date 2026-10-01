@@ -56,7 +56,11 @@ pub(super) fn embed_truetype(
     let mut char_to_gid = HashMap::with_capacity(used_chars.len());
     let mut char_widths_1000 = HashMap::with_capacity(used_chars.len());
 
-    for &ch in used_chars {
+    // HashSet order differs per process, and the remapper numbers glyphs in visit order:
+    // sorting keeps the subset, and so the PDF bytes, the same from run to run.
+    let mut chars: Vec<char> = used_chars.iter().copied().collect();
+    chars.sort_unstable();
+    for ch in chars {
         let gid = resolve_glyph(&face, ch);
         if let Some(gid) = gid {
             let new_gid = remapper.remap(gid.0);

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use pdf_writer::{Content, Filter, Name, Pdf, Rect, Ref, Str, TextStr};
 
@@ -218,7 +218,8 @@ pub(super) fn assemble_pdf_pages(
         })
         .collect();
 
-    let all_alpha_values: HashSet<u8> = all_page_alpha_states
+    // BTreeSet: object numbers must not follow the per-process HashSet order.
+    let all_alpha_values: BTreeSet<u8> = all_page_alpha_states
         .iter()
         .flat_map(|s| s.iter().copied())
         .collect();
@@ -594,7 +595,7 @@ pub(super) fn assemble_pdf_pages(
             }
             if let Some(alpha_set) = all_page_alpha_states.get(i).filter(|s| !s.is_empty()) {
                 let mut gs_dict = resources.ext_g_states();
-                for &pct in alpha_set {
+                for pct in alpha_set.iter().copied().collect::<BTreeSet<u8>>() {
                     let gs_name = format!("GSa{pct}");
                     let gs_ref = alpha_gs_refs[&pct];
                     gs_dict.pair(Name(gs_name.as_bytes()), gs_ref);

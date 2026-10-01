@@ -402,7 +402,10 @@ pub(super) fn collect_and_register_fonts(
         }
     }
 
-    for (key, used) in &used_chars_per_font {
+    // Sorted so the font names and object order don't follow the per-process HashMap order.
+    let mut leftover: Vec<_> = used_chars_per_font.iter().collect();
+    leftover.sort_unstable_by(|a, b| a.0.cmp(b.0));
+    for (key, used) in leftover {
         if seen_fonts.contains_key(key) {
             continue;
         }
