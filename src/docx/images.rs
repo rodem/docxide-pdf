@@ -51,6 +51,18 @@ pub(super) fn extent_dimensions(container: roxmltree::Node) -> (f32, f32) {
     (emu_to_pts(cx), emu_to_pts(cy))
 }
 
+/// GIF and TIFF pictures are re-encoded as PNG for the PDF writer.
+fn gif_or_tiff_to_png(data: &[u8]) -> Option<Vec<u8>> {
+    let fmt = match image::guess_format(data).ok()? {
+        f @ (image::ImageFormat::Gif | image::ImageFormat::Tiff) => f,
+        _ => return None,
+    };
+    let img = image::load_from_memory_with_format(data, fmt).ok()?;
+    let mut png = Vec::new();
+    img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).ok()?;
+    Some(png)
+}
+
 pub(super) fn image_dimensions(data: &[u8]) -> Option<(u32, u32, ImageFormat, u8)> {
     if data.len() >= 2 && data[0] == 0xFF && data[1] == 0xD8 {
         return parse_jpeg_dimensions(data);
@@ -363,6 +375,8 @@ pub(super) fn read_image_from_zip_extra<R: Read + Seek>(
         data = super::wmf::wmf_to_raster(&data)?;
     } else if let Some(bmp) = super::emf::emf_to_raster(&data) {
         data = bmp;
+    } else if let Some(png) = gif_or_tiff_to_png(&data) {
+        data = png;
     }
     let (pw, ph, fmt, components) = image_dimensions(&data)?;
     Some(EmbeddedImage {
