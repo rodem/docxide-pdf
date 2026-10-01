@@ -182,6 +182,7 @@ pub(super) fn embed_truetype(
         ascender_ratio: lm.ascender_ratio,
         grid_line_ratio: lm.grid_line_ratio,
         plain_line_h_ratio: lm.plain_line_h_ratio,
+        grid_baseline_shift: lm.grid_baseline_shift,
         plain_ascender_ratio: lm.plain_ascender_ratio,
         char_to_gid,
         char_widths_1000,
@@ -391,6 +392,8 @@ pub(super) struct LineMetrics {
     /// in an East Asian font (`pdf::layout::run_line_metrics`).
     pub(super) plain_line_h_ratio: f32,
     pub(super) plain_ascender_ratio: f32,
+    /// How far below a docGrid cell's centre Word puts the baseline, per em.
+    pub(super) grid_baseline_shift: f32,
 }
 
 /// Has glyphs for CJK ideographs, Hangul or kana — what Word treats as an East Asian font.
@@ -414,12 +417,29 @@ fn compute_line_metrics(face: &Face, units: f32) -> LineMetrics {
         }
         _ => None,
     };
+    // Word centres a grid-snapped line's glyph box (ascent + descent) in its
+    // cell. A Latin font keeps its line gap above the ascent, as in its normal
+    // lines; an East Asian font has none (its 1.3× leading is dropped too).
+    let grid_baseline_shift = match face.tables().os2 {
+        Some(os2) => {
+            let typo = os2.use_typographic_metrics() && east_asian.is_none();
+            let (asc, desc) = if typo {
+                (os2.typographic_ascender(), os2.typographic_descender())
+            } else {
+                (os2.windows_ascender(), os2.windows_descender())
+            };
+            let gap = if typo || east_asian.is_some() { 0 } else { face.line_gap() };
+            ((asc + desc) as f32 / 2.0 + gap as f32) / units
+        }
+        None => (face.ascender() + face.descender()) as f32 / 2.0 / units,
+    };
     LineMetrics {
         line_h_ratio: east_asian.map_or(plain_line_h_ratio, |(h, _)| h),
         ascender_ratio: east_asian.map_or(plain_ascender_ratio, |(_, a)| a),
         grid_line_ratio: east_asian.map(|(h, _)| h).or(typo_ratio),
         plain_line_h_ratio,
         plain_ascender_ratio,
+        grid_baseline_shift,
     }
 }
 

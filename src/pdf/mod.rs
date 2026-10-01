@@ -53,7 +53,7 @@ use layout::{
     tallest_glyph_run_metrics,
     CjkLayout, DualRegion, LineNumberArg, LinkAnnotation, LinkTagger, TextLine, build_paragraph_lines,
     build_tabbed_line, descender_ratio,
-    grid_snapped_line_h, inline_image_line_extra, is_text_empty, line_max_image_h,
+    grid_baseline_offset, grid_snapped_line_h, inline_image_line_extra, is_text_empty, line_max_image_h,
     lines_height, picture_line_bottom, render_paragraph_lines, run_line_metrics,
     size_lines_by_own_runs, tallest_run_metrics,
 };
@@ -1392,6 +1392,7 @@ fn render_paragraph_block(
     } else {
         line_h
     };
+    let grid_baseline = grid_baseline_offset(&para.runs, ctx.fonts, line_h).unwrap_or(sp.line_pitch);
 
     // Word bottom-aligns text within an exact-height line box: the baseline
     // sits winDescent above the box bottom (identity: line_h_ratio −
@@ -2321,7 +2322,7 @@ fn render_paragraph_block(
             state.pb.slot_top -= inter_gap;
             let ascender_ratio = tallest_ar.unwrap_or(0.75);
             let baseline_offset = if grid_snapped {
-                sp.line_pitch
+                grid_baseline
             } else {
                 label_boosted_baseline_offset(para, ctx.fonts, para_ascent, font_size)
             };
@@ -2382,7 +2383,7 @@ fn render_paragraph_block(
             let rest = &lines[lines_that_fit..];
             let rest_content_h = lines_height(rest, line_h, para_metrics);
             let baseline_offset2 = if grid_snapped {
-                sp.line_pitch
+                grid_baseline
             } else {
                 font_size * ascender_ratio
             };
@@ -2836,7 +2837,7 @@ fn render_paragraph_block(
         // baseline one linePitch below the slot top so text sits on
         // the grid rather than at a font-metric-dependent offset.
         let baseline_offset = if grid_snapped {
-            sp.line_pitch
+            grid_baseline
         } else {
             label_boosted_baseline_offset(para, ctx.fonts, para_ascent, font_size)
         };
@@ -3761,6 +3762,7 @@ mod tests {
             ascender_ratio: Some(ar),
             grid_line_ratio: None,
             plain_line_h_ratio: Some(lhr),
+            grid_baseline_shift: None,
             plain_ascender_ratio: Some(ar),
             char_to_gid: None,
             char_widths_1000: None,

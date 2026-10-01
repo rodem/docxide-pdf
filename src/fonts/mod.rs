@@ -24,6 +24,7 @@ pub(crate) struct FontMetrics {
     /// Latin-rule metrics without the East Asian 1.3× leading (`embed::compute_line_metrics`).
     pub(crate) plain_line_h_ratio: f32,
     pub(crate) plain_ascender_ratio: f32,
+    pub(crate) grid_baseline_shift: f32,
     pub(crate) char_to_gid: HashMap<char, u16>,
     pub(crate) char_widths_1000: HashMap<char, f32>,
     pub(crate) kern_pairs: HashMap<(u16, u16), f32>,
@@ -49,6 +50,8 @@ pub(crate) struct FontEntry {
     /// empty paragraph marks (`pdf::layout::run_line_metrics`).
     pub(crate) plain_line_h_ratio: Option<f32>,
     pub(crate) plain_ascender_ratio: Option<f32>,
+    /// See `embed::LineMetrics::grid_baseline_shift`.
+    pub(crate) grid_baseline_shift: Option<f32>,
     pub(crate) char_to_gid: Option<HashMap<char, u16>>,
     pub(crate) char_widths_1000: Option<HashMap<char, f32>>,
     pub(crate) kern_pairs: Option<HashMap<(u16, u16), f32>>,
@@ -590,6 +593,7 @@ pub(crate) fn register_font(
             ascender_ratio: Some(r.metrics.ascender_ratio),
             grid_line_ratio: r.metrics.grid_line_ratio,
             plain_line_h_ratio: Some(r.metrics.plain_line_h_ratio),
+            grid_baseline_shift: Some(r.metrics.grid_baseline_shift),
             plain_ascender_ratio: Some(r.metrics.plain_ascender_ratio),
             char_to_gid: Some(r.metrics.char_to_gid),
             char_widths_1000: Some(r.metrics.char_widths_1000),
@@ -630,6 +634,7 @@ pub(crate) fn register_font(
                 ascender_ratio: None,
                 grid_line_ratio: None,
                 plain_line_h_ratio: None,
+                grid_baseline_shift: None,
                 plain_ascender_ratio: None,
                 char_to_gid: None,
                 char_widths_1000: None,

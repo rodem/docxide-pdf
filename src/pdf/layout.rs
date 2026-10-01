@@ -2850,6 +2850,31 @@ pub(super) fn grid_snapped_line_h(
     ((basis / pitch) - 0.02).ceil().max(1.0) * pitch
 }
 
+/// Baseline offset of a grid-snapped line `cell_h` tall: the cell's centre plus
+/// the largest run's `grid_baseline_shift`.
+pub(super) fn grid_baseline_offset(
+    runs: &[Run],
+    seen_fonts: &HashMap<String, FontEntry>,
+    cell_h: f32,
+) -> Option<f32> {
+    let mut key_buf = String::new();
+    runs.iter()
+        .filter(|r| {
+            r.inline_image.is_none()
+                && !r.vanish
+                && !r.is_line_break
+                && !r.is_math
+                && !r.is_tab
+                && (r.text.is_empty() || !r.text.trim().is_empty())
+        })
+        .filter_map(|r| {
+            let shift = seen_fonts.get(font_key_buf(r, &mut key_buf))?.grid_baseline_shift?;
+            Some(shift * effective_font_size(r))
+        })
+        .reduce(f32::max)
+        .map(|shift| cell_h / 2.0 + shift)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2992,6 +3017,27 @@ mod tests {
         }
     }
 
+    #[test]
+    fn grid_baseline_centres_the_largest_run_in_its_cell() {
+        // MS Gothic (win 0.859 / 0.141) 16pt on two 18pt cells: Word's baseline
+        // sits 23.67pt into the line (japanese_interlibrary_loan).
+        let mut fonts = HashMap::new();
+        fonts.insert(
+            "Arial".to_string(),
+            FontEntry {
+                grid_baseline_shift: Some(0.3594),
+                ..stub_font_entry()
+            },
+        );
+        let text_run = |text: &str, font_size: f32| Run {
+            text: text.to_string(),
+            ..make_run(font_size, VertAlign::Baseline, false)
+        };
+        let runs = [text_run("a", 10.0), text_run("b", 16.0), text_run("  ", 30.0)];
+        let offset = grid_baseline_offset(&runs, &fonts, 36.0).unwrap();
+        assert!((offset - 23.75).abs() < 0.01, "{offset}");
+    }
+
     /// Standard-14-style entry with every WinAnsi glyph 500/1000 wide.
     fn stub_font_entry() -> FontEntry {
         FontEntry {
@@ -3002,6 +3048,7 @@ mod tests {
             ascender_ratio: None,
             grid_line_ratio: None,
             plain_line_h_ratio: None,
+            grid_baseline_shift: None,
             plain_ascender_ratio: None,
             char_to_gid: None,
             char_widths_1000: None,
