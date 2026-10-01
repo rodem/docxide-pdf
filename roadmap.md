@@ -190,7 +190,7 @@ Footnote and endnote reference marks inside table cells were drawn empty
 cell layout never replaced the empty mark run with the note's number.
 `RenderContext::with_note_marks` now does it for cells and body alike, and
 the marks get their Link to the note. Visual output changed in the 6
-fixtures with marks in cells; their visual baselines await acceptance.
+fixtures with marks in cells (baselines accepted in `7879bc7f`).
 Column auto-fit still measures cells without the marks (a mark's width).
 
 ## Annotation Fixes 2026-09-18 (5 fixes, one commit each)
