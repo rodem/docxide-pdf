@@ -221,8 +221,9 @@ fn symbol_font_unicode(ch: char) -> Option<char> {
 }
 
 /// Unicode for the Wingdings codes documents use as bullets and signs, from
-/// the font's own glyph names (0xA7 `square4` → ▪). Word's export maps them to
-/// the code's low byte as Latin-1, so a screen reader says "u umlaut" for ✔.
+/// the font's own glyph names (0xA7 `square4` → ▪). Word's export keeps the
+/// private-use code in some documents (irish_school's U+F0A8 checkboxes),
+/// which a screen reader skips, and maps to Unicode in others (samtale's ☺).
 // ponytail: the corpus's codes only (no Wingdings 2/3, Webdings); add the
 // full table when other symbols show up
 fn wingdings_unicode(ch: char) -> Option<char> {
