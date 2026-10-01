@@ -1090,7 +1090,7 @@ fn compute_bookmark_positions(
     let mut slot_top = effective_slot_top(sp, true, ctx);
     let mut margin_bottom = compute_effective_margin_bottom(sp, true, ctx);
     let mut prev_space_after: f32 = 0.0;
-    let mut prev_contextual: bool = false;
+    let mut prev_style: Option<&str> = None;
     let empty_imgs: HashMap<usize, String> = HashMap::new();
     let empty_fx: HashMap<usize, images::EffectXObjs> = HashMap::new();
 
@@ -1187,15 +1187,15 @@ fn compute_bookmark_positions(
                     } else {
                         num_lines as f32 * line_h
                     };
-                    let effective_sb = if para.contextual_spacing && prev_contextual {
+                    let effective_sb = if para.contextual_spacing && prev_style == para.style_id.as_deref() {
                         0.0
                     } else {
                         para.space_before
                     };
-                    let next_contextual = blocks.get(bi + 1).is_some_and(|b| {
-                        matches!(b, Block::Paragraph(p) if p.contextual_spacing)
+                    let next_same_style = blocks.get(bi + 1).is_some_and(|b| {
+                        matches!(b, Block::Paragraph(p) if p.style_id == para.style_id)
                     });
-                    let effective_sa = if para.contextual_spacing && next_contextual {
+                    let effective_sa = if para.contextual_spacing && next_same_style {
                         0.0
                     } else {
                         para.space_after
@@ -1214,7 +1214,7 @@ fn compute_bookmark_positions(
                         slot_top -= inter_gap + content_h;
                     }
                     prev_space_after = effective_sa;
-                    prev_contextual = para.contextual_spacing;
+                    prev_style = para.style_id.as_deref();
                 }
                 Block::Table(table) => {
                     let para_count: usize = table
@@ -1234,7 +1234,7 @@ fn compute_bookmark_positions(
                     }
                     slot_top -= est_h;
                     prev_space_after = 0.0;
-                    prev_contextual = false;
+                    prev_style = None;
                 }
             }
         }
@@ -1352,15 +1352,17 @@ fn render_paragraph_block(
         None
     };
 
+    // §17.3.1.9: contextualSpacing drops the spacing next to a paragraph of
+    // the same style (a Title line keeps it beside a Normal one).
     let effective_space_before = if para.contextual_spacing
-        && prev_para.is_some_and(|p| p.contextual_spacing)
+        && prev_para.is_some_and(|p| p.style_id == para.style_id)
     {
         0.0
     } else {
         para.space_before
     };
     let effective_space_after = if para.contextual_spacing
-        && next_para.is_some_and(|p| p.contextual_spacing)
+        && next_para.is_some_and(|p| p.style_id == para.style_id)
     {
         0.0
     } else {
