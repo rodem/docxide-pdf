@@ -10,6 +10,7 @@ pub(super) struct CachedFace {
     pub(super) bold: bool,
     pub(super) italic: bool,
     pub(super) face_index: u32,
+    pub(super) mac_roman_only: bool,
 }
 
 #[derive(Clone, Default)]
@@ -23,7 +24,7 @@ pub(super) struct FontCache {
     pub(super) files: HashMap<PathBuf, CachedFile>,
 }
 
-pub(super) const CACHE_VERSION: &str = "v2";
+pub(super) const CACHE_VERSION: &str = "v3";
 
 pub(super) fn cache_path() -> Option<PathBuf> {
     let dir = if cfg!(target_os = "macos") {
@@ -69,7 +70,7 @@ pub(super) fn load_cache() -> FontCache {
                 };
                 fc.dir_mtimes.insert(PathBuf::from(parts[1]), mtime);
             }
-            Some("F") if parts.len() == 6 => {
+            Some("F") if parts.len() == 7 => {
                 let Ok(face_index) = parts[5].parse::<u32>() else {
                     continue;
                 };
@@ -82,6 +83,7 @@ pub(super) fn load_cache() -> FontCache {
                         bold: parts[3] == "1",
                         italic: parts[4] == "1",
                         face_index,
+                        mac_roman_only: parts[6] == "1",
                     });
             }
             Some("F") if parts.len() == 3 && parts[2] == "-" => {
@@ -113,11 +115,12 @@ pub(super) fn save_cache(cache: &FontCache) {
             for face in &cached.faces {
                 let _ = writeln!(
                     out,
-                    "F\t{path_str}\t{}\t{}\t{}\t{}",
+                    "F\t{path_str}\t{}\t{}\t{}\t{}\t{}",
                     face.family,
                     u8::from(face.bold),
                     u8::from(face.italic),
                     face.face_index,
+                    u8::from(face.mac_roman_only),
                 );
             }
         }

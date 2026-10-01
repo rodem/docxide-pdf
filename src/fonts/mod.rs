@@ -244,6 +244,18 @@ fn face_is_script_design(path: &std::path::Path, face_index: u32) -> bool {
     .unwrap_or(false)
 }
 
+/// Names Word draws with its own face even where the OS has one: Mac Word sets
+/// "Times" in Times New Roman (no fontTable entry, or altName Times New Roman),
+/// and Windows maps Times and Courier to Times New Roman and Courier New. Apple's
+/// Times and Courier are indexed only as Mac-only faces (`discovery`).
+fn word_substitute(name: &str) -> Option<&'static str> {
+    match name.to_ascii_lowercase().as_str() {
+        "times" => Some("Times New Roman"),
+        "courier" => Some("Courier New"),
+        _ => None,
+    }
+}
+
 fn known_font_alias(name: &str) -> Option<&'static str> {
     match name {
         "Palatino Linotype" => Some("Palatino"),
@@ -520,7 +532,7 @@ pub(crate) fn register_font(
             font_name
                 .split(';')
                 .map(|s| s.trim())
-                .find_map(|c| try_candidate(c))
+                .find_map(|c| try_candidate(word_substitute(c).unwrap_or(c)))
         })
         .or_else(|| {
             let alias = known_font_alias(primary)?;

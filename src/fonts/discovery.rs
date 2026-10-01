@@ -14,31 +14,43 @@ type FontLookup = HashMap<(String, bool, bool), (PathBuf, u32)>;
 
 static FONT_INDEX: OnceLock<FontLookup> = OnceLock::new();
 
-/// Return all localized family names for a font face (deduplicated by lowercase).
-fn font_family_names(face: &Face) -> Vec<String> {
+/// Return all localized family names for a font face (deduplicated by lowercase),
+/// and whether they came only from Mac Roman records: macOS system faces such as
+/// Helvetica, Times, Courier, Optima and Apple's Symbol carry no Unicode family
+/// name. Those rank below every other face (see `scan_font_dirs`).
+fn font_family_names(face: &Face) -> (Vec<String>, bool) {
     let mut seen = HashSet::new();
     let mut names = Vec::new();
-    for name in face.names() {
-        if name.name_id == ttf_parser::name_id::FAMILY
-            && name.is_unicode()
-            && let Some(s) = name.to_string()
-        {
-            if seen.insert(s.to_lowercase()) {
-                names.push(s);
-            }
+    let family = || face.names().into_iter().filter(|n| n.name_id == ttf_parser::name_id::FAMILY);
+    for s in family().filter(|n| n.is_unicode()).filter_map(|n| n.to_string()) {
+        if seen.insert(s.to_lowercase()) {
+            names.push(s);
         }
     }
-    names
+    if !names.is_empty() {
+        return (names, false);
+    }
+    // ponytail: ASCII-only Mac Roman decode; every such family name seen is ASCII.
+    for n in family().filter(|n| {
+        n.platform_id == ttf_parser::PlatformId::Macintosh && n.encoding_id == 0 && n.name.is_ascii()
+    }) {
+        let s = String::from_utf8_lossy(n.name).into_owned();
+        if seen.insert(s.to_lowercase()) {
+            names.push(s);
+        }
+    }
+    (names, true)
 }
 
-/// Returns `(names, bold, italic)` — one entry with ALL localized family names.
-fn read_font_style(data: &[u8], face_index: u32) -> Option<(Vec<String>, bool, bool)> {
+/// Returns `(names, bold, italic, mac_roman_only)` — one entry with ALL localized
+/// family names.
+fn read_font_style(data: &[u8], face_index: u32) -> Option<(Vec<String>, bool, bool, bool)> {
     let face = Face::parse(data, face_index).ok()?;
-    let names = font_family_names(&face);
+    let (names, mac_roman_only) = font_family_names(&face);
     if names.is_empty() {
         return None;
     }
-    Some((names, face.is_bold(), face.is_italic()))
+    Some((names, face.is_bold(), face.is_italic(), mac_roman_only))
 }
 
 fn font_directories() -> Vec<PathBuf> {
@@ -106,6 +118,9 @@ fn is_font_file(path: &Path) -> bool {
 fn scan_font_dirs() -> FontLookup {
     let t0 = Instant::now();
     let mut index = FontLookup::new();
+    // Mac-Roman-only faces fill in only the families nothing else provides, so
+    // Apple's Symbol never shadows the vendored Microsoft Symbol (bullets).
+    let mut mac_roman_index = FontLookup::new();
     let dirs = font_directories();
 
     let no_cache = env::var("DOCXSIDE_NO_FONT_CACHE").is_ok();
@@ -157,8 +172,8 @@ fn scan_font_dirs() -> FontLookup {
             for file_path in &font_files {
                 if let Some(cached_file) = cache.files.get(file_path) {
                     for face in &cached_file.faces {
-                        index
-                            .entry((face.family.to_lowercase(), face.bold, face.italic))
+                        let tier = if face.mac_roman_only { &mut mac_roman_index } else { &mut index };
+                        tier.entry((face.family.to_lowercase(), face.bold, face.italic))
                             .or_insert((file_path.clone(), face.face_index));
                     }
                     new_cache
@@ -183,22 +198,27 @@ fn scan_font_dirs() -> FontLookup {
             let face_count = ttf_parser::fonts_in_collection(&data).unwrap_or(1);
             let mut faces = Vec::new();
             for face_idx in 0..face_count {
-                if let Some((families, bold, italic)) = read_font_style(&data, face_idx) {
+                if let Some((families, bold, italic, mac_roman_only)) = read_font_style(&data, face_idx) {
                     for family in families {
-                        index
-                            .entry((family.to_lowercase(), bold, italic))
+                        let tier = if mac_roman_only { &mut mac_roman_index } else { &mut index };
+                        tier.entry((family.to_lowercase(), bold, italic))
                             .or_insert((file_path.clone(), face_idx));
                         faces.push(CachedFace {
                             family,
                             bold,
                             italic,
                             face_index: face_idx,
+                            mac_roman_only,
                         });
                     }
                 }
             }
             new_cache.files.insert(file_path, CachedFile { faces });
         }
+    }
+
+    for (key, value) in mac_roman_index {
+        index.entry(key).or_insert(value);
     }
 
     if !no_cache {
