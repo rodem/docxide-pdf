@@ -165,10 +165,26 @@ def convert_ours(docx: Path, pdf: Path) -> bool:
     # so without this a local run renders with system fonts while CI renders with the Word fonts.
     env = {**os.environ}
     env.setdefault("DOCXSIDE_FONTS", str(ROOT / "fonts"))
-    r = subprocess.run([str(OURS_BIN), str(docx), str(pdf)], capture_output=True, text=True, env=env)
-    if r.returncode != 0:
-        pdf.unlink(missing_ok=True)  # a partial file would otherwise count as fresh next run
-    return converted(r, pdf)
+    # Convert to a fresh path (the CLI never overwrites; it would write generated(2).pdf next to a
+    # cached PDF and leave the stale one in place) and keep the cached PDF when the output is
+    # byte-identical, which it is for every case a commit does not touch, conversion being
+    # deterministic. Its mtime then stays put, so the screenshots, site images and accessibility
+    # analysis derived from it stay fresh and a warm run only redoes the cases that changed.
+    tmp = pdf.with_name(pdf.stem + ".tmp.pdf")
+    tmp.unlink(missing_ok=True)
+    t = time.perf_counter()
+    r = subprocess.run([str(OURS_BIN), str(docx), str(tmp)], capture_output=True, text=True, env=env)
+    seconds = time.perf_counter() - t
+    if r.returncode != 0 or not tmp.exists():
+        tmp.unlink(missing_ok=True)
+        pdf.unlink(missing_ok=True)  # a stale PDF must not stand in for a failed conversion
+        return converted(r, pdf)
+    if pdf.exists() and pdf.read_bytes() == tmp.read_bytes():
+        tmp.unlink()
+        pdf.with_suffix(".time").write_text(f"{seconds:.3f}")  # timed() only re-times a rewritten file
+    else:
+        tmp.replace(pdf)
+    return True
 
 
 def convert_libreoffice(soffice: Path, docx: Path, pdf: Path) -> bool:

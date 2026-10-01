@@ -195,6 +195,7 @@ struct FixturePages {
     ref_pages: Vec<PathBuf>,
     gen_pages: Vec<PathBuf>,
     output_base: PathBuf,
+    diffs_fresh: bool,
     convert_ms: u64,
     screenshot_ms: u64,
 }
@@ -206,13 +207,12 @@ fn prepare_fixture(fixture_dir: &Path) -> Option<FixturePages> {
     let reference_screenshots = output_base.join("reference");
     let generated_screenshots = output_base.join("generated");
 
-    let _ = fs::remove_dir_all(&generated_screenshots);
-    let _ = fs::remove_dir_all(&output_base.join("diff"));
     if save_side_by_side_images() {
         let _ = fs::remove_dir_all(&output_base.join("comparison"));
     }
 
-    if !common::pngs_fresh(&reference_pdf, &reference_screenshots) {
+    let ref_fresh = common::pngs_fresh(&reference_pdf, &reference_screenshots);
+    if !ref_fresh {
         let _ = fs::remove_dir_all(&reference_screenshots);
         if let Err(e) = screenshot_pdf(&reference_pdf, &reference_screenshots) {
             println!("  [ERROR] {name}: screenshot reference failed: {e}");
@@ -228,10 +228,15 @@ fn prepare_fixture(fixture_dir: &Path) -> Option<FixturePages> {
         }
     };
     let convert_ms = t0.elapsed().as_millis() as u64;
+    // An unchanged generated.pdf keeps its screenshots (see ensure_generated_pdf).
+    let gen_fresh = common::pngs_fresh(&generated_pdf, &generated_screenshots);
     let t1 = Instant::now();
-    if let Err(e) = screenshot_pdf(&generated_pdf, &generated_screenshots) {
-        println!("  [ERROR] {name}: screenshot generated failed: {e}");
-        return None;
+    if !gen_fresh {
+        let _ = fs::remove_dir_all(&generated_screenshots);
+        if let Err(e) = screenshot_pdf(&generated_pdf, &generated_screenshots) {
+            println!("  [ERROR] {name}: screenshot generated failed: {e}");
+            return None;
+        }
     }
     let screenshot_ms = t1.elapsed().as_millis() as u64;
     let ref_pages = common::collect_page_pngs(&reference_screenshots).unwrap_or_default();
@@ -239,11 +244,21 @@ fn prepare_fixture(fixture_dir: &Path) -> Option<FixturePages> {
     if ref_pages.is_empty() {
         return None;
     }
+    // The diff images derive from both sets of pages; keep them while neither set was re-rendered.
+    let diff_dir = output_base.join("diff");
+    let diffs_fresh = ref_fresh
+        && gen_fresh
+        && common::collect_page_pngs(&diff_dir)
+            .is_ok_and(|d| d.len() == ref_pages.len().min(gen_pages.len()));
+    if !diffs_fresh {
+        let _ = fs::remove_dir_all(&diff_dir);
+    }
     Some(FixturePages {
         name,
         ref_pages,
         gen_pages,
         output_base,
+        diffs_fresh,
         convert_ms,
         screenshot_ms,
     })
@@ -358,8 +373,10 @@ fn score_fixture(fixture: &FixturePages) -> Option<FixtureResult> {
             let jaccard_ms = t0.elapsed().as_millis() as u64;
 
             let t1 = Instant::now();
-            let _ = DynamicImage::ImageRgba8(result.diff_img)
-                .save(diff_dir.join(format!("{page_num}.png")));
+            if !fixture.diffs_fresh {
+                let _ = DynamicImage::ImageRgba8(result.diff_img)
+                    .save(diff_dir.join(format!("{page_num}.png")));
+            }
             if save_comparison {
                 let _ = save_side_by_side(
                     &img_ref,

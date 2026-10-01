@@ -218,34 +218,57 @@ fn src_newest_mtime() -> std::time::SystemTime {
 }
 
 /// Convert DOCX→PDF only if the generated PDF is missing or older than input.docx or src/.
+///
+/// Conversion is deterministic, so when the new PDF is byte-identical to the existing one the
+/// existing file is kept, mtime and all: the screenshots, diffs and accessibility analyses
+/// derived from it stay fresh, and a src/ edit only re-renders the fixtures it changed. A stamp
+/// beside the PDF records which inputs it was last converted against, so an unchanged PDF is
+/// not reconverted on every run either.
 pub fn ensure_generated_pdf(fixture_dir: &Path) -> Result<PathBuf, String> {
     let input_docx = fixture_dir.join("input.docx");
     let out = output_dir(fixture_dir);
     fs::create_dir_all(&out).map_err(|e| e.to_string())?;
     let generated_pdf = out.join("generated.pdf");
+    let stamp = out.join("generated.stamp");
 
-    let needs_convert = !generated_pdf.exists() || {
-        let docx_mtime = fs::metadata(&input_docx)
+    let mtime = |p: &Path| {
+        fs::metadata(p)
             .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-        let src_mtime = src_newest_mtime();
-        let newest_input = docx_mtime.max(src_mtime);
-        let pdf_mtime = fs::metadata(&generated_pdf)
-            .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-        pdf_mtime < newest_input
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
     };
+    let newest_input = mtime(&input_docx).max(src_newest_mtime());
+    let stamp_value = format!(
+        "{:?}",
+        newest_input.duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap_or_default()
+    );
+    let up_to_date = generated_pdf.exists()
+        && (mtime(&generated_pdf) >= newest_input
+            || fs::read_to_string(&stamp).is_ok_and(|s| s == stamp_value));
 
-    if needs_convert {
-        let input = input_docx.clone();
-        let output = generated_pdf.clone();
+    if !up_to_date {
+        let tmp = out.join("generated.tmp.pdf");
+        let (input, output) = (input_docx.clone(), tmp.clone());
         let result =
             std::panic::catch_unwind(move || docxide_pdf::convert_docx_to_pdf(&input, &output));
         match result {
             Ok(Ok(())) => {}
-            Ok(Err(e)) => return Err(e.to_string()),
-            Err(_) => return Err("conversion panicked".to_string()),
+            Ok(Err(e)) => {
+                let _ = fs::remove_file(&tmp);
+                return Err(e.to_string());
+            }
+            Err(_) => {
+                let _ = fs::remove_file(&tmp);
+                return Err("conversion panicked".to_string());
+            }
         }
+        let new_bytes = fs::read(&tmp).map_err(|e| e.to_string())?;
+        let unchanged = fs::read(&generated_pdf).is_ok_and(|old| old == new_bytes);
+        if unchanged {
+            let _ = fs::remove_file(&tmp);
+        } else {
+            fs::rename(&tmp, &generated_pdf).map_err(|e| e.to_string())?;
+        }
+        let _ = fs::write(&stamp, stamp_value);
     }
 
     Ok(generated_pdf)
@@ -271,7 +294,7 @@ pub fn delta_str(current: f64, previous: Option<f64>) -> String {
 /// Hashing pixel data (not file bytes) ensures stability across mutool versions.
 pub fn compute_page_hashes(gen_pages: &[PathBuf]) -> Vec<String> {
     gen_pages
-        .iter()
+        .par_iter()
         .filter_map(|p| {
             let img = image::open(p).ok()?.to_rgba8();
             let mut hasher = Sha256::new();
