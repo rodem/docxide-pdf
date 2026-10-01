@@ -66,27 +66,56 @@ language. Also 7.2-2 outline language (59), 7.18.3-1 no `/Tabs` (25),
 7.21.4.1-1 non-embedded base-14 fallback (3), 7.18.5-2 link `/Contents` (3),
 7.21.7-1 missing ToUnicode (1), 7.21.8-1 `.notdef` referenced (1).
 
-**Backlog, ordered by metric impact:**
-1. Catalog basics: `/Lang` (docDefaults `w:lang`), XMP with dc:title,
-   DisplayDocTitle, page `/Tabs /S`. (No pdfuaid until we actually conform.)
-2. Real space glyphs between words (body text has none: every word is its
-   own `Tj`, so extraction merges words — blocks can't match Word's).
-3. Structure tree: MarkInfo, StructTreeRoot/ParentTree, P and H1–H6 (from
-   `outline_level`, Title style → Title), header/footer `/Artifact
-   /Pagination`, decoration (borders, shading, rules, underlines) artifacts.
-4. Lists L/LI/Lbl/LBody (model keeps only the label string — keep ilvl).
-5. Tables Table/THead/TBody/TR/TH/TD (`tblHeader`; repeated header rows are
-   artifacts; `tblHeader val="0"` currently still counts as a header).
-6. Figures with `/Alt` from `wp:docPr/@descr` (not parsed yet); decorative →
-   artifact.
-7. Links: Link + OBJR + `/StructParent` + `/Contents`. Also fix links dropped
-   in table cells, headers/footers and footnotes (throwaway `Vec` at
-   `table.rs`, `header_footer.rs`, `footnotes.rs`) and link rects/outline
-   destinations not transformed by `BODY_SCALE`/vAlign (`assembly.rs`).
-8. Footnotes (Word: `P > Link > (OBJR, Footnote > P)`), textboxes, TOC/TOCI.
-9. Font rules: widths ≠ glyph widths, base-14 fallback without ToUnicode or
-   embedding, Symbol PUA bullets extracting as U+F0xx, `.notdef` for missing
-   chars, `w:softHyphen` dropped, `w:noBreakHyphen` → U+002D.
+**Done (2026-10-01, one commit each, every one with no visual change):**
+catalog `/Lang`, XMP, DisplayDocTitle, `/Tabs` · boundary space glyphs
+(appended to the word's own `Tj`) · structure tree with P/H1–H6, artifacts by
+default (`pdf/tagging.rs`) · object streams (`pdf/objstm.rs`, −15% size) ·
+L/LI/Lbl/LBody · deterministic ToUnicode (lowest code point per CID) · tables
+(THead/TBody/TR/TH/TD, TH `/Scope`, `/ColSpan`) · word boundaries at tabs and
+`w:br` · Figures (alt from `docPr@descr`, decorative → artifact) · Links +
+OBJR + `/Contents` · TOC/TOCI inside TOC fields · PAGEREF `\h` links ·
+outlineLvl 9 = body text · built-in "heading N" levels · footnote/endnote
+Notes · cell links, notes and lists.
+
+Progress over the 173 tagged references: struct 0 → 90.9%, text 0 → 92.2%,
+ua_deficit 1165 → 13 (162 fixtures fail no PDF/UA-1 rule Word passes);
+LibreOffice's own tagged export scores 76% / 84% on the same yardstick.
+Output size: 24.76 MB untagged → 24.33 MB tagged (object streams).
+
+**How Word tags things (learned the hard way):**
+- Pictures, charts and SmartArt: the paragraph's own (empty) P, then a
+  `Figure` hoisted to Document level. Chart and SmartArt Figures carry **no
+  extractable text** — their labels are artifacts; SmartArt's `/Alt` is the
+  node texts one per line plus "(Layout Name)".
+- Tables: `tblLook` firstRow → THead/TH (on when `tblLook` is absent),
+  firstColumn → TH; a header-only table gets an empty TBody; a vertically
+  merged cell's continuation is an empty cell (no RowSpan); no ColSpan, no
+  Scope (so Word fails 7.2-42 and 7.5-1). Word also flattens some bordered
+  data tables to one P per cell (who_prescribing 16×7, bush_fires 56×4,
+  covid_insomnia) — the rule isn't recoverable from the DOCX features; we tag
+  them as tables, which costs a few pp struct on those fixtures.
+- Nested lists: the sub-list's L sits inside the parent item's LBody.
+- Tabs and line breaks extract as spaces.
+- TOC/TOCI only inside a real TOC field; hand-styled "toc N" paragraphs stay
+  P. Each TOCI's Link is the `PAGEREF \h` page number.
+- Footnotes: `P > Link > (OBJR, Span mark, Footnote > P)` — the Note sits
+  inside a Link on the reference mark.
+
+**Backlog, ordered by gap data (`tag_gaps.py` / `text_gaps.py` in the session
+scratchpad; rebuild them from `tests/common/a11y.rs` if needed):**
+1. Footnote reference marks as Links (Word wraps each Note in one: ~335
+   missing Link tokens) — needs a GoTo to the note's position.
+2. Textboxes (102 Sect tokens) — deferred shapes are artifacts.
+3. Pictures inside text paragraphs and floating pictures (~70 Figures).
+4. slovak_eu_directive: we emit 9 table rows where Word has 14 (table model).
+5. Nested tables and header/footer tables are artifacts.
+6. Links in headers/footers and footnotes are still dropped; link rects and
+   outline destinations ignore `BODY_SCALE`/vAlign (`assembly.rs`).
+7. Font rules: widths ≠ glyph widths (7.21.5-1, 7 fixtures), base-14
+   fallback without ToUnicode or embedding, `.notdef` for missing chars,
+   `w:softHyphen` dropped, `w:noBreakHyphen` → U+002D.
+8. Test-run time: with Microsoft Defender scanning `tests/output` and a
+   concurrent worktree run, the full suite took >60 min (normally ~6–10).
 
 **Harness side findings (2026-10-01):** `tests/text_boundary.rs` has had no
 `#[test]` since fb9373b, so the TxtBnd baselines are stale;
