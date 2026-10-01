@@ -22,6 +22,15 @@ fn dml_typeface<'a>(node: roxmltree::Node<'a, 'a>, element: &str) -> Option<&'a 
         .filter(|tf| !tf.is_empty())
 }
 
+/// A theme font group's `ea`/`cs` typeface; an empty one defers to the
+/// group's font for `script`.
+fn group_typeface<'a>(font_group: roxmltree::Node<'a, 'a>, element: &str, script: Option<&str>) -> String {
+    dml_typeface(font_group, element)
+        .or_else(|| script.and_then(|s| script_font_typeface(font_group, s)))
+        .unwrap_or("")
+        .to_string()
+}
+
 fn script_font_typeface<'a>(font_group: roxmltree::Node<'a, 'a>, script: &str) -> Option<&'a str> {
     font_group
         .children()
@@ -52,18 +61,19 @@ fn is_lang_tag(tag: &str) -> bool {
         && parts.all(|p| (1..=8).contains(&p.len()) && p.chars().all(|c| c.is_ascii_alphanumeric()))
 }
 
-fn lang_to_script(lang: &str) -> &'static str {
-    if lang.starts_with("ja") {
-        "Jpan"
-    } else if lang.starts_with("zh") && lang.contains("TW") {
-        "Hant"
-    } else if lang.starts_with("zh") {
-        "Hans"
-    } else if lang.starts_with("ko") {
-        "Hang"
-    } else {
-        "Jpan"
-    }
+/// The theme `a:font @script` for a language.
+// ponytail: CJK and right-to-left scripts only; add Indic/Thai languages when
+// a document's themeFontLang bidi uses one
+fn lang_to_script(lang: &str) -> Option<&'static str> {
+    Some(match lang.split('-').next()? {
+        "ja" => "Jpan",
+        "zh" if lang.contains("TW") => "Hant",
+        "zh" => "Hans",
+        "ko" => "Hang",
+        "ar" | "fa" | "ur" | "ps" | "sd" | "ug" => "Arab",
+        "he" | "yi" => "Hebr",
+        _ => return None,
+    })
 }
 
 pub(super) struct ThemeGradientStop {
@@ -84,8 +94,28 @@ pub(super) struct ThemeFonts {
     pub(super) minor: String,
     pub(super) major_east_asia: String,
     pub(super) minor_east_asia: String,
+    /// Complex-script fonts (`majorBidi`/`minorBidi`).
+    pub(super) major_cs: String,
+    pub(super) minor_cs: String,
     pub(super) colors: HashMap<String, [u8; 3]>,
     pub(super) fill_styles: Vec<ThemeFillStyle>,
+}
+
+impl ThemeFonts {
+    /// The font a theme slot (`minorHAnsi`, `majorEastAsia`, `minorBidi`, …)
+    /// names; None when unknown or empty.
+    fn slot(&self, name: &str) -> Option<&str> {
+        let font = match name {
+            "majorHAnsi" => &self.major,
+            "minorHAnsi" => &self.minor,
+            "majorEastAsia" => &self.major_east_asia,
+            "minorEastAsia" => &self.minor_east_asia,
+            "majorBidi" => &self.major_cs,
+            "minorBidi" => &self.minor_cs,
+            _ => return None,
+        };
+        Some(font.as_str()).filter(|f| !f.is_empty())
+    }
 }
 
 pub(super) struct StyleDefaults {
@@ -305,15 +335,19 @@ pub(super) fn parse_char_spacing(rpr: roxmltree::Node) -> Option<f32> {
 pub(super) fn parse_theme<R: Read + Seek>(
     zip: &mut zip::ZipArchive<R>,
     east_asia_lang: Option<&str>,
+    bidi_lang: Option<&str>,
 ) -> ThemeFonts {
     let mut major = String::from("Aptos Display");
     let mut minor = String::from("Aptos");
     let mut major_east_asia = String::new();
     let mut minor_east_asia = String::new();
+    let mut major_cs = String::new();
+    let mut minor_cs = String::new();
     let mut colors = HashMap::new();
     let mut fill_styles = Vec::new();
 
-    let script = east_asia_lang.map(lang_to_script).unwrap_or("Jpan");
+    let script = east_asia_lang.and_then(lang_to_script).unwrap_or("Jpan");
+    let bidi_script = bidi_lang.and_then(lang_to_script);
 
     let names: Vec<String> = zip.file_names().map(|s| s.to_string()).collect();
     let xml_content = names
@@ -333,19 +367,15 @@ pub(super) fn parse_theme<R: Read + Seek>(
                     if let Some(tf) = dml_typeface(node, "latin") {
                         major = tf.to_string();
                     }
-                    major_east_asia = dml_typeface(node, "ea")
-                        .or_else(|| script_font_typeface(node, script))
-                        .unwrap_or("")
-                        .to_string();
+                    major_east_asia = group_typeface(node, "ea", Some(script));
+                    major_cs = group_typeface(node, "cs", bidi_script);
                 }
                 "minorFont" => {
                     if let Some(tf) = dml_typeface(node, "latin") {
                         minor = tf.to_string();
                     }
-                    minor_east_asia = dml_typeface(node, "ea")
-                        .or_else(|| script_font_typeface(node, script))
-                        .unwrap_or("")
-                        .to_string();
+                    minor_east_asia = group_typeface(node, "ea", Some(script));
+                    minor_cs = group_typeface(node, "cs", bidi_script);
                 }
                 "clrScheme" => {
                     for child in node.children() {
@@ -399,6 +429,8 @@ pub(super) fn parse_theme<R: Read + Seek>(
         minor,
         major_east_asia,
         minor_east_asia,
+        major_cs,
+        minor_cs,
         colors,
         fill_styles,
     }
@@ -438,11 +470,7 @@ pub(super) fn resolve_font(
     if let Some(f) = ascii {
         return f.to_string();
     }
-    match ascii_theme {
-        Some("majorHAnsi") => theme.major.clone(),
-        Some("minorHAnsi") => theme.minor.clone(),
-        _ => default_font.to_string(),
-    }
+    ascii_theme.and_then(|t| theme.slot(t)).unwrap_or(default_font).to_string()
 }
 
 pub(super) fn resolve_font_from_node(
@@ -478,15 +506,12 @@ pub(super) fn resolve_east_asia_font(
     east_asia_theme: Option<&str>,
     theme: &ThemeFonts,
 ) -> Option<String> {
-    let from_theme = match east_asia_theme {
-        Some("majorEastAsia") if !theme.major_east_asia.is_empty() => {
-            Some(theme.major_east_asia.clone())
-        }
-        Some("minorEastAsia") if !theme.minor_east_asia.is_empty() => {
-            Some(theme.minor_east_asia.clone())
-        }
-        _ => None,
-    };
+    // ponytail: East Asian slots only; eastAsiaTheme="minorHAnsi" (997 runs in
+    // the corpus) still falls through to w:eastAsia
+    let from_theme = east_asia_theme
+        .filter(|t| t.ends_with("EastAsia"))
+        .and_then(|t| theme.slot(t))
+        .map(str::to_string);
     // eastAsiaTheme overrides eastAsia per spec
     from_theme.or_else(|| east_asia.filter(|s| !s.is_empty()).map(|s| s.to_string()))
 }
@@ -1142,6 +1167,36 @@ mod tests {
         assert_eq!(builtin_heading_level("heading 10"), None);
         assert_eq!(builtin_heading_level("Heading"), None);
         assert_eq!(builtin_heading_level("TOC Heading"), None);
+    }
+
+    #[test]
+    fn east_asian_and_bidi_theme_slots_resolve() {
+        let theme = ThemeFonts {
+            major: "Calibri Light".into(),
+            minor: "Calibri".into(),
+            major_east_asia: "MS Gothic".into(),
+            minor_east_asia: "맑은 고딕".into(),
+            major_cs: "Times New Roman".into(),
+            minor_cs: "Arial".into(),
+            colors: HashMap::new(),
+            fill_styles: Vec::new(),
+        };
+        let font = |slot| resolve_font(None, Some(slot), &theme, "");
+        assert_eq!(font("minorEastAsia"), "맑은 고딕");
+        assert_eq!(font("majorEastAsia"), "MS Gothic");
+        assert_eq!(font("minorBidi"), "Arial");
+        assert_eq!(font("majorBidi"), "Times New Roman");
+        assert_eq!(resolve_font(None, Some("minorBidi"), &ThemeFonts { minor_cs: String::new(), ..theme }, "Calibri"), "Calibri");
+    }
+
+    #[test]
+    fn languages_map_to_theme_scripts() {
+        assert_eq!(lang_to_script("ja-JP"), Some("Jpan"));
+        assert_eq!(lang_to_script("zh-TW"), Some("Hant"));
+        assert_eq!(lang_to_script("zh-CN"), Some("Hans"));
+        assert_eq!(lang_to_script("ar-SA"), Some("Arab"));
+        assert_eq!(lang_to_script("he-IL"), Some("Hebr"));
+        assert_eq!(lang_to_script("th-TH"), None);
     }
 
     #[test]

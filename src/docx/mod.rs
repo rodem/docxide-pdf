@@ -712,7 +712,7 @@ fn parse_core_props<R: Read + std::io::Seek>(
 
 fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Document, Error> {
     let settings = parse_settings(zip);
-    let theme = parse_theme(zip, settings.east_asia_lang.as_deref());
+    let theme = parse_theme(zip, settings.east_asia_lang.as_deref(), settings.bidi_lang.as_deref());
     let styles = parse_styles(zip, &theme);
     let numbering = parse_numbering(zip);
     let rels = parse_relationships(zip);

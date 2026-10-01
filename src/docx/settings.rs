@@ -9,6 +9,8 @@ pub(super) struct DocumentSettings {
     pub mirror_margins: bool,
     pub gutter_at_top: bool,
     pub east_asia_lang: Option<String>,
+    /// `w:themeFontLang @bidi`: picks the theme's complex-script font.
+    pub bidi_lang: Option<String>,
     pub auto_hyphenation: bool,
     pub default_lang: Option<String>,
     /// §17.15.1.15 `w:characterSpacingControl` is `compressPunctuation` or
@@ -25,6 +27,7 @@ impl Default for DocumentSettings {
             mirror_margins: false,
             gutter_at_top: false,
             east_asia_lang: None,
+            bidi_lang: None,
             auto_hyphenation: false,
             default_lang: None,
             compress_punctuation: false,
@@ -49,12 +52,14 @@ pub(super) fn parse_settings<R: Read + Seek>(
         .unwrap_or(36.0);
 
     let theme_font_lang = wml(root, "themeFontLang");
-    let east_asia_lang = theme_font_lang
-        .and_then(|n| n.attribute((WML_NS, "eastAsia")))
-        .map(|s| s.to_string());
-    let default_lang = theme_font_lang
-        .and_then(|n| n.attribute((WML_NS, "val")))
-        .map(|s| s.to_string());
+    let lang = |attr| {
+        theme_font_lang
+            .and_then(|n| n.attribute((WML_NS, attr)))
+            .map(str::to_string)
+    };
+    let east_asia_lang = lang("eastAsia");
+    let default_lang = lang("val");
+    let bidi_lang = lang("bidi");
 
     DocumentSettings {
         even_and_odd_headers: wml_bool(root, "evenAndOddHeaders").unwrap_or(false),
@@ -62,6 +67,7 @@ pub(super) fn parse_settings<R: Read + Seek>(
         mirror_margins: wml_bool(root, "mirrorMargins").unwrap_or(false),
         gutter_at_top: wml_bool(root, "gutterAtTop").unwrap_or(false),
         east_asia_lang,
+        bidi_lang,
         auto_hyphenation: wml_bool(root, "autoHyphenation").unwrap_or(false),
         default_lang,
         compress_punctuation: wml_attr(root, "characterSpacingControl")
