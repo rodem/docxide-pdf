@@ -187,6 +187,9 @@ pub(super) struct ParagraphStyle {
     pub(super) clear_tab_positions: Vec<f32>,
     pub(super) num_id: Option<String>,
     pub(super) num_ilvl: Option<u8>,
+    /// The style's indentation sits above its numbering's: walking up from
+    /// this style, an own w:ind comes before (or with) an own w:numPr.
+    pub(super) ind_over_numbering: bool,
     pub(super) outline_level: Option<u8>,
     pub(super) snap_to_grid: Option<bool>,
     pub(super) auto_space_de: Option<bool>,
@@ -888,6 +891,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
                         clear_tab_positions,
                         num_id,
                         num_ilvl,
+                        ind_over_numbering: false,
                         outline_level,
                         snap_to_grid,
                         auto_space_de,
@@ -1069,6 +1073,15 @@ pub(super) fn parse_styles<R: Read + Seek>(
 
 fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
     let ids: Vec<String> = styles.keys().cloned().collect();
+    // Some(true) = own w:ind, Some(false) = own w:numPr only.
+    let own_ind_or_num: HashMap<String, Option<bool>> = styles
+        .iter()
+        .map(|(id, s)| {
+            let ind = s.indent_left.is_some() || s.indent_hanging.is_some() || s.indent_first_line.is_some();
+            let num = s.num_id.is_some() || s.num_ilvl.is_some();
+            (id.clone(), if ind { Some(true) } else if num { Some(false) } else { None })
+        })
+        .collect();
     for id in ids {
         let mut visited: HashSet<String> = HashSet::new();
         let mut chain: Vec<String> = Vec::new();
@@ -1156,7 +1169,12 @@ fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
         inh.tab_stops
             .sort_by(|a, b| a.position.total_cmp(&b.position));
 
+        let ind_over_numbering = chain
+            .iter()
+            .find_map(|c| own_ind_or_num.get(c).copied().flatten())
+            .unwrap_or(false);
         if let Some(s) = styles.get_mut(&id) {
+            s.ind_over_numbering = ind_over_numbering;
             // The chain starts with the style itself, so `inh` already holds
             // its own values: one field list serves both directions.
             inherit!(s, inh);

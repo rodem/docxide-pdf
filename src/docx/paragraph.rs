@@ -189,7 +189,12 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         .unwrap_or(ctx.styles.defaults.font_size);
     // Numbering-level ind (already in indent_left/indent_hanging) outranks
     // style ind (§17.9.27); only directly-specified attributes override it.
-    let numbering_ind = indent_left != 0.0 || indent_hanging != 0.0;
+    // Numbering that comes from the paragraph style sits below an ind set on
+    // the same style or one below it (§17.7.2): an AC Bullet style setting
+    // 340/340 over its list level's 153/360 indents by 340 in Word; an ind
+    // only on a style above the numPr stays under the level's.
+    let style_ind_wins = num_pr.is_none() && para_style.is_some_and(|s| s.ind_over_numbering);
+    let numbering_ind = !style_ind_wins && (indent_left != 0.0 || indent_hanging != 0.0);
     let (left, right, hanging, first) =
         if let Some(ind) = ppr.and_then(|ppr| wml(ppr, "ind")) {
             let (l, r, h, f) = extract_indents(ind, Some(char_width_fs / 2.0));
@@ -209,7 +214,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
             } else {
                 (l, r, h, f)
             }
-        } else if list_label.is_empty()
+        } else if (list_label.is_empty() || style_ind_wins)
             && let Some(s) = para_style
         {
             (
