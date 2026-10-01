@@ -526,8 +526,17 @@ impl<'a> LinkTagger<'a> {
         }
     }
 
-    fn end_picture(&mut self, content: &mut Content) {
+    /// Back to the open element after a picture or an artifact.
+    fn resume(&mut self, content: &mut Content) {
         self.tags.begin(content, self.page, self.open());
+    }
+
+    /// Draw something that isn't the paragraph's content (outside a text
+    /// object) as an artifact.
+    fn artifact(&mut self, content: &mut Content, draw: impl FnOnce(&mut Content)) {
+        super::tagging::Tags::end(content);
+        draw(content);
+        self.resume(content);
     }
 
     fn finish(mut self, content: &mut Content) {
@@ -1802,16 +1811,25 @@ pub(super) fn render_paragraph_lines(
                         .map(|e| e.word_width(&s, fs, false))
                         .unwrap_or(fs * 0.5 * s.chars().count() as f32);
                     let bytes = encode_text_for_pdf(&s, &font, &pdf_name_to_entry);
-                    content.save_state();
-                    content.set_char_spacing(0.0);
-                    content.set_horizontal_scaling(100.0);
-                    fill_color_or_black(content, None);
-                    content.begin_text();
-                    content.set_font(Name(font.as_bytes()), fs);
-                    content.next_line(ln.right_x - w, y);
-                    content.show(Str(&bytes));
-                    content.end_text();
-                    content.restore_state();
+                    let x = ln.right_x - w;
+                    let draw = |content: &mut Content| {
+                        content.save_state();
+                        content.set_char_spacing(0.0);
+                        content.set_horizontal_scaling(100.0);
+                        fill_color_or_black(content, None);
+                        content.begin_text();
+                        content.set_font(Name(font.as_bytes()), fs);
+                        content.next_line(x, y);
+                        content.show(Str(&bytes));
+                        content.end_text();
+                        content.restore_state();
+                    };
+                    // Margin numbering isn't the paragraph's text: a screen
+                    // reader would read "2Numbered line".
+                    match link_tags.as_mut() {
+                        Some(lt) => lt.artifact(content, draw),
+                        None => draw(content),
+                    }
                 }
             }
         }
@@ -2413,7 +2431,7 @@ pub(super) fn render_paragraph_lines(
                     content.restore_state();
                 }
                 if let Some(lt) = link_tags.as_mut() {
-                    lt.end_picture(content);
+                    lt.resume(content);
                 }
             }
         }
