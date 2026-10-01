@@ -343,6 +343,9 @@ pub struct Paragraph {
     /// for `suff="nothing"` items whose label was folded into the runs.
     pub list_level: Option<u8>,
     pub list_id: Option<u32>,
+    /// A `TOC` field begins here. Word tags "toc N" paragraphs as TOC/TOCI
+    /// only inside such a field; hand-styled ones stay paragraphs.
+    pub starts_toc_field: bool,
     /// Numbering level tab stop (pts from paragraph left edge)
     pub num_level_tab_stop: Option<f32>,
     pub contextual_spacing: bool,

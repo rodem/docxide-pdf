@@ -586,6 +586,10 @@ pub(super) struct PageBuilder {
     all_first_styleref: Vec<HashMap<String, String>>,
     pub(super) tags: tagging::Tags,
     pub(super) lists: tagging::Lists,
+    /// The open TOC element while consecutive "toc N" paragraphs are tagged.
+    pub(super) toc: Option<usize>,
+    /// A TOC field has begun and its entries haven't ended yet.
+    toc_field: bool,
     /// Structure of the body table being rendered (see `table::render_table`).
     pub(super) table_tags: Option<tagging::TableTags>,
 }
@@ -624,6 +628,8 @@ impl PageBuilder {
             all_first_styleref: Vec::new(),
             tags: tagging::Tags::new(),
             lists: tagging::Lists::default(),
+            toc: None,
+            toc_field: false,
             table_tags: None,
         }
     }
@@ -641,6 +647,20 @@ impl PageBuilder {
     /// Structure nodes for a body paragraph: (Lbl, element for its text). List
     /// items become LI > Lbl + LBody; numbered headings stay headings.
     fn para_tags(&mut self, para: &Paragraph, doc: &Document) -> (Option<usize>, usize) {
+        // Word tags a table of contents as one flat TOC holding a TOCI per entry.
+        let style_name = para.style_id.as_ref().and_then(|id| doc.style_id_to_name.get(id));
+        let is_toc_entry = style_name.is_some_and(|n| {
+            n.get(..4).is_some_and(|p| p.eq_ignore_ascii_case("toc ")) && n[4..].parse::<u8>().is_ok()
+        });
+        // Only inside a TOC field: its begin can sit in the entry or a heading above.
+        self.toc_field |= para.starts_toc_field;
+        if is_toc_entry && self.toc_field {
+            self.lists.close();
+            let toc = *self.toc.get_or_insert_with(|| self.tags.add(tagging::ROOT, "TOC"));
+            return (None, self.tags.add(toc, "TOCI"));
+        }
+        self.toc = None;
+        self.toc_field = para.starts_toc_field;
         match (para.list_level, para.list_id) {
             (Some(level), Some(id)) if para.outline_level.is_none() => {
                 let labelled = !para.list_label.is_empty();
@@ -3181,6 +3201,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
                 Block::Table(table) => {
                     state.pb.lists.close();
+                    state.pb.toc = None;
                     let override_pos = table.position.as_ref().map(|pos| {
                         let table_total_w: f32 = table.col_widths.iter().sum();
                         let x = match pos.h_anchor {

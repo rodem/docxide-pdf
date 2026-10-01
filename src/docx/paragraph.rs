@@ -396,6 +396,10 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         list_label_color,
         list_level,
         list_id,
+        starts_toc_field: node.descendants().any(|n| {
+            n.has_tag_name((WML_NS, "instrText"))
+                && n.text().is_some_and(|t| t.trim_start().starts_with("TOC"))
+        }),
         num_level_tab_stop: num_tab_stop,
         contextual_spacing,
         keep_next,
