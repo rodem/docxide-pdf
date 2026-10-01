@@ -71,7 +71,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
     let borders = ppr
         .and_then(parse_paragraph_borders)
         .unwrap_or_else(|| para_style.map(|s| s.borders.clone()).unwrap_or_default());
-    let (sp_before, sp_after, line_spacing) = parse_paragraph_spacing(ppr, para_style, None);
+    let (sp_before, sp_after, line_spacing) = parse_paragraph_spacing(ppr, para_style);
     let space_before = sp_before.unwrap_or(0.0);
     let space_after = sp_after.unwrap_or(ctx.styles.defaults.space_after);
 
@@ -380,11 +380,14 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         tbs
     };
 
+    let (space_before_auto, space_after_auto) = super::autospacing(ppr, para_style);
     Paragraph {
         runs,
         style_id: Some(para_style_id.to_string()),
         space_before,
         space_after,
+        space_before_auto,
+        space_after_auto,
         content_height,
         alignment,
         indent_left,

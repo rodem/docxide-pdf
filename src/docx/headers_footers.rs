@@ -140,7 +140,7 @@ fn parse_notes_simple<R: Read + Seek>(
 
             let alignment = resolve_alignment(ppr, para_style);
             let parsed = parse_runs(p, fn_ctx);
-            let (sp_before, sp_after, ls) = parse_paragraph_spacing(ppr, para_style, None);
+            let (sp_before, sp_after, ls) = parse_paragraph_spacing(ppr, para_style);
 
             // Indents: inline w:ind overrides the style, missing attributes
             // fall back to the (basedOn-resolved) style — same merge as body

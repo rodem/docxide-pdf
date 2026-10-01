@@ -668,8 +668,11 @@ pub(super) fn compute_row_layouts(
                                     tallest_lhr,
                                     tallest_ar,
                                 ) - line_h;
+                                // A cell drops HTML auto spacing at its edges.
                                 let space_before = if para_idx > 0 {
                                     f32::max(prev_space_after, para.space_before)
+                                } else if para.space_before_auto {
+                                    0.0
                                 } else {
                                     para.space_before
                                 } + label_extra;
@@ -907,7 +910,11 @@ pub(super) fn compute_row_layouts(
                                     has_connectors: !para.connectors.is_empty(),
                                 }));
 
-                                prev_space_after = para.space_after;
+                                prev_space_after = if para.space_after_auto && block_idx == block_count - 1 {
+                                    0.0
+                                } else {
+                                    para.space_after
+                                };
                                 prev_was_nested_table = false;
                                 para_idx += 1;
                             }

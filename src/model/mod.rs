@@ -330,6 +330,10 @@ pub struct Paragraph {
     pub style_id: Option<String>,
     pub space_before: f32,
     pub space_after: f32,
+    /// The before/after came from HTML auto spacing, which a table cell drops
+    /// at its top and bottom edge.
+    pub space_before_auto: bool,
+    pub space_after_auto: bool,
     pub content_height: f32,
     pub alignment: Alignment,
     pub indent_left: f32,

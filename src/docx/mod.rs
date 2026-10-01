@@ -467,50 +467,48 @@ pub(super) fn resolve_theme_color_key(scheme_name: &str) -> &str {
     }
 }
 
+/// HTML auto spacing (`w:beforeAutospacing` / `w:afterAutospacing`) on each
+/// side: an inline value overrides the style's, so an inline "0" switches it off.
+pub(in crate::docx) fn autospacing(
+    ppr: Option<roxmltree::Node>,
+    para_style: Option<&ParagraphStyle>,
+) -> (bool, bool) {
+    let inline_spacing = ppr.and_then(|ppr| wml(ppr, "spacing"));
+    let side = |attr: &str, style_val: Option<bool>| {
+        inline_spacing
+            .and_then(|n| n.attribute((WML_NS, attr)).map(parse_on_off))
+            .or(style_val)
+            .unwrap_or(false)
+    };
+    (
+        side("beforeAutospacing", para_style.and_then(|s| s.space_before_autospacing)),
+        side("afterAutospacing", para_style.and_then(|s| s.space_after_autospacing)),
+    )
+}
+
+/// Word's auto spacing: 14pt whatever the font, replacing w:before/w:after
+/// (Normal (Web) paragraphs step 13.8 + 14 where their twips say 5pt).
+const AUTO_SPACING: f32 = 14.0;
+
 pub(in crate::docx) fn parse_paragraph_spacing(
     ppr: Option<roxmltree::Node>,
     para_style: Option<&ParagraphStyle>,
-    autospacing_font_size: Option<f32>,
 ) -> (Option<f32>, Option<f32>, Option<LineSpacing>) {
     let inline_spacing = ppr.and_then(|ppr| wml(ppr, "spacing"));
-
-    let (space_before, space_after) = if let Some(fs) = autospacing_font_size {
-        // Auto-spacing (beforeAutospacing/afterAutospacing="1"): when set, Word
-        // uses the font's em-size (≈ font_size) as spacing. Inline "0" disables.
-        let before_auto = inline_spacing
-            .and_then(|n| n.attribute((WML_NS, "beforeAutospacing")).map(parse_on_off))
-            .or_else(|| para_style.and_then(|s| s.space_before_autospacing))
-            .unwrap_or(false);
-        let after_auto = inline_spacing
-            .and_then(|n| n.attribute((WML_NS, "afterAutospacing")).map(parse_on_off))
-            .or_else(|| para_style.and_then(|s| s.space_after_autospacing))
-            .unwrap_or(false);
-
-        let effective_fs = para_style.and_then(|s| s.font_size).unwrap_or(fs);
-
-        let sb = if before_auto {
-            Some(effective_fs)
-        } else {
-            inline_spacing
-                .and_then(|n| twips_attr(n, "before"))
-                .or_else(|| para_style.and_then(|s| s.space_before))
-        };
-        let sa = if after_auto {
-            Some(effective_fs)
-        } else {
-            inline_spacing
-                .and_then(|n| twips_attr(n, "after"))
-                .or_else(|| para_style.and_then(|s| s.space_after))
-        };
-        (sb, sa)
+    let (before_auto, after_auto) = autospacing(ppr, para_style);
+    let space_before = if before_auto {
+        Some(AUTO_SPACING)
     } else {
-        let sb = inline_spacing
+        inline_spacing
             .and_then(|n| twips_attr(n, "before"))
-            .or_else(|| para_style.and_then(|s| s.space_before));
-        let sa = inline_spacing
+            .or_else(|| para_style.and_then(|s| s.space_before))
+    };
+    let space_after = if after_auto {
+        Some(AUTO_SPACING)
+    } else {
+        inline_spacing
             .and_then(|n| twips_attr(n, "after"))
-            .or_else(|| para_style.and_then(|s| s.space_after));
-        (sb, sa)
+            .or_else(|| para_style.and_then(|s| s.space_after))
     };
 
     let line_spacing = inline_spacing
@@ -748,6 +746,8 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
     let mut counters: HashMap<(u32, u8), u32> = HashMap::new();
     let mut last_seen_level: HashMap<u32, u8> = HashMap::new();
     let mut applied_overrides: HashSet<(u32, u8)> = HashSet::new();
+    // numId of the previous body block when it was a list paragraph.
+    let mut prev_list_num_id: Option<String> = None;
 
     for node in collect_block_nodes(body) {
         if node.tag_name().namespace() != Some(WML_NS) {
@@ -763,6 +763,7 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
                     &mut applied_overrides,
                 );
                 blocks.push(Block::Table(table));
+                prev_list_num_id = None;
             }
             "p" => {
                 let ppr = wml(node, "pPr");
@@ -779,9 +780,34 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
                     style_num_id: para_style.and_then(|s| s.num_id.clone()),
                     style_num_ilvl: para_style.and_then(|s| s.num_ilvl),
                 };
-                let para = paragraph::build_paragraph(
+                let mut para = paragraph::build_paragraph(
                     node, &mut ctx, &mut counters, &mut last_seen_level, &mut applied_overrides, &opts,
                 );
+
+                // HTML auto spacing never opens the document, and it drops
+                // between items of one list: russian_university's auto-spaced
+                // list items step a plain line apart, case42's first Normal
+                // (Web) paragraph sits at the top margin.
+                let num_id = ppr
+                    .and_then(|ppr| wml(ppr, "numPr"))
+                    .and_then(|np| wml_attr(np, "numId"))
+                    .map(str::to_string)
+                    .or_else(|| para_style.and_then(|s| s.num_id.clone()))
+                    .filter(|id| id != "0");
+                if sections.is_empty() && blocks.is_empty() && para.space_before_auto {
+                    para.space_before = 0.0;
+                }
+                if num_id.is_some() && num_id == prev_list_num_id {
+                    if para.space_before_auto {
+                        para.space_before = 0.0;
+                    }
+                    if let Some(Block::Paragraph(prev)) = blocks.last_mut() {
+                        if prev.space_after_auto {
+                            prev.space_after = 0.0;
+                        }
+                    }
+                }
+                prev_list_num_id = num_id;
 
                 blocks.push(Block::Paragraph(para));
 
