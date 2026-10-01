@@ -539,30 +539,19 @@ fn ensure_nonempty_paragraph(
     if !runs.is_empty() || has_page_break_before {
         return;
     }
+    // The mark's own font and size each override the style's on their own
+    // (a Calibri mark with no w:sz in a Times New Roman style).
     let mark_rpr = ppr.and_then(|ppr| wml(ppr, "rPr"));
-    let mark_font_size = mark_rpr.and_then(parse_font_size);
-    if let Some(mark_font_size) = mark_font_size {
-        let mark_font_name = mark_rpr
+    runs.push(Run {
+        font_size: mark_rpr.and_then(parse_font_size).unwrap_or(defaults.font_size),
+        font_name: mark_rpr
             .and_then(|n| wml(n, "rFonts"))
             .map(|rfonts| resolve_font_from_node(rfonts, theme, &defaults.font_name))
-            .unwrap_or_else(|| defaults.font_name.clone());
-        runs.push(Run {
-            font_size: mark_font_size,
-            font_name: mark_font_name,
-            bold: defaults.bold,
-            italic: defaults.italic,
-            ..Run::default()
-        });
-    }
-    if runs.is_empty() {
-        runs.push(Run {
-            font_size: defaults.font_size,
-            font_name: defaults.font_name.clone(),
-            bold: defaults.bold,
-            italic: defaults.italic,
-            ..Run::default()
-        });
-    }
+            .unwrap_or_else(|| defaults.font_name.clone()),
+        bold: defaults.bold,
+        italic: defaults.italic,
+        ..Run::default()
+    });
 }
 
 fn split_run_by_script(run: Run) -> Vec<Run> {
