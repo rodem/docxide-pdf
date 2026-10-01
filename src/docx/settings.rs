@@ -20,6 +20,10 @@ pub(super) struct DocumentSettings {
     /// `w:compat/w:compatSetting[@w:name="compatibilityMode"]`: 15 = Word 2013+
     /// layout, 14 = Word 2010, lower or 0 (absent) = older.
     pub compat_mode: u32,
+    /// §17.15.1.57 `w:linkStyles` with no `w:attachedTemplate`: Word refreshes
+    /// the styles from its own Normal.dotm when it opens the file. A named
+    /// template lives on the author's machine and can't be loaded.
+    pub styles_from_normal_template: bool,
 }
 
 impl Default for DocumentSettings {
@@ -35,6 +39,7 @@ impl Default for DocumentSettings {
             default_lang: None,
             compress_punctuation: false,
             compat_mode: 0,
+            styles_from_normal_template: false,
         }
     }
 }
@@ -83,5 +88,7 @@ pub(super) fn parse_settings<R: Read + Seek>(
             .and_then(|n| n.attribute((WML_NS, "val")))
             .and_then(|v| v.parse().ok())
             .unwrap_or(0),
+        styles_from_normal_template: wml_bool(root, "linkStyles").unwrap_or(false)
+            && wml(root, "attachedTemplate").is_none(),
     }
 }

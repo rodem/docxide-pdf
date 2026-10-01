@@ -540,9 +540,60 @@ fn builtin_heading_level(name: &str) -> Option<u8> {
     (1..=9).contains(&level).then(|| level - 1)
 }
 
+/// The stock Normal.dotm's docDefaults: theme fonts, 12pt, kerning from 1pt,
+/// 8pt after, 278 auto lines.
+const NORMAL_TEMPLATE_DEFAULTS: &str = concat!(
+    r#"<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:asciiTheme="minorHAnsi" "#,
+    r#"w:eastAsiaTheme="minorHAnsi" w:hAnsiTheme="minorHAnsi" w:cstheme="minorBidi"/>"#,
+    r#"<w:kern w:val="2"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:rPrDefault>"#,
+    r#"<w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="278" w:lineRule="auto"/>"#,
+    r#"</w:pPr></w:pPrDefault></w:docDefaults>"#,
+);
+
+/// styles.xml after Word refreshed it from Normal.dotm: the template's
+/// docDefaults and a default paragraph style with no formatting of its own
+/// (Word then sets 12pt text under an 11pt Normal and steps 278 lines under
+/// a 259 Normal). The template's other styles are Word's
+/// built-in ones, which the file already carries.
+fn with_normal_template(xml: &str) -> String {
+    let Ok(doc) = roxmltree::Document::parse(xml) else {
+        return xml.to_string();
+    };
+    let root = doc.root_element();
+    let prefix = match root.lookup_prefix(WML_NS) {
+        Some("") | None => String::new(),
+        Some(p) => format!("{p}:"),
+    };
+    let defaults = NORMAL_TEMPLATE_DEFAULTS.replace("w:", &prefix);
+    let mut edits: Vec<(std::ops::Range<usize>, String)> = Vec::new();
+    match wml(root, "docDefaults") {
+        Some(n) => edits.push((n.range(), defaults)),
+        None => {
+            let at = root.first_child().map_or(root.range().end, |c| c.range().start);
+            edits.push((at..at, defaults));
+        }
+    }
+    if let Some(normal) = root.children().find(|n| {
+        n.tag_name().name() == "style"
+            && n.attribute((WML_NS, "type")) == Some("paragraph")
+            && n.attribute((WML_NS, "default")).is_some_and(|v| v == "1" || v == "true")
+    }) {
+        for pr in ["pPr", "rPr"].into_iter().filter_map(|name| wml(normal, name)) {
+            edits.push((pr.range(), String::new()));
+        }
+    }
+    edits.sort_by_key(|(r, _)| std::cmp::Reverse(r.start));
+    let mut out = xml.to_string();
+    for (range, text) in edits {
+        out.replace_range(range, &text);
+    }
+    out
+}
+
 pub(super) fn parse_styles<R: Read + Seek>(
     zip: &mut zip::ZipArchive<R>,
     theme: &ThemeFonts,
+    from_normal_template: bool,
 ) -> StylesInfo {
     let mut defaults = StyleDefaults {
         font_size: 10.0,
@@ -576,7 +627,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
     let mut style_id_to_name = HashMap::new();
     let mut default_paragraph_style_id = String::from("Normal");
 
-    let Some(xml_content) = read_zip_text(zip, "word/styles.xml") else {
+    let Some(mut xml_content) = read_zip_text(zip, "word/styles.xml") else {
         return StylesInfo {
             defaults,
             paragraph_styles,
@@ -586,6 +637,9 @@ pub(super) fn parse_styles<R: Read + Seek>(
             default_paragraph_style_id,
         };
     };
+    if from_normal_template {
+        xml_content = with_normal_template(&xml_content);
+    }
     let Ok(xml) = roxmltree::Document::parse(&xml_content) else {
         return StylesInfo {
             defaults,
@@ -1114,6 +1168,18 @@ fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normal_template_replaces_defaults_and_empties_normal() {
+        let xml = format!(
+            r#"<w:styles xmlns:w="{WML_NS}"><w:docDefaults><w:rPrDefault><w:rPr><w:sz w:val="20"/></w:rPr></w:rPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:pPr><w:spacing w:line="259"/></w:pPr><w:rPr><w:sz w:val="22"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Title"><w:rPr><w:sz w:val="56"/></w:rPr></w:style></w:styles>"#
+        );
+        let out = with_normal_template(&xml);
+        assert!(roxmltree::Document::parse(&out).is_ok());
+        assert!(out.contains(r#"<w:sz w:val="24"/>"#) && out.contains(r#"w:line="278""#));
+        assert!(!out.contains(r#"w:val="20""#) && !out.contains(r#"w:val="22""#));
+        assert!(!out.contains(r#"w:line="259""#) && out.contains(r#"<w:sz w:val="56"/>"#));
+    }
 
     #[test]
     fn test_parse_alignment() {
