@@ -2031,6 +2031,10 @@ pub(super) fn render_paragraph_lines(
                     td_x = 0.0;
                     td_y = 0.0;
                 }
+                // The footnote's Note goes where its reference mark is (Word nests it there).
+                if let (Some(lt), Some(id)) = (link_tags.as_mut(), chunk.footnote_id) {
+                    lt.tags.note(false, id, lt.para);
+                }
 
                 let x = chunk_abs_x(chunk_idx, chunk);
                 let cy = y + chunk.y_offset;

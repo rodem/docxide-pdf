@@ -9,6 +9,7 @@ use super::layout::{
     TextLine, build_paragraph_lines, is_text_empty, render_paragraph_lines, tallest_run_metrics,
 };
 use super::list_label::render_list_label;
+use super::tagging::NoteTagger;
 use super::resolve_line_h;
 
 fn substitute_ref_marks(runs: &[Run], display_num: &str) -> Vec<Run> {
@@ -114,6 +115,7 @@ pub(super) fn render_page_footnotes(
     margin_bottom: f32,
     text_width: f32,
     gradient_specs: &mut Vec<super::GradientSpec>,
+    notes: Option<NoteTagger<'_>>,
 ) {
     if fn_ids.is_empty() {
         return;
@@ -143,6 +145,7 @@ pub(super) fn render_page_footnotes(
         margin_left,
         text_width,
         gradient_specs,
+        notes,
     );
 }
 
@@ -172,6 +175,7 @@ pub(super) fn render_endnotes_inline(
     margin_left: f32,
     text_width: f32,
     gradient_specs: &mut Vec<super::GradientSpec>,
+    notes: Option<NoteTagger<'_>>,
 ) {
     if en_ids.is_empty() {
         return;
@@ -189,6 +193,7 @@ pub(super) fn render_endnotes_inline(
         margin_left,
         text_width,
         gradient_specs,
+        notes,
     );
 }
 
@@ -203,11 +208,13 @@ fn render_notes_downward(
     margin_left: f32,
     text_width: f32,
     gradient_specs: &mut Vec<super::GradientSpec>,
+    mut notes: Option<NoteTagger<'_>>,
 ) {
     for fn_id in fn_ids {
         let Some(footnote) = footnotes.get(fn_id) else {
             continue;
         };
+        let note = notes.as_mut().map(|t| t.tags.note(t.endnote, *fn_id, super::tagging::ROOT));
         let display_num = footnote_display_order
             .get(fn_id)
             .cloned()
@@ -243,6 +250,10 @@ fn render_notes_downward(
                 let baseline_y = fn_y - layout.font_size * layout.ascender_ratio;
                 let line_count = layout.lines.len();
 
+                if let (Some(t), Some(note)) = (notes.as_mut(), note) {
+                    let p = t.tags.add(note, "P");
+                    t.tags.begin(content, t.page, p);
+                }
                 render_list_label(
                     content,
                     para,
@@ -273,6 +284,9 @@ fn render_notes_downward(
                     None,
                     None,
                 );
+                if note.is_some() {
+                    super::tagging::Tags::end(content);
+                }
 
                 fn_y -= line_count as f32 * layout.line_height;
             } else {

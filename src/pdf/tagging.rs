@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use pdf_writer::types::TableHeaderScope;
 use pdf_writer::writers::StructTreeRoot;
-use pdf_writer::{Content, Name, Pdf, Ref, TextStr};
+use pdf_writer::{Content, Name, Pdf, Ref, Str, TextStr};
 
 pub(super) const ROOT: usize = 0;
 
@@ -27,12 +27,16 @@ struct Node {
     /// Table cell attributes: header scope and column span.
     cell: Option<(Option<TableHeaderScope>, i32)>,
     alt: Option<String>,
+    /// Structure element ID; PDF/UA requires one on every Note.
+    id: Option<String>,
 }
 
 pub(crate) struct Tags {
     nodes: Vec<Node>,
     /// Marked-content ids are unique per page.
     next_mcid: Vec<i32>,
+    /// (endnote?, note id) → its Note element.
+    notes: HashMap<(bool, u32), usize>,
 }
 
 /// Open list levels for L/LI nesting. Word nests a deeper level's L inside the
@@ -156,6 +160,13 @@ impl CellTagger<'_> {
     }
 }
 
+/// Tags the footnotes (or endnotes) drawn into a body page's stream.
+pub(super) struct NoteTagger<'a> {
+    pub(super) tags: &'a mut Tags,
+    pub(super) page: usize,
+    pub(super) endnote: bool,
+}
+
 /// A fresh body page stream, inside the default artifact.
 pub(super) fn artifact_content() -> Content {
     let mut content = Content::new();
@@ -195,8 +206,9 @@ pub(super) fn strip_empty_artifacts(raw: &[u8]) -> Vec<u8> {
 impl Tags {
     pub(super) fn new() -> Self {
         Self {
-            nodes: vec![Node { kind: "Document", parent: ROOT, kids: Vec::new(), cell: None, alt: None }],
+            nodes: vec![Node { kind: "Document", parent: ROOT, kids: Vec::new(), cell: None, alt: None, id: None }],
             next_mcid: Vec::new(),
+            notes: HashMap::new(),
         }
     }
 
@@ -206,9 +218,22 @@ impl Tags {
 
     pub(super) fn add(&mut self, parent: usize, kind: &'static str) -> usize {
         let id = self.nodes.len();
-        self.nodes.push(Node { kind, parent, kids: Vec::new(), cell: None, alt: None });
+        self.nodes.push(Node { kind, parent, kids: Vec::new(), cell: None, alt: None, id: None });
         self.nodes[parent].kids.push(Kid::Node(id));
         id
+    }
+
+    /// The Note for a footnote (or endnote), created under `parent` the first
+    /// time it is seen: Word nests a note where its reference mark sits. Notes
+    /// drawn before any tagged reference fall back to the document level.
+    pub(super) fn note(&mut self, endnote: bool, id: u32, parent: usize) -> usize {
+        if let Some(&n) = self.notes.get(&(endnote, id)) {
+            return n;
+        }
+        let n = self.add(parent, "Note");
+        self.nodes[n].id = Some(format!("Note {}", self.notes.len() + 1));
+        self.notes.insert((endnote, id), n);
+        n
     }
 
     /// A Figure under `parent`, with the picture's alt text when it has one.
@@ -297,6 +322,9 @@ impl Tags {
             elem.parent(if i == ROOT { root } else { refs[node.parent] });
             if let Some(alt) = &node.alt {
                 elem.alt(TextStr(alt));
+            }
+            if let Some(id) = &node.id {
+                elem.id(Str(id.as_bytes()));
             }
             if let Some((scope, col_span)) = node.cell.filter(|&(s, span)| s.is_some() || span > 1) {
                 let mut attrs = elem.attributes();

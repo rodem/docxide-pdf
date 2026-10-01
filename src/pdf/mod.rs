@@ -3382,6 +3382,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             bottom,
             text_width,
             &mut state.pb.all_gradient_specs[page_idx],
+            Some(tagging::NoteTagger { tags: &mut state.pb.tags, page: page_idx, endnote: false }),
         );
         if page_idx == last_page_idx && !state.pb.endnote_ids.is_empty() {
             render_endnotes_inline(
@@ -3394,6 +3395,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 content_sp.margin_left,
                 text_width,
                 &mut state.pb.all_gradient_specs[page_idx],
+                Some(tagging::NoteTagger { tags: &mut state.pb.tags, page: page_idx, endnote: true }),
             );
         }
     }
