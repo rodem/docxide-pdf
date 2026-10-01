@@ -624,6 +624,56 @@ pub(super) struct TextLine {
     /// The breaker kept this line's last word by narrowing its spaces
     /// (`SPACE_SQUEEZE`), so it is wider than the measure until justified.
     pub(super) squeezed: bool,
+    /// This line's own advance when its tallest face differs from the
+    /// paragraph's (see `size_lines_by_own_runs`); None uses the paragraph pitch.
+    pub(super) pitch: Option<f32>,
+    /// How far this line's baseline sits below where the paragraph ascent
+    /// would put it (negative: above), for lines with their own `pitch`.
+    pub(super) ascent_shift: f32,
+}
+
+/// Word sizes each line by the tallest face on that line, not the paragraph's
+/// tallest run: russian_sports_ranking_decree's 20pt "ГЛАВА" followed by
+/// `w:br` lines of 14pt steps 17.25 then 16.0 in Word, not 23.0 twice.
+/// Lines whose tallest face matches the paragraph keep its pitch; whitespace
+/// and picture chunks do not size a line, and text-less lines (breaks) keep
+/// their own handling.
+pub(super) fn size_lines_by_own_runs(
+    lines: &mut [TextLine],
+    fonts: &HashMap<String, FontEntry>,
+    line_spacing: LineSpacing,
+    para_pitch: f32,
+    para_ascent: f32,
+) {
+    let by_pdf_name: HashMap<&str, &FontEntry> =
+        fonts.values().map(|e| (e.pdf_name.as_str(), e)).collect();
+    for line in lines.iter_mut() {
+        if line.chunks.iter().any(|c| c.inline_image_name.is_some()) {
+            continue;
+        }
+        // (single-line height, ascent, border pad) of the chunk reaching highest
+        let mut tallest: Option<(f32, f32, f32)> = None;
+        for c in line.chunks.iter().filter(|c| !c.text.trim().is_empty()) {
+            let Some(entry) = by_pdf_name.get(c.pdf_font.as_str()) else { continue };
+            let (lhr, ar) = run_line_metrics(entry, &c.text);
+            // Word makes room for a run border's box around the glyphs
+            // (run-borders: 12pt Calibri in a 1.44pt border steps
+            // (14.65 + 2 × 1.44) × 1.079 = 18.96).
+            let pad = c.border.as_ref().map_or(0.0, |b| b.width_pt + b.space_pt);
+            let ascent = c.font_size * ar.unwrap_or(0.75) + pad;
+            if tallest.is_none_or(|t| ascent > t.1) {
+                tallest = Some((c.font_size * lhr.unwrap_or(1.2) + 2.0 * pad, ascent, pad));
+            }
+        }
+        let Some((natural, ascent, pad)) = tallest else { continue };
+        let pitch = super::helpers::resolve_line_h(line_spacing, 1.0, Some(natural));
+        // Only a border can make a line taller than the paragraph's tallest
+        // run (math faces are kept out of the paragraph pitch on purpose).
+        if pitch < para_pitch - 0.01 || (pad > 0.0 && pitch > para_pitch + 0.01) {
+            line.pitch = Some(pitch);
+            line.ascent_shift = ascent - para_ascent;
+        }
+    }
 }
 
 /// True when a paragraph has no visible text (may still have phantom font-info runs).
@@ -1844,6 +1894,7 @@ pub(super) fn inline_image_line_extra(line: &TextLine, ascent: f32) -> f32 {
 /// 10pt Arial makes a 38.2pt line; english_town_council p1: 149pt logo with a 48pt
 /// run makes 159pt, annotation #230).
 fn inline_line_advance(line: &TextLine, line_pitch: f32, (ascent, descent): (f32, f32)) -> f32 {
+    let line_pitch = line.pitch.unwrap_or(line_pitch);
     let img_h = line_max_image_h(line);
     if img_h > ascent {
         line_pitch.max(img_h + descent)
@@ -1913,11 +1964,12 @@ pub(super) fn render_paragraph_lines(
 
     // Per-line baseline offsets below `first_baseline_y`: each line's top is the
     // sum of the previous lines' advances, and a picture line drops its baseline
-    // by the picture's surplus over the ascent. Normal lines reduce to `line_pitch`.
+    // by the picture's surplus over the ascent; a line sized by its own smaller
+    // face raises its baseline by `ascent_shift`. Normal lines reduce to `line_pitch`.
     let mut line_y_offsets: Vec<f32> = Vec::with_capacity(lines.len());
     let mut line_top = 0.0f32;
     for line in lines {
-        line_y_offsets.push(line_top + inline_image_line_extra(line, text_metrics.0));
+        line_y_offsets.push(line_top + line.ascent_shift + inline_image_line_extra(line, text_metrics.0));
         line_top += inline_line_advance(line, line_pitch, text_metrics);
     }
 

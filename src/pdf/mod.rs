@@ -54,7 +54,7 @@ use layout::{
     build_tabbed_line, descender_ratio,
     grid_snapped_line_h, inline_image_line_extra, is_text_empty, line_max_image_h,
     lines_height, picture_line_bottom, render_paragraph_lines, run_line_metrics,
-    tallest_run_metrics,
+    size_lines_by_own_runs, tallest_run_metrics,
 };
 use crate::fonts::font_key;
 use color::{fill_rgb, stroke_rgb};
@@ -1924,7 +1924,7 @@ fn render_paragraph_block(
     } else {
         Vec::new()
     };
-    let lines = if para.image.is_some() || (text_empty && !has_inline_image_runs) {
+    let mut lines = if para.image.is_some() || (text_empty && !has_inline_image_runs) {
         vec![]
     } else if has_tabs {
         build_tabbed_line(
@@ -1964,6 +1964,10 @@ fn render_paragraph_block(
     // `inline_line_advance` and `picture_line_bottom`). The bottom part is only
     // read for picture lines, so most paragraphs skip its run scan.
     let para_ascent = exact_baseline_base.unwrap_or(font_size * tallest_ar.unwrap_or(0.75));
+    // A grid or an exact rule gives every line the same box.
+    if !grid_snapped && !matches!(effective_ls, LineSpacing::Exact(_)) {
+        size_lines_by_own_runs(&mut lines, ctx.fonts, effective_ls, line_h, para_ascent);
+    }
     let para_metrics = (
         para_ascent,
         if max_inline_img_h > 0.0 {
@@ -1993,7 +1997,7 @@ fn render_paragraph_block(
         // metrics participate in that line's height.
         let first_line_h = label_boosted_line_h(
             para, ctx.fonts, line_h, effective_ls, font_size, tallest_lhr, tallest_ar,
-        );
+        ) - lines.first().and_then(|l| l.pitch).map_or(0.0, |p| line_h - p);
         if num_lines <= 1 {
             // If the single line was created by a break, use its font size
             if let Some(bfs) = lines.first().and_then(|l| l.break_font_size) {
@@ -2030,7 +2034,7 @@ fn render_paragraph_block(
                         h += resolve_line_h(effective_ls, bfs, blhr);
                     }
                 } else {
-                    h += line_h;
+                    h += line.pitch.unwrap_or(line_h);
                 }
             }
             h
@@ -2245,18 +2249,18 @@ fn render_paragraph_block(
         let mut lines_that_fit = 0usize;
         if line_h > 0.0 {
             let mut fn_acc = 0.0f32;
+            // Line i fits when the advances of the lines above it plus its own
+            // text height fit (its trailing leading may hang past the margin).
+            let mut above = 0.0f32;
             for (i, fn_extra) in line_fn_extra.iter().enumerate() {
                 fn_acc += fn_extra;
                 let room = available - fn_acc;
-                let fit = if room >= first_line_h {
-                    1 + ((room - first_line_h) / line_h).floor() as usize
-                } else {
-                    0
-                };
-                if fit <= i {
+                let own_pitch = lines.get(i).and_then(|l| l.pitch);
+                if above + own_pitch.map_or(first_line_h, |p| p.min(first_line_h)) > room {
                     break;
                 }
                 lines_that_fit = i + 1;
+                above += own_pitch.unwrap_or(line_h);
             }
         }
 
