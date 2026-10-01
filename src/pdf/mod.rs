@@ -2457,12 +2457,14 @@ fn render_paragraph_block(
         float_anchor_top,
         &mut state.pb.content,
     );
+    let page = state.pb.all_contents.len();
     for tb in sorted_by_z(para.textboxes.iter().filter(|t| t.behind_doc)) {
         let tb_col_x = if tb.indent_relative {
             col_x + para.indent_left
         } else {
             col_x
         };
+        let sect = state.pb.tags.hoist("Sect");
         render_single_textbox(
             tb,
             sp,
@@ -2474,6 +2476,7 @@ fn render_paragraph_block(
             &mut state.pb.gradient_specs,
             &ctx,
             &mut state.pb.links,
+            Some((&mut state.pb.tags, page, sect)),
         );
     }
 
@@ -2557,7 +2560,8 @@ fn render_paragraph_block(
         } else {
             col_x
         };
-        let mut shape_content = Content::new();
+        let mut shape_content = tagging::artifact_content();
+        let sect = state.pb.tags.hoist("Sect");
         render_single_textbox(
             tb,
             sp,
@@ -2569,6 +2573,7 @@ fn render_paragraph_block(
             &mut state.pb.gradient_specs,
             &ctx,
             &mut state.pb.links,
+            Some((&mut state.pb.tags, page, sect)),
         );
         state.pb.deferred_shapes.push((tb.z_index, shape_content));
     }
@@ -2577,7 +2582,7 @@ fn render_paragraph_block(
         // Same page-level z-stack as textboxes — anchored connectors must
         // interleave with shapes by relativeHeight (e.g. letter strokes
         // drawn over gradient circles)
-        let mut shape_content = Content::new();
+        let mut shape_content = tagging::artifact_content();
         render_connector(conn, &mut shape_content, col_x, state.pb.slot_top);
         state.pb.deferred_shapes.push((conn.z_index, shape_content));
     }
@@ -3171,7 +3176,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
             match block {
                 Block::Paragraph(para) => {
-                    if render_paragraph_block(
+                    let skip = render_paragraph_block(
                         para,
                         &mut state,
                         &ctx,
@@ -3194,7 +3199,9 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                         smartart_font_key,
                         &smartart_image_names,
                         debug_wrap,
-                    ) {
+                    );
+                    state.pb.tags.attach_hoisted();
+                    if skip {
                         continue;
                     }
                 }

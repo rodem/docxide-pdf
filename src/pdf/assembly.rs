@@ -324,8 +324,12 @@ pub(super) fn assemble_pdf_pages(
         let mut body_raw = super::tagging::strip_empty_artifacts(&body_raw);
         // Anchored shapes paint above the page's text layer, pre-sorted by
         // relativeHeight at flush time
+        // Each buffer opens inside an artifact (tagging::artifact_content) so
+        // a textbox's text can be tagged.
         for (_, shape) in all_deferred_shapes.next().into_iter().flatten() {
-            super::tagging::wrap_artifact(&mut body_raw, shape.finish().as_slice(), false);
+            let mut raw = shape.finish().to_vec();
+            raw.extend_from_slice(b"\nEMC\n");
+            body_raw.extend_from_slice(&super::tagging::strip_empty_artifacts(&raw));
         }
 
         // When the document has comments, Word's PDF export renders body

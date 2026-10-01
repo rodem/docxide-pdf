@@ -37,6 +37,9 @@ pub(crate) struct Tags {
     next_mcid: Vec<i32>,
     /// (endnote?, note id) → its Note element.
     notes: HashMap<(bool, u32), usize>,
+    /// Document-level elements for floating content (textboxes), drawn while
+    /// their anchor paragraph renders but placed after its element, like Word.
+    hoisted: Vec<usize>,
 }
 
 /// Open list levels for L/LI nesting. Word nests a deeper level's L inside the
@@ -243,6 +246,7 @@ impl Tags {
             nodes: vec![Node { kind: "Document", parent: ROOT, kids: Vec::new(), cell: None, alt: None, id: None }],
             next_mcid: Vec::new(),
             notes: HashMap::new(),
+            hoisted: Vec::new(),
         }
     }
 
@@ -255,6 +259,19 @@ impl Tags {
         self.nodes.push(Node { kind, parent, kids: Vec::new(), cell: None, alt: None, id: None });
         self.nodes[parent].kids.push(Kid::Node(id));
         id
+    }
+
+    /// A document-level element that joins the tree at `attach_hoisted`.
+    pub(super) fn hoist(&mut self, kind: &'static str) -> usize {
+        let id = self.nodes.len();
+        self.nodes.push(Node { kind, parent: ROOT, kids: Vec::new(), cell: None, alt: None, id: None });
+        self.hoisted.push(id);
+        id
+    }
+
+    /// Place the hoisted elements after everything their anchor added.
+    pub(super) fn attach_hoisted(&mut self) {
+        self.nodes[ROOT].kids.extend(self.hoisted.drain(..).map(Kid::Node));
     }
 
     /// The Note for a footnote (or endnote), created under `parent` the first
@@ -448,6 +465,27 @@ mod tests {
         assert_eq!(out.matches("/Artifact BMC").count(), 1);
         assert_eq!(out.matches("BMC").count() + out.matches("BDC").count(), out.matches("EMC").count());
         assert_eq!(tags.struct_parents(0), Some(0));
+    }
+
+    #[test]
+    fn hoisted_elements_follow_their_anchor() {
+        let mut tags = Tags::new();
+        let before = tags.add(ROOT, "P");
+        let sect = tags.hoist("Sect");
+        tags.add(sect, "P");
+        let anchor = tags.add(ROOT, "P");
+        tags.attach_hoisted();
+        let order: Vec<usize> = tags.nodes[ROOT]
+            .kids
+            .iter()
+            .filter_map(|k| match k {
+                Kid::Node(c) => Some(*c),
+                Kid::Mcid { .. } => None,
+            })
+            .collect();
+        assert_eq!(order, [before, anchor, sect]);
+        tags.attach_hoisted();
+        assert_eq!(tags.nodes[ROOT].kids.len(), 3);
     }
 
     #[test]

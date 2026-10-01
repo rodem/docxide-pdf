@@ -7,11 +7,12 @@ use crate::model::{EmbeddedImage, Paragraph, SectionProperties, TextAnchor, Text
 use super::color::{fill_rgb, stroke_rgb};
 use super::header_footer::resolve_tb_y_top;
 use super::layout::{
-    LinkAnnotation, build_paragraph_lines, build_tabbed_line, lines_height,
+    LinkAnnotation, LinkTagger, build_paragraph_lines, build_tabbed_line, lines_height,
     picture_line_bottom, render_paragraph_lines, tallest_run_metrics,
 };
 use super::list_label::render_list_label;
 use super::positioning::resolve_h_position;
+use super::tagging::Tags;
 use super::wordart;
 use super::{GradientSpec, RenderContext, render_shape_fill, resolve_line_h};
 
@@ -102,6 +103,9 @@ pub(super) fn render_single_textbox(
     gradient_specs: &mut Vec<GradientSpec>,
     ctx: &RenderContext,
     page_links: &mut Vec<LinkAnnotation>,
+    // (tags, page, the textbox's Sect): tag its text, which is otherwise an
+    // artifact. `content` must then be inside the default artifact.
+    tag: Option<(&mut Tags, usize, usize)>,
 ) {
     let tb_x = resolve_h_position(
         tb.h_relative_from,
@@ -271,7 +275,7 @@ pub(super) fn render_single_textbox(
             &tb.paragraphs, content, content_x, content_w, align_w,
             text_top - tb.margin_top - anchor_offset,
             0.0, 0.0, None, false, &mut discard_links, ctx, clip_bottom,
-            gradient_specs,
+            gradient_specs, None,
         );
         content.restore_state();
     }
@@ -291,7 +295,7 @@ pub(super) fn render_single_textbox(
             text_top - tb.margin_top - anchor_offset,
             shadow.offset_x, shadow.offset_y, Some(shadow_color),
             false, &mut discard_links, ctx, clip_bottom,
-            gradient_specs,
+            gradient_specs, None,
         );
         content.restore_state();
     }
@@ -300,7 +304,7 @@ pub(super) fn render_single_textbox(
         &tb.paragraphs, content, content_x, content_w, align_w,
         text_top - tb.margin_top - anchor_offset,
         0.0, 0.0, None, true, page_links, ctx, clip_bottom,
-        gradient_specs,
+        gradient_specs, tag,
     );
 
     if needs_clip {
@@ -326,6 +330,9 @@ pub(super) fn render_textbox_paragraphs(
     ctx: &RenderContext,
     clip_bottom: Option<f32>,
     gradient_specs: &mut Vec<GradientSpec>,
+    // As in `render_single_textbox`; each paragraph becomes a P in the Sect.
+    // ponytail: list paragraphs are tagged P too; L/LI if a textbox list matters
+    mut tag: Option<(&mut Tags, usize, usize)>,
 ) {
     use crate::model::Alignment;
     let mut cursor_y = start_y;
@@ -344,6 +351,8 @@ pub(super) fn render_textbox_paragraphs(
                 break;
             }
         }
+        // Word keeps empty and picture-only paragraphs as empty P elements.
+        let para_tag = tag.as_mut().map(|(tags, _, sect)| tags.add(*sect, "P"));
         let tp_ls = tp.line_spacing.unwrap_or(ctx.doc_line_spacing);
         let tp_text_w = (content_w - tp.indent_left - tp.indent_right).max(1.0);
         let tp_align_w = (align_w - tp.indent_left - tp.indent_right).max(1.0);
@@ -437,6 +446,9 @@ pub(super) fn render_textbox_paragraphs(
         if let Some(c) = force_color {
             fill_rgb(content, c);
         }
+        if let (Some((tags, page, _)), Some(p)) = (tag.as_mut(), para_tag) {
+            tags.begin(content, *page, p);
+        }
         if render_labels {
             render_list_label(
                 content,
@@ -454,8 +466,11 @@ pub(super) fn render_textbox_paragraphs(
             gradient_specs,
             None,
             None,
-            None,
+            tag.as_mut().zip(para_tag).map(|((tags, page, _), p)| LinkTagger::new(tags, *page, p)),
         );
+        if para_tag.is_some() {
+            Tags::end(content);
+        }
         cursor_y -= inter_gap + lines_height(&tb_lines, tb_line_h, tb_metrics);
         prev_space_after = tp.space_after;
     }

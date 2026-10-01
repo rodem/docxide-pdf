@@ -146,7 +146,7 @@ pub(super) fn render_foreground_floating_images_deferred(
         if fi.behind_doc {
             continue;
         }
-        let mut buf = Content::new();
+        let mut buf = super::tagging::artifact_content();
         if render_one_floating_image(
             fi, fi_idx, global_block_idx, pdf_names, effect_pdf_names, sp, col_x, col_w,
             text_width, slot_top, &mut buf,

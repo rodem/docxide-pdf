@@ -637,6 +637,7 @@ fn render_simple_textbox(
         ctx,
         None,
         gradient_specs,
+        None,
     );
 }
 
