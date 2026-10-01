@@ -752,6 +752,18 @@ pub(super) fn smallcaps_segments(word: &str, base_fs: f32) -> Vec<(String, f32, 
 }
 
 /// Compute the width of a word, handling smallCaps per-segment sizing.
+/// Byte length of the longest prefix of `word` (at least one character)
+/// that fits in `room`; None when the whole word fits or is one character.
+fn fitting_prefix_len(word: &str, room: f32, width: impl Fn(&str) -> f32) -> Option<usize> {
+    let ends: Vec<usize> = word.char_indices().map(|(i, c)| i + c.len_utf8()).collect();
+    if ends.len() < 2 {
+        return None;
+    }
+    // Widths grow with the prefix, so the last fitting end is a partition point.
+    let fits = ends[..ends.len() - 1].partition_point(|&e| width(&word[..e]) <= room);
+    Some(ends[fits.saturating_sub(1)])
+}
+
 fn word_width_for_run(
     entry: &FontEntry, run: &Run, word: &str,
     eff_fs: f32, kern: bool, cs: f32, ts: f32,
@@ -1187,10 +1199,9 @@ pub(super) fn build_paragraph_lines(
         let space_w_cs = space_w * ts + cs;
 
         let mut is_first_word_in_run = true;
-        for (space_count, source) in split_preserving_spaces(text) {
-            let shown = caps_word(run, source);
-            let word: &str = &shown;
-            let original = run.caps.then_some(source);
+        let mut words: std::collections::VecDeque<_> = split_preserving_spaces(text).into();
+        while let Some((space_count, mut source)) = words.pop_front() {
+            let mut shown = caps_word(run, source);
             pending_space_w += space_count as f32 * space_w_cs;
             if space_count > 0 {
                 pending_real_space = true;
@@ -1210,7 +1221,7 @@ pub(super) fn build_paragraph_lines(
             // when there is no explicit whitespace.
             if cjk.auto_space {
                 if let Some(prev_ch) = prev_last_char {
-                    if let Some(first_ch) = word.chars().next() {
+                    if let Some(first_ch) = shown.chars().next() {
                         if pending_space_w == 0.0 && space_count == 0 {
                             let prev_ea = crate::docx::is_east_asian_char(prev_ch)
                                 || is_cjk_punctuation(prev_ch);
@@ -1233,7 +1244,25 @@ pub(super) fn build_paragraph_lines(
             is_first_word_in_run = false;
 
             let kern = run.kerns_at(eff_fs);
-            let ww = word_width_for_run(entry, run, word, eff_fs, kern, cs, ts);
+            let width = |w: &str| word_width_for_run(entry, run, w, eff_fs, kern, cs, ts);
+            let mut ww = width(&shown);
+            // A word wider than a whole line breaks at the margin, character
+            // by character (a 280-dot leader fills two lines).
+            let line_room = left_max(lines.len())
+                + if lines.is_empty() { first_line_hanging } else { 0.0 };
+            if current_chunks.is_empty() && !in_right_region && ww > line_room {
+                let room = line_room - pending_space_w;
+                // Cut the letters as written, not the capitals drawn (ß → SS
+                // changes length), so each half keeps its own /ActualText.
+                if let Some(cut) = fitting_prefix_len(source, room, |w| width(&caps_word(run, w))) {
+                    words.push_front((0, &source[cut..]));
+                    source = &source[..cut];
+                    shown = caps_word(run, source);
+                    ww = width(&shown);
+                }
+            }
+            let word: &str = &shown;
+            let original = run.caps.then_some(source);
             prev_last_char = word.chars().last();
 
             let need_space = !current_chunks.is_empty() && pending_space_w > 0.0;
@@ -2836,6 +2865,15 @@ pub(super) fn grid_snapped_line_h(
 mod tests {
     use super::*;
     use crate::model::VertAlign;
+
+    #[test]
+    fn overwide_word_cuts_at_the_last_fitting_char() {
+        let width = |w: &str| w.chars().count() as f32 * 3.0;
+        assert_eq!(fitting_prefix_len("..........", 10.0, width), Some(3));
+        assert_eq!(fitting_prefix_len("....", 1.0, width), Some(1));
+        assert_eq!(fitting_prefix_len("é…é", 6.0, width), Some("é…".len()));
+        assert_eq!(fitting_prefix_len(".", 1.0, width), None);
+    }
 
     #[test]
     fn justify_counts_word_spaces_not_run_joins() {
