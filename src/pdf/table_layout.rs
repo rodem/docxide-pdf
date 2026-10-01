@@ -476,7 +476,6 @@ pub(super) struct CellParagraphLayout {
     pub(super) lines: Vec<TextLine>,
     pub(super) line_h: f32,
     pub(super) font_size: f32,
-    #[allow(dead_code)]
     pub(super) ascender_ratio: f32,
     pub(super) descender_ratio: f32,
     pub(super) font_substituted: bool,
@@ -678,7 +677,15 @@ pub(super) fn compute_row_layouts(
                                 } + label_extra;
                                 total_h += space_before;
 
-                                let ascender_ratio = tallest_ar.unwrap_or(0.75);
+                                // The first baseline sits this far (per em) below the
+                                // cell top: the ascent, line gap included, as in body
+                                // text; one em for an East Asian font, whose 1.3×
+                                // leading Word keeps out of the cell's top
+                                // (japanese_interlibrary: 11pt MS Mincho 11.0).
+                                let east_asian = metric_font
+                                    .is_some_and(|e| tallest_ar.is_some() && tallest_ar != e.plain_ascender_ratio);
+                                let ascender_ratio =
+                                    if east_asian { 1.0 } else { tallest_ar.unwrap_or(0.75) };
                                 // Win-path metrics identity: line_h_ratio −
                                 // ascender_ratio = usWinDescent/units. Fallback
                                 // 0.2 pairs with the 1.2 default line ratio so
