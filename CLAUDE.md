@@ -83,52 +83,77 @@ The repository includes:
 
 ```
 src/
-  lib.rs              — public API: convert_docx_to_pdf(input: &Path, output: &Path)
+  lib.rs              — public API: convert_docx_to_pdf(input, output), convert_docx_bytes_to_pdf(bytes, output)
   error.rs            — Error enum (Zip, Xml, Pdf, Io variants)
-  model.rs            — Document, Section, Paragraph, Run, Chart IR + shape/geometry types
   main.rs             — CLI binary (behind `cli` feature)
+  model/
+    mod.rs            — Document, Section, Paragraph, Run IR
+    drawing.rs        — floating images, textboxes, connectors, shape/geometry types
+    table.rs          — Table, row and cell IR
+    chart.rs          — Chart IR
   fonts/
-    mod.rs            — font registration, metrics, fallback
+    mod.rs            — font registration, metrics, fallback (incl. cjk_fallback_fonts)
     discovery.rs      — cross-platform font search, disk cache
-    embed.rs          — font embedding, kern/GPOS extraction, subsetting
+    embed.rs          — font embedding, kern/GPOS extraction, subsetting, line metrics, ToUnicode
     encoding.rs       — WinAnsi encoding, glyph mapping
     cache.rs          — font index disk cache (TSV)
   geometry/
     mod.rs            — preset shape evaluation entry point
     definitions.rs    — all 187 OOXML preset shape definitions
+    text_warp_definitions.rs — the 40 WordArt prstTxWarp presets
     formulas.rs       — guide formula interpreter (adjustment values, trig, arithmetic)
     path.rs           — path command evaluation → PDF content stream
   docx/
-    mod.rs            — XML utils, relationships, parse orchestrator, table+paragraph parsing
+    mod.rs            — XML utils, relationships, parse orchestrator, body block parsing
+    paragraph.rs      — paragraph properties, indents, numbering association
     styles.rs         — theme parsing, style structs, style inheritance
-    runs.rs           — run-level XML → Vec<Run>
+    runs.rs           — run-level XML → Vec<Run>, fields, track changes (final mode)
     numbering.rs      — list/numbering parsing, counter management
-    images.rs         — image/chart drawing detection, floating/inline extraction
+    images.rs         — image/chart drawing detection, floating/inline extraction, crop, effects
+    emf.rs / wmf.rs   — metafile parsing (bitmap-only EMF/WMF → raster)
+    group.rs          — drawing canvas and shape group flattening
     charts.rs         — parse c:chartSpace XML → Chart model (8 chart types)
     textbox.rs        — DrawingML + VML textbox parsing, shape fills (solid + gradient)
-    tables.rs         — table + cell parsing
+    wordart.rs        — DrawingML + VML WordArt
+    tables.rs         — table + cell parsing, conditional formatting
     smartart.rs       — SmartArt diagram parsing (dsp:drawing shape trees)
+    comments.rs       — word/comments.xml
+    color.rs          — DrawingML/WML color resolution
     embedded_fonts.rs — embedded font extraction and deobfuscation
-    sections.rs       — section properties (page size, margins, columns)
-    headers_footers.rs — header/footer/footnote XML parsing
-    settings.rs       — document settings (tab stops, mirror margins, even/odd headers)
+    sections.rs       — section properties (page size, margins, gutter, columns, page borders)
+    headers_footers.rs — header/footer/footnote/endnote XML parsing
+    settings.rs       — document settings (tab stops, mirror margins, even/odd headers, compressPunctuation)
     alt_chunk.rs      — altChunk HTML content parsing
   pdf/
     mod.rs            — main render loop, behind-doc/body/foreground z-ordering
     layout.rs         — text layout, line building, paragraph rendering
-    table.rs          — table layout, auto-fit columns, table rendering
+    positioning.rs    — floating image/shape placement
+    table_layout.rs   — table auto-fit and cell layout
+    table.rs          — table rendering, row splitting
+    tagging.rs        — tagged PDF structure tree (accessibility)
+    assembly.rs       — final PDF assembly: pages, annotations, page borders, XMP, catalog
+    objstm.rs         — compressed object streams post-pass
+    fonts.rs          — used-character collection, font object writing
+    images.rs         — image XObjects, crops, effect masks
+    emf.rs            — EMF → PDF form XObject translator
+    textbox_render.rs — textbox and shape rendering
+    wordart.rs        — WordArt rendering (warps, text on a path)
     smartart.rs       — SmartArt shape rendering via geometry engine
     charts.rs         — cartesian chart rendering (bar/line/area/scatter/bubble/radar)
     charts_radial.rs  — pie/doughnut chart rendering
     chart_legend.rs   — shared legend rendering
     header_footer.rs  — header/footer rendering
-    footnotes.rs      — footnote rendering
+    footnotes.rs      — footnote and endnote rendering
+    comments.rs       — comment review pane
+    list_label.rs     — list label text
+    helpers.rs / color.rs — shared drawing and color helpers
 tests/
   visual_comparison.rs — Jaccard/SSIM similarity test against Word-generated reference PDFs
-  text_boundary.rs     — text boundary test (page/line level)
-  fixtures/caseN/      — handcrafted test cases (37 cases)
-  fixtures/samples/    — scraped real-world DOCX files
-  output/<case>/       — generated.pdf, reference/, generated/, diff/ screenshots
+  accessibility.rs     — PDF/UA-1 (veraPDF) and structure/text parity vs Word
+  text_boundary.rs     — text boundary analysis (currently not a #[test], see roadmap)
+  fixtures/cases/      — handcrafted test cases (78, tracked in git)
+  fixtures/{new,scraped,samples}/ — real-world DOCX files (private assets repo)
+  output/<group>/<case>/ — generated.pdf, reference/, generated/, diff/ screenshots
 ```
 
 ## Environment Variables
@@ -147,9 +172,9 @@ tests/
 
 - Rust edition: 2024
 - Test output is compared using **Jaccard similarity on ink pixels** (luma < 200 = ink) and **SSIM** with spatial tolerance (±8px). Run tests with `cargo test -- --nocapture` to see scores.
-- Jaccard threshold: **20%**, SSIM threshold: **75%** (defined in `tests/visual_comparison.rs`)
+- Jaccard threshold: **20%**, SSIM threshold: **75%** (defined in `tests/visual_comparison.rs`, reported only); the suite fails when a score drops more than 2 points below `tests/baselines.json` (see `SCORING.md`)
 - Accessibility (`tests/accessibility.rs`, `tests/common/a11y.rs`): `ua_deficit` (veraPDF PDF/UA-1 rules we fail worse than Word; 0 = as good as Word), `a11y_struct` (tag sequence vs Word's), `a11y_text` (block text in structure order vs Word's). Untagged references score N/A. See the Accessibility section of `roadmap.md`
-- 37 handcrafted test cases covering text, tables, images, charts, shapes, SmartArt, and more
+- 78 handcrafted test cases (`tests/fixtures/cases/`) covering text, tables, images, charts, shapes, SmartArt, and more
 
 ## Word Layout Learnings
 
