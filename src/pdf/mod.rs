@@ -940,6 +940,38 @@ fn per_line_footnote_extra(
 }
 
 /// Compute effective first-line hanging indent for a paragraph.
+/// Lines of an `n`-line paragraph that must share a page with what precedes
+/// it: one, or with widow control two — all of them when it has three or
+/// fewer, since any split would leave a lone line.
+fn lines_kept_together(widow_control: bool, n: usize) -> usize {
+    match (widow_control, n) {
+        (false, _) => 1,
+        (true, n) if n <= 3 => n.max(1),
+        (true, _) => 2,
+    }
+}
+
+/// About how many lines `para` lays out to in a column `col_w` wide. Every
+/// line gets the body measure: a hanging label tabs its first line's text out
+/// to the indent anyway (western_australia's "(a)" items).
+fn line_count(para: &Paragraph, ctx: &RenderContext, col_w: f32) -> usize {
+    let width = (col_w - para.indent_left - para.indent_right).max(1.0);
+    let no_images = HashMap::new();
+    build_paragraph_lines(
+        &para.runs,
+        ctx.fonts,
+        width,
+        0.0,
+        &no_images,
+        &HashMap::new(),
+        None,
+        None,
+        None,
+        ctx.cjk(para.auto_space_de || para.auto_space_dn, para.alignment),
+    )
+    .len()
+}
+
 fn compute_text_hanging(para: &Paragraph, default_tab_stop: f32) -> f32 {
     if !para.list_label.is_empty() {
         if let Some(nts) = para.num_level_tab_stop {
@@ -2190,9 +2222,20 @@ fn render_paragraph_block(
             let next_first_line_h =
                 nlhr.map(|ratio| nfs * ratio).unwrap_or(nfs * 1.2);
             if !next.keep_next {
+                // The chain needs as many of the next paragraph's lines as
+                // must stay together on this page: one without widow control;
+                // with it two, or all of a paragraph of three or fewer (it
+                // can't split without leaving a lone line). lithuanian's
+                // headings end on an empty paragraph and fit at the foot;
+                // western_australia's end on a three-line item and move.
+                let needed = lines_kept_together(
+                    next.widow_control,
+                    line_count(next, ctx, col_geometry[state.current_col].1),
+                );
                 let next_ls = next.line_spacing.unwrap_or(ctx.doc_line_spacing);
-                let next_line_h = resolve_line_h(next_ls, nfs, nlhr);
-                extra += next_inter + next_first_line_h + next_line_h;
+                extra += next_inter
+                    + next_first_line_h
+                    + (needed - 1) as f32 * resolve_line_h(next_ls, nfs, nlhr);
                 break;
             }
             if next.page_break_after {
@@ -3678,6 +3721,14 @@ mod tests {
         // separator; 7 produced no chunk and is charged to the last line.
         assert_eq!(per_line, vec![0.0, 62.0, 0.0, 130.0]);
         assert_eq!(total, 192.0);
+    }
+
+    #[test]
+    fn keep_with_next_needs_an_unsplittable_paragraph_whole() {
+        assert_eq!(lines_kept_together(false, 5), 1);
+        assert_eq!(lines_kept_together(true, 1), 1);
+        assert_eq!(lines_kept_together(true, 3), 3);
+        assert_eq!(lines_kept_together(true, 4), 2);
     }
 
     #[test]
