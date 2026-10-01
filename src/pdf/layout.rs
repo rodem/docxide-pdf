@@ -1049,6 +1049,9 @@ pub(super) fn build_paragraph_lines(
     let mut cur_right_info: Option<(usize, f32, f32)> = None; // (first_chunk_idx, region_x, region_w)
     // Track last non-space character for CJK auto-spacing (autoSpaceDE/DN)
     let mut prev_last_char: Option<char> = None;
+    // Index in `current_chunks` where the word being placed began; a word can
+    // span several runs.
+    let mut word_start = 0usize;
 
     let left_max = |line_count: usize| -> f32 {
         if let Some(dual) = per_line_dual {
@@ -1172,6 +1175,7 @@ pub(super) fn build_paragraph_lines(
                     effect_inline_names.get(&run_idx).cloned(),
                 ));
                 current_x += img_w;
+                word_start = current_chunks.len();
             }
             continue;
         }
@@ -1225,11 +1229,15 @@ pub(super) fn build_paragraph_lines(
             }
 
             // A word continues the previous word across a run boundary when
-            // there is no whitespace between runs and no leading spaces.
+            // there is no whitespace between runs, no leading spaces, and the
+            // two characters could not break inside one run either.
             let is_continuation = is_first_word_in_run
                 && space_count == 0
                 && pending_space_w == 0.0
-                && !current_chunks.is_empty();
+                && !current_chunks.is_empty()
+                && !prev_last_char
+                    .zip(shown.chars().next())
+                    .is_some_and(|(a, b)| split_preserving_spaces(&format!("{a}{b}")).len() > 1);
             is_first_word_in_run = false;
 
             let kern = run.kerns_at(eff_fs);
@@ -1279,11 +1287,18 @@ pub(super) fn build_paragraph_lines(
 
             // Small tolerance for floating-point width accumulation over many glyphs
             let mut overflows = proposed_x + ww > cur_max + 0.05;
+            // A word glued to the previous run's word is judged as one word.
+            let (word_x, word_w) = if is_continuation && word_start < current_chunks.len() {
+                let x = current_chunks[word_start].x_offset;
+                (x, proposed_x + ww - x)
+            } else {
+                (proposed_x, ww)
+            };
             if overflows
                 && cjk.squeeze_spaces
-                && need_space
+                && (need_space || is_continuation)
                 && !in_right_region
-                && proposed_x + ww / 2.0 <= cur_max
+                && word_x + word_w / 2.0 <= cur_max
                 && proposed_x + ww - cur_max
                     <= SPACE_SQUEEZE * (line_space_width(&current_chunks) + pending_space_w)
             {
@@ -1319,9 +1334,35 @@ pub(super) fn build_paragraph_lines(
             {
                 lines.push(finish_dual_line(&mut current_chunks, &mut in_right_region, &mut cur_right_info));
                 pending_space_w = 0.0;
+                word_start = 0;
                 push_word_chunks(&mut current_chunks, entry, run, word, original, eff_fs, cs, y_off, 0.0, ww);
                 current_x = ww;
                 continue;
+            }
+
+            // A word split over several runs wraps as a whole: carry the part
+            // already placed to the next line, as long as it fits there.
+            if is_continuation
+                && overflows
+                && word_start > 0
+                && word_start < current_chunks.len()
+                && !in_right_region
+                && right_region_for(lines.len()).is_none()
+            {
+                let dx = current_chunks[word_start].x_offset;
+                if current_x - dx + ww <= left_max(lines.len() + 1) + 0.05 {
+                    let carried: Vec<WordChunk> = current_chunks.drain(word_start..).collect();
+                    lines.push(finish_dual_line(&mut current_chunks, &mut in_right_region, &mut cur_right_info));
+                    current_chunks.extend(carried.into_iter().map(|mut c| {
+                        c.x_offset -= dx;
+                        c
+                    }));
+                    current_x -= dx;
+                    word_start = 0;
+                    push_word_chunks(&mut current_chunks, entry, run, word, original, eff_fs, cs, y_off, current_x, ww);
+                    current_x += ww;
+                    continue;
+                }
             }
 
             // For the first word on a line, also overflow if the
@@ -1350,6 +1391,7 @@ pub(super) fn build_paragraph_lines(
                             0.0
                         };
                         pending_space_w = 0.0;
+                        word_start = current_chunks.len();
                         push_word_chunks(&mut current_chunks, entry, run, word, original, eff_fs, cs, y_off, start_x, ww);
                         current_x = start_x + ww;
                         continue;
@@ -1367,6 +1409,7 @@ pub(super) fn build_paragraph_lines(
                         cur_right_info = Some((0, rx, rw));
                         in_right_region = true;
                         pending_space_w = 0.0;
+                        word_start = 0;
                         push_word_chunks(&mut current_chunks, entry, run, word, original, eff_fs, cs, y_off, 0.0, ww);
                         current_x = ww;
                         continue;
@@ -1391,6 +1434,9 @@ pub(super) fn build_paragraph_lines(
             }
             pending_space_w = 0.0;
 
+            if !is_continuation {
+                word_start = current_chunks.len();
+            }
             push_word_chunks(&mut current_chunks, entry, run, word, original, eff_fs, cs, y_off, current_x, ww);
             current_x += ww;
         }
@@ -3015,6 +3061,32 @@ mod tests {
             text_scale: 100.0,
             ..Run::default()
         }
+    }
+
+    #[test]
+    fn word_split_over_runs_wraps_as_a_whole() {
+        let mut fonts = HashMap::new();
+        fonts.insert("Arial".to_string(), stub_font_entry());
+        let text_run = |text: &str| Run {
+            text: text.to_string(),
+            ..make_run(10.0, VertAlign::Baseline, false)
+        };
+        let runs = [text_run("aaaa bbb"), text_run("ccc")];
+        let cjk = CjkLayout {
+            auto_space: false,
+            compress_punct: false,
+            squeeze_spaces: false,
+            expand_shift_return: true,
+        };
+        let lines = build_paragraph_lines(
+            &runs, &fonts, 40.0, 0.0, &HashMap::new(), &HashMap::new(), None, None, None, cjk,
+        );
+        let texts: Vec<Vec<&str>> = lines
+            .iter()
+            .map(|l| l.chunks.iter().map(|c| c.text.as_str()).collect())
+            .collect();
+        assert_eq!(texts, vec![vec!["aaaa"], vec!["bbb", "ccc"]]);
+        assert_eq!(lines[1].chunks[0].x_offset, 0.0);
     }
 
     #[test]
