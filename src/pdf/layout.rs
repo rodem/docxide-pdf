@@ -95,11 +95,36 @@ fn drop_url_breaks(text: &str, breaks: &mut Vec<usize>) {
     breaks.retain(|&b| !urls.iter().any(|u| u.start < b && b < u.end) || text[..b].ends_with('-'));
 }
 
+/// Word's departures from UAX #14 that depend only on the two adjacent
+/// characters: `Some(true)` adds a break, `Some(false)` removes one, `None`
+/// keeps UAX #14's answer. The URL rule needs more context (`drop_url_breaks`).
+fn word_pair_rule(a: char, b: char) -> Option<bool> {
+    // LB21 never breaks before a hyphen, so a run of hyphen-minus would be one
+    // unbreakable word; Word wraps such a run after however many fit the line
+    // (family_kinship's 87-dash rules break into two columns of dashes).
+    if a == '-' && b == '-' {
+        return Some(true);
+    }
+    // Class IN allows a break after an ellipsis before digits, but Word keeps
+    // tokens like TOC dot-leaders typed as "…………45" unbreakable.
+    if matches!(a, '\u{2024}' | '\u{2025}' | '\u{2026}') && !b.is_whitespace() {
+        return Some(false);
+    }
+    None
+}
+
+/// `word_pair_rule` for the characters either side of byte offset `i`.
+fn word_pair_rule_at(text: &str, i: usize) -> Option<bool> {
+    word_pair_rule(text[..i].chars().next_back()?, text[i..].chars().next()?)
+}
+
 /// True when `split_preserving_spaces` would break between `a` and `b` inside one
-/// run: UAX #14 plus the ellipsis rule (the URL rule needs more than two
-/// characters). Run boundaries call this for every glued word, so it stays
-/// off the heap.
+/// run: UAX #14 plus Word's pair rules. Run boundaries call this for every
+/// glued word, so it stays off the heap.
 fn breaks_between(a: char, b: char) -> bool {
+    if let Some(rule) = word_pair_rule(a, b) {
+        return rule;
+    }
     let mut buf = [0u8; 8];
     let la = a.encode_utf8(&mut buf).len();
     let lb = b.encode_utf8(&mut buf[la..]).len();
@@ -107,7 +132,6 @@ fn breaks_between(a: char, b: char) -> bool {
         return false;
     };
     unicode_linebreak::linebreaks(pair).any(|(pos, _)| pos == la)
-        && !(matches!(a, '\u{2024}' | '\u{2025}' | '\u{2026}') && !b.is_whitespace())
 }
 
 /// Split text into (preceding_space_count, word) segments using UAX #14 line break rules.
@@ -128,13 +152,9 @@ fn split_preserving_spaces(text: &str) -> Vec<(usize, &str)> {
         .map(|(pos, _)| pos)
         .collect();
     drop_url_breaks(text, &mut breaks);
-    // UAX #14 class IN allows a break after ellipses before digits, but Word
-    // keeps tokens like TOC dot-leaders typed as "…………45" unbreakable.
-    breaks.retain(|&b| {
-        b >= text.len()
-            || !text[..b].ends_with(['\u{2024}', '\u{2025}', '\u{2026}'])
-            || text[b..].starts_with(|c: char| c.is_whitespace())
-    });
+    breaks.retain(|&b| word_pair_rule_at(text, b) != Some(false));
+    breaks.extend(text.char_indices().map(|(i, _)| i).filter(|&i| word_pair_rule_at(text, i) == Some(true)));
+    breaks.sort_unstable();
 
     let mut prev = 0;
     for &brk in &breaks {
@@ -3105,6 +3125,11 @@ mod tests {
                 assert_eq!(breaks_between(a, b), split, "{a:?}{b:?}");
             }
         }
+    }
+
+    #[test]
+    fn hyphen_runs_break_between_hyphens() {
+        assert_eq!(split_preserving_spaces("a---b"), vec![(0, "a-"), (0, "-"), (0, "-"), (0, "b")]);
     }
 
     #[test]
