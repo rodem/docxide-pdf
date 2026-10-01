@@ -273,6 +273,17 @@ fn resolve_glyph(face: &Face, ch: char) -> Option<ttf_parser::GlyphId> {
                 .into_iter()
                 .find_map(|st| st.glyph_index(ch as u32))
         })
+        // A Unicode space the font lacks (U+202F in macOS Arial 5.01 and Aptos
+        // Italic) takes the font's own space instead of drawing .notdef.
+        // ponytail: spaces only, at U+0020's width; Word rescues any missing
+        // glyph from another font at its real width (Arial Italic in
+        // learning_cultures): widen the CJK rescue in `register_font` to
+        // non-CJK characters when other glyphs go missing
+        .or_else(|| {
+            matches!(ch, '\u{2000}'..='\u{200A}' | '\u{202F}' | '\u{205F}')
+                .then(|| face.glyph_index(' '))
+                .flatten()
+        })
 }
 
 fn extract_kern_pairs(
