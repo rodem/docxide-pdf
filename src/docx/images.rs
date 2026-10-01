@@ -606,6 +606,7 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
                     text_warp: wsp.text_warp,
                     auto_fit: wsp.auto_fit,
                     z_index,
+                    anchor_seq: 0,
                     indent_relative: false,
                 }));
             }
@@ -638,6 +639,7 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
                         dist_left: emu_attr(container, "distL"),
                         dist_right: emu_attr(container, "distR"),
                         z_index,
+                        anchor_seq: 0,
                     }));
                 }
             }
@@ -683,6 +685,7 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
                 text_warp: wsp.text_warp,
                 auto_fit: wsp.auto_fit,
                 z_index: 0,
+                anchor_seq: 0,
                 indent_relative: false,
             }));
         }
@@ -884,6 +887,7 @@ pub(super) fn parse_object_floating_image<R: Read + Seek>(
         dist_left: 0.0,
         dist_right: 0.0,
         z_index: 0,
+        anchor_seq: 0,
     })
 }
 

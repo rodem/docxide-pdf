@@ -131,6 +131,9 @@ pub struct FloatingImage {
     /// objects. Higher draws on top. Used to composite foreground floating
     /// images into the same z-stack as textboxes/connectors.
     pub z_index: u32,
+    /// Position among the paragraph's floating pictures and textboxes in XML
+    /// order: their tags follow the anchors' order, not the drawing order.
+    pub anchor_seq: u32,
 }
 
 /// Covers all 187 OOXML preset shapes and arbitrary custom geometry (a:custGeom).
@@ -400,6 +403,8 @@ pub struct Textbox {
     /// wp:anchor relativeHeight — stacking order among overlapping anchored
     /// shapes within a paragraph (higher draws on top). 0 when unspecified.
     pub z_index: u32,
+    /// See `FloatingImage::anchor_seq`.
+    pub anchor_seq: u32,
     /// Children flattened from an *inline* drawing canvas flow at the
     /// paragraph's text-start, so their Column-relative x must include the
     /// paragraph's left indent. Genuine anchored floats ignore the indent.

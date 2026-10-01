@@ -56,7 +56,7 @@ pub(crate) struct Tags {
     notes: HashMap<(bool, u32), usize>,
     /// Document-level elements for floating content (textboxes, pictures), drawn while
     /// their anchor paragraph renders but placed after its element, like Word.
-    hoisted: Vec<usize>,
+    hoisted: Vec<(u32, usize)>,
     /// The document's language (the catalog `/Lang`); text in another one
     /// gets a Span with `/Lang`.
     pub(super) lang: String,
@@ -306,26 +306,27 @@ impl Tags {
         id
     }
 
-    /// A document-level element that joins the tree at `attach_hoisted`.
-    // ponytail: hoisted in drawing order (behind-text layer first, pictures
-    // before textboxes), not the anchors' document order; an anchor index on
-    // FloatingImage/Textbox fixes it if mixed paragraphs matter (3 fixtures)
-    pub(super) fn hoist(&mut self, kind: &'static str) -> usize {
+    /// A document-level element that joins the tree at `attach_hoisted`, in
+    /// `anchor_seq` order.
+    pub(super) fn hoist(&mut self, kind: &'static str, anchor_seq: u32) -> usize {
         let id = self.push(kind, ROOT);
-        self.hoisted.push(id);
+        self.hoisted.push((anchor_seq, id));
         id
     }
 
     /// A hoisted Figure with the picture's alt text when it has one.
-    pub(super) fn hoist_figure(&mut self, alt: Option<&str>) -> usize {
-        let id = self.hoist("Figure");
+    pub(super) fn hoist_figure(&mut self, alt: Option<&str>, anchor_seq: u32) -> usize {
+        let id = self.hoist("Figure", anchor_seq);
         self.nodes[id].alt = alt.map(str::to_string);
         id
     }
 
-    /// Place the hoisted elements after everything their anchor added.
+    /// Place the hoisted elements after everything their anchor added. They
+    /// were drawn layer by layer (behind-text first, pictures before
+    /// textboxes); Word orders them like their anchors in the XML.
     pub(super) fn attach_hoisted(&mut self) {
-        self.nodes[ROOT].kids.extend(self.hoisted.drain(..).map(Kid::Node));
+        self.hoisted.sort_by_key(|&(seq, _)| seq);
+        self.nodes[ROOT].kids.extend(self.hoisted.drain(..).map(|(_, id)| Kid::Node(id)));
     }
 
     /// The Note for a footnote (or endnote), created under `parent` the first
@@ -577,14 +578,16 @@ mod tests {
     fn hoisted_elements_follow_their_anchor() {
         let mut tags = Tags::new();
         let before = tags.add(ROOT, "P");
-        let sect = tags.hoist("Sect");
+        // Drawn picture-first, but the textbox's anchor comes first in the XML.
+        let figure = tags.hoist_figure(None, 1);
+        let sect = tags.hoist("Sect", 0);
         tags.add(sect, "P");
         let anchor = tags.add(ROOT, "P");
         tags.attach_hoisted();
         let order: Vec<usize> = tags.nodes[ROOT].child_nodes().collect();
-        assert_eq!(order, [before, anchor, sect]);
+        assert_eq!(order, [before, anchor, sect, figure]);
         tags.attach_hoisted();
-        assert_eq!(tags.nodes[ROOT].kids.len(), 3);
+        assert_eq!(tags.nodes[ROOT].kids.len(), 4);
     }
 
     #[test]

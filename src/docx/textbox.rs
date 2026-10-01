@@ -788,6 +788,7 @@ fn parse_vml_geometry_shape(shape: roxmltree::Node) -> Option<Textbox> {
         text_warp: None,
         auto_fit: AutoFit::None,
         z_index: 0,
+        anchor_seq: 0,
         indent_relative: false,
     })
 }
@@ -881,6 +882,7 @@ pub(super) fn parse_textbox_from_vml<R: Read + std::io::Seek>(
         text_warp: None,
         auto_fit: AutoFit::None,
         z_index: 0,
+        anchor_seq: 0,
         indent_relative: false,
     })
 }
@@ -954,6 +956,7 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
                                     .attribute("relativeHeight")
                                     .and_then(|v| v.parse::<u32>().ok())
                                     .unwrap_or(0),
+                                anchor_seq: 0,
                                 indent_relative: false,
                             });
                         }

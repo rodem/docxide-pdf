@@ -108,7 +108,7 @@ pub(super) fn render_single_textbox(
     tags: &mut Tags,
     page: usize,
 ) {
-    let sect = tags.hoist("Sect");
+    let sect = tags.hoist("Sect", tb.anchor_seq);
     let tb_x = resolve_h_position(
         tb.h_relative_from,
         &tb.h_position,

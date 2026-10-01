@@ -205,6 +205,7 @@ pub(super) fn parse_canvas_or_group<R: Read + Seek>(
             text_warp: None,
             auto_fit: AutoFit::None,
             z_index: 0,
+            anchor_seq: 0,
             indent_relative: true,
         }));
     }
@@ -305,6 +306,7 @@ fn emit_wsp<R: Read + Seek>(
             text_warp: shape.text_warp,
             auto_fit: shape.auto_fit,
             z_index: base.z_index,
+            anchor_seq: 0,
             indent_relative: base.indent_relative,
         }));
     }
@@ -349,6 +351,7 @@ fn emit_pic<R: Read + Seek>(
             dist_left: 0.0,
             dist_right: 0.0,
             z_index: base.z_index,
+            anchor_seq: 0,
         }));
     }
 }

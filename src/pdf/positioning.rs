@@ -219,7 +219,7 @@ fn render_one_floating_image(
 
     // Only the picture itself: its shadow, glow, reflection and border are decoration.
     if !img.decorative {
-        let figure = tags.hoist_figure(img.alt.as_deref());
+        let figure = tags.hoist_figure(img.alt.as_deref(), fi.anchor_seq);
         tags.begin(content, page, figure);
     }
     super::smartart::render_image_with_clip(

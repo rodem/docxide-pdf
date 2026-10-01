@@ -725,6 +725,16 @@ fn collect_run_nodes<'a>(
     }
 }
 
+pub(super) fn push_floating(fis: &mut Vec<FloatingImage>, tbs: &[Textbox], mut fi: FloatingImage) {
+    fi.anchor_seq = (fis.len() + tbs.len()) as u32;
+    fis.push(fi);
+}
+
+pub(super) fn push_textbox(fis: &[FloatingImage], tbs: &mut Vec<Textbox>, mut tb: Textbox) {
+    tb.anchor_seq = (fis.len() + tbs.len()) as u32;
+    tbs.push(tb);
+}
+
 macro_rules! handle_drawing_result {
     ($result:expr, $fmt:expr, $runs:expr, $floating_images:expr, $textboxes:expr,
      $inline_chart:expr, $smartart:expr, $connectors:expr) => {
@@ -735,8 +745,8 @@ macro_rules! handle_drawing_result {
                     ..$fmt.minimal_run()
                 });
             }
-            Some(RunDrawingResult::Floating(fi)) => $floating_images.push(fi),
-            Some(RunDrawingResult::TextBox(tb)) => $textboxes.push(tb),
+            Some(RunDrawingResult::Floating(fi)) => push_floating(&mut $floating_images, &$textboxes, fi),
+            Some(RunDrawingResult::TextBox(tb)) => push_textbox(&$floating_images, &mut $textboxes, tb),
             Some(RunDrawingResult::Chart(ic)) => $inline_chart = Some(ic),
             Some(RunDrawingResult::SmartArt(diagram)) => $smartart.push(diagram),
             Some(RunDrawingResult::Connector(c)) => $connectors.push(c),
@@ -750,8 +760,8 @@ macro_rules! handle_drawing_result {
                                 ..$fmt.minimal_run()
                             });
                         }
-                        RunDrawingResult::Floating(fi) => $floating_images.push(fi),
-                        RunDrawingResult::TextBox(tb) => $textboxes.push(tb),
+                        RunDrawingResult::Floating(fi) => push_floating(&mut $floating_images, &$textboxes, fi),
+                        RunDrawingResult::TextBox(tb) => push_textbox(&$floating_images, &mut $textboxes, tb),
                         RunDrawingResult::Chart(ic) => $inline_chart = Some(ic),
                         RunDrawingResult::SmartArt(diagram) => $smartart.push(diagram),
                         RunDrawingResult::Connector(c) => $connectors.push(c),
@@ -1071,7 +1081,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
                         if let Some(tb) =
                             parse_textbox_from_vml(pict, ctx)
                         {
-                            textboxes.push(tb);
+                            push_textbox(&floating_images, &mut textboxes, tb);
                         }
                     }
                 }
@@ -1243,13 +1253,13 @@ pub(super) fn parse_runs<R: Read + Seek>(
                     } else if let Some(tb) =
                         parse_textbox_from_vml(child, ctx)
                     {
-                        textboxes.push(tb);
+                        push_textbox(&floating_images, &mut textboxes, tb);
                     }
                 }
                 "object" if field_stack.is_empty() => {
                     flush_pending(&mut pending_text, &mut runs);
                     if let Some(fi) = parse_object_floating_image(child, ctx) {
-                        floating_images.push(fi);
+                        push_floating(&mut floating_images, &textboxes, fi);
                     } else if let Some(img) = parse_object_inline_image(child, ctx) {
                         runs.push(Run {
                             inline_image: Some(img),
