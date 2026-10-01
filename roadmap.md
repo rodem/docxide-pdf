@@ -105,14 +105,38 @@ text-shadowed words read once · note marks drawn and linked in table cells
 `/Lang` Spans for passages in another language. Scores unchanged except the
 cell marks (erasmus_plus text 68 → 81%).
 
-Progress over the 173 tagged references: struct 0 → 94.7%, text 0 → 95.0%,
-ua_deficit 1165 → 6 (169 fixtures fail no PDF/UA-1 rule Word passes);
+**Done, round 4 (2026-10-01, `5010019f`..`4525f72d`):** paragraph styles
+inherit `w:lang` through basedOn (the write-back skipped it, so styles based
+on Normal fell to docDefaults: lithuanian_public_information_law's ~157
+`/Lang en-US` Spans are gone; the docDefaults-policy idea was a misdiagnosis)
+· hoisted Figures/Sects follow their anchors' XML order (`anchor_seq`,
+german_mezzo struct 94.3 → 100%) · Wingdings ToUnicode → real Unicode from
+the font's glyph names (▪ ✔ ☺ …; Word itself is inconsistent: samtale's
+reference has ☺, irish_school's keeps U+F0A8) · theme slots
+`minor/majorEastAsia` and `minor/majorBidi` for Latin text (`ThemeFonts::slot`;
+cs falls back to the themeFontLang `@bidi` script font) — the 3 fixtures that
+use them get Word's Malgun Gothic/Arial instead of Type1 Helvetica
+(east_asia_conference_form J 12 → 21%, SSIM 33 → 63%) · a font that resolves
+nowhere gets Arial/Liberation Sans/Arimo/Helvetica/DejaVu Sans before Type1
+(case60, multi_font) · a Unicode space the font lacks draws the font's space,
+not `.notdef` (U+202F in macOS Arial 5.01, Aptos Italic). One commit each,
+plus a `/simplify` pass (one field list in `resolve_based_on`).
+
+Progress over the 173 tagged references: struct 0 → 94.8%, text 0 → 95.1%,
+ua_deficit 1165 → 0 (every fixture fails no PDF/UA-1 rule Word passes);
 LibreOffice's own tagged export scores 76% / 84% on the same yardstick. Over
-all 221: ua_fail 469, 13 PDFs claim PDF/UA-1 and pass all 106 rules; what
+all 221: ua_fail 459, 13 PDFs claim PDF/UA-1 and pass all 106 rules; what
 remains is 5-1 (no claim, 208), 7.1-9 (198), 7.3-1 (29) and 7.4.2-1 (24),
-all source-limited, plus 7.21.x in 5 fixtures (missing-font fallback).
-Output size: 24.76 MB untagged → ~24.4 MB tagged (object streams; ±20 KB
-run-to-run noise, see Deterministic Output).
+all source-limited; every font is embedded. Output size ~24.0 MB (round 4
++37 KB: real fonts embedded where Type1 Helvetica was).
+
+**Pending baselines (round 4, need approval):** irish_school_enrollment_form
+text 96.2 → 82.3% (its reference keeps Wingdings U+F0A8, we now give ◻);
+multi_font SSIM 42.6 → 39.2% (Copperplate Gothic Light now falls back to Arial
+instead of approximate-width Type1 Helvetica; Word embedded the real face —
+vendoring CopperplateGothic-Light in the assets repo is the faithful fix).
+Improved and also to accept: the 3 theme-slot fixtures, case60, scottish and
+learning_cultures (ua_fail), german_mezzo, samtale.
 
 **How Word tags things (learned the hard way):**
 - Pictures, charts and SmartArt: the paragraph's own (empty) P, then a
@@ -135,34 +159,33 @@ run-to-run noise, see Deterministic Output).
 
 **Backlog, ordered by gap data (`tag_gaps.py` / `text_gaps.py` in the session
 scratchpad; rebuild them from `tests/common/a11y.rs` if needed):**
-1. Missing-font fallback (7.21.4.1-1 / 7.21.7-1 / 7.21.8-1 / 7.21.5-1, 5
-   fixtures): the standard-14 Helvetica fallback is neither embedded nor
-   ToUnicode-mapped, and a character the font lacks draws `.notdef`. Needs an
-   embedded fallback font (see Bundled Fallback Fonts).
-2. Hoisted elements follow drawing order (behind-text layer first, pictures
-   before textboxes), not the anchors' document order: german_mezzo_soprano_bio
-   struct −2.9pp. Needs an anchor index on FloatingImage/Textbox (`docx/`,
-   ~10 construction sites); 3 fixtures have such paragraphs.
-3. Textbox lists are tagged P (not L/LI); table-cell and header/footer
+1. Textbox lists are tagged P (not L/LI); table-cell and header/footer
    textboxes and floats stay artifacts; WordArt / text on a path has no text.
-4. slovak_eu_directive: we emit 9 table rows where Word has 14 (table model).
-5. Links in headers/footers and footnote text are still dropped; link rects and
+2. slovak_eu_directive: we emit 9 table rows where Word has 14 (table model).
+3. Links in headers/footers and footnote text are still dropped; link rects and
    outline destinations ignore `BODY_SCALE`/vAlign (`assembly.rs`).
-6. `/ListNumbering` on L, `w:softHyphen` dropped, `w:noBreakHyphen` →
-   U+002D, Wingdings bullets extract as private-use code points;
-   `w:lang/@bidi` (complex-script text) ignored.
-7. Language Spans trust the docDefaults `w:lang`: lithuanian_public_information_law
-   (catalog lt-LT from its 198 `lt-LT` runs) gets ~157 `/Lang en-US` Spans
-   around Lithuanian text, because its 1,181 runs without `w:lang` inherit
-   docDefaults `en-US` — the author's Word UI language, not the text's. A
-   screen reader would switch to an English voice there (Word does the same).
-   Fix: only a language from the run or its styles opens a Span; text that
-   only inherits docDefaults counts as the document language (and arguably
-   shouldn't vote in `document_lang` either). Needs `Run` to know where its
-   language came from (`docx/runs.rs` `resolve_run_format`, `layout.rs`
-   `chunk_lang`).
-8. Test-run time: with Microsoft Defender scanning `tests/output` and a
+4. `/ListNumbering` on L (not checked by UA-1; Word writes Disc/Decimal/…;
+   needs numFmt + lvlText threaded to `Tags::list_item`, ~10 sites);
+   Wingdings 2/3 and Webdings still extract as private-use code points;
+   `w:lang/@bidi` (complex-script text) ignored. (`w:softHyphen` dropped and
+   `w:noBreakHyphen` → U+002D both match Word's extraction.)
+5. Missing glyphs other than spaces still draw `.notdef`: Word rescues them per
+   character from another font at their real width; widen the CJK rescue
+   (`missing_cjk_chars`, `__cjk_fallback`) to non-CJK characters. The space
+   fallback also lays U+2002/2003/2009/202F out at U+0020's width.
+6. `anchor_seq` counts per parse pass: textboxes from paragraph-level
+   `mc:Choice` (`collect_textboxes_from_paragraph`) sort after every run-level
+   anchor. The XML position of the anchor node would give true order.
+7. Test-run time: with Microsoft Defender scanning `tests/output` and a
    concurrent worktree run, the full suite took >60 min (normally ~6–10).
+
+**Layout side findings (round 4 `/simplify`):** basedOn inheritance skips
+`keep_next`, `keep_lines`, `contextual_spacing`, `page_break_before` and
+`borders` (plain bool / default in `ParagraphStyle`, so "unset" can't be told
+from false): a custom style based on Heading 1 loses keepNext. Also
+`eastAsiaTheme="minorHAnsi"` (997 runs in the corpus) is ignored by
+`resolve_east_asia_font`, and Times New Roman / Calibri / Cambria have no
+metric-clone fallback (Liberation Serif, Carlito, Caladea) on Linux.
 
 **Harness side findings (2026-10-01):** `tests/text_boundary.rs` has had no
 `#[test]` since fb9373b, so the TxtBnd baselines are stale;
