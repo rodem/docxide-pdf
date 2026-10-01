@@ -29,8 +29,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Build cargo command
-CARGO_ARGS=("test")
+# Build cargo command. --no-fail-fast: one failing suite (e.g. accessibility)
+# must not skip the others, or their scores silently go missing.
+CARGO_ARGS=("test" "--no-fail-fast")
 if [[ -n "$TEST_NAME" ]]; then
     CARGO_ARGS+=("--test" "$TEST_NAME")
 fi
@@ -59,7 +60,10 @@ CARGO_EXIT=0
 cargo "${CARGO_ARGS[@]}" > "$TMPFILE" 2>&1 || CARGO_EXIT=$?
 
 # Extract compilation errors (lines with "error[E" or "error:" after Compiling)
-COMPILE_ERRORS=$(grep -E '^\s*error(\[E[0-9]+\]|:)' "$TMPFILE" 2>/dev/null || true)
+# Cargo's own "error: test failed" / "error: N targets failed" summaries are
+# test failures, not compilation errors.
+NOT_COMPILE='^error: (test failed|[0-9]+ targets? failed)'
+COMPILE_ERRORS=$(grep -E '^\s*error(\[E[0-9]+\]|:)' "$TMPFILE" 2>/dev/null | grep -Ev "$NOT_COMPILE" || true)
 
 # Extract test result lines (skip trivial "0 passed; 0 failed" and doc tests)
 TEST_RESULTS=$(grep '^test result:' "$TMPFILE" 2>/dev/null | grep -v '[^0-9]0 passed; 0 failed; 0 ignored' || true)
@@ -71,7 +75,7 @@ PANICS=$(grep 'thread.*panicked' "$TMPFILE" 2>/dev/null || true)
 if [[ -n "$COMPILE_ERRORS" ]]; then
     echo "Compilation errors:"
     # Show errors with 2 lines of context for location info
-    grep -E -B1 '^\s*error(\[E[0-9]+\]|:)' "$TMPFILE" 2>/dev/null | head -30
+    grep -E -B1 '^\s*error(\[E[0-9]+\]|:)' "$TMPFILE" 2>/dev/null | grep -Ev "$NOT_COMPILE" | head -30
     echo ""
 fi
 
