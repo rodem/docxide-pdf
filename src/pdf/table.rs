@@ -1364,6 +1364,18 @@ fn render_header_rows(
     pb.table_tags = table_tags;
 }
 
+/// Word 2013+ layout puts the outer edge of the table's left border band at
+/// the indent, so the border grid (drawn centred) sits half a band further
+/// right, and cell text follows it: rehab_centre's 2.25pt bands span
+/// 72.0–74.25 from a 72pt margin and text starts 5.4 + 1.125 in.
+fn word2013_border_shift(table: &Table) -> f32 {
+    table
+        .rows
+        .first()
+        .and_then(|r| r.cells.first())
+        .map_or(0.0, |c| c.borders.left.band() / 2.0)
+}
+
 /// `override_pos`: positioning info for floating tables.
 pub(super) fn render_table(
     table: &Table,
@@ -1433,7 +1445,9 @@ pub(super) fn render_table(
                 let ind = table.table_indent;
                 let explicit_real_indent = table.table_indent_explicit
                     && (ind - cm.left).abs() > 1.0;
-                if explicit_real_indent || ctx.compat_mode >= 15 {
+                if ctx.compat_mode >= 15 {
+                    area_left + ind + word2013_border_shift(table)
+                } else if explicit_real_indent {
                     area_left + ind
                 } else {
                     area_left + ind - cm.left
@@ -1844,7 +1858,9 @@ pub(super) fn render_header_footer_table(
         match table.alignment {
             TableAlignment::Center => sp.margin_left + (text_width - table_total_w) / 2.0,
             TableAlignment::Right => sp.margin_left + text_width - table_total_w,
-            TableAlignment::Left if ctx.compat_mode >= 15 => sp.margin_left + table.table_indent,
+            TableAlignment::Left if ctx.compat_mode >= 15 => {
+                sp.margin_left + table.table_indent + word2013_border_shift(table)
+            }
             TableAlignment::Left => sp.margin_left + table.table_indent - cm.left,
         }
     };
