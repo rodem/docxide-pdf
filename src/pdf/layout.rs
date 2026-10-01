@@ -715,7 +715,8 @@ fn caps_word<'a>(run: &Run, word: &'a str) -> Cow<'a, str> {
 /// uppercase chars and non-letters stay at base_fs. `source` is the
 /// segment's letters as written.
 pub(super) fn smallcaps_segments(word: &str, base_fs: f32) -> Vec<(String, f32, &str)> {
-    let reduced = (base_fs - 2.0).max(1.0);
+    // Word draws small caps at 80% (12pt text: 9.6pt capitals).
+    let reduced = base_fs * 0.8;
     let mut segments: Vec<(String, f32, &str)> = Vec::new();
     let mut start = 0;
     for (i, ch) in word.char_indices() {
@@ -3242,7 +3243,7 @@ mod tests {
         let segs = smallcaps_segments("Hello", 12.0);
         assert_eq!(segs.len(), 2);
         assert_eq!(segs[0], ("H".to_string(), 12.0, "H"));     // uppercase stays at 12pt
-        assert_eq!(segs[1], ("ELLO".to_string(), 10.0, "ello"));   // lowercase → uppercase at 10pt
+        assert_eq!(segs[1], ("ELLO".to_string(), 9.6, "ello"));   // lowercase → uppercase at 9.6pt
     }
 
     #[test]
@@ -3256,7 +3257,7 @@ mod tests {
     fn test_smallcaps_segments_all_lower() {
         let segs = smallcaps_segments("abc", 12.0);
         assert_eq!(segs.len(), 1);
-        assert_eq!(segs[0], ("ABC".to_string(), 10.0, "abc"));
+        assert_eq!(segs[0], ("ABC".to_string(), 9.6, "abc"));
     }
 
     #[test]
@@ -3265,7 +3266,7 @@ mod tests {
         let segs = smallcaps_segments("A1b", 12.0);
         assert_eq!(segs.len(), 2);
         assert_eq!(segs[0], ("A1".to_string(), 12.0, "A1"));  // uppercase + digit both at base size
-        assert_eq!(segs[1], ("B".to_string(), 10.0, "b"));    // lowercase → uppercase at reduced size
+        assert_eq!(segs[1], ("B".to_string(), 9.6, "b"));    // lowercase → uppercase at reduced size
     }
 
     #[test]
