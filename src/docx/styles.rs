@@ -622,6 +622,15 @@ pub(super) fn parse_styles<R: Read + Seek>(
             defaults.char_spacing = parse_char_spacing(rpr).unwrap_or(0.0);
             (defaults.lang, defaults.lang_east_asia) = parse_lang(rpr);
         }
+        // A docDefaults with no pPrDefault at all (PHPWord writes these) takes
+        // Word's built-in paragraph defaults, 8pt after and line 278 auto:
+        // 12pt Arial steps 24.0 and 10pt 21.36, i.e.
+        // 13.79 × 1.158 + 8 and 11.49 × 1.158 + 8. An empty pPrDefault keeps
+        // the OOXML defaults (single, nothing after).
+        if wml(doc_defaults, "pPrDefault").is_none() {
+            defaults.space_after = 8.0;
+            defaults.line_spacing = LineSpacing::Auto(278.0 / 240.0);
+        }
         let default_ppr = wml(doc_defaults, "pPrDefault").and_then(|n| wml(n, "pPr"));
         if let Some(wc) = default_ppr.and_then(|ppr| wml_bool(ppr, "widowControl")) {
             defaults.widow_control = wc;
