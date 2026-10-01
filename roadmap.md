@@ -307,6 +307,10 @@ hyphenation 61.2 → 63.2.
 41. **A cell's first baseline** sits the font's ascent (line gap included)
     below the cell top, as in body text, not a full em (10pt TNR: 9.38).
     East Asian fonts keep the em (11pt MS Mincho: 11.0).
+43. macOS system faces with only Mac Roman family names (Helvetica, Helvetica
+    Neue, Optima, Apple Symbol…) are indexed in a lower tier, so the vendored
+    Microsoft Symbol still wins; "Times"/"Courier" go to Times New Roman /
+    Courier New first, as Word draws them.
 42. **docGrid line-spacing multiples** scale the cells a line needs instead of
     being snapped: 1.5 lines of one 18pt cell is 27pt, text centred. case79
     (25 fonts and sizes on 18pt and 15.6pt grids) confirms 36 and 42: all 36
@@ -339,11 +343,9 @@ Open findings (not done):
   Normal win.
 - A nested header table (logo beside a title table) can sit 5–7pt low,
   pushing the body down.
-- macOS system fonts with only Mac-Roman name records (Helvetica, Times,
-  Courier, Optima, Geneva, Symbol… 54 faces) are never indexed, so Mac Word
-  references drawn in them get Arial/TNR. Indexing them needs care: Mac Word
-  uses its own Microsoft Symbol, and its Helvetica line is 1.2 em (neither
-  hhea 1.0 nor win 1.175).
+- macOS-only faces are indexed below every other face (43). Helvetica's line
+  height needs no special rule (Helvetica body lines already step as in Word);
+  Courier → Courier New is Windows' substitute, unverified for Mac Word.
 
 ## Annotation Fixes 2026-09-18 (5 fixes, one commit each)
 
