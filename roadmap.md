@@ -394,6 +394,18 @@ reproduced at the baseline and were marked fixed without a code change.
    last). japanese_land J 8.7 → 8.9, go_math (the only other gridBefore
    fixture) J 44.1 → 44.3, SSIM 65.9 → 66.3. `w:wBefore` stays unread: the
    tblGrid already defines the skipped width.
+3. **#249 french_sexual_health arrow list beside a logo**: Word measures a
+   paragraph's indents from a float's wrap edge as it does from the margin
+   (marker at edge + 17.85, text at edge + 35.7, matched to 0.02pt). The
+   both-sides per-line geometry started the right region at the edge with
+   no indent and no first-line/hanging shift, so the text sat under its own
+   markers. One `right_of_float` expression now serves the both-sides and
+   single-side branches (the latter's width had ignored `indent_left`), the
+   paragraph-level `narrow_paragraph` box uses the same width, and
+   `right_region_for` applies the first line's shift like the left region.
+   Only the fixture itself changed (J 22.2 → 22.2, SSIM 29.3 → 29.7); the
+   remaining difference there is vertical (our lines sit 10pt lower). #245
+   (italian_evaluation line fit) no longer reproduced and was marked fixed.
 
 Findings left for later:
 - Two adjacent `w:noBreakHyphen` (parsed to plain `-`, `docx/runs.rs`) now

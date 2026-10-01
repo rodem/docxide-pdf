@@ -409,7 +409,7 @@ impl FloatZone {
             // For bothSides, use the wider region as primary text width (dual
             // geometry handles both regions per-line).
             let lw = (space_left - para.indent_left).max(0.0);
-            let rw = (space_right - para.indent_right).max(0.0);
+            let rw = (space_right - para.indent_left - para.indent_right).max(0.0);
             if rw > lw {
                 let new_left = ex_right + self.right_from_text;
                 *text_w = rw.max(1.0);
@@ -1724,17 +1724,23 @@ fn render_paragraph_block(
                         let query_y = line_top.min(fz.top_y);
                         let (ex_left, ex_right) =
                             fz.exclusion_at_y(query_y);
-                        let sr = col_right
-                            - (ex_right + fz.right_from_text);
+                        let float_right = ex_right + fz.right_from_text;
+                        let sr = col_right - float_right;
                         let sl =
                             (ex_left - fz.left_from_text) - col_x;
+                        // Word measures the paragraph's indents from the
+                        // float's wrap edge as it does from the margin
+                        // (french youth strategy: arrow list beside a logo).
+                        let right_of_float = (
+                            float_right + para.indent_left,
+                            (sr - para.indent_left - para.indent_right).max(0.0),
+                        );
 
                         if is_both_sides {
                             // BothSides: provide both regions
                             let lx = col_x + para.indent_left;
                             let lw = (sl - para.indent_left).max(0.0);
-                            let rx = ex_right + fz.right_from_text;
-                            let rw = (sr - para.indent_right).max(0.0);
+                            let (rx, rw) = right_of_float;
                             if let Some(ref mut d) = dual {
                                 d.push((lx, lw, rx, rw));
                             }
@@ -1755,16 +1761,8 @@ fn render_paragraph_block(
                                 _ => sl >= 72.0,
                             };
                             if use_right {
-                                let nl =
-                                    ex_right + fz.right_from_text;
-                                let w = (col_right
-                                    - nl
-                                    - para.indent_right)
-                                    .max(1.0);
-                                geom.push((
-                                    nl + para.indent_left,
-                                    w,
-                                ));
+                                let (x, w) = right_of_float;
+                                geom.push((x, w.max(1.0)));
                             } else if use_left {
                                 let ar =
                                     ex_left - fz.left_from_text;

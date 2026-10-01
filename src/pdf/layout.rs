@@ -1110,7 +1110,11 @@ pub(super) fn build_paragraph_lines(
     let right_region_for = |line_count: usize| -> Option<(f32, f32, f32)> {
         per_line_dual.and_then(|dual| {
             dual.get(line_count).and_then(|&(_, _, rx, rw)| {
-                if rw > 0.0 { Some((rx, rw, rw)) } else { None }
+                // The first line gets its first-line/hanging shift like the
+                // left region does (`eff_margin` in render_paragraph_lines).
+                let shift = if line_count == 0 { first_line_hanging } else { 0.0 };
+                let rw = rw + shift;
+                (rw > 0.0).then(|| (rx - shift, rw, rw))
             })
         })
     };

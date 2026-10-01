@@ -668,8 +668,8 @@
       "source": "Generated",
       "x_pt": 72.83587,
       "y_pt": 749.3187,
-      "note": "This line should proably fit on one line, not two? Font issue? Line break logic? Kerning? Figure out why.",
-      "fixed": false,
+      "note": "This line should proably fit on one line, not two? Font issue? Line break logic? Kerning? Figure out why.\n\nTRIAGE (2026-10-02): no longer reproduces at 48a4eba0 — the paragraph is one line (42.55→552.8pt) in both renders.",
+      "fixed": true,
       "cleared": false
     },
     {
@@ -713,7 +713,7 @@
       "x_pt": 181.97098,
       "y_pt": 692.10095,
       "note": "\"Bullet points\" with arrows are rendered all wrong, overlaps text and the logo. Not enough margin between logo and text either.",
-      "fixed": false,
+      "fixed": true,
       "cleared": false
     },
     {
