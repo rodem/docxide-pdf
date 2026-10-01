@@ -148,10 +148,24 @@ pub struct Table {
 
 pub struct TableRow {
     pub cells: Vec<TableCell>,
+    /// Grid columns left empty before the first cell (`w:gridBefore`).
+    pub grid_before: usize,
     pub height: Option<f32>,
     pub height_exact: bool,
     pub is_header: bool,
     pub cant_split: bool,
+}
+
+impl TableRow {
+    /// Each cell with the grid column it starts at and the columns it spans.
+    pub fn grid_cells(&self) -> impl Iterator<Item = (usize, usize, &TableCell)> {
+        self.cells.iter().scan(self.grid_before, |col, cell| {
+            let span = cell.grid_span.max(1) as usize;
+            let start = *col;
+            *col += span;
+            Some((start, span, cell))
+        })
+    }
 }
 
 /// A `w:shd` line/cross pattern fill (e.g. `thinDiagStripe`). Rendered as real

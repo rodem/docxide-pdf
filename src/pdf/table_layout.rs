@@ -88,11 +88,8 @@ fn natural_widths(table: &Table, fonts: &HashMap<String, FontEntry>, cm: &crate:
     let ncols = table.col_widths.len();
     let mut natural = vec![0.0f32; ncols];
     for row in &table.rows {
-        let mut grid_col = 0usize;
-        for cell in &row.cells {
-            let span = cell.grid_span.max(1) as usize;
+        for (grid_col, span, cell) in row.grid_cells() {
             if grid_col >= ncols || span > 1 {
-                grid_col += span;
                 continue;
             }
             let ecm = cell.cell_margins.as_ref().unwrap_or(cm);
@@ -121,7 +118,6 @@ fn natural_widths(table: &Table, fonts: &HashMap<String, FontEntry>, cm: &crate:
                 }
                 natural[grid_col] = natural[grid_col].max(para_w + h_pad);
             }
-            grid_col += span;
         }
     }
     natural
@@ -139,11 +135,8 @@ fn raise_natural_for_nested_tables(
 ) {
     let ncols = natural.len();
     for row in &table.rows {
-        let mut grid_col = 0usize;
-        for cell in &row.cells {
-            let span = cell.grid_span.max(1) as usize;
+        for (grid_col, span, cell) in row.grid_cells() {
             if grid_col >= ncols || span > 1 {
-                grid_col += span;
                 continue;
             }
             let ecm = cell.cell_margins.as_ref().unwrap_or(cm);
@@ -158,7 +151,6 @@ fn raise_natural_for_nested_tables(
                     natural[grid_col] = natural[grid_col].max(w + h_pad);
                 }
             }
-            grid_col += span;
         }
     }
 }
@@ -223,15 +215,11 @@ pub(super) fn auto_fit_columns(table: &Table, fonts: &HashMap<String, FontEntry>
     let mut min_widths = vec![0.0f32; ncols];
 
     for row in &table.rows {
-        let mut grid_col = 0usize;
-        for cell in &row.cells {
-            let span = cell.grid_span.max(1) as usize;
+        for (grid_col, span, cell) in row.grid_cells() {
             if grid_col >= ncols || span > 1 {
-                grid_col += span;
                 continue;
             }
             if cell.text_direction != TextDirection::LrTb {
-                grid_col += span;
                 continue;
             }
             let ecm = cell.cell_margins.as_ref().unwrap_or(cm);
@@ -263,7 +251,6 @@ pub(super) fn auto_fit_columns(table: &Table, fonts: &HashMap<String, FontEntry>
                     }
                 }
             }
-            grid_col += span;
         }
     }
 
@@ -380,9 +367,7 @@ pub(super) fn auto_fit_columns(table: &Table, fonts: &HashMap<String, FontEntry>
     let total: f32 = table.col_widths.iter().sum();
     let mut preferred = table.col_widths.clone();
     for row in &table.rows {
-        let mut grid_col = 0usize;
-        for cell in &row.cells {
-            let span = cell.grid_span.max(1) as usize;
+        for (grid_col, span, cell) in row.grid_cells() {
             if grid_col >= ncols {
                 break;
             }
@@ -401,7 +386,6 @@ pub(super) fn auto_fit_columns(table: &Table, fonts: &HashMap<String, FontEntry>
                     }
                 }
             }
-            grid_col += span;
         }
     }
     let pref_total: f32 = preferred.iter().sum();
@@ -551,12 +535,9 @@ pub(super) fn compute_row_layouts(
         .iter()
         .map(|row| {
             let mut max_h: f32 = 0.0;
-            let mut grid_col = 0usize;
             let cells: Vec<CellLayout> = row
-                .cells
-                .iter()
-                .map(|cell| {
-                    let span = cell.grid_span.max(1) as usize;
+                .grid_cells()
+                .map(|(grid_col, span, cell)| {
                     let span_w = cell_span_width(col_widths, grid_col, span);
                     // For auto-fit tables the resolved grid width is what the
                     // renderer draws borders and content at, so the layout must
@@ -569,8 +550,6 @@ pub(super) fn compute_row_layouts(
                     } else {
                         span_w
                     };
-                    grid_col += span;
-
                     if cell.v_merge == VMerge::Continue {
                         return CellLayout {
                             items: vec![],
@@ -996,26 +975,22 @@ pub(super) fn compute_row_layouts(
 pub(super) fn compute_merge_spans(table: &Table, row_layouts: &[RowLayout]) -> HashMap<(usize, usize), f32> {
     // Build a grid index: vmerge_grid[row][grid_col] = VMerge value
     let max_cols = table.rows.iter().map(|r| {
-        r.cells.iter().map(|c| c.grid_span.max(1) as usize).sum::<usize>()
+        r.grid_before + r.cells.iter().map(|c| c.grid_span.max(1) as usize).sum::<usize>()
     }).max().unwrap_or(0);
     let mut vmerge_grid: Vec<Vec<VMerge>> = Vec::with_capacity(table.rows.len());
     for row in &table.rows {
         let mut row_vmerge = vec![VMerge::None; max_cols];
-        let mut col = 0usize;
-        for cell in &row.cells {
+        for (col, _, cell) in row.grid_cells() {
             if col < max_cols {
                 row_vmerge[col] = cell.v_merge;
             }
-            col += cell.grid_span.max(1) as usize;
         }
         vmerge_grid.push(row_vmerge);
     }
 
     let mut spans = HashMap::new();
     for (ri, row) in table.rows.iter().enumerate() {
-        let mut grid_col = 0usize;
-        for cell in &row.cells {
-            let span = cell.grid_span.max(1) as usize;
+        for (grid_col, _, cell) in row.grid_cells() {
             if cell.v_merge == VMerge::Restart {
                 let mut extra = 0.0f32;
                 for next_ri in (ri + 1)..table.rows.len() {
@@ -1028,7 +1003,6 @@ pub(super) fn compute_merge_spans(table: &Table, row_layouts: &[RowLayout]) -> H
                     spans.insert((ri, grid_col), extra);
                 }
             }
-            grid_col += span;
         }
     }
     spans

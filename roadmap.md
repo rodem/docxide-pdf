@@ -367,6 +367,40 @@ Open findings (not done):
   height needs no special rule (Helvetica body lines already step as in Word);
   Courier → Courier New is Windows' substitute, unverified for Mac Word.
 
+## Annotation Fixes 2026-10-02 (one commit each, worktree `annot/wp-n`)
+
+Baseline for the round: HEAD 48a4eba0 (the layout-accuracy merge). Each fix
+verified by a full visual run against the previous fix's run; each diff then
+went through `/simplify` before its commit. #243, #248 and #250 no longer
+reproduced at the baseline and were marked fixed without a code change.
+
+1. **#244 family_kinship dashed rules** (`e1bb8557`): UAX #14 never breaks
+   before a hyphen (LB21), so an 87-dash rule typed as one run was an
+   unbreakable word; Word wraps such a run after however many dashes fit, so
+   the rules form two columns. Word's two pair-wise departures from UAX #14
+   (this and the ellipsis dot-leader rule) now live in one `word_pair_rule`
+   used by both the whole-text split and the run-boundary check. Only
+   family_kinship moved (J +1.9, SSIM +2.5); six fixtures with `--` in prose
+   changed hash by sub-point x drift (a line end 397.80 → 397.85pt).
+   Residual: Word fits 47 dashes on the first line by compressing the 33
+   spaces to 2.97pt (the #93 justified-space shrink), we fit 46.
+2. **#242 japanese_land shaded bar**: `w:trPr/w:gridBefore` was ignored, so a
+   row starting at grid column 2 was laid out from column 1 (the hatched
+   `gridSpan=9` cell covered columns 1–9 instead of 2–10). `TableRow` carries
+   `grid_before` and a `grid_cells()` iterator yields each cell with its grid
+   column and span; the thirteen hand-rolled column walks in the parser,
+   layout and renderer use it. The PDF/UA tag span of a late-starting row's
+   first cell absorbs the skipped columns (as `gridAfter` already did for the
+   last). japanese_land J 8.7 → 8.9, go_math (the only other gridBefore
+   fixture) J 44.1 → 44.3, SSIM 65.9 → 66.3. `w:wBefore` stays unread: the
+   tblGrid already defines the skipped width.
+
+Findings left for later:
+- Two adjacent `w:noBreakHyphen` (parsed to plain `-`, `docx/runs.rs`) now
+  become a break opportunity; map them to U+2011 if a fixture ever shows it.
+- The tblGrid-less column inference (`docx/tables.rs`, `row_widths`) does not
+  add `gridBefore` columns; Word always writes a tblGrid, so untested.
+
 ## Annotation Fixes 2026-09-18 (5 fixes, one commit each)
 
 Baseline for the round: HEAD 2c0706d, 170 tests passing. Every fix verified by

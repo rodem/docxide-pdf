@@ -696,6 +696,7 @@ fn convert_table(
 
         rows.push(TableRow {
             cells,
+            grid_before: 0,
             height: None,
             height_exact: false,
             is_header: false,

@@ -387,6 +387,10 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
             .unwrap_or((None, false));
         let is_header = tr_pr.and_then(|pr| wml(pr, "tblHeader")).is_some();
         let cant_split = tr_pr.and_then(|pr| wml_bool(pr, "cantSplit")).unwrap_or(false);
+        let grid_before = tr_pr
+            .and_then(|pr| wml_attr(pr, "gridBefore"))
+            .and_then(|v| v.parse::<u16>().ok())
+            .map_or(0, usize::from);
 
         // Per-row table property exceptions (§17.4.60): merge with base table
         // borders — specified exception borders override, unspecified inherit.
@@ -401,7 +405,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
         };
 
         let mut cells = Vec::new();
-        let mut grid_col = 0usize;
+        let mut grid_col = grid_before;
         for tc in collect_block_nodes(*tr)
             .into_iter()
             .filter(|n| is_wml(*n,"tc"))
@@ -846,6 +850,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
         }
         rows.push(TableRow {
             cells,
+            grid_before,
             height: row_height,
             height_exact,
             is_header,
@@ -894,8 +899,8 @@ fn resolve_h_border_conflicts(rows: &mut [TableRow]) {
         let (upper, lower) = rows.split_at_mut(ri + 1);
         let upper_row = &mut upper[ri];
         let lower_row = &mut lower[0];
-        let mut ug = 0usize;
-        let mut lg = 0usize;
+        let mut ug = upper_row.grid_before;
+        let mut lg = lower_row.grid_before;
         let mut ui = 0usize;
         let mut li = 0usize;
         while ui < upper_row.cells.len() && li < lower_row.cells.len() {
@@ -926,47 +931,26 @@ fn resolve_h_border_conflicts(rows: &mut [TableRow]) {
 /// border to the restart cell so it draws the correct edge style.
 fn propagate_vmerge_borders(rows: &mut [TableRow]) {
     for ri in 0..rows.len() {
-        let mut grid_col = 0usize;
-        for ci in 0..rows[ri].cells.len() {
-            let span = rows[ri].cells[ci].grid_span.max(1) as usize;
-            if rows[ri].cells[ci].v_merge == VMerge::Restart {
-                let mut last_ri = ri;
-                for next_ri in (ri + 1)..rows.len() {
-                    let mut g = 0usize;
-                    let mut is_continue = false;
-                    for c in &rows[next_ri].cells {
-                        if g == grid_col {
-                            is_continue = c.v_merge == VMerge::Continue;
-                            break;
-                        }
-                        g += c.grid_span.max(1) as usize;
-                        if g > grid_col {
-                            break;
-                        }
-                    }
-                    if is_continue {
-                        last_ri = next_ri;
-                    } else {
-                        break;
-                    }
-                }
-                if last_ri > ri {
-                    let mut g = 0usize;
-                    for c in &rows[last_ri].cells {
-                        if g == grid_col {
-                            rows[ri].cells[ci].borders.bottom = c.borders.bottom;
-                            break;
-                        }
-                        g += c.grid_span.max(1) as usize;
-                        if g > grid_col {
-                            break;
-                        }
-                    }
-                }
+        let restarts: Vec<(usize, usize)> = rows[ri]
+            .grid_cells()
+            .enumerate()
+            .filter(|(_, (_, _, c))| c.v_merge == VMerge::Restart)
+            .map(|(ci, (g, _, _))| (ci, g))
+            .collect();
+        for (ci, grid_col) in restarts {
+            let last_ri = (ri + 1..rows.len())
+                .take_while(|&n| cell_at(&rows[n], grid_col).is_some_and(|c| c.v_merge == VMerge::Continue))
+                .last();
+            if let Some(bottom) = last_ri.and_then(|n| cell_at(&rows[n], grid_col)).map(|c| c.borders.bottom) {
+                rows[ri].cells[ci].borders.bottom = bottom;
             }
-            grid_col += span;
         }
     }
+}
+
+/// The cell of `row` that starts at `grid_col`, if any.
+fn cell_at(row: &TableRow, grid_col: usize) -> Option<&TableCell> {
+    row.grid_cells().find(|(g, _, _)| *g == grid_col).map(|(_, _, c)| c)
 }
 
 #[cfg(test)]

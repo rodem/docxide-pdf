@@ -312,12 +312,14 @@ fn cell_has_visible_content(items: &[CellContentItem]) -> bool {
     })
 }
 
-/// Column span to tag a cell with. A row that stops short of the grid
-/// (`w:gridAfter`) lends the rest to its last cell, so every TR spans the
-/// table's columns (PDF/UA 7.2-42/43).
+/// Column span to tag a cell with. A row that starts late (`w:gridBefore`)
+/// lends the skipped columns to its first cell and one that stops short
+/// (`w:gridAfter`) the rest to its last cell, so every TR spans the table's
+/// columns (PDF/UA 7.2-42/43).
 fn row_tag_span(row: &TableRow, ci: usize, span: usize, grid_cols: usize, grid_col_after: usize) -> i32 {
+    let lead = if ci == 0 { row.grid_before } else { 0 };
     let span = if ci + 1 == row.cells.len() { span + grid_cols.saturating_sub(grid_col_after) } else { span };
-    span as i32
+    (lead + span) as i32
 }
 
 /// The list label of a tagged cell list item goes in its Lbl, the rest of the
@@ -665,20 +667,16 @@ fn render_table_rows(
         let row_top = *cursor_y;
         let row_bottom = row_top - row_h;
 
-        let mut grid_col = 0usize;
-        for (ci, (cell, cell_layout)) in row.cells.iter().zip(layout.cells.iter()).enumerate() {
-            let span = cell.grid_span.max(1) as usize;
+        for (ci, ((grid_col, span, cell), cell_layout)) in row.grid_cells().zip(layout.cells.iter()).enumerate() {
             let col_w = cell_span_width(col_widths, grid_col, span);
             let cx = cell_x_offset(col_widths, table_left, grid_col);
-            let cell_grid_col = grid_col;
-            grid_col += span;
             let tagger = tag.as_mut().map(|(tags, table_tags, page)| CellTagger {
                 tags: &mut **tags,
                 table: &mut **table_tags,
                 page: *page,
                 row: ri,
                 cell: ci,
-                col_span: row_tag_span(row, ci, span, col_widths.len(), grid_col),
+                col_span: row_tag_span(row, ci, span, col_widths.len(), grid_col + span),
             });
 
             if cell.v_merge == VMerge::Continue {
@@ -689,7 +687,7 @@ fn render_table_rows(
             }
 
             let merge_extra = merge_spans
-                .get(&(ri, cell_grid_col))
+                .get(&(ri, grid_col))
                 .copied()
                 .unwrap_or(0.0);
             let effective_h = row_h + merge_extra;
@@ -723,20 +721,16 @@ fn render_table_rows(
             }
         }
 
-        let mut grid_col = 0usize;
-        for cell in &row.cells {
-            let span = cell.grid_span.max(1) as usize;
+        for (grid_col, span, cell) in row.grid_cells() {
             let col_w = cell_span_width(col_widths, grid_col, span);
             let bx = cell_x_offset(col_widths, table_left, grid_col);
-            let cell_grid_col = grid_col;
-            grid_col += span;
 
             if cell.v_merge == VMerge::Continue {
                 continue;
             }
 
             let merge_extra = merge_spans
-                .get(&(ri, cell_grid_col))
+                .get(&(ri, grid_col))
                 .copied()
                 .unwrap_or(0.0);
             let effective_bottom = row_bottom - merge_extra;
@@ -988,13 +982,9 @@ fn render_table_row(
     let row_top = pb.slot_top;
     let row_bottom = row_top - row_h;
 
-    let mut grid_col = 0usize;
-    for (ci, (cell, cell_layout)) in row.cells.iter().zip(layout.cells.iter()).enumerate() {
-        let span = cell.grid_span.max(1) as usize;
+    for (ci, ((grid_col, span, cell), cell_layout)) in row.grid_cells().zip(layout.cells.iter()).enumerate() {
         let col_w = cell_span_width(col_widths, grid_col, span);
         let cell_x = cell_x_offset(col_widths, table_left, grid_col);
-        let cell_grid_col = grid_col;
-        grid_col += span;
         // None while repeated header rows are drawn (render_header_rows).
         let page = pb.all_contents.len();
         let tagger = pb.table_tags.as_mut().map(|table| CellTagger {
@@ -1003,7 +993,7 @@ fn render_table_row(
             page,
             row: row_idx,
             cell: ci,
-            col_span: row_tag_span(row, ci, span, col_widths.len(), grid_col),
+            col_span: row_tag_span(row, ci, span, col_widths.len(), grid_col + span),
         });
 
         if cell.v_merge == VMerge::Continue {
@@ -1014,7 +1004,7 @@ fn render_table_row(
         }
 
         let merge_extra = merge_spans
-            .get(&(row_idx, cell_grid_col))
+            .get(&(row_idx, grid_col))
             .copied()
             .unwrap_or(0.0);
         let effective_h = row_h + merge_extra;
@@ -1077,14 +1067,11 @@ fn render_table_row(
         }
     }
 
-    let mut grid_col = 0usize;
-    for cell in &row.cells {
-        let span = cell.grid_span.max(1) as usize;
+    for (grid_col, span, cell) in row.grid_cells() {
         let col_w = cell_span_width(col_widths, grid_col, span);
         let bx = cell_x_offset(col_widths, table_left, grid_col);
 
         if cell.v_merge == VMerge::Continue {
-            grid_col += span;
             continue;
         }
 
@@ -1104,8 +1091,6 @@ fn render_table_row(
             true,
             true,
         );
-
-        grid_col += span;
     }
 
     pb.slot_top = row_bottom;
@@ -1243,12 +1228,9 @@ fn render_partial_row(
     let row_h = max_h;
     let row_bottom = row_top - row_h;
 
-    let mut grid_col = 0usize;
-    for (ci, (cell, cell_layout)) in row.cells.iter().zip(layout.cells.iter()).enumerate() {
-        let span = cell.grid_span.max(1) as usize;
+    for (ci, ((grid_col, span, cell), cell_layout)) in row.grid_cells().zip(layout.cells.iter()).enumerate() {
         let col_w = cell_span_width(col_widths, grid_col, span);
         let cell_x = cell_x_offset(col_widths, table_left, grid_col);
-        grid_col += span;
         let page = pb.all_contents.len();
         let tagger = pb.table_tags.as_mut().map(|table| CellTagger {
             tags: &mut pb.tags,
@@ -1256,7 +1238,7 @@ fn render_partial_row(
             page,
             row: row_idx,
             cell: ci,
-            col_span: row_tag_span(row, ci, span, col_widths.len(), grid_col),
+            col_span: row_tag_span(row, ci, span, col_widths.len(), grid_col + span),
         });
 
         if cell.v_merge == VMerge::Continue {
@@ -1307,12 +1289,9 @@ fn render_partial_row(
         }
     }
 
-    let mut grid_col = 0usize;
-    for cell in &row.cells {
-        let span = cell.grid_span.max(1) as usize;
+    for (grid_col, span, cell) in row.grid_cells() {
         let col_w = cell_span_width(col_widths, grid_col, span);
         let bx = cell_x_offset(col_widths, table_left, grid_col);
-        grid_col += span;
 
         if cell.v_merge == VMerge::Continue {
             continue;

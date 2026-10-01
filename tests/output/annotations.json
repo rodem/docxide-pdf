@@ -636,7 +636,7 @@
       "x_pt": 455.71875,
       "y_pt": 245.04272,
       "note": "shaded box/bar should extend further right.",
-      "fixed": false,
+      "fixed": true,
       "cleared": false
     },
     {
