@@ -41,13 +41,13 @@ If you have a `.docx` file that produces ugly, broken, or just plain wrong outpu
 
 A Rust library and CLI tool for converting DOCX files to PDF, with the goal of matching Microsoft Word's PDF export as closely as possible.<sup>*</sup>
 
+**Accessible:** Output PDFs should be just as accessible as Word's export, or better: tagged structure, reading order, language and metadata that pass the same PDF/UA checks.
+
 **Accurate:** Given a `.docx` file, produce a `.pdf` that is visually identical to what Word would export.
 
 **Fast:** Typical conversions complete in under 100ms.
 
 **Small files:** Output PDFs should be the same size or smaller than Word's export.
-
-**Accessible:** Output PDFs should be just as accessible as Word's export, or better: tagged structure, reading order, language and metadata that pass the same PDF/UA checks.
 
 *<sub>Reference PDFs are generated using Microsoft Word for Mac (16.106.1) with the "Best for electronic distribution and accessibility (uses Microsoft online service)" export option.</sub>
 
@@ -198,6 +198,8 @@ cargo test ssim_comparison -- --nocapture
 ```
 
 Results are appended to `tests/output/results.csv` and `tests/output/ssim_results.csv`. Run `python tools/graph.py` to see a live-updating graph of scores over time.
+
+[SCORING.md](SCORING.md) explains every score in plain words: the visual metrics, the accessibility metrics and what fails the suite.
 
 ## Debugging Tools
 
