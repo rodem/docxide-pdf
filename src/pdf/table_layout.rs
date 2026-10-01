@@ -961,9 +961,19 @@ pub(super) fn compute_row_layouts(
             // Border bands are already in the cell insets (docx::tables); the
             // 0.5pt once added here was Table Grid's border width.
             let content_h = max_h;
+            // An at-least trHeight bounds the row between its border bands,
+            // which sit on top of it: 0.5pt Table Grid rows step trHeight + 0.5
+            // (belgian_youth 19.85 → 20.5, italian_evaluation 12.0 → 12.48,
+            // japanese_interlibrary 21.25 → 21.77). An exact height is the
+            // border-to-border pitch (case15: 36.0).
+            let bands = row
+                .cells
+                .iter()
+                .map(|c| (c.borders.top.band() + c.borders.bottom.band()) / 2.0)
+                .fold(0.0f32, f32::max);
             let height = match (row.height, row.height_exact) {
                 (Some(h), true) => h,
-                (Some(h), false) => content_h.max(h),
+                (Some(h), false) => content_h.max(h + bands),
                 _ => content_h,
             };
 
