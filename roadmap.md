@@ -130,15 +130,14 @@ remains is 5-1 (no claim, 208), 7.1-9 (198), 7.3-1 (29) and 7.4.2-1 (24),
 all source-limited; every font is embedded. Output size ~24.0 MB (round 4
 +37 KB: real fonts embedded where Type1 Helvetica was).
 
-**Pending baselines (round 4, need approval):** multi_font SSIM 42.6 →
-39.2%: Copperplate Gothic Light now falls back to Arial with real widths and
-fits on one line, where the approximate-width Type1 Helvetica wrapped it like
-Word's real (wide) face does; our page 1 also runs ~14pt taller than Word's,
-pushing its last line (Bodoni MT) to page 2. Vendoring CopperplateGothic-Light
-in the assets repo is the faithful fix. Improved and also to accept: the 3
-theme-slot fixtures, case60, scottish and learning_cultures (ua_fail),
-german_mezzo, samtale. (irish_school's text drop is gone: `a11y_text` now
-folds symbol glyphs, see SCORING.md.)
+**Baselines accepted (round 4):** 15 fixtures' scores, 7 visual hashes. The
+one drop is multi_font SSIM 42.6 → 39.2%: Copperplate Gothic Light now falls
+back to Arial with real widths and fits on one line, where the
+approximate-width Type1 Helvetica wrapped it like Word's real (wide) face
+does; our page 1 also runs ~14pt taller than Word's, pushing its last line
+(Bodoni MT) to page 2. Vendoring CopperplateGothic-Light in the assets repo is
+the faithful fix. (irish_school's text drop is gone: `a11y_text` now folds
+symbol glyphs, see SCORING.md.)
 
 **How Word tags things (learned the hard way):**
 - Pictures, charts and SmartArt: the paragraph's own (empty) P, then a
