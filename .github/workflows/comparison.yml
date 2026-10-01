@@ -32,6 +32,7 @@ jobs:
     timeout-minutes: 120
     env:
       VERAPDF: "1.30.2"
+      PYTHONUNBUFFERED: "1"   # engine_compare.py's per-case lines get real timestamps in the log
     steps:
       - uses: actions/checkout@v7
         with:
