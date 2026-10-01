@@ -100,6 +100,10 @@ pub struct SectionProperties {
     pub page_height: f32,
     pub margin_top: f32,
     pub margin_bottom: f32,
+    /// The margin was written negative: the header (footer) never pushes the
+    /// body away from it.
+    pub margin_top_fixed: bool,
+    pub margin_bottom_fixed: bool,
     pub margin_left: f32,
     pub margin_right: f32,
     pub header_margin: f32,

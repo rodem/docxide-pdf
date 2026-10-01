@@ -199,6 +199,7 @@ pub(super) fn effective_slot_top(
     );
     let base = sp.page_height - sp.margin_top;
     match header {
+        Some(_) if sp.margin_top_fixed => base,
         Some(hf) => {
             base.min(sp.page_height - sp.header_margin - compute_header_height(hf, ctx, sp, true))
         }
@@ -219,6 +220,7 @@ pub(super) fn compute_effective_margin_bottom(
     );
     let base = sp.margin_bottom;
     match footer {
+        Some(_) if sp.margin_bottom_fixed => base,
         Some(hf) => {
             base.max(sp.footer_margin + compute_header_height(hf, ctx, sp, false))
         }

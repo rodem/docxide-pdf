@@ -24,8 +24,13 @@ pub(super) fn parse_section_properties<R: Read + Seek>(
 
     let page_width = pg_sz.and_then(|n| twips_attr(n, "w")).unwrap_or(612.0);
     let page_height = pg_sz.and_then(|n| twips_attr(n, "h")).unwrap_or(792.0);
-    let mut margin_top = pg_mar.and_then(|n| twips_attr(n, "top")).unwrap_or(72.0);
-    let margin_bottom = pg_mar.and_then(|n| twips_attr(n, "bottom")).unwrap_or(72.0);
+    // §17.6.11: a negative top/bottom margin is its absolute value, and the
+    // header/footer then never pushes the body text.
+    let raw_top = pg_mar.and_then(|n| twips_attr(n, "top")).unwrap_or(72.0);
+    let raw_bottom = pg_mar.and_then(|n| twips_attr(n, "bottom")).unwrap_or(72.0);
+    let (margin_top_fixed, margin_bottom_fixed) = (raw_top < 0.0, raw_bottom < 0.0);
+    let mut margin_top = raw_top.abs();
+    let margin_bottom = raw_bottom.abs();
     let mut margin_left = pg_mar.and_then(|n| twips_attr(n, "left")).unwrap_or(72.0);
     let mut margin_right = pg_mar.and_then(|n| twips_attr(n, "right")).unwrap_or(72.0);
     let header_margin = pg_mar.and_then(|n| twips_attr(n, "header")).unwrap_or(36.0);
@@ -188,6 +193,8 @@ pub(super) fn parse_section_properties<R: Read + Seek>(
         page_height,
         margin_top,
         margin_bottom,
+        margin_top_fixed,
+        margin_bottom_fixed,
         margin_left,
         margin_right,
         header_margin,

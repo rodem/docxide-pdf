@@ -853,6 +853,8 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
             page_height: 792.0,
             margin_top: 72.0,
             margin_bottom: 72.0,
+            margin_top_fixed: false,
+            margin_bottom_fixed: false,
             margin_left: 72.0,
             margin_right: 72.0,
             header_margin: 36.0,
