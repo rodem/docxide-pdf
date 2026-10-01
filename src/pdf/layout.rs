@@ -1258,8 +1258,8 @@ pub(super) fn build_paragraph_lines(
                     ww = width(&shown);
                 }
             }
-            let word: &str = &shown;
-            let original = run.caps.then_some(source);
+            let mut word: &str = &shown;
+            let mut original = run.caps.then_some(source);
             prev_last_char = word.chars().last();
 
             let need_space = !current_chunks.is_empty() && pending_space_w > 0.0;
@@ -1401,6 +1401,19 @@ pub(super) fn build_paragraph_lines(
                 // No right region or right region also full — wrap to next line
                 lines.push(finish_dual_line(&mut current_chunks, &mut in_right_region, &mut cur_right_info));
                 current_x = 0.0;
+                // A word wider than the new line breaks at its margin too.
+                let room = left_max(lines.len());
+                if ww > room {
+                    if let Some(cut) = fitting_prefix_len(source, room, |w| width(&caps_word(run, w))) {
+                        words.push_front((0, &source[cut..]));
+                        source = &source[..cut];
+                        shown = caps_word(run, source);
+                        word = &shown;
+                        original = run.caps.then_some(source);
+                        ww = width(word);
+                        prev_last_char = word.chars().last();
+                    }
+                }
                 // If the new line's left region is zero-width, go
                 // straight to the right region for this word.
                 if let Some((rx, rw, _)) = right_region_for(lines.len()) {
@@ -3087,6 +3100,30 @@ mod tests {
             .collect();
         assert_eq!(texts, vec![vec!["aaaa"], vec!["bbb", "ccc"]]);
         assert_eq!(lines[1].chunks[0].x_offset, 0.0);
+    }
+
+    #[test]
+    fn overwide_word_after_text_breaks_at_the_new_lines_margin() {
+        let mut fonts = HashMap::new();
+        fonts.insert("Arial".to_string(), stub_font_entry());
+        let runs = [Run {
+            text: "aa bbbbbbbbbb".to_string(),
+            ..make_run(10.0, VertAlign::Baseline, false)
+        }];
+        let cjk = CjkLayout {
+            auto_space: false,
+            compress_punct: false,
+            squeeze_spaces: false,
+            expand_shift_return: true,
+        };
+        let lines = build_paragraph_lines(
+            &runs, &fonts, 40.0, 0.0, &HashMap::new(), &HashMap::new(), None, None, None, cjk,
+        );
+        let texts: Vec<String> = lines
+            .iter()
+            .map(|l| l.chunks.iter().map(|c| c.text.as_str()).collect())
+            .collect();
+        assert_eq!(texts, vec!["aa", "bbbbbbbb", "bb"]);
     }
 
     #[test]
