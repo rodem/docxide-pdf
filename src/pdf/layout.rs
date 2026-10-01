@@ -2715,6 +2715,7 @@ mod tests {
             synthetic_bold: false,
             is_substituted: false,
             missing_cjk_chars: Default::default(),
+            drew_notdef: Default::default(),
             font_path: None,
             face_index: 0,
         }

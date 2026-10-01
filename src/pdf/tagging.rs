@@ -367,6 +367,31 @@ impl Tags {
         content.begin_marked_content(Name(b"Artifact"));
     }
 
+    /// The PDF/UA structure rules that depend on the document itself: every
+    /// Figure has alt text (7.3-1), and in reading order the first heading is
+    /// H1 and going deeper never skips a level (7.4.2-1).
+    pub(super) fn ua_structure_ok(&self) -> bool {
+        let mut level = 0;
+        let mut stack = vec![ROOT];
+        while let Some(n) = stack.pop() {
+            let node = &self.nodes[n];
+            if node.kind == "Figure" && node.alt.is_none() {
+                return false;
+            }
+            if let Some(l) = node.kind.strip_prefix('H').and_then(|d| d.parse::<u8>().ok()) {
+                if l > level + 1 {
+                    return false;
+                }
+                level = l;
+            }
+            stack.extend(node.kids.iter().rev().filter_map(|k| match k {
+                Kid::Node(c) => Some(*c),
+                Kid::Mcid { .. } => None,
+            }));
+        }
+        true
+    }
+
     /// Page `p`'s `/StructParents` key, if it has tagged content.
     pub(super) fn struct_parents(&self, page: usize) -> Option<i32> {
         (self.next_mcid.get(page).copied().unwrap_or(0) > 0).then_some(page as i32)
@@ -508,6 +533,27 @@ mod tests {
         assert_eq!(order, [before, anchor, sect]);
         tags.attach_hoisted();
         assert_eq!(tags.nodes[ROOT].kids.len(), 3);
+    }
+
+    #[test]
+    fn ua_structure_needs_alt_and_unskipped_headings() {
+        let doc = |kinds: &[&'static str]| {
+            let mut tags = Tags::new();
+            let sect = tags.add(ROOT, "Sect");
+            for &k in kinds {
+                tags.add(sect, k);
+            }
+            tags
+        };
+        assert!(doc(&["H1", "P", "H2", "H3", "H1", "H2"]).ua_structure_ok());
+        assert!(doc(&["P"]).ua_structure_ok());
+        assert!(!doc(&["H2", "H3"]).ua_structure_ok(), "first heading must be H1");
+        assert!(!doc(&["H1", "H3"]).ua_structure_ok(), "skipped H2");
+        let mut tags = doc(&["H1"]);
+        let figure = tags.add_figure(ROOT, None);
+        assert!(!tags.ua_structure_ok(), "Figure without alt");
+        tags.nodes[figure].alt = Some("A chart".into());
+        assert!(tags.ua_structure_ok());
     }
 
     #[test]

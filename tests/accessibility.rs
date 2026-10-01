@@ -11,6 +11,8 @@ struct Scored {
     /// PDF/UA-1 rules our PDF fails on its own. Rules the source can't satisfy
     /// (no title, pictures without descr) count too; the baseline absorbs them.
     ua_fail: usize,
+    /// The PDF claims PDF/UA-1 (rule 5-1 passes); it must then fail nothing.
+    claims_ua: bool,
     deficit: Vec<String>,
     struct_score: f64,
     text_score: f64,
@@ -18,8 +20,8 @@ struct Scored {
 
 enum Outcome {
     Scored(Scored),
-    /// No Word bar to compare with, so only (name, ua_fail).
-    UntaggedReference(String, usize),
+    /// No Word bar to compare with, so only (name, ua_fail, claims_ua).
+    UntaggedReference(String, usize, bool),
     Error(String, String),
 }
 
@@ -86,16 +88,18 @@ fn analyze_fixture(fixture: &Path, gen_name: &str) -> Option<Outcome> {
     let failing: BTreeMap<&str, u64> =
         gen_a.rules.iter().filter(|(_, r)| r.failed > 0).map(|(id, r)| (id.as_str(), r.failed)).collect();
     let detail_path = out.join(format!("{stem}.deficit.json"));
+    let claims_ua = !failing.contains_key("5-1");
     // Untagged (macOS print-path) references give no bar to measure against.
     if ref_a.elems.is_empty() {
         let detail = serde_json::json!({ "ua_fail": failing });
         fs::write(&detail_path, serde_json::to_string_pretty(&detail).unwrap()).ok();
-        return Some(Outcome::UntaggedReference(name, failing.len()));
+        return Some(Outcome::UntaggedReference(name, failing.len(), claims_ua));
     }
 
     let scored = Scored {
         name,
         ua_fail: failing.len(),
+        claims_ua,
         deficit: a11y::ua_deficit(&ref_a.rules, &gen_a.rules)
             .into_iter()
             .map(String::from)
@@ -126,7 +130,7 @@ fn accessibility_vs_reference() {
     for o in outcomes {
         match o {
             Outcome::Scored(s) => results.push(s),
-            Outcome::UntaggedReference(name, ua_fail) => untagged.push((name, ua_fail)),
+            Outcome::UntaggedReference(name, ua_fail, claims_ua) => untagged.push((name, ua_fail, claims_ua)),
             Outcome::Error(name, e) => errors.push(format!("{name}: {e}")),
         }
     }
@@ -149,7 +153,7 @@ fn accessibility_vs_reference() {
             if more > 0 { format!(" +{more}") } else { String::new() }
         );
     }
-    for (name, ua_fail) in &untagged {
+    for (name, ua_fail, _) in &untagged {
         println!("  {name:<name_w$}  {ua_fail:>6}      -       -       -  (untagged reference)");
     }
     let n = results.len().max(1) as f64;
@@ -162,11 +166,18 @@ fn accessibility_vs_reference() {
         untagged.len(),
     );
     let ua_fails: Vec<usize> = results.iter().map(|r| r.ua_fail).chain(untagged.iter().map(|u| u.1)).collect();
+    let claims: Vec<(&str, usize)> = results
+        .iter()
+        .filter(|r| r.claims_ua)
+        .map(|r| (r.name.as_str(), r.ua_fail))
+        .chain(untagged.iter().filter(|u| u.2).map(|u| (u.0.as_str(), u.1)))
+        .collect();
     println!(
-        "  PDF/UA-1 rules failed on our own: {} total over {} PDFs · {} fail only one",
+        "  PDF/UA-1 rules failed on our own: {} total over {} PDFs · {} fail only one · {} claim PDF/UA-1",
         ua_fails.iter().sum::<usize>(),
         ua_fails.len(),
         ua_fails.iter().filter(|&&f| f == 1).count(),
+        claims.len(),
     );
     for e in &errors {
         println!("  ERROR {e}");
@@ -189,11 +200,16 @@ fn accessibility_vs_reference() {
             };
             (r.name.clone(), b)
         })
-        .chain(untagged.iter().map(|(name, ua_fail)| {
+        .chain(untagged.iter().map(|(name, ua_fail, _)| {
             (name.clone(), common::Baselines { ua_fail: Some(*ua_fail), ..Default::default() })
         }))
         .collect();
     common::write_latest_scores(&updates);
+
+    // A PDF that declares PDF/UA conformance must pass every machine check.
+    let false_claims: Vec<String> =
+        claims.iter().filter(|&&(_, f)| f > 0).map(|(n, f)| format!("{n} ({f} rules)")).collect();
+    assert!(false_claims.is_empty(), "PDF/UA claimed but failing: {}", false_claims.join(", "));
 
     let baselines = common::read_baselines();
     let mut regressions: Vec<&str> = updates

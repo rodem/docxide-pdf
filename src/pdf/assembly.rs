@@ -79,7 +79,7 @@ fn render_page_borders(pb: &PageBorders, sp: &SectionProperties) -> Content {
 
 /// XMP packet for the catalog `/Metadata` stream; PDF/UA wants dc:title here,
 /// not only in the Info dictionary.
-fn xmp_packet(doc: &Document, lang: &str) -> String {
+fn xmp_packet(doc: &Document, lang: &str, claims_ua: bool) -> String {
     let esc = |s: &str| {
         s.replace('&', "&amp;")
             .replace('<', "&lt;")
@@ -100,12 +100,16 @@ fn xmp_packet(doc: &Document, lang: &str) -> String {
     if let Some(a) = &doc.author {
         props += &format!("<dc:creator><rdf:Seq><rdf:li>{}</rdf:li></rdf:Seq></dc:creator>", esc(a));
     }
+    if claims_ua {
+        props += "<pdfuaid:part>1</pdfuaid:part>";
+    }
     format!(
         "<?xpacket begin=\"\u{feff}\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\
          <x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\
          <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\
          <rdf:Description rdf:about=\"\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" \
-         xmlns:pdf=\"http://ns.adobe.com/pdf/1.3/\">{props}</rdf:Description>\
+         xmlns:pdf=\"http://ns.adobe.com/pdf/1.3/\" \
+         xmlns:pdfuaid=\"http://www.aiim.org/pdfua/ns/id/\">{props}</rdf:Description>\
          </rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>"
     )
 }
@@ -511,8 +515,16 @@ pub(super) fn assemble_pdf_pages(
 
     // Word's own default when a document declares no language.
     let lang = doc.default_lang.as_deref().unwrap_or("en-US");
+    // Claim PDF/UA-1 only when every machine check that depends on the
+    // document is known to pass: a title, alt on every Figure, heading order,
+    // all fonts embedded (no standard-14 fallback) and no .notdef drawn. The
+    // accessibility test fails any claiming PDF that veraPDF faults.
+    let claims_ua = !tags.is_empty()
+        && doc.title.as_deref().is_some_and(|t| !t.trim().is_empty())
+        && tags.ua_structure_ok()
+        && seen_fonts.values().all(|f| f.char_to_gid.is_some() && !f.drew_notdef.get());
     let metadata_id = alloc();
-    pdf.metadata(metadata_id, xmp_packet(doc, lang).as_bytes());
+    pdf.metadata(metadata_id, xmp_packet(doc, lang, claims_ua).as_bytes());
     let struct_root = (!tags.is_empty()).then(|| tags.write(pdf, alloc, &page_ids, &tagged_annots));
     {
         let mut catalog = pdf.catalog(catalog_id);

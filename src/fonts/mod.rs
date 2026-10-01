@@ -58,6 +58,9 @@ pub(crate) struct FontEntry {
     pub(crate) is_substituted: bool,
     /// CJK chars requested but not present in this font (need fallback rendering).
     pub(crate) missing_cjk_chars: HashSet<char>,
+    /// Set when text was encoded with a character the font lacks, which draws
+    /// the .notdef glyph (PDF/UA 7.21.8); the document then can't claim PDF/UA.
+    pub(crate) drew_notdef: std::cell::Cell<bool>,
     /// Font file path for glyph outline extraction (text warping).
     pub(crate) font_path: Option<PathBuf>,
     pub(crate) face_index: u32,
@@ -82,7 +85,12 @@ impl FontEntry {
     /// char→gid map (embedded subset), else WinAnsi bytes (standard font).
     pub(crate) fn encode(&self, text: &str) -> Vec<u8> {
         match &self.char_to_gid {
-            Some(map) => encoding::encode_as_gids(text, map),
+            Some(map) => {
+                if text.chars().any(|c| !map.contains_key(&c)) {
+                    self.drew_notdef.set(true);
+                }
+                encoding::encode_as_gids(text, map)
+            }
             None => encoding::to_winansi_bytes(text),
         }
     }
@@ -589,6 +597,7 @@ pub(crate) fn register_font(
             synthetic_bold: r.synthetic_bold,
             is_substituted: substituted.get(),
             missing_cjk_chars: missing_cjk,
+            drew_notdef: Default::default(),
             font_path: r.font_path,
             face_index: r.face_index,
         },
@@ -624,6 +633,7 @@ pub(crate) fn register_font(
                 synthetic_bold: false,
                 is_substituted: true,
                 missing_cjk_chars: missing_cjk,
+                drew_notdef: Default::default(),
                 font_path: None,
                 face_index: 0,
             }
