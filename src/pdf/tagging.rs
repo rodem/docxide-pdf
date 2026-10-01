@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use pdf_writer::types::TableHeaderScope;
 use pdf_writer::writers::StructTreeRoot;
-use pdf_writer::{Content, Name, Pdf, Ref};
+use pdf_writer::{Content, Name, Pdf, Ref, TextStr};
 
 pub(super) const ROOT: usize = 0;
 
@@ -26,6 +26,7 @@ struct Node {
     kids: Vec<Kid>,
     /// Table cell attributes: header scope and column span.
     cell: Option<(Option<TableHeaderScope>, i32)>,
+    alt: Option<String>,
 }
 
 pub(crate) struct Tags {
@@ -194,7 +195,7 @@ pub(super) fn strip_empty_artifacts(raw: &[u8]) -> Vec<u8> {
 impl Tags {
     pub(super) fn new() -> Self {
         Self {
-            nodes: vec![Node { kind: "Document", parent: ROOT, kids: Vec::new(), cell: None }],
+            nodes: vec![Node { kind: "Document", parent: ROOT, kids: Vec::new(), cell: None, alt: None }],
             next_mcid: Vec::new(),
         }
     }
@@ -205,8 +206,15 @@ impl Tags {
 
     pub(super) fn add(&mut self, parent: usize, kind: &'static str) -> usize {
         let id = self.nodes.len();
-        self.nodes.push(Node { kind, parent, kids: Vec::new(), cell: None });
+        self.nodes.push(Node { kind, parent, kids: Vec::new(), cell: None, alt: None });
         self.nodes[parent].kids.push(Kid::Node(id));
+        id
+    }
+
+    /// A Figure under `parent`, with the picture's alt text when it has one.
+    pub(super) fn add_figure(&mut self, parent: usize, alt: Option<&str>) -> usize {
+        let id = self.add(parent, "Figure");
+        self.nodes[id].alt = alt.map(str::to_string);
         id
     }
 
@@ -279,6 +287,9 @@ impl Tags {
             let mut elem = pdf.struct_element(refs[i]);
             elem.custom_kind(Name(node.kind.as_bytes()));
             elem.parent(if i == ROOT { root } else { refs[node.parent] });
+            if let Some(alt) = &node.alt {
+                elem.alt(TextStr(alt));
+            }
             if let Some((scope, col_span)) = node.cell.filter(|&(s, span)| s.is_some() || span > 1) {
                 let mut attrs = elem.attributes();
                 let mut table = attrs.push().table();

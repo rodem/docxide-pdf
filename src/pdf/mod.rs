@@ -653,6 +653,27 @@ impl PageBuilder {
         }
     }
 
+    /// Tag a picture, chart or diagram paragraph the way Word does: an empty
+    /// element for the paragraph mark, then the Figure hoisted beside it.
+    fn begin_figure(&mut self, para: &Paragraph, doc: &Document, alt: Option<&str>) {
+        let mark = self.para_tags(para, doc);
+        self.begin_para_tags(mark, |_| {});
+        self.end_tag();
+        let figure = self.tags.add_figure(tagging::ROOT, alt);
+        self.begin_tag(figure);
+    }
+
+    /// A chart or SmartArt paragraph as Word tags it: the paragraph mark, then
+    /// a Figure whose drawing (labels included) stays an artifact, so only the
+    /// alt text speaks for it.
+    // ponytail: content-less Figure; tag the drawing itself if a validator asks for content
+    fn figure_without_content(&mut self, para: &Paragraph, doc: &Document, alt: Option<&str>) {
+        let mark = self.para_tags(para, doc);
+        self.begin_para_tags(mark, |_| {});
+        self.end_tag();
+        self.tags.add_figure(tagging::ROOT, alt);
+    }
+
     /// Draw the list label as its own Lbl (or inside the paragraph's element
     /// when it has none) and leave the paragraph text's tag open.
     fn begin_para_tags(&mut self, (label, text): (Option<usize>, usize), draw_label: impl FnOnce(&mut Content)) {
@@ -2546,6 +2567,7 @@ fn render_paragraph_block(
                 Alignment::Right => (col_w - ic.display_width).max(0.0),
                 _ => 0.0,
             };
+        state.pb.figure_without_content(para, doc, None);
         charts::render_chart(
             ic,
             &mut state.pb.content,
@@ -2556,6 +2578,17 @@ fn render_paragraph_block(
             &mut state.pb.alpha_states,
         );
     } else if !para.smartart.is_empty() {
+        // Word's SmartArt alt text: the diagram's text, one line per node.
+        let alt: Vec<String> = para
+            .smartart
+            .iter()
+            .flat_map(|d| &d.shapes)
+            .flat_map(|s| &s.paragraphs)
+            .map(|p| p.runs.iter().map(|r| r.text.as_str()).collect::<String>())
+            .filter(|t| !t.trim().is_empty())
+            .collect();
+        let alt = alt.join("\n");
+        state.pb.figure_without_content(para, doc, (!alt.is_empty()).then_some(alt.as_str()));
         for (i, diagram) in para.smartart.iter().enumerate() {
             if i > 0 {
                 state.pb.slot_top -= diagram.display_height;
@@ -2592,6 +2625,10 @@ fn render_paragraph_block(
     } else if para.image.is_some() && para.content_height > 0.0 {
         if let Some(pdf_name) = image_pdf_names.get(&state.global_block_idx) {
             let img = para.image.as_ref().unwrap();
+            // Decorative pictures stay artifacts, as in Word's export.
+            if !img.decorative {
+                state.pb.begin_figure(para, doc, img.alt.as_deref());
+            }
             let y_bottom = state.pb.slot_top - img.layout_extra_top - img.display_height;
             let x = col_x
                 + match para.alignment {
@@ -2641,6 +2678,9 @@ fn render_paragraph_block(
                     img.display_width, img.display_height,
                     img_fx.and_then(|fx| fx.reflection.as_deref()),
                 );
+            }
+            if !img.decorative {
+                state.pb.end_tag();
             }
         } else if para.image.is_some() {
             state.pb.content

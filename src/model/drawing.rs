@@ -19,6 +19,10 @@ pub enum ImageFormat {
 
 #[derive(Clone)]
 pub struct EmbeddedImage {
+    /// `wp:docPr/@descr`, which Word exports as the Figure's /Alt.
+    pub alt: Option<String>,
+    /// Marked decorative in Word (Office 2019+): an artifact, not a Figure.
+    pub decorative: bool,
     pub data: Arc<Vec<u8>>,
     pub format: ImageFormat,
     pub pixel_width: u32,

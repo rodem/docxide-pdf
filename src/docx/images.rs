@@ -133,6 +133,13 @@ fn parse_src_rect(container: roxmltree::Node) -> Option<[f32; 4]> {
 /// Apply the picture properties shared by inline and anchored pictures: rotation,
 /// outline, effects, non-rectangular clip and `a:srcRect` crop.
 fn apply_pic_props(img: &mut EmbeddedImage, container: roxmltree::Node) {
+    if let Some(doc_pr) = wpd(container, "docPr") {
+        img.alt = doc_pr.attribute("descr").filter(|d| !d.trim().is_empty()).map(str::to_string);
+        // Office 2019 "Mark as decorative": <adec:decorative val="1"/> in docPr's extLst.
+        img.decorative = doc_pr
+            .descendants()
+            .any(|n| n.tag_name().name() == "decorative" && n.attribute("val").is_some_and(parse_on_off));
+    }
     let sp_pr = find_pic_sp_pr(container);
     img.rotation_deg = parse_image_rotation(sp_pr);
     let (stroke_color, stroke_width) = parse_pic_outline(sp_pr);
@@ -359,6 +366,8 @@ pub(super) fn read_image_from_zip_extra<R: Read + Seek>(
     }
     let (pw, ph, fmt, components) = image_dimensions(&data)?;
     Some(EmbeddedImage {
+        alt: None,
+        decorative: false,
         data: std::sync::Arc::new(data),
         format: fmt,
         pixel_width: pw,
