@@ -337,6 +337,20 @@ Open findings (not done):
   open (counting it as text made the line too low).
 - covid_insomnia two-column flow regressed with the squeeze.
 - Tracked changes: see "Tracked-Changes (Redline) Rendering" below.
+- **Cell and footnote paragraphs bypass `paragraph::build_paragraph`
+  (TODO)**: `docx/tables.rs` and `headers_footers::parse_notes_simple` build
+  `Paragraph`s by hand, so cells never get `space_before_auto` /
+  `space_after_auto` (rule 13's cell-edge drop never fires) and footnotes never
+  get `style_id` / `contextual_spacing` (rule 40 is a no-op there; endnotes
+  use the full builder). Route both through `build_paragraph` with options for
+  the table-style and note defaults.
+- Structural follow-ups found by a cleanup review: one per-line height model
+  shared by body, cells and headers (cells still sum `lines × line_h`); one
+  widow/orphan split helper for the body split, keep-with-next and cell splits
+  (cells assume widow control on); run-boundary breaks taken from UAX #14 over
+  the paragraph's joined text (a URL split across runs can still break after
+  a `/` at the boundary); one table-left-x function for body, header and
+  nested tables (nested tables miss the compat-15 rule).
 - **fontTable altName order (TODO)**: we try a font's `w:altName` BEFORE the
   requested name (since fcb84c7e, for a Korean localized name, "바탕"). Word
   uses the altName only when the font is missing (the spec's meaning too): a
