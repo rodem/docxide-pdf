@@ -3,43 +3,64 @@
     "jaccard": 0.591,
     "ssim": 0.8579,
     "text_boundary": 1.0,
-    "convert_ms": 35.5
+    "convert_ms": 35.5,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case10": {
     "jaccard": 0.6942,
     "ssim": 0.8315,
     "text_boundary": 0.9063,
-    "convert_ms": 10.2
+    "convert_ms": 10.2,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9512,
+    "a11y_text": 0.5672
   },
   "cases/case11": {
     "jaccard": 0.7274,
     "ssim": 0.9196,
     "text_boundary": 1.0,
-    "convert_ms": 13.4
+    "convert_ms": 13.4,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case12": {
     "jaccard": 0.9868,
     "ssim": 0.995,
     "text_boundary": 1.0,
-    "convert_ms": 5.1
+    "convert_ms": 5.1,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case14": {
     "jaccard": 0.6346,
     "ssim": 0.8816,
     "text_boundary": 1.0,
-    "convert_ms": 4.6
+    "convert_ms": 4.6,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case15": {
     "jaccard": 0.2343,
     "ssim": 0.8731,
     "text_boundary": 1.0,
-    "convert_ms": 7.5
+    "convert_ms": 7.5,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case16": {
     "jaccard": 0.9897,
     "ssim": 0.9859,
     "text_boundary": 1.0,
-    "convert_ms": 51.2
+    "convert_ms": 51.2,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9167,
+    "a11y_text": 1.0
   },
   "cases/case17": {
     "jaccard": 0.473,
@@ -63,7 +84,10 @@
     "jaccard": 0.8905,
     "ssim": 0.9433,
     "text_boundary": 1.0,
-    "convert_ms": 1.8
+    "convert_ms": 1.8,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case20": {
     "jaccard": 0.8064,
@@ -75,97 +99,145 @@
     "jaccard": 0.7707,
     "ssim": 0.9386,
     "text_boundary": 1.0,
-    "convert_ms": 5.0
+    "convert_ms": 5.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case22": {
     "jaccard": 0.6831,
     "ssim": 0.9326,
     "text_boundary": 1.0,
-    "convert_ms": 9.5
+    "convert_ms": 9.5,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case23": {
     "jaccard": 0.6822,
     "ssim": 0.8944,
     "text_boundary": 0.6875,
-    "convert_ms": 6.3
+    "convert_ms": 6.3,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case24": {
     "jaccard": 0.7401,
     "ssim": 0.9306,
     "text_boundary": 1.0,
-    "convert_ms": 12.2
+    "convert_ms": 12.2,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case25": {
     "jaccard": 0.7309,
     "ssim": 0.8919,
     "text_boundary": 1.0,
-    "convert_ms": 8.3
+    "convert_ms": 8.3,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case26": {
     "jaccard": 0.7448,
     "ssim": 0.8848,
     "text_boundary": 0.9048,
-    "convert_ms": 8.8
+    "convert_ms": 8.8,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case27": {
     "jaccard": 0.9686,
     "ssim": 0.9937,
     "text_boundary": 1.0,
-    "convert_ms": 4.9
+    "convert_ms": 4.9,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case28": {
     "jaccard": 0.7486,
     "ssim": 0.912,
     "text_boundary": 1.0,
-    "convert_ms": 10.0
+    "convert_ms": 10.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case29": {
     "jaccard": 0.7568,
     "ssim": 0.7925,
     "text_boundary": 0.9474,
-    "convert_ms": 6.9
+    "convert_ms": 6.9,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case3": {
     "jaccard": 0.6209,
     "ssim": 0.8934,
     "text_boundary": 0.6,
-    "convert_ms": 2.5
+    "convert_ms": 2.5,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case30": {
     "jaccard": 0.8463,
     "ssim": 0.8511,
     "text_boundary": 1.0,
-    "convert_ms": 6.7
+    "convert_ms": 6.7,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case31": {
     "jaccard": 0.6022,
     "ssim": 0.7924,
     "text_boundary": 0.875,
-    "convert_ms": 7.0
+    "convert_ms": 7.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case32": {
     "jaccard": 0.5671,
     "ssim": 0.9243,
     "text_boundary": 1.0,
-    "convert_ms": 5.2
+    "convert_ms": 5.2,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case33": {
     "jaccard": 0.7842,
     "ssim": 0.9538,
     "text_boundary": 0.7273,
-    "convert_ms": 7.2
+    "convert_ms": 7.2,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case34": {
     "jaccard": 0.9903,
     "ssim": 0.9855,
     "text_boundary": 0.75,
-    "convert_ms": 6.4
+    "convert_ms": 6.4,
+    "ua_deficit": 0,
+    "a11y_struct": 0.0476,
+    "a11y_text": 0.0
   },
   "cases/case35": {
     "jaccard": 0.9954,
     "ssim": 0.9925,
     "text_boundary": 1.0,
-    "convert_ms": 6.6
+    "convert_ms": 6.6,
+    "ua_deficit": 0,
+    "a11y_struct": 0.0476,
+    "a11y_text": 0.0
   },
   "cases/case36": {
     "jaccard": 0.9959,
@@ -177,147 +249,231 @@
     "jaccard": 0.2325,
     "ssim": 0.003,
     "text_boundary": 0.0,
-    "convert_ms": 4.2
+    "convert_ms": 4.2,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case38": {
     "jaccard": 0.9929,
     "ssim": 0.9556,
     "text_boundary": 1.0,
-    "convert_ms": 5.4
+    "convert_ms": 5.4,
+    "ua_deficit": 0,
+    "a11y_struct": 0.1,
+    "a11y_text": 0.0
   },
   "cases/case39": {
     "jaccard": 0.8427,
     "ssim": 0.9416,
     "text_boundary": 1.0,
-    "convert_ms": 4.5
+    "convert_ms": 4.5,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case4": {
     "jaccard": 0.6873,
     "ssim": 0.8572,
     "text_boundary": 0.9833,
-    "convert_ms": 10.7
+    "convert_ms": 10.7,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case40": {
     "jaccard": 0.3538,
     "ssim": 0.5165,
-    "text_boundary": 0.5
+    "text_boundary": 0.5,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9831,
+    "a11y_text": 1.0
   },
   "cases/case41": {
     "jaccard": 0.9337,
     "ssim": 0.9554,
-    "text_boundary": 0.6702
+    "text_boundary": 0.6702,
+    "ua_deficit": 0,
+    "a11y_struct": 0.675,
+    "a11y_text": 1.0
   },
   "cases/case42": {
     "jaccard": 0.4616,
     "ssim": 0.4944,
-    "text_boundary": 0.1707
+    "text_boundary": 0.1707,
+    "ua_deficit": 0,
+    "a11y_struct": 0.8571,
+    "a11y_text": 1.0
   },
   "cases/case43": {
     "jaccard": 0.5028,
     "ssim": 0.5342,
-    "text_boundary": 0.0
+    "text_boundary": 0.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.6875,
+    "a11y_text": 0.2647
   },
   "cases/case44": {
     "jaccard": 0.5056,
     "ssim": 0.5448,
-    "text_boundary": 0.0
+    "text_boundary": 0.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.6667,
+    "a11y_text": 0.4471
   },
   "cases/case45": {
     "jaccard": 0.3816,
     "ssim": 0.5521,
-    "text_boundary": 0.5902
+    "text_boundary": 0.5902,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9917,
+    "a11y_text": 1.0
   },
   "cases/case46": {
     "jaccard": 0.5159,
     "ssim": 0.6606,
-    "text_boundary": 0.7516
+    "text_boundary": 0.7516,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9517,
+    "a11y_text": 1.0
   },
   "cases/case47": {
     "jaccard": 0.8214,
     "ssim": 0.8977,
-    "text_boundary": 0.9381
+    "text_boundary": 0.9381,
+    "ua_deficit": 0,
+    "a11y_struct": 0.5156,
+    "a11y_text": 1.0
   },
   "cases/case48": {
     "jaccard": 0.6266,
     "ssim": 0.8318,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case49": {
     "jaccard": 0.5922,
     "ssim": 0.7927,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 0.7958
   },
   "cases/case5": {
     "jaccard": 0.7607,
     "ssim": 0.9028,
     "text_boundary": 1.0,
-    "convert_ms": 9.3
+    "convert_ms": 9.3,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case50": {
     "jaccard": 0.5832,
     "ssim": 0.8054,
-    "text_boundary": 0.8919
+    "text_boundary": 0.8919,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case51": {
     "jaccard": 0.1573,
     "ssim": 0.4806,
-    "text_boundary": 0.8286
+    "text_boundary": 0.8286,
+    "ua_deficit": 0,
+    "a11y_struct": 0.5439,
+    "a11y_text": 0.8443
   },
   "cases/case52": {
     "jaccard": 0.7064,
     "ssim": 0.7802,
-    "text_boundary": 0.814
+    "text_boundary": 0.814,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case53": {
     "jaccard": 0.5606,
     "ssim": 0.5493,
-    "text_boundary": 0.7561
+    "text_boundary": 0.7561,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case54": {
     "jaccard": 0.6946,
     "ssim": 0.8712,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case55": {
     "jaccard": 0.44,
     "ssim": 0.5773,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case56": {
     "jaccard": 0.9273,
     "ssim": 0.9653,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case57": {
     "jaccard": 0.8423,
     "ssim": 0.8084,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case59": {
     "jaccard": 0.9315,
     "ssim": 0.9241,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.8889,
+    "a11y_text": 1.0
   },
   "cases/case6": {
     "jaccard": 0.4505,
     "ssim": 0.8723,
     "text_boundary": 0.9818,
-    "convert_ms": 15.3
+    "convert_ms": 15.3,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case60": {
     "jaccard": 0.7518,
     "ssim": 0.9152,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 1,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case61": {
     "jaccard": 0.2997,
     "ssim": 0.8449,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case62": {
     "jaccard": 0.8119,
     "ssim": 0.934,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case63": {
     "jaccard": 0.3559,
@@ -332,153 +488,243 @@
   "cases/case66": {
     "jaccard": 0.7492,
     "ssim": 0.7111,
-    "text_boundary": 0.0
+    "text_boundary": 0.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.875,
+    "a11y_text": 0.2891
   },
   "cases/case67": {
     "jaccard": 0.7175,
     "ssim": 0.9131,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case68": {
     "jaccard": 0.9189,
     "ssim": 0.9459,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case69": {
     "jaccard": 0.8808,
     "ssim": 0.9618,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case7": {
     "jaccard": 0.7397,
     "ssim": 0.9078,
     "text_boundary": 1.0,
-    "convert_ms": 8.1
+    "convert_ms": 8.1,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case70": {
     "jaccard": 0.7628,
     "ssim": 0.9412,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 0.0
   },
   "cases/case71": {
     "jaccard": 0.8736,
     "ssim": 0.966,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case72": {
     "jaccard": 0.8416,
     "ssim": 0.9596,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case73": {
     "jaccard": 0.9031,
     "ssim": 0.9559,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case74": {
     "jaccard": 0.6643,
     "ssim": 0.8578,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.7,
+    "a11y_text": 0.9263
   },
   "cases/case75": {
     "jaccard": 0.6619,
     "ssim": 0.8564,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.7,
+    "a11y_text": 0.9281
   },
   "cases/case76": {
     "jaccard": 0.7767,
     "ssim": 0.9429,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.7778,
+    "a11y_text": 1.0
   },
   "cases/case77": {
     "jaccard": 0.5184,
-    "ssim": 0.7047
+    "ssim": 0.7047,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case78": {
     "jaccard": 0.9962,
-    "ssim": 0.9937
+    "ssim": 0.9937,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case8": {
     "jaccard": 0.481,
     "ssim": 0.9406,
     "text_boundary": 1.0,
-    "convert_ms": 37.8
+    "convert_ms": 37.8,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case9": {
     "jaccard": 0.7057,
     "ssim": 0.9013,
     "text_boundary": 1.0,
-    "convert_ms": 4.9
+    "convert_ms": 4.9,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "fonts/arial": {
     "jaccard": 0.8374,
     "ssim": 0.9466,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "fonts/calibri": {
     "jaccard": 0.7968,
     "ssim": 0.9295,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "fonts/cambria": {
     "jaccard": 0.731,
     "ssim": 0.9225,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "fonts/georgia": {
     "jaccard": 0.7918,
     "ssim": 0.9356,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "fonts/multi_font": {
     "jaccard": 0.2346,
     "ssim": 0.4258,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 1,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "fonts/times_new_roman": {
     "jaccard": 0.7468,
     "ssim": 0.8998,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "hyphenation/dutch": {
     "jaccard": 0.6054,
     "ssim": 0.816,
-    "text_boundary": 0.9773
+    "text_boundary": 0.9773,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "hyphenation/english": {
     "jaccard": 0.6276,
     "ssim": 0.8283,
-    "text_boundary": 0.9885
+    "text_boundary": 0.9885,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "hyphenation/french": {
     "jaccard": 0.6175,
     "ssim": 0.8261,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "hyphenation/german": {
     "jaccard": 0.6386,
     "ssim": 0.8449,
-    "text_boundary": 0.9888
+    "text_boundary": 0.9888,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "hyphenation/italian": {
     "jaccard": 0.5761,
     "ssim": 0.778,
-    "text_boundary": 0.9398
+    "text_boundary": 0.9398,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "hyphenation/norwegian": {
     "jaccard": 0.6235,
     "ssim": 0.8419,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "hyphenation/slovak": {
     "jaccard": 0.6101,
     "ssim": 0.8179,
-    "text_boundary": 0.9515
+    "text_boundary": 0.9515,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "hyphenation/spanish": {
     "jaccard": 0.5983,
     "ssim": 0.8253,
-    "text_boundary": 0.9667
+    "text_boundary": 0.9667,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 0.5636
   },
   "new/alfies_arc_adult..": {
     "jaccard": 0.512,
@@ -503,22 +749,34 @@
   "new/auditor_regulato..": {
     "jaccard": 0.4205,
     "ssim": 0.5818,
-    "text_boundary": 0.5942
+    "text_boundary": 0.5942,
+    "ua_deficit": 0,
+    "a11y_struct": 0.7576,
+    "a11y_text": 0.9879
   },
   "new/bahamas_sustaina..": {
     "jaccard": 0.6021,
     "ssim": 0.7885,
-    "text_boundary": 0.6857
+    "text_boundary": 0.6857,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9444,
+    "a11y_text": 0.9933
   },
   "new/belgian_youth_pr..": {
     "jaccard": 0.2124,
     "ssim": 0.5195,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9453,
+    "a11y_text": 0.964
   },
   "new/biochemistry_pen..": {
     "jaccard": 0.5938,
     "ssim": 0.8071,
-    "text_boundary": 0.9846
+    "text_boundary": 0.9846,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "new/bosch_software_a..": {
     "jaccard": 0.0846,
@@ -528,37 +786,58 @@
   "new/candidate_refere..": {
     "jaccard": 0.2129,
     "ssim": 0.4801,
-    "text_boundary": 0.2273
+    "text_boundary": 0.2273,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "new/carbon_farming_i..": {
     "jaccard": 0.2696,
     "ssim": 0.4855,
-    "text_boundary": 0.4458
+    "text_boundary": 0.4458,
+    "ua_deficit": 0,
+    "a11y_struct": 0.8076,
+    "a11y_text": 0.8916
   },
   "new/chinese_student_..": {
     "jaccard": 0.1347,
     "ssim": 0.4402,
-    "text_boundary": 0.8033
+    "text_boundary": 0.8033,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9456,
+    "a11y_text": 1.0
   },
   "new/construction_bat..": {
     "jaccard": 0.6607,
     "ssim": 0.8625,
-    "text_boundary": 0.9355
+    "text_boundary": 0.9355,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9104,
+    "a11y_text": 0.072
   },
   "new/covid_insomnia_m..": {
     "jaccard": 0.2148,
     "ssim": 0.4353,
-    "text_boundary": 0.1331
+    "text_boundary": 0.1331,
+    "ua_deficit": 0,
+    "a11y_struct": 0.5967,
+    "a11y_text": 0.9895
   },
   "new/croatian_militar..": {
     "jaccard": 0.3578,
     "ssim": 0.8546,
-    "text_boundary": 0.9492
+    "text_boundary": 0.9492,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9676,
+    "a11y_text": 0.9379
   },
   "new/croatian_thesis_..": {
     "jaccard": 0.2159,
     "ssim": 0.5053,
-    "text_boundary": 0.5385
+    "text_boundary": 0.5385,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9405,
+    "a11y_text": 1.0
   },
   "new/czech_census_202..": {
     "jaccard": 0.5947,
@@ -568,22 +847,34 @@
   "new/czech_crisis_mea..": {
     "jaccard": 0.5165,
     "ssim": 0.6769,
-    "text_boundary": 0.4662
+    "text_boundary": 0.4662,
+    "ua_deficit": 0,
+    "a11y_struct": 0.8084,
+    "a11y_text": 0.9193
   },
   "new/czech_works_cont..": {
     "jaccard": 0.4698,
     "ssim": 0.632,
-    "text_boundary": 0.6508
+    "text_boundary": 0.6508,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9775,
+    "a11y_text": 0.9083
   },
   "new/dental_amalgam_r..": {
     "jaccard": 0.3039,
     "ssim": 0.8952,
-    "text_boundary": 0.8056
+    "text_boundary": 0.8056,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "new/dialysis_treatme..": {
     "jaccard": 0.5834,
     "ssim": 0.8029,
-    "text_boundary": 0.5556
+    "text_boundary": 0.5556,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "new/dutch_council_me..": {
     "jaccard": 0.9472,
@@ -593,27 +884,42 @@
   "new/dutch_government..": {
     "jaccard": 0.1945,
     "ssim": 0.9269,
-    "text_boundary": 0.9091
+    "text_boundary": 0.9091,
+    "ua_deficit": 0,
+    "a11y_struct": 0.6804,
+    "a11y_text": 0.9807
   },
   "new/eco_int_agricult..": {
     "jaccard": 0.2316,
     "ssim": 0.332,
-    "text_boundary": 0.8
+    "text_boundary": 0.8,
+    "ua_deficit": 0,
+    "a11y_struct": 0.7674,
+    "a11y_text": 1.0
   },
   "new/english_town_cou..": {
     "jaccard": 0.2875,
     "ssim": 0.4128,
-    "text_boundary": 0.7628
+    "text_boundary": 0.7628,
+    "ua_deficit": 0,
+    "a11y_struct": 0.7959,
+    "a11y_text": 0.9924
   },
   "new/environmental_la..": {
     "jaccard": 0.2126,
     "ssim": 0.3778,
-    "text_boundary": 0.0328
+    "text_boundary": 0.0328,
+    "ua_deficit": 0,
+    "a11y_struct": 0.8395,
+    "a11y_text": 0.9905
   },
   "new/erasmus_plus_sta..": {
     "jaccard": 0.1991,
     "ssim": 0.5346,
-    "text_boundary": 0.3043
+    "text_boundary": 0.3043,
+    "ua_deficit": 0,
+    "a11y_struct": 0.6639,
+    "a11y_text": 0.5299
   },
   "new/family_kinship_l..": {
     "jaccard": 0.2297,
@@ -623,37 +929,58 @@
   "new/french_lease_ear..": {
     "jaccard": 0.4,
     "ssim": 0.6731,
-    "text_boundary": 0.82
+    "text_boundary": 0.82,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9481,
+    "a11y_text": 1.0
   },
   "new/french_sexual_he..": {
     "jaccard": 0.1992,
     "ssim": 0.2641,
-    "text_boundary": 0.8269
+    "text_boundary": 0.8269,
+    "ua_deficit": 1,
+    "a11y_struct": 0.8537,
+    "a11y_text": 0.999
   },
   "new/handels_messiah_..": {
     "jaccard": 0.7427,
     "ssim": 0.9013,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9911,
+    "a11y_text": 1.0
   },
   "new/indigenous_innov..": {
     "jaccard": 0.1835,
     "ssim": 0.3229,
-    "text_boundary": 0.0065
+    "text_boundary": 0.0065,
+    "ua_deficit": 1,
+    "a11y_struct": 0.7326,
+    "a11y_text": 0.8816
   },
   "new/international_te..": {
     "jaccard": 0.2691,
     "ssim": 0.4539,
-    "text_boundary": 0.1661
+    "text_boundary": 0.1661,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9764,
+    "a11y_text": 0.994
   },
   "new/irish_school_enr..": {
     "jaccard": 0.3376,
     "ssim": 0.5307,
-    "text_boundary": 0.7054
+    "text_boundary": 0.7054,
+    "ua_deficit": 1,
+    "a11y_struct": 0.925,
+    "a11y_text": 0.9615
   },
   "new/isla_language_le..": {
     "jaccard": 0.4539,
     "ssim": 0.6346,
-    "text_boundary": 0.7744
+    "text_boundary": 0.7744,
+    "ua_deficit": 0,
+    "a11y_struct": 0.7488,
+    "a11y_text": 0.8141
   },
   "new/japanese_land_de..": {
     "jaccard": 0.128,
@@ -663,27 +990,42 @@
   "new/japanese_medical..": {
     "jaccard": 0.0614,
     "ssim": 0.2302,
-    "text_boundary": 0.4634
+    "text_boundary": 0.4634,
+    "ua_deficit": 0,
+    "a11y_struct": 0.7921,
+    "a11y_text": 0.8057
   },
   "new/k4_regulations_s..": {
     "jaccard": 0.439,
     "ssim": 0.7355,
-    "text_boundary": 0.9892
+    "text_boundary": 0.9892,
+    "ua_deficit": 0,
+    "a11y_struct": 0.7826,
+    "a11y_text": 1.0
   },
   "new/lenten_prayer_un..": {
     "jaccard": 0.7137,
     "ssim": 0.9569,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 1,
+    "a11y_struct": 0.6111,
+    "a11y_text": 0.9509
   },
   "new/lithuanian_excis..": {
     "jaccard": 0.5946,
     "ssim": 0.7845,
-    "text_boundary": 0.9107
+    "text_boundary": 0.9107,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "new/lithuanian_publi..": {
     "jaccard": 0.3197,
     "ssim": 0.4418,
-    "text_boundary": 0.2987
+    "text_boundary": 0.2987,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "new/lithuanian_railw..": {
     "jaccard": 0.6603,
@@ -693,32 +1035,50 @@
   "new/master_thesis_le..": {
     "jaccard": 0.1618,
     "ssim": 0.3189,
-    "text_boundary": 0.8343
+    "text_boundary": 0.8343,
+    "ua_deficit": 1,
+    "a11y_struct": 0.6112,
+    "a11y_text": 0.9179
   },
   "new/old_blue_truck_g..": {
     "jaccard": 0.7517,
     "ssim": 0.9378,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9238,
+    "a11y_text": 0.9935
   },
   "new/pendulum_mechani..": {
     "jaccard": 0.1554,
     "ssim": 0.3484,
-    "text_boundary": 0.3043
+    "text_boundary": 0.3043,
+    "ua_deficit": 1,
+    "a11y_struct": 0.7609,
+    "a11y_text": 0.4073
   },
   "new/physical_therapy..": {
     "jaccard": 0.126,
     "ssim": 0.347,
-    "text_boundary": 0.9167
+    "text_boundary": 0.9167,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "new/polish_municipal..": {
     "jaccard": 0.6704,
     "ssim": 0.8525,
-    "text_boundary": 0.9412
+    "text_boundary": 0.9412,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 0.9562
   },
   "new/polish_procureme..": {
     "jaccard": 0.2827,
     "ssim": 0.5634,
-    "text_boundary": 0.48
+    "text_boundary": 0.48,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "new/romanian_quality..": {
     "jaccard": 0.5293,
@@ -733,12 +1093,18 @@
   "new/russian_construc..": {
     "jaccard": 0.4201,
     "ssim": 0.7758,
-    "text_boundary": 0.95
+    "text_boundary": 0.95,
+    "ua_deficit": 0,
+    "a11y_struct": 0.6923,
+    "a11y_text": 1.0
   },
   "new/russian_municipa..": {
     "jaccard": 0.4837,
     "ssim": 0.8044,
-    "text_boundary": 0.8043
+    "text_boundary": 0.8043,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9865,
+    "a11y_text": 0.9015
   },
   "new/russian_regional..": {
     "jaccard": 0.6552,
@@ -748,62 +1114,98 @@
   "new/russian_voluntee..": {
     "jaccard": 0.6833,
     "ssim": 0.8445,
-    "text_boundary": 0.1174
+    "text_boundary": 0.1174,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9651,
+    "a11y_text": 0.9918
   },
   "new/school_meal_assi..": {
     "jaccard": 0.0641,
     "ssim": 0.1721,
-    "text_boundary": 0.3465
+    "text_boundary": 0.3465,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9855,
+    "a11y_text": 1.0
   },
   "new/scottish_fundrai..": {
     "jaccard": 0.255,
     "ssim": 0.5275,
-    "text_boundary": 0.7612
+    "text_boundary": 0.7612,
+    "ua_deficit": 3,
+    "a11y_struct": 0.5722,
+    "a11y_text": 0.8685
   },
   "new/slovak_constitut..": {
     "jaccard": 0.4406,
     "ssim": 0.8533,
-    "text_boundary": 0.9762
+    "text_boundary": 0.9762,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "new/slovak_electoral..": {
     "jaccard": 0.3662,
     "ssim": 0.5268,
-    "text_boundary": 0.3861
+    "text_boundary": 0.3861,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9828,
+    "a11y_text": 1.0
   },
   "new/slovak_eu_direct..": {
     "jaccard": 0.1682,
     "ssim": 0.2749,
-    "text_boundary": 0.1629
+    "text_boundary": 0.1629,
+    "ua_deficit": 0,
+    "a11y_struct": 0.6871,
+    "a11y_text": 0.8876
   },
   "new/slovak_fuel_pric..": {
     "jaccard": 0.5928,
     "ssim": 0.8885,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9933,
+    "a11y_text": 1.0
   },
   "new/slovak_pedagogic..": {
     "jaccard": 0.136,
     "ssim": 0.3784,
-    "text_boundary": 0.1379
+    "text_boundary": 0.1379,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "new/stiavnicke_bane_..": {
     "jaccard": 0.7627,
     "ssim": 0.9303,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9932,
+    "a11y_text": 1.0
   },
   "new/streamnet_steeri..": {
     "jaccard": 0.6682,
     "ssim": 0.8481,
-    "text_boundary": 0.9264
+    "text_boundary": 0.9264,
+    "ua_deficit": 0,
+    "a11y_struct": 0.7185,
+    "a11y_text": 0.8008
   },
   "new/taiwanese_educat..": {
     "jaccard": 0.1629,
     "ssim": 0.3066,
-    "text_boundary": 0.1875
+    "text_boundary": 0.1875,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "new/tokyo_welfare_in..": {
     "jaccard": 0.1765,
     "ssim": 0.4901,
-    "text_boundary": 0.5455
+    "text_boundary": 0.5455,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9875,
+    "a11y_text": 1.0
   },
   "new/turkish_chemistr..": {
     "jaccard": 0.1895,
@@ -813,46 +1215,73 @@
   "new/turkish_journal_..": {
     "jaccard": 0.6044,
     "ssim": 0.8297,
-    "text_boundary": 0.9231
+    "text_boundary": 0.9231,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9718,
+    "a11y_text": 0.9825
   },
   "new/ut_koer_annual_m..": {
     "jaccard": 0.1645,
     "ssim": 0.3749,
-    "text_boundary": 0.3448
+    "text_boundary": 0.3448,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "new/victorian_univer..": {
     "jaccard": 0.3896,
     "ssim": 0.7138,
-    "text_boundary": 0.7645
+    "text_boundary": 0.7645,
+    "ua_deficit": 0,
+    "a11y_struct": 0.8876,
+    "a11y_text": 0.8763
   },
   "new/western_australi..": {
     "jaccard": 0.3596,
     "ssim": 0.5991,
-    "text_boundary": 0.524
+    "text_boundary": 0.524,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9652,
+    "a11y_text": 0.9197
   },
   "new/who_prescribing_..": {
     "jaccard": 0.1225,
     "ssim": 0.525,
-    "text_boundary": 0.9667
+    "text_boundary": 0.9667,
+    "ua_deficit": 0,
+    "a11y_struct": 0.4856,
+    "a11y_text": 1.0
   },
   "new/youtube_channel_..": {
     "jaccard": 0.7894,
     "ssim": 0.9142,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "new/zimbabwe_broadca..": {
     "jaccard": 0.5285,
     "ssim": 0.8029,
-    "text_boundary": 0.9669
+    "text_boundary": 0.9669,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9948,
+    "a11y_text": 1.0
   },
   "new/zimbabwe_gold_mi..": {
     "jaccard": 0.2446,
     "ssim": 0.4227,
-    "text_boundary": 0.3403
+    "text_boundary": 0.3403,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9259,
+    "a11y_text": 1.0
   },
   "samples/CV": {
     "jaccard": 0.1145,
-    "ssim": 0.4306
+    "ssim": 0.4306,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9815,
+    "a11y_text": 0.9957
   },
   "samples/double-underline": {
     "jaccard": 0.5881,
@@ -874,31 +1303,46 @@
     "jaccard": 0.3666,
     "ssim": 0.9111,
     "text_boundary": 0.8627,
-    "convert_ms": 11.0
+    "convert_ms": 11.0,
+    "ua_deficit": 1,
+    "a11y_struct": 0.991,
+    "a11y_text": 0.9565
   },
   "scraped/air_pollution_pe..": {
     "jaccard": 0.11,
     "ssim": 0.3038,
     "text_boundary": 0.9714,
-    "convert_ms": 12.0
+    "convert_ms": 12.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.4,
+    "a11y_text": 0.0
   },
   "scraped/brazilian_logist..": {
     "jaccard": 0.1717,
     "ssim": 0.2989,
     "text_boundary": 0.1624,
-    "convert_ms": 744.0
+    "convert_ms": 744.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9448,
+    "a11y_text": 0.9928
   },
   "scraped/bush_fires_act_c..": {
     "jaccard": 0.6098,
     "ssim": 0.8332,
     "text_boundary": 0.8734,
-    "convert_ms": 248.6
+    "convert_ms": 248.6,
+    "ua_deficit": 0,
+    "a11y_struct": 0.8088,
+    "a11y_text": 0.9985
   },
   "scraped/centrifugal_wate..": {
     "jaccard": 0.8145,
     "ssim": 0.9519,
     "text_boundary": 1.0,
-    "convert_ms": 40.9
+    "convert_ms": 40.9,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9311,
+    "a11y_text": 0.9727
   },
   "scraped/classroom_weekly..": {
     "jaccard": 0.9414,
@@ -910,7 +1354,10 @@
     "jaccard": 0.0788,
     "ssim": 0.195,
     "text_boundary": 0.0129,
-    "convert_ms": 270.5
+    "convert_ms": 270.5,
+    "ua_deficit": 0,
+    "a11y_struct": 0.906,
+    "a11y_text": 0.9004
   },
   "scraped/croatian_regulat..": {
     "jaccard": 0.0778,
@@ -922,7 +1369,10 @@
     "jaccard": 0.7373,
     "ssim": 0.8732,
     "text_boundary": 1.0,
-    "convert_ms": 6.9
+    "convert_ms": 6.9,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "scraped/czech_expert_wit..": {
     "jaccard": 0.7345,
@@ -933,29 +1383,44 @@
   "scraped/czech_health_sta..": {
     "jaccard": 0.5445,
     "ssim": 0.7544,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "scraped/czech_municipal_..": {
     "jaccard": 0.1184,
     "ssim": 0.4234,
     "text_boundary": 0.4118,
-    "convert_ms": 34.9
+    "convert_ms": 34.9,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9086,
+    "a11y_text": 1.0
   },
   "scraped/czech_tree_cutti..": {
     "jaccard": 0.7771,
     "ssim": 0.9251,
     "text_boundary": 1.0,
-    "convert_ms": 4.8
+    "convert_ms": 4.8,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "scraped/destination_loya..": {
     "jaccard": 0.7144,
     "ssim": 0.9128,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "scraped/dutch_school_eva..": {
     "jaccard": 0.5016,
     "ssim": 0.9125,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.8522,
+    "a11y_text": 1.0
   },
   "scraped/east_asia_confer..": {
     "jaccard": 0.1196,
@@ -985,7 +1450,10 @@
     "jaccard": 0.555,
     "ssim": 0.7824,
     "text_boundary": 0.8276,
-    "convert_ms": 33.4
+    "convert_ms": 33.4,
+    "ua_deficit": 0,
+    "a11y_struct": 0.8857,
+    "a11y_text": 0.732
   },
   "scraped/go_math_grade4_g..": {
     "jaccard": 0.3149,
@@ -1015,13 +1483,19 @@
     "jaccard": 0.1629,
     "ssim": 0.5561,
     "text_boundary": 0.2381,
-    "convert_ms": 4.5
+    "convert_ms": 4.5,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9733,
+    "a11y_text": 0.9534
   },
   "scraped/korean_japanese_..": {
     "jaccard": 0.1227,
     "ssim": 0.2482,
     "text_boundary": 0.8571,
-    "convert_ms": 18.4
+    "convert_ms": 18.4,
+    "ua_deficit": 1,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "scraped/learning_culture..": {
     "jaccard": 0.3371,
@@ -1051,13 +1525,19 @@
     "jaccard": 0.1413,
     "ssim": 0.2163,
     "text_boundary": 0.1949,
-    "convert_ms": 32.0
+    "convert_ms": 32.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9624,
+    "a11y_text": 1.0
   },
   "scraped/parish_housing_d..": {
     "jaccard": 0.3564,
     "ssim": 0.6559,
     "text_boundary": 0.9059,
-    "convert_ms": 97.8
+    "convert_ms": 97.8,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9573,
+    "a11y_text": 1.0
   },
   "scraped/polish_archery_r..": {
     "jaccard": 0.4115,
@@ -1069,42 +1549,63 @@
     "jaccard": 0.1616,
     "ssim": 0.3073,
     "text_boundary": 0.215,
-    "convert_ms": 56.9
+    "convert_ms": 56.9,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9923,
+    "a11y_text": 0.9569
   },
   "scraped/polish_council_r..": {
     "jaccard": 0.3116,
     "ssim": 0.4679,
     "text_boundary": 0.3902,
-    "convert_ms": 10.4
+    "convert_ms": 10.4,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9811,
+    "a11y_text": 1.0
   },
   "scraped/polish_municipal..": {
     "jaccard": 0.3961,
     "ssim": 0.7604,
     "text_boundary": 0.9259,
-    "convert_ms": 11.8
+    "convert_ms": 11.8,
+    "ua_deficit": 0,
+    "a11y_struct": 0.7391,
+    "a11y_text": 1.0
   },
   "scraped/polish_tender_de..": {
     "jaccard": 0.337,
     "ssim": 0.4195,
     "text_boundary": 0.4366,
-    "convert_ms": 19.0
+    "convert_ms": 19.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 0.8672
   },
   "scraped/rehab_centre_phy..": {
     "jaccard": 0.109,
     "ssim": 0.3066,
     "text_boundary": 0.6341,
-    "convert_ms": 9.8
+    "convert_ms": 9.8,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9434,
+    "a11y_text": 0.8721
   },
   "scraped/russian_sports_r..": {
     "jaccard": 0.0999,
     "ssim": 0.2021,
     "text_boundary": 0.4211,
-    "convert_ms": 11.7
+    "convert_ms": 11.7,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "scraped/russian_student_..": {
     "jaccard": 0.2287,
     "ssim": 0.8232,
-    "text_boundary": 0.9574
+    "text_boundary": 0.9574,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9848,
+    "a11y_text": 1.0
   },
   "scraped/russian_universi..": {
     "jaccard": 0.2411,
@@ -1133,7 +1634,10 @@
   "scraped/spanish_constitu..": {
     "jaccard": 0.5928,
     "ssim": 0.8118,
-    "text_boundary": 1.0
+    "text_boundary": 1.0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "scraped/stem_partnership..": {
     "jaccard": 0.288,
@@ -1145,7 +1649,10 @@
     "jaccard": 0.1594,
     "ssim": 0.4887,
     "text_boundary": 0.7614,
-    "convert_ms": 22.0
+    "convert_ms": 22.0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.6819,
+    "a11y_text": 1.0
   },
   "scraped/transition_to_wo..": {
     "jaccard": 0.4015,
@@ -1157,25 +1664,37 @@
     "jaccard": 0.2254,
     "ssim": 0.6197,
     "text_boundary": 1.0,
-    "convert_ms": 4.2
+    "convert_ms": 4.2,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9758,
+    "a11y_text": 0.9381
   },
   "scraped/turkish_prostate..": {
     "jaccard": 0.3795,
     "ssim": 0.757,
     "text_boundary": 1.0,
-    "convert_ms": 2.4
+    "convert_ms": 2.4,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "scraped/uk_commercial_le..": {
     "jaccard": 0.0973,
     "ssim": 0.2369,
     "text_boundary": 0.0911,
-    "convert_ms": 326.3
+    "convert_ms": 326.3,
+    "ua_deficit": 0,
+    "a11y_struct": 0.7784,
+    "a11y_text": 0.7484
   },
   "scraped/ukraine_humanita..": {
     "jaccard": 0.3816,
     "ssim": 0.5054,
     "text_boundary": 0.2407,
-    "convert_ms": 12.9
+    "convert_ms": 12.9,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "scraped/usep_handbook": {
     "jaccard": 0.8706,
