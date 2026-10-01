@@ -232,8 +232,27 @@ pub fn struct_score(reference: &[Elem], generated: &[Elem]) -> f64 {
     1.0 - levenshtein(&a, &b) as f64 / n as f64
 }
 
-/// Whitespace-normalised text per block element in reading order; inline
-/// content (Span, Link, Note, text) folds into its nearest block ancestor.
+/// Symbol glyphs (checkboxes, arrows, dingbats, symbol-font private-use codes)
+/// all count as one character. Word extracts the same Wingdings checkbox as raw
+/// U+F0A8 in one document and as Unicode in the next, and which symbol it is
+/// isn't what this score measures. Math operators (U+2200–22FF) and • stay
+/// distinct.
+fn fold_symbol(c: char) -> char {
+    match c as u32 {
+        0xF000..=0xF0FF // symbol-font private use
+        | 0x2190..=0x21FF // arrows
+        | 0x2300..=0x23FF // misc technical
+        | 0x25A0..=0x27FF // geometric shapes, misc symbols, dingbats, misc math symbols-A, arrows-A
+        | 0x2900..=0x297F // arrows-B
+        | 0x2B00..=0x2BFF // misc symbols and arrows
+        | 0x1F300..=0x1FAFF => '\u{FFFC}', // pictographs, emoji, arrows-C
+        _ => c,
+    }
+}
+
+/// Whitespace- and symbol-normalised (`fold_symbol`) text per block element in
+/// reading order; inline content (Span, Link, Note, text) folds into its
+/// nearest block ancestor.
 pub fn block_texts(elems: &[Elem]) -> Vec<String> {
     let mut blocks: Vec<String> = Vec::new();
     let mut open: Vec<(usize, usize)> = Vec::new(); // (depth, block index) of enclosing blocks
@@ -254,6 +273,7 @@ pub fn block_texts(elems: &[Elem]) -> Vec<String> {
     blocks
         .into_iter()
         .map(|b| b.split_whitespace().collect::<Vec<_>>().join(" "))
+        .map(|b| b.chars().map(fold_symbol).collect::<String>())
         .filter(|b| !b.is_empty())
         .collect()
 }

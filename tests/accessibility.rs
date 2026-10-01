@@ -269,6 +269,13 @@ fn text_score_penalises_merged_words_and_reordering() {
 }
 
 #[test]
+fn text_score_ignores_which_symbol_a_glyph_maps_to() {
+    let doc = |text: &str| a11y::parse_struct_text(&format!("Document\n  P (block)\n    \"{text}\"\n"));
+    assert_eq!(a11y::text_score(&doc("Yes \u{F0A8} No \u{F0A8}"), &doc("Yes ◻ No ☐")), 1.0);
+    assert!(a11y::text_score(&doc("a ≤ b"), &doc("a ≥ b")) < 1.0);
+}
+
+#[test]
 fn deficit_counts_only_rules_worse_than_word() {
     let json = |rules: &[(&str, u32, u64, u64)]| {
         let summaries: Vec<_> = rules

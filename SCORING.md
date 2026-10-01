@@ -220,6 +220,13 @@ We collect the text of each block (paragraph, heading, list item, table cell,
 in blocks that match Word's **exactly** and appear in the **same order**,
 divided by the total characters of the longer side.
 
+Symbol glyphs count as one character whatever they map to: symbol-font
+private-use codes, arrows, geometric shapes, dingbats and pictographs. Word
+extracts the same Wingdings checkbox as raw U+F0A8 in one document and as
+Unicode in another, so which symbol it is says nothing about reading order.
+Math operators and • are still compared. The cost: a checked and an
+unchecked box (☑/☐) look the same to this score.
+
 Any difference in a block costs the whole block. This catches:
 - text hidden from screen readers (drawn but not tagged),
 - text read in the wrong order,
