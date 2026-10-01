@@ -669,6 +669,10 @@
     "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
+  "cases/case79": {
+    "jaccard": 0.7205,
+    "ssim": 0.9158
+  },
   "cases/case8": {
     "jaccard": 0.8466,
     "ssim": 0.9406,
