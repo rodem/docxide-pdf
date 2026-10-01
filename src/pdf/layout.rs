@@ -2901,13 +2901,14 @@ pub(super) fn grid_snapped_line_h(
             grid_h = grid_h.max(effective_font_size(run) * t);
         }
     }
-    let basis = match effective_ls {
-        crate::model::LineSpacing::Auto(m) if grid_h > 0.0 => grid_h * m,
-        _ => line_h,
-    };
-    // Tolerance so an exact fit (12pt × 1.5 = 18pt pitch) stays one cell
-    // despite f32 error.
-    ((basis / pitch) - 0.02).ceil().max(1.0) * pitch
+    // Tolerance so an exact fit stays one cell despite f32 error.
+    let cells = |h: f32| ((h / pitch) - 0.02).ceil().max(1.0) * pitch;
+    // A line-spacing multiple scales the cells the glyphs need rather than
+    // being snapped itself: 1.5 lines of one 18pt cell is 27pt (case79).
+    match effective_ls {
+        crate::model::LineSpacing::Auto(m) if grid_h > 0.0 => cells(grid_h) * m,
+        _ => cells(line_h),
+    }
 }
 
 /// Baseline offset of a grid-snapped line `cell_h` tall: the cell's centre plus
@@ -3125,6 +3126,27 @@ mod tests {
             .map(|l| l.chunks.iter().map(|c| c.text.as_str()).collect())
             .collect();
         assert_eq!(texts, vec!["aa", "bbbbbbbb", "bb"]);
+    }
+
+    #[test]
+    fn grid_line_spacing_multiple_scales_the_cells() {
+        // 12pt Times New Roman (sTypo 1.06 em) needs one 18pt cell; at 1.5
+        // lines Word makes the line 27pt (case79), not two cells.
+        let mut fonts = HashMap::new();
+        fonts.insert(
+            "Arial".to_string(),
+            FontEntry {
+                grid_line_ratio: Some(1.06),
+                ..stub_font_entry()
+            },
+        );
+        let runs = [Run {
+            text: "Hxgp".to_string(),
+            ..make_run(12.0, VertAlign::Baseline, false)
+        }];
+        let h = |ls| grid_snapped_line_h(&runs, &fonts, ls, 13.8, 18.0);
+        assert_eq!(h(crate::model::LineSpacing::Auto(1.0)), 18.0);
+        assert_eq!(h(crate::model::LineSpacing::Auto(1.5)), 27.0);
     }
 
     #[test]
