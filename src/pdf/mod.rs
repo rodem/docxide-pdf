@@ -1457,38 +1457,6 @@ fn render_paragraph_block(
     };
 
     let text_empty = is_text_empty(&effective_runs);
-    // Word lays the line following a tall picture one full line height below
-    // the picture bottom (leading above the text). A block picture paragraph
-    // (`para.image`) is exactly the picture tall, so the paragraph after it gets
-    // both its first baseline and its block height extended by the missing
-    // leading. Run-level inline pictures need no boost: their line already
-    // carries the descent and leading (inline_image_line_extra).
-    let after_image_boost = if text_empty
-        || grid_snapped
-        || para.image.is_some()
-        || para.inline_chart.is_some()
-        || block_idx == 0
-    {
-        0.0
-    } else {
-        adjacent_para(block_idx - 1).map_or(0.0, |prev| {
-            let img_h = if prev.image.is_some() { prev.content_height } else { 0.0 };
-            if img_h <= 0.0 {
-                return 0.0;
-            }
-            let (pfs, plhr, _) = tallest_run_metrics(&prev.runs, ctx.fonts);
-            let prev_ls = prev.line_spacing.unwrap_or(ctx.doc_line_spacing);
-            if img_h <= resolve_line_h(prev_ls, pfs, plhr) {
-                return 0.0;
-            }
-            let ar = tallest_ar.unwrap_or(0.75);
-            let dr = tallest_lhr
-                .zip(tallest_ar)
-                .map(|(l, a)| (l - a).max(0.0))
-                .unwrap_or(0.2);
-            (line_h - font_size * (ar + dr)).max(0.0)
-        })
-    };
     let has_tabs = effective_runs.iter().any(|r| r.is_tab);
     let block_inline_images: HashMap<usize, String> = inline_image_pdf_names
         .iter()
@@ -1980,7 +1948,16 @@ fn render_paragraph_block(
     let mut content_h = if para.inline_chart.is_some() {
         para.content_height
     } else if para.image.is_some() {
-        para.content_height
+        // A picture taller than the text line takes its paragraph's own
+        // line-spacing leading below it, sized by the paragraph mark
+        // (dental_amalgam: a 68.25pt logo under Normal's 1.15 lines is
+        // 70.1pt tall in Word although the next paragraph is single-spaced).
+        let leading = (line_h - font_size * tallest_lhr.unwrap_or(1.2)).max(0.0);
+        if para.content_height > line_h {
+            para.content_height + leading
+        } else {
+            para.content_height
+        }
     } else if max_inline_img_h > 0.0 {
         lines_height(&lines, line_h, para_metrics)
     } else if text_empty {
@@ -2041,7 +2018,6 @@ fn render_paragraph_block(
         }
     };
 
-    content_h += after_image_boost;
     // A tall inline picture on the first line lowers that line's baseline; the
     // list label sits on the lowered one (render_paragraph_lines drops the text
     // lines itself).
@@ -2295,7 +2271,6 @@ fn render_paragraph_block(
                 sp.line_pitch
             } else {
                 label_boosted_baseline_offset(para, ctx.fonts, para_ascent, font_size)
-                    + after_image_boost
             };
             let baseline_y = state.pb.slot_top - baseline_offset;
 
@@ -2810,7 +2785,6 @@ fn render_paragraph_block(
             sp.line_pitch
         } else {
             label_boosted_baseline_offset(para, ctx.fonts, para_ascent, font_size)
-                + after_image_boost
         };
         let baseline_y = state.pb.slot_top - bdr_top_pad - baseline_offset;
 
