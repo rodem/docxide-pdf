@@ -12,6 +12,12 @@ use super::list_label::render_list_label;
 use super::tagging::NoteTagger;
 use super::resolve_line_h;
 
+/// Destination name a note's reference mark links to. Word bookmark names
+/// can't contain spaces, so it never collides with a real bookmark.
+pub(super) fn note_anchor(endnote: bool, id: u32) -> String {
+    format!("{} {id}", if endnote { "endnote" } else { "footnote" })
+}
+
 fn substitute_ref_marks(runs: &[Run], display_num: &str) -> Vec<Run> {
     runs.iter()
         .map(|run| {
@@ -116,9 +122,9 @@ pub(super) fn render_page_footnotes(
     text_width: f32,
     gradient_specs: &mut Vec<super::GradientSpec>,
     notes: Option<NoteTagger<'_>>,
-) {
+) -> Vec<(u32, f32)> {
     if fn_ids.is_empty() {
-        return;
+        return Vec::new();
     }
 
     let total_fn_height: f32 = fn_ids
@@ -146,7 +152,7 @@ pub(super) fn render_page_footnotes(
         text_width,
         gradient_specs,
         notes,
-    );
+    )
 }
 
 fn draw_note_separator(content: &mut Content, margin_left: f32, sep_y: f32, text_width: f32) {
@@ -176,9 +182,9 @@ pub(super) fn render_endnotes_inline(
     text_width: f32,
     gradient_specs: &mut Vec<super::GradientSpec>,
     notes: Option<NoteTagger<'_>>,
-) {
+) -> Vec<(u32, f32)> {
     if en_ids.is_empty() {
-        return;
+        return Vec::new();
     }
     let sep_y = top_y;
     draw_note_separator(content, margin_left, sep_y, text_width);
@@ -194,7 +200,7 @@ pub(super) fn render_endnotes_inline(
         text_width,
         gradient_specs,
         notes,
-    );
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -209,11 +215,14 @@ fn render_notes_downward(
     text_width: f32,
     gradient_specs: &mut Vec<super::GradientSpec>,
     mut notes: Option<NoteTagger<'_>>,
-) {
+) -> Vec<(u32, f32)> {
+    // Top of each note drawn, for the link from its reference mark.
+    let mut tops = Vec::new();
     for fn_id in fn_ids {
         let Some(footnote) = footnotes.get(fn_id) else {
             continue;
         };
+        tops.push((*fn_id, fn_y));
         let note = notes.as_mut().map(|t| t.tags.note(t.endnote, *fn_id, super::tagging::ROOT));
         let display_num = footnote_display_order
             .get(fn_id)
@@ -302,4 +311,5 @@ fn render_notes_downward(
             prev_contextual = para.contextual_spacing;
         }
     }
+    tops
 }

@@ -3381,7 +3381,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         let content_sp = &doc.sections[si].properties;
         let text_width = content_sp.page_width - content_sp.margin_left - content_sp.margin_right;
         let bottom = eff_bottom;
-        render_page_footnotes(
+        let tops = render_page_footnotes(
             content,
             &state.pb.all_footnote_ids[page_idx],
             &doc.footnotes,
@@ -3393,8 +3393,11 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             &mut state.pb.all_gradient_specs[page_idx],
             Some(tagging::NoteTagger { tags: &mut state.pb.tags, page: page_idx, endnote: false }),
         );
+        for (id, y) in tops {
+            state.bookmark_positions.insert(footnotes::note_anchor(false, id), (page_idx, y));
+        }
         if page_idx == last_page_idx && !state.pb.endnote_ids.is_empty() {
-            render_endnotes_inline(
+            let tops = render_endnotes_inline(
                 content,
                 endnote_top_y,
                 &state.pb.endnote_ids,
@@ -3406,6 +3409,9 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 &mut state.pb.all_gradient_specs[page_idx],
                 Some(tagging::NoteTagger { tags: &mut state.pb.tags, page: page_idx, endnote: true }),
             );
+            for (id, y) in tops {
+                state.bookmark_positions.insert(footnotes::note_anchor(true, id), (page_idx, y));
+            }
         }
     }
 

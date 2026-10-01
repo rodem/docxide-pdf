@@ -222,6 +222,8 @@ pub(super) struct WordChunk {
     /// the page where its reference mark lands, so pagination needs to know
     /// which line carries which reference.
     pub(super) footnote_id: Option<u32>,
+    /// Endnote this chunk is the reference mark of (tagging only).
+    pub(super) endnote_id: Option<u32>,
     /// Points already trimmed from a trailing full-width punctuation mark by
     /// `compress_punctuation`; caps further squeezing at half an em.
     pub(super) punct_compressed: f32,
@@ -304,6 +306,7 @@ impl WordChunk {
             text_shadow: run.text_shadow.clone(),
             comment_ids: run.comment_ids.clone(),
             footnote_id: run.footnote_id,
+            endnote_id: run.endnote_id,
             space_after: false,
         }
     }
@@ -353,6 +356,7 @@ impl WordChunk {
             text_shadow: None,
             comment_ids: Vec::new(),
             footnote_id: None,
+            endnote_id: None,
             space_after: false,
         }
     }
@@ -402,6 +406,7 @@ impl WordChunk {
             text_shadow: None,
             comment_ids: Vec::new(),
             footnote_id: None,
+            endnote_id: None,
             space_after: false,
         }
     }
@@ -456,6 +461,7 @@ impl WordChunk {
             text_shadow: None,
             comment_ids: Vec::new(),
             footnote_id: None,
+            endnote_id: None,
             space_after: false,
         }
     }
@@ -2074,16 +2080,23 @@ pub(super) fn render_paragraph_lines(
                 if chunk.inline_image_name.is_some() {
                     continue;
                 }
+                // A note's reference mark links to the note text (keyboard and
+                // screen-reader navigation), like Word's. Kept apart from
+                // hyperlink_url, which also moves the underline.
+                let note = chunk.footnote_id.map(|id| (false, id)).or(chunk.endnote_id.map(|id| (true, id)));
+                let note_url = note.map(|(endnote, id)| format!("#{}", super::footnotes::note_anchor(endnote, id)));
+                let link_url = chunk.hyperlink_url.as_deref().or(note_url.as_deref());
                 // Glyph-less chunks (underline bridges over spaces) don't break a link.
                 if let Some(lt) = link_tags.as_mut().filter(|_| !chunk.text.is_empty())
-                    && lt.enter(content, chunk.hyperlink_url.as_deref())
+                    && lt.enter(content, link_url)
                 {
                     td_x = 0.0;
                     td_y = 0.0;
                 }
-                // The footnote's Note goes where its reference mark is (Word nests it there).
-                if let (Some(lt), Some(id)) = (link_tags.as_mut(), chunk.footnote_id) {
-                    lt.tags.note(false, id, lt.para);
+                // The Note goes inside the link on its reference mark (Word nests it there).
+                if let (Some(lt), Some((endnote, id))) = (link_tags.as_mut(), note) {
+                    let parent = lt.open();
+                    lt.tags.note(endnote, id, parent);
                 }
 
                 let x = chunk_abs_x(chunk_idx, chunk);
@@ -2318,24 +2331,30 @@ pub(super) fn render_paragraph_lines(
                     decorations.push((x, mid_y + gap / 2.0, chunk.width, thick, chunk.color));
                 }
 
-                if let Some(ref url) = chunk.hyperlink_url {
+                if let Some(url) = link_url {
                     let bottom = y - chunk.font_size * 0.2;
                     let top = y + chunk.font_size * 0.8;
                     let node = link_tags.as_ref().and_then(|lt| lt.link.as_ref().map(|&(_, n)| n));
                     let merged = links
                         .last_mut()
-                        .filter(|prev| prev.url == *url && (prev.rect.y1 - bottom).abs() < 1.0);
+                        .filter(|prev| prev.url == url && (prev.rect.y1 - bottom).abs() < 1.0);
                     let link = match merged {
                         Some(prev) => {
                             prev.rect.x2 = x + chunk.width;
                             prev
                         }
                         None => {
+                            // A bare "1" says little as the link's description.
+                            let text = match note.filter(|_| chunk.hyperlink_url.is_none()) {
+                                Some((true, _)) => "Endnote ",
+                                Some((false, _)) => "Footnote ",
+                                None => "",
+                            };
                             links.push(LinkAnnotation {
                                 rect: Rect::new(x, bottom, x + chunk.width, top),
-                                url: url.clone(),
+                                url: url.to_string(),
                                 node,
-                                text: String::new(),
+                                text: text.to_string(),
                             });
                             links.last_mut().unwrap()
                         }
