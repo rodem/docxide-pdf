@@ -12,8 +12,10 @@
 #
 # Caching: Rust deps (rust-cache), competitor binaries (keyed by the version resolved at run time, so a
 # new release is built once and then reused), and comparison/ itself (PDFs, screenshots, WebP pages).
-# engine_compare.py skips work whose output is newer than its input, so `git restore-mtime` gives
-# checked-out files their commit times and only changed fixtures are reconverted. Our binary is rebuilt
+# engine_compare.py skips work whose output is newer than its input, so tools/restore_mtime.py gives
+# checked-out files their commit times and only changed fixtures are reconverted. (Not the
+# git-restore-mtime package: it is built on `git whatchanged`, which the runner's Git refuses, and
+# then dates nothing, so every run was cold.) Our binary is rebuilt
 # every run and always reconverted; a competitor version or font change is in the cache key and starts cold.
 name: Engine comparison
 on:
@@ -43,10 +45,10 @@ jobs:
           ssh-key: ${{ secrets.ASSETS_DEPLOY_KEY }}
           path: assets
           fetch-depth: 0
-      - name: Install LibreOffice, mutool, cwebp, git-restore-mtime, pdfinfo, Java
+      - name: Install LibreOffice, mutool, cwebp, pdfinfo, Java
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends mupdf-tools webp libreoffice-writer git-restore-mtime \
+          sudo apt-get install -y -q --no-install-recommends mupdf-tools webp libreoffice-writer \
             poppler-utils default-jre-headless
       - name: Install veraPDF   # not in Ubuntu's archive; the official installer of the release Homebrew ships
         run: |
@@ -59,7 +61,7 @@ jobs:
           ln -s "$PWD/assets/fonts" fonts
           for g in scraped new samples; do [ ! -d "assets/fixtures/$g" ] || ln -s "$PWD/assets/fixtures/$g" "tests/fixtures/$g"; done
           mkdir -p ~/.local/share && ln -s "$PWD/assets/fonts" ~/.local/share/fonts && fc-cache -f   # LibreOffice sees them via fontconfig
-          git restore-mtime && git -C assets restore-mtime
+          python3 tools/restore_mtime.py . && python3 tools/restore_mtime.py assets
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
