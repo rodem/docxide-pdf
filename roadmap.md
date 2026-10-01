@@ -307,13 +307,18 @@ hyphenation 61.2 → 63.2.
 41. **A cell's first baseline** sits the font's ascent (line gap included)
     below the cell top, as in body text, not a full em (10pt TNR: 9.38).
     East Asian fonts keep the em (11pt MS Mincho: 11.0).
+42. **docGrid line-spacing multiples** scale the cells a line needs instead of
+    being snapped: 1.5 lines of one 18pt cell is 27pt, text centred. case79
+    (25 fonts and sizes on 18pt and 15.6pt grids) confirms 36 and 42: all 36
+    lines within 0.4pt of Word.
 
 Remaining gaps are mostly fonts we lack and small cumulative vertical drift
 (≈1–2px) that Jaccard punishes.
 
 Open findings (not done):
-- docGrid placement (36) rests on four fixtures; a dedicated fixture with
-  several Latin and East Asian fonts and sizes would pin the line-gap term.
+- docGrid: East Asian lines sit 0.17pt lower in Word than we put them on
+  average (case79, 17 lines; Latin lines average 0.00). Multiples below 1 and
+  at-least spacing on a grid are untested.
 - An at-least trHeight row with top/bottom cell margins: romanian_quality's
   header row is 67.5pt in Word = trHeight 60.2 + both 3.6pt margins, though
   its content is shorter (we give it 60.2). One sample; the usual reading is
