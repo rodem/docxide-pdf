@@ -1026,18 +1026,14 @@ fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
         // Walk ancestors from furthest to closest, accumulating inherited values.
         // Each closer ancestor overrides the further one.
         macro_rules! inherit {
-            ($dst:expr, $src:expr, $($field:ident),+ $(,)?) => {
+            (@fields $dst:expr, $src:expr, $($field:ident),+ $(,)?) => {
                 $(if $src.$field.is_some() { $dst.$field = $src.$field.clone(); })+
             };
-        }
-
-        let mut inh = ParagraphStyle::default();
-
-        for ancestor_id in chain.iter().rev() {
-            if let Some(s) = styles.get(ancestor_id) {
+            ($dst:expr, $src:expr) => {
                 inherit!(
-                    inh,
-                    s,
+                    @fields
+                    $dst,
+                    $src,
                     font_name,
                     east_asia_font,
                     font_size,
@@ -1078,7 +1074,15 @@ fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
                     text_fill,
                     text_shadow,
                     text_glow,
-                );
+                )
+            };
+        }
+
+        let mut inh = ParagraphStyle::default();
+
+        for ancestor_id in chain.iter().rev() {
+            if let Some(s) = styles.get(ancestor_id) {
+                inherit!(inh, s);
                 // Tab stops are additive: accumulate from ancestors, child overrides at same pos
                 // Clear tabs remove inherited tabs at matching positions
                 merge_tab_stops(
@@ -1092,46 +1096,9 @@ fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
             .sort_by(|a, b| a.position.total_cmp(&b.position));
 
         if let Some(s) = styles.get_mut(&id) {
-            s.font_name = s.font_name.take().or(inh.font_name);
-            s.east_asia_font = s.east_asia_font.take().or(inh.east_asia_font);
-            s.font_size = s.font_size.or(inh.font_size);
-            s.bold = s.bold.or(inh.bold);
-            s.italic = s.italic.or(inh.italic);
-            s.caps = s.caps.or(inh.caps);
-            s.small_caps = s.small_caps.or(inh.small_caps);
-            s.lang = s.lang.take().or(inh.lang);
-            s.lang_east_asia = s.lang_east_asia.take().or(inh.lang_east_asia);
-            s.vanish = s.vanish.or(inh.vanish);
-            s.underline = s.underline.or(inh.underline);
-            s.double_underline = s.double_underline.or(inh.double_underline);
-            s.strikethrough = s.strikethrough.or(inh.strikethrough);
-            s.dstrike = s.dstrike.or(inh.dstrike);
-            s.color = s.color.or(inh.color);
-            s.char_spacing = s.char_spacing.or(inh.char_spacing);
-            s.alignment = s.alignment.or(inh.alignment);
-            s.space_before = s.space_before.or(inh.space_before);
-            s.space_after = s.space_after.or(inh.space_after);
-            s.space_before_autospacing = s.space_before_autospacing.or(inh.space_before_autospacing);
-            s.space_after_autospacing = s.space_after_autospacing.or(inh.space_after_autospacing);
-            s.line_spacing = s.line_spacing.or(inh.line_spacing);
-            s.indent_left = s.indent_left.or(inh.indent_left);
-            s.indent_right = s.indent_right.or(inh.indent_right);
-            s.indent_hanging = s.indent_hanging.or(inh.indent_hanging);
-            s.indent_first_line = s.indent_first_line.or(inh.indent_first_line);
-            s.kern_threshold = s.kern_threshold.or(inh.kern_threshold);
-            s.widow_control = s.widow_control.or(inh.widow_control);
-            s.num_id = s.num_id.take().or(inh.num_id);
-            s.num_ilvl = s.num_ilvl.or(inh.num_ilvl);
-            s.outline_level = s.outline_level.or(inh.outline_level);
-            s.snap_to_grid = s.snap_to_grid.or(inh.snap_to_grid);
-            s.auto_space_de = s.auto_space_de.or(inh.auto_space_de);
-            s.auto_space_dn = s.auto_space_dn.or(inh.auto_space_dn);
-            s.suppress_auto_hyphens = s.suppress_auto_hyphens.or(inh.suppress_auto_hyphens);
-            s.shading = s.shading.or(inh.shading);
-            s.text_outline = s.text_outline.take().or(inh.text_outline);
-            s.text_fill = s.text_fill.take().or(inh.text_fill);
-            s.text_shadow = s.text_shadow.take().or(inh.text_shadow);
-            s.text_glow = s.text_glow.take().or(inh.text_glow);
+            // The chain starts with the style itself, so `inh` already holds
+            // its own values: one field list serves both directions.
+            inherit!(s, inh);
             s.tab_stops = inh.tab_stops;
         }
     }

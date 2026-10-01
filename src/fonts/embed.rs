@@ -148,19 +148,19 @@ pub(super) fn embed_truetype(
     let tounicode_ref = alloc();
     let cmap_name = format!("{}-UTF16", ps_name);
     let mut cmap = UnicodeCmap::new(Name(cmap_name.as_bytes()), system_info);
-    let pua_unicode: Option<fn(char) -> Option<char>> = if font_name.eq_ignore_ascii_case("symbol") {
-        Some(symbol_font_unicode)
+    let pua_unicode: fn(char) -> Option<char> = if font_name.eq_ignore_ascii_case("symbol") {
+        symbol_font_unicode
     } else if font_name.eq_ignore_ascii_case("wingdings") {
-        Some(wingdings_unicode)
+        wingdings_unicode
     } else {
-        None
+        |_| None
     };
     // Several characters can share a glyph (hyphen variants, no-break space)
     // but a CID maps to one character: keep the lowest code point, the plain
     // form, instead of whichever the HashMap happened to yield last.
     let mut cid_unicode: BTreeMap<u16, char> = BTreeMap::new();
     for (&ch, &new_gid) in &char_to_gid {
-        let uni = pua_unicode.and_then(|f| f(ch)).unwrap_or(ch);
+        let uni = pua_unicode(ch).unwrap_or(ch);
         cid_unicode.entry(new_gid).and_modify(|c| *c = (*c).min(uni)).or_insert(uni);
     }
     for (cid, uni) in cid_unicode {

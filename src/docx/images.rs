@@ -404,7 +404,6 @@ pub(super) fn find_blip_embed<'a>(container: roxmltree::Node<'a, 'a>) -> Option<
 pub(super) struct DrawingInfo {
     pub(super) height: f32,
     pub(super) image: Option<EmbeddedImage>,
-    pub(super) floating_images: Vec<FloatingImage>,
 }
 
 pub(super) fn parse_anchor_position(
@@ -777,7 +776,6 @@ pub(super) fn compute_drawing_info<R: Read + Seek>(
     DrawingInfo {
         height: max_height.max(object_height),
         image,
-        floating_images: Vec::new(),
     }
 }
 

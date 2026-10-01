@@ -4,7 +4,7 @@ use crate::model::{Paragraph, Run, TabAlignment, TabStop};
 
 use super::images::compute_drawing_info;
 use super::numbering::{ListLabelInfo, parse_list_info};
-use super::runs::{parse_runs, push_floating, push_textbox};
+use super::runs::{parse_runs, push_textbox};
 use super::styles::{parse_alignment, parse_font_size, rfonts_ascii_name};
 use super::textbox::collect_textboxes_from_paragraph;
 use super::{
@@ -308,7 +308,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
     let inline_image_count = runs.iter().filter(|r| r.inline_image.is_some()).count();
     let has_inline_images = inline_image_count > 0;
 
-    let mut floating_images = parsed.floating_images;
+    let floating_images = parsed.floating_images;
 
     let (para_image, mut content_height) = if !opts.resolve_drawings {
         (None, 0.0)
@@ -337,9 +337,6 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         (None, 0.0)
     } else {
         let drawing = compute_drawing_info(node, ctx.rels, ctx.zip);
-        for fi in drawing.floating_images {
-            push_floating(&mut floating_images, &parsed.textboxes, fi);
-        }
         (drawing.image, drawing.height)
     };
 
