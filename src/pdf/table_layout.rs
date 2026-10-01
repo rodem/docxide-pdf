@@ -492,6 +492,8 @@ pub(super) struct CellParagraphLayout {
     pub(super) float_indent_left: f32,
     pub(super) list_label: String,
     pub(super) list_label_font: Option<String>,
+    /// (level, list id) of a list item, for L/LI tagging inside the cell.
+    pub(super) list_item: Option<(u8, u32)>,
     pub(super) label_color: Option<[u8; 3]>,
     pub(super) first_run_font_key: String,
     pub(super) image_name: Option<String>,
@@ -865,6 +867,7 @@ pub(super) fn compute_row_layouts(
                                     float_indent_left,
                                     list_label: para.list_label.clone(),
                                     list_label_font: para.list_label_font.clone(),
+                                    list_item: para.list_level.zip(para.list_id),
                                     label_color: para.runs.first().and_then(|r| r.color),
                                     first_run_font_key,
                                     image_name,

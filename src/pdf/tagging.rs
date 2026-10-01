@@ -67,6 +67,7 @@ pub(crate) struct TableTags {
     rows: HashMap<usize, usize>,
     cells: HashMap<(usize, usize), usize>,
     paras: HashMap<(usize, usize, usize), usize>,
+    lists: HashMap<(usize, usize), Lists>,
     pub(super) repeating: bool,
 }
 
@@ -85,6 +86,7 @@ impl TableTags {
             rows: HashMap::new(),
             cells: HashMap::new(),
             paras: HashMap::new(),
+            lists: HashMap::new(),
             repeating: false,
         }
     }
@@ -126,14 +128,31 @@ impl TableTags {
         c
     }
 
-    fn para(&mut self, tags: &mut Tags, row: usize, cell: usize, col_span: i32, item: usize) -> usize {
+    /// The cell paragraph's elements: a P, or for a list item (level, list id)
+    /// its Lbl (when the label is drawn separately) and LBody, with the
+    /// cell's own L/LI nesting. A continued paragraph gets its body back.
+    fn para(
+        &mut self,
+        tags: &mut Tags,
+        (row, cell, col_span): (usize, usize, i32),
+        item: usize,
+        list_item: Option<(u8, u32)>,
+        labelled: bool,
+    ) -> (Option<usize>, usize) {
         if let Some(&p) = self.paras.get(&(row, cell, item)) {
-            return p;
+            return (None, p);
         }
         let c = self.cell(tags, row, cell, col_span);
-        let p = tags.add(c, "P");
-        self.paras.insert((row, cell, item), p);
-        p
+        let lists = self.lists.entry((row, cell)).or_default();
+        let nodes = match list_item {
+            Some((level, id)) => tags.list_item(lists, c, id, level, labelled),
+            None => {
+                lists.close();
+                (None, tags.add(c, "P"))
+            }
+        };
+        self.paras.insert((row, cell, item), nodes.1);
+        nodes
     }
 }
 
@@ -148,11 +167,24 @@ pub(super) struct CellTagger<'a> {
 }
 
 impl CellTagger<'_> {
-    /// Open the cell paragraph's P; returns it for links and notes inside.
-    pub(super) fn begin(&mut self, content: &mut Content, item: usize) -> usize {
-        let p = self.table.para(self.tags, self.row, self.cell, self.col_span, item);
-        self.tags.begin(content, self.page, p);
-        p
+    /// Open the cell paragraph's text element (see `TableTags::para`);
+    /// returns (Lbl, text element) for the label, links and notes inside.
+    pub(super) fn begin(
+        &mut self,
+        content: &mut Content,
+        item: usize,
+        list_item: Option<(u8, u32)>,
+        labelled: bool,
+    ) -> (Option<usize>, usize) {
+        let at = (self.row, self.cell, self.col_span);
+        let nodes = self.table.para(self.tags, at, item, list_item, labelled);
+        self.tags.begin(content, self.page, nodes.1);
+        nodes
+    }
+
+    /// Continue the open content as `node`'s (e.g. the list label's Lbl).
+    pub(super) fn switch(&mut self, content: &mut Content, node: usize) {
+        self.tags.begin(content, self.page, node);
     }
 
     /// The cell element alone: Word keeps a vertically merged cell's

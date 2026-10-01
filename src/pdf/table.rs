@@ -320,6 +320,28 @@ fn row_tag_span(row: &TableRow, ci: usize, span: usize, grid_cols: usize, grid_c
     span as i32
 }
 
+/// The list label of a tagged cell list item goes in its Lbl, the rest of the
+/// paragraph in its LBody.
+#[allow(clippy::too_many_arguments)]
+fn draw_tagged_cell_label(
+    content: &mut Content,
+    tagger: &mut Option<CellTagger<'_>>,
+    nodes: Option<(Option<usize>, usize)>,
+    para: &CellParagraphLayout,
+    label_x: f32,
+    baseline_y: f32,
+    fonts: &HashMap<String, FontEntry>,
+) {
+    match (tagger.as_mut(), nodes) {
+        (Some(t), Some((Some(label), body))) => {
+            t.switch(content, label);
+            draw_cell_label(content, para, label_x, baseline_y, fonts);
+            t.switch(content, body);
+        }
+        _ => draw_cell_label(content, para, label_x, baseline_y, fonts),
+    }
+}
+
 /// Links and footnote references in a tagged cell paragraph nest in its P.
 fn cell_link_tagger<'a>(tagger: &'a mut Option<CellTagger<'_>>, para: Option<usize>) -> Option<LinkTagger<'a>> {
     let t = tagger.as_mut()?;
@@ -367,7 +389,10 @@ fn render_cell_content(
                 }
 
                 // Word tags every cell paragraph, empty ones included.
-                let cell_para = tagger.as_mut().map(|t| t.begin(content, item_idx));
+                let cell_nodes = tagger
+                    .as_mut()
+                    .map(|t| t.begin(content, item_idx, para.list_item, !para.list_label.is_empty()));
+                let cell_para = cell_nodes.map(|(_, body)| body);
                 let para_top = cursor_y;
                 if !para_has_visible_content(para)
                     && !para.has_textboxes
@@ -427,7 +452,7 @@ fn render_cell_content(
                     para.indent_hanging
                 } else {
                     let label_x = cell_x + cm.left + para.indent_left - para.indent_hanging;
-                    draw_cell_label(content, para, label_x, baseline_y, ctx.fonts);
+                    draw_tagged_cell_label(content, &mut tagger, cell_nodes, para, label_x, baseline_y, ctx.fonts);
                     if para.indent_first_line > 0.0 && para.indent_hanging == 0.0 {
                         -para.indent_first_line
                     } else {
@@ -797,7 +822,10 @@ fn render_partial_cell_content(
             CellContentItem::Paragraph(para) => {
                 let sb = if pi == start.item { 0.0 } else { para.space_before };
 
-                let cell_para = tagger.as_mut().map(|t| t.begin(content, pi));
+                let cell_nodes = tagger
+                    .as_mut()
+                    .map(|t| t.begin(content, pi, para.list_item, !para.list_label.is_empty()));
+                let cell_para = cell_nodes.map(|(_, body)| body);
                 if !para_has_visible_content(para) {
                     cursor_y -= sb + para_block_height(para);
                     end_cell_tag(content, &tagger);
@@ -840,7 +868,7 @@ fn render_partial_cell_content(
                 } else {
                     if l0 == 0 {
                         let label_x = cell_x + cm.left + para.indent_left - para.indent_hanging;
-                        draw_cell_label(content, para, label_x, baseline_y, ctx.fonts);
+                        draw_tagged_cell_label(content, &mut tagger, cell_nodes, para, label_x, baseline_y, ctx.fonts);
                     }
                     if para.indent_first_line > 0.0 && para.indent_hanging == 0.0 {
                         -para.indent_first_line
@@ -995,12 +1023,12 @@ fn render_table_row(
             );
             // ponytail: vertical cell text stays an artifact; the TD keeps rows the same width
             if let Some(mut t) = tagger {
-                t.begin(&mut pb.content, 0);
+                t.begin(&mut pb.content, 0, None, false);
                 Tags::end(&mut pb.content);
             }
         } else if !has_content {
             if let Some(mut t) = tagger {
-                t.begin(&mut pb.content, 0);
+                t.begin(&mut pb.content, 0, None, false);
                 Tags::end(&mut pb.content);
             }
         } else {
@@ -1258,7 +1286,7 @@ fn render_partial_row(
             );
         } else if let Some(mut t) = tagger.filter(|_| start == CellCursor::default()) {
             // An empty cell still gets its TD (and P), keeping rows the same width.
-            t.begin(&mut pb.content, 0);
+            t.begin(&mut pb.content, 0, None, false);
             Tags::end(&mut pb.content);
         }
     }
