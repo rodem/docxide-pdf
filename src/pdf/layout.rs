@@ -238,6 +238,8 @@ pub(super) struct WordChunk {
     /// individually, so the space is drawn as an invisible glyph after the word
     /// purely so text extraction and screen readers see the word boundary.
     pub(super) space_after: bool,
+    /// From an Office Math run: its tall operator metrics never size a line.
+    pub(super) is_math: bool,
 }
 
 /// Pale-pink highlight color Word uses for comment-anchored text spans.
@@ -317,6 +319,7 @@ impl WordChunk {
             actual_text: None,
             lang: chunk_lang(run, word),
             space_after: false,
+            is_math: run.is_math,
         }
     }
 
@@ -359,6 +362,7 @@ impl WordChunk {
             inline_image_alt: img.alt.clone(),
             inline_image_decorative: img.decorative,
             punct_compressed: 0.0,
+            is_math: false,
             synthetic_bold: false,
             text_outline: None,
             text_fill: None,
@@ -411,6 +415,7 @@ impl WordChunk {
             inline_image_alt: None,
             inline_image_decorative: false,
             punct_compressed: 0.0,
+            is_math: false,
             synthetic_bold: false,
             text_outline: None,
             text_fill: None,
@@ -468,6 +473,7 @@ impl WordChunk {
             inline_image_alt: None,
             inline_image_decorative: false,
             punct_compressed: 0.0,
+            is_math: false,
             synthetic_bold: false,
             text_outline: None,
             text_fill: None,
@@ -632,12 +638,11 @@ pub(super) struct TextLine {
     pub(super) ascent_shift: f32,
 }
 
-/// Word sizes each line by the tallest face on that line, not the paragraph's
-/// tallest run: russian_sports_ranking_decree's 20pt "ГЛАВА" followed by
-/// `w:br` lines of 14pt steps 17.25 then 16.0 in Word, not 23.0 twice.
-/// Lines whose tallest face matches the paragraph keep its pitch; whitespace
-/// and picture chunks do not size a line, and text-less lines (breaks) keep
-/// their own handling.
+/// Word sizes each line by the runs on that line, not the paragraph's tallest
+/// run: russian_sports_ranking_decree's 20pt "ГЛАВА" followed by `w:br` lines
+/// of 14pt steps 17.25 then 16.0 in Word, not 23.0 twice. Lines that come out
+/// at the paragraph pitch keep it; whitespace and picture chunks do not size a
+/// line, and text-less lines (breaks) keep their own handling.
 pub(super) fn size_lines_by_own_runs(
     lines: &mut [TextLine],
     fonts: &HashMap<String, FontEntry>,
@@ -651,25 +656,30 @@ pub(super) fn size_lines_by_own_runs(
         if line.chunks.iter().any(|c| c.inline_image_name.is_some()) {
             continue;
         }
-        // (single-line height, ascent, border pad) of the chunk reaching highest
-        let mut tallest: Option<(f32, f32, f32)> = None;
-        for c in line.chunks.iter().filter(|c| !c.text.trim().is_empty()) {
+        // The line spans the highest top and the lowest bottom of its runs,
+        // which can come from different runs: case8's 16pt pixel font has
+        // almost no descent, so the 12pt Arial beside it sets the bottom.
+        // Math faces never size a line (their operator metrics are huge).
+        let (mut ascent, mut below, mut sized) = (0.0f32, 0.0f32, false);
+        for c in line.chunks.iter().filter(|c| !c.is_math && !c.text.trim().is_empty()) {
             let Some(entry) = by_pdf_name.get(c.pdf_font.as_str()) else { continue };
             let (lhr, ar) = run_line_metrics(entry, &c.text);
+            let (lhr, ar) = (lhr.unwrap_or(1.2), ar.unwrap_or(0.75));
             // Word makes room for a run border's box around the glyphs
             // (run-borders: 12pt Calibri in a 1.44pt border steps
             // (14.65 + 2 × 1.44) × 1.079 = 18.96).
             let pad = c.border.as_ref().map_or(0.0, |b| b.width_pt + b.space_pt);
-            let ascent = c.font_size * ar.unwrap_or(0.75) + pad;
-            if tallest.is_none_or(|t| ascent > t.1) {
-                tallest = Some((c.font_size * lhr.unwrap_or(1.2) + 2.0 * pad, ascent, pad));
-            }
+            // A raised or lowered run keeps the line's box: lithuanian_excise's
+            // subscript "CO2" lines step like the lines around them.
+            ascent = ascent.max(c.font_size * ar + pad);
+            below = below.max(c.font_size * (lhr - ar).max(0.0) + pad);
+            sized = true;
         }
-        let Some((natural, ascent, pad)) = tallest else { continue };
-        let pitch = super::helpers::resolve_line_h(line_spacing, 1.0, Some(natural));
-        // Only a border can make a line taller than the paragraph's tallest
-        // run (math faces are kept out of the paragraph pitch on purpose).
-        if pitch < para_pitch - 0.01 || (pad > 0.0 && pitch > para_pitch + 0.01) {
+        if !sized {
+            continue;
+        }
+        let pitch = super::helpers::resolve_line_h(line_spacing, 1.0, Some(ascent + below));
+        if (pitch - para_pitch).abs() > 0.01 {
             line.pitch = Some(pitch);
             line.ascent_shift = ascent - para_ascent;
         }
