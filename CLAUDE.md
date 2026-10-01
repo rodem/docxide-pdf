@@ -51,6 +51,20 @@ python3 tools/engine_compare.py --html-only            # rebuild index.html from
 tools/deploy_comparison.sh [remote] [branch]           # publish comparison/ (work/ excluded) as an orphan gh-pages commit (DRY_RUN=1 to preview)
 # CI does both on every push to main: .github/workflows/comparison.yml (fonts come from the private sverrejb/docxide-pdf-assets repo; only tracked cases/ are compared)
 # MiniPdf = the Rust crate's CLI (`cargo install minipdf-cli`), never the .NET engine; rdocx via `cargo install rdocx`; office2pdf via `cargo install office2pdf-cli`; LibreOffice via soffice
+
+# Accuracy work: verify each rule change on all fixtures and, where available, an external corpus
+tools/score_snapshot.sh <label> [<prev label>]         # full visual suite → tests/output/snapshots/<label>.json, compared with <prev>
+python3 tools/compare_scores.py <a.json> <b.json>      # group means + every case that moved
+python3 tools/ab_view.py <label> <cli> <group/case>... [-v]   # render with a given CLI build, print vdiff page drift (VDIFF=path/to/vdiff)
+python3 tools/pdf_lines.py <pdf> <page> [ymin ymax]    # rules (borders) and baselines from a PDF, y from page top
+python3 tools/line_diff.py <ref.pdf> <gen.pdf> [n]     # first places where text lines differ (where reflow starts)
+python3 tools/word_x_diff.py <ref.pdf> <gen.pdf> <page>  # per-word start-x drift (width/justification errors)
+python3 tools/ink_diff.py <ref.pdf> <gen.pdf> <page> <out.png>  # blue = ref-only ink, red = ours-only, grey = both
+python3 tools/docx_edit.py <in> <out> <part> <old> <new>  # literal edit of one docx part for what-if experiments
+python3 tools/convert_scan.py [<cli>]                  # convert every fixture with a timeout; reports hangs/crashes
+python3 tools/corpus_score.py <dir> <cli> <label>      # score docx/+pdf/ pairs → tests/output/corpus/<label>.json (needs release page-metrics)
+python3 tools/corpus_compare.py <before> <after>       # corpus mean + biggest movers
+python3 tools/corpus_view.py <dir> <label> <cli> <prefix>... [-v] [--score]  # vdiff (and metrics) for chosen corpus docs
 ```
 
 ## Architecture
