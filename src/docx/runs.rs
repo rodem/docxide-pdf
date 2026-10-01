@@ -1100,10 +1100,21 @@ pub(super) fn parse_runs<R: Read + Seek>(
                                     None
                                 };
                                 if let Some(code) = fc {
+                                    // PAGEREF \h is a hyperlink to its bookmark (TOC page
+                                    // numbers): Word tags it as the TOCI's Link.
+                                    let url = match &code {
+                                        FieldCode::PageRef(bookmark)
+                                            if hyperlink_url.is_none()
+                                                && f.instr.split_whitespace().any(|s| s.eq_ignore_ascii_case("\\h")) =>
+                                        {
+                                            Some(format!("#{bookmark}"))
+                                        }
+                                        _ => hyperlink_url.clone(),
+                                    };
                                     runs.push(Run {
                                         text: f.result,
                                         field_code: Some(code),
-                                        hyperlink_url: hyperlink_url.clone(),
+                                        hyperlink_url: url,
                                         ..fmt.styled_run()
                                     });
                                 }
