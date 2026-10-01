@@ -2702,6 +2702,17 @@ pub(super) fn tallest_run_metrics(
         .unwrap_or((runs.first().map_or(12.0, |r| r.font_size), None, None))
 }
 
+/// `tallest_run_metrics` for a body paragraph, where a run of only spaces
+/// sizes nothing; with nothing left the caller falls back to the mark.
+pub(super) fn tallest_glyph_run_metrics(
+    runs: &[Run],
+    seen_fonts: &HashMap<String, FontEntry>,
+) -> (f32, Option<f32>, Option<f32>) {
+    let glyph_runs = runs.iter().filter(|r| r.text.is_empty() || !r.text.trim().is_empty());
+    tallest_by_ascent(glyph_runs, seen_fonts)
+        .unwrap_or((runs.first().map_or(12.0, |r| r.font_size), None, None))
+}
+
 /// (font_size, line_h_ratio, ascender_ratio) of the run with the tallest ascent
 /// (font_size × ascender ratio); None when no run has one.
 fn tallest_by_ascent<'a>(

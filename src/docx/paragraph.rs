@@ -5,7 +5,7 @@ use crate::model::{Paragraph, Run, TabAlignment, TabStop};
 use super::images::compute_drawing_info;
 use super::numbering::{ListLabelInfo, parse_list_info};
 use super::runs::{parse_runs, push_textbox};
-use super::styles::{parse_alignment, parse_font_size, rfonts_ascii_name};
+use super::styles::{parse_alignment, parse_font_size, resolve_font_from_node_opt};
 use super::textbox::collect_textboxes_from_paragraph;
 use super::{
     ParseContext, WML_NS, extract_indents, parse_frame_props, parse_hex_color,
@@ -57,14 +57,24 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
     let paragraph_mark_vanish = ppr_rpr
         .and_then(|rpr| wml_bool(rpr, "vanish"))
         .unwrap_or(false);
-    let paragraph_mark_font_size = ppr_rpr.and_then(parse_font_size);
-    let paragraph_mark_font_name = ppr_rpr.and_then(rfonts_ascii_name);
 
     let para_style_id = ppr
         .and_then(|ppr| wml_attr(ppr, "pStyle"))
         .unwrap_or(&ctx.styles.default_paragraph_style_id);
 
     let para_style = ctx.styles.paragraph_styles.get(para_style_id);
+
+    // The mark inherits like any run: its own rPr, then the paragraph style,
+    // then docDefaults.
+    let paragraph_mark_font_size = ppr_rpr
+        .and_then(parse_font_size)
+        .or_else(|| para_style.and_then(|s| s.font_size))
+        .or(Some(ctx.styles.defaults.font_size));
+    let paragraph_mark_font_name = ppr_rpr
+        .and_then(|rpr| wml(rpr, "rFonts"))
+        .and_then(|rf| resolve_font_from_node_opt(rf, ctx.theme))
+        .or_else(|| para_style.and_then(|s| s.font_name.clone()))
+        .or_else(|| Some(ctx.styles.defaults.font_name.clone()));
 
     // A paragraph-level pBdr element overrides the style borders even when
     // all individual borders are set to val="none" (parsed as None).

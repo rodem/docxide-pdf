@@ -50,6 +50,7 @@ use positioning::{
 pub(super) use positioning::{resolve_h_position, resolve_fi_y_top};
 use images::{EffectXObjs, EmbeddedImages, embed_all_images};
 use layout::{
+    tallest_glyph_run_metrics,
     CjkLayout, DualRegion, LineNumberArg, LinkAnnotation, LinkTagger, TextLine, build_paragraph_lines,
     build_tabbed_line, descender_ratio,
     grid_snapped_line_h, inline_image_line_extra, is_text_empty, line_max_image_h,
@@ -235,6 +236,27 @@ fn label_boosted_baseline_offset(
         .and_then(|e| e.ascender_ratio)
         .unwrap_or(0.75);
     text_offset.max(label_fs * label_ar)
+}
+
+/// (font_size, line_h_ratio) for a paragraph whose runs size nothing (empty,
+/// breaks, whitespace): a break sizes the line it ends (samtale's 10pt breaks
+/// under an 11pt mark), otherwise only the paragraph mark is left (eco_int's
+/// lone 9.5pt space takes the mark's Calibri 11 line).
+fn unsized_line_metrics(
+    para: &Paragraph,
+    font_size: f32,
+    fonts: &HashMap<String, FontEntry>,
+) -> (f32, Option<f32>) {
+    if let Some(br) = para.runs.iter().find(|r| r.is_line_break) {
+        let lhr = fonts.get(&font_key(br)).and_then(|e| run_line_metrics(e, "").0);
+        return (br.font_size, lhr);
+    }
+    let lhr = para
+        .paragraph_mark_font_name
+        .as_deref()
+        .and_then(|n| fonts.get(n))
+        .and_then(|e| run_line_metrics(e, "").0);
+    (para.paragraph_mark_font_size.unwrap_or(font_size), lhr)
 }
 
 /// Look up the line_h_ratio for a break run's font, matching by font_size.
@@ -1072,16 +1094,9 @@ fn compute_bookmark_positions(
                         continue;
                     }
                     let (mut font_size, mut tallest_lhr, _) =
-                        tallest_run_metrics(&para.runs, ctx.fonts);
+                        tallest_glyph_run_metrics(&para.runs, ctx.fonts);
                     if tallest_lhr.is_none() {
-                        if let Some(mark_fs) = para.paragraph_mark_font_size {
-                            font_size = mark_fs;
-                        }
-                        if let Some(ref mark_fn) = para.paragraph_mark_font_name {
-                            if let Some(entry) = ctx.fonts.get(mark_fn.as_str()) {
-                                tallest_lhr = run_line_metrics(entry, "").0;
-                            }
-                        }
+                        (font_size, tallest_lhr) = unsized_line_metrics(para, font_size, ctx.fonts);
                     }
                     let effective_ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
                     let line_h = resolve_line_h(effective_ls, font_size, tallest_lhr);
@@ -1320,22 +1335,9 @@ fn render_paragraph_block(
     let mut inter_gap = f32::max(state.prev_space_after, effective_space_before);
 
     let (mut font_size, mut tallest_lhr, tallest_ar) =
-        tallest_run_metrics(&para.runs, ctx.fonts);
-    // When runs are empty, use the paragraph mark's font metrics instead
-    // of the 12pt / 1.2x fallback that tallest_run_metrics returns.
+        tallest_glyph_run_metrics(&para.runs, ctx.fonts);
     if tallest_lhr.is_none() {
-        if let Some(mark_fs) = para.paragraph_mark_font_size {
-            font_size = mark_fs;
-        }
-        let mark_font_name = para
-            .paragraph_mark_font_name
-            .as_deref()
-            .unwrap_or(&para.runs.first().map(|r| r.font_name.as_str()).unwrap_or(""));
-        if !mark_font_name.is_empty() {
-            if let Some(entry) = ctx.fonts.get(mark_font_name) {
-                tallest_lhr = run_line_metrics(entry, "").0;
-            }
-        }
+        (font_size, tallest_lhr) = unsized_line_metrics(para, font_size, ctx.fonts);
     }
     let effective_ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
     let line_h = resolve_line_h(effective_ls, font_size, tallest_lhr);
@@ -3668,6 +3670,17 @@ mod tests {
         // separator; 7 produced no chunk and is charged to the last line.
         assert_eq!(per_line, vec![0.0, 62.0, 0.0, 130.0]);
         assert_eq!(total, 192.0);
+    }
+
+    #[test]
+    fn unsized_line_takes_its_break_else_the_mark() {
+        let mut para = Paragraph {
+            paragraph_mark_font_size: Some(11.0),
+            ..Default::default()
+        };
+        assert_eq!(unsized_line_metrics(&para, 9.5, &HashMap::new()).0, 11.0);
+        para.runs.push(Run { font_size: 10.0, is_line_break: true, ..Default::default() });
+        assert_eq!(unsized_line_metrics(&para, 9.5, &HashMap::new()).0, 10.0);
     }
 
     #[test]
