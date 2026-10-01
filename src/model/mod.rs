@@ -462,6 +462,11 @@ pub struct Run {
     pub font_size_from_default: bool,
     /// True when font_name was inherited from defaults, not set by inline rPr or char style.
     pub font_name_from_default: bool,
+    /// True when the run's own rPr sets w:b / w:i. Direct formatting is absolute
+    /// for toggle properties (§17.7.3), so a table style's bold or italic must not
+    /// override it.
+    pub bold_is_direct: bool,
+    pub italic_is_direct: bool,
     /// Active comment IDs covering this run (empty for the common no-comments case).
     /// Multiple IDs when comment ranges overlap.
     pub comment_ids: Vec<u32>,
@@ -554,6 +559,8 @@ impl Default for Run {
             text_lang_east_asia: None,
             font_size_from_default: false,
             font_name_from_default: false,
+            bold_is_direct: false,
+            italic_is_direct: false,
             comment_ids: Vec::new(),
             is_math: false,
         }

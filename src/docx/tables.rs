@@ -693,10 +693,10 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                                 run.font_name = tfn.to_string();
                             }
                         }
-                        if eff_tbl_bold == Some(true) {
+                        if eff_tbl_bold == Some(true) && !run.bold_is_direct {
                             run.bold = true;
                         }
-                        if eff_tbl_italic == Some(true) {
+                        if eff_tbl_italic == Some(true) && !run.italic_is_direct {
                             run.italic = true;
                         }
                         if let Some(cc) = cond_color {

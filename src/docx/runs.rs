@@ -127,6 +127,8 @@ struct RunFormat {
     font_size_from_default: bool,
     /// True when font_name came only from ParagraphRunDefaults.
     font_name_from_default: bool,
+    bold_is_direct: bool,
+    italic_is_direct: bool,
 }
 
 impl RunFormat {
@@ -164,6 +166,8 @@ impl RunFormat {
             text_lang_east_asia: self.text_lang_east_asia.clone(),
             font_size_from_default: self.font_size_from_default,
             font_name_from_default: self.font_name_from_default,
+            bold_is_direct: self.bold_is_direct,
+            italic_is_direct: self.italic_is_direct,
             hyperlink_url,
             ..Run::default()
         }
@@ -495,6 +499,8 @@ impl ParagraphRunDefaults {
                 .map(Into::into),
             font_size_from_default,
             font_name_from_default,
+            bold_is_direct: rpr.and_then(|n| wml_bool(n, "b")).is_some(),
+            italic_is_direct: rpr.and_then(|n| wml_bool(n, "i")).is_some(),
         }
     }
 }
