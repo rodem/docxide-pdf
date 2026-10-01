@@ -1380,10 +1380,13 @@ fn render_paragraph_block(
 
     // When inside a floating object zone, narrow the paragraph to
     // fit beside the object rather than overlapping it.
+    // The paragraph's first line starts below the gap: a centred line under
+    // a logo sits clear of it once the 8pt after-space is counted.
+    let first_line_top = state.pb.slot_top - inter_gap;
     if let Some(ref fz) = state.pb.float_zone {
-        if state.pb.slot_top <= fz.top_y && state.pb.slot_top > fz.bottom_y {
+        if first_line_top <= fz.top_y && first_line_top > fz.bottom_y {
             let col_right = col_x + col_w;
-            let (ex_left, ex_right) = fz.exclusion_at_y(state.pb.slot_top);
+            let (ex_left, ex_right) = fz.exclusion_at_y(first_line_top);
             let space_right =
                 col_right - (ex_right + fz.right_from_text);
             let space_left = (ex_left - fz.left_from_text) - col_x;
@@ -1496,11 +1499,11 @@ fn render_paragraph_block(
             // Re-narrow para_text_x / para_text_width using the
             // new float zone (same logic as the block above).
             let fz = state.pb.float_zone.as_ref().unwrap();
-            if state.pb.slot_top <= fz.top_y && state.pb.slot_top > fz.bottom_y
+            if first_line_top <= fz.top_y && first_line_top > fz.bottom_y
             {
                 let col_right = col_x + col_w;
                 let (ex_left, ex_right) =
-                    fz.exclusion_at_y(state.pb.slot_top);
+                    fz.exclusion_at_y(first_line_top);
                 let space_right = col_right
                     - (ex_right + fz.right_from_text);
                 let space_left =
@@ -2444,10 +2447,11 @@ fn render_paragraph_block(
     label_x = col_x + para.indent_left - para.indent_hanging;
 
     // Re-apply float zone adjustment after potential column change
+    let first_line_top = state.pb.slot_top - inter_gap;
     if let Some(ref fz) = state.pb.float_zone {
-        if state.pb.slot_top <= fz.top_y && state.pb.slot_top > fz.bottom_y {
+        if first_line_top <= fz.top_y && first_line_top > fz.bottom_y {
             let col_right = col_x + col_w;
-            let (ex_left, ex_right) = fz.exclusion_at_y(state.pb.slot_top);
+            let (ex_left, ex_right) = fz.exclusion_at_y(first_line_top);
             let space_right =
                 col_right - (ex_right + fz.right_from_text);
             let space_left = (ex_left - fz.left_from_text) - col_x;
