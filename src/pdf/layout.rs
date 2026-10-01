@@ -1121,12 +1121,9 @@ pub(super) fn build_paragraph_lines(
             }
             if let Some(pdf_name) = inline_image_names.get(&run_idx) {
                 let img_w = img.layout_size().0;
-                let need_space = !current_chunks.is_empty() && pending_space_w > 0.0;
-                let proposed_x = if need_space {
-                    current_x + pending_space_w
-                } else {
-                    current_x
-                };
+                // Leading spaces indent a picture as they do a word
+                // (russian_chess: 19 spaces push the board 57pt right).
+                let proposed_x = current_x + pending_space_w;
 
                 let eff_w = left_max(lines.len());
                 let line_max = if lines.is_empty() && !in_right_region {
