@@ -751,14 +751,24 @@ fn push_word_chunks(
                 };
                 chunk.actual_text = actual(seg_text, source);
             }
-            chunks.push(chunk);
+            chunks.push(read_shadow_once(chunk));
             seg_x += seg_w;
         }
     } else {
         let mut chunk = WordChunk::text(entry, run, word, eff_fs, cs, y_off, x_start, total_ww);
         chunk.actual_text = original.and_then(|o| actual(word, o));
-        chunks.push(chunk);
+        chunks.push(read_shadow_once(chunk));
     }
+}
+
+/// The legacy text shadow draws a gray copy of the glyphs before them: one
+/// `/ActualText` over both (the caps Span) keeps a screen reader from reading
+/// the word twice.
+fn read_shadow_once(mut chunk: WordChunk) -> WordChunk {
+    if chunk.text_shadow.is_some() && chunk.actual_text.is_none() {
+        chunk.actual_text = Some(chunk.text.clone());
+    }
+    chunk
 }
 
 fn vert_y_offset(run: &Run) -> f32 {
@@ -2942,6 +2952,11 @@ mod tests {
         let both = Run { caps: true, small_caps: true, ..Run::default() };
         assert_eq!(chunks_for(&both, "PIRMASIS", Some("Pirmasis")), [("PIRMASIS".into(), Some("Pirmasis".into()))]);
         assert_eq!(chunks_for(&Run::default(), "plain", None), [("plain".into(), None)]);
+        let shadowed = Run {
+            text_shadow: Some(crate::model::TextShadow { color: [128; 3], offset_x: 1.0, offset_y: -1.0, alpha: 1.0 }),
+            ..Run::default()
+        };
+        assert_eq!(chunks_for(&shadowed, "Shadow", None), [("Shadow".into(), Some("Shadow".into()))]);
     }
 
     #[test]
