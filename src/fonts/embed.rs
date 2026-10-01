@@ -127,7 +127,9 @@ pub(super) fn embed_truetype(
         let mut gid_widths: Vec<(u16, f32)> = char_to_gid
             .iter()
             .filter_map(|(&ch, &new_gid)| {
-                face.glyph_index(ch).map(|gid| (new_gid, advance_1000(gid)))
+                // Same lookup as the glyph itself: a symbol font's character
+                // missing here got /DW 0 while drawn at its real width (7.21.5).
+                resolve_glyph(&face, ch).map(|gid| (new_gid, advance_1000(gid)))
             })
             .collect();
         gid_widths.sort_by_key(|&(gid, _)| gid);
