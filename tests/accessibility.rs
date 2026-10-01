@@ -2,12 +2,15 @@ mod common;
 
 use common::a11y::{self, Analysis};
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::Path;
 
 struct Scored {
     name: String,
+    /// PDF/UA-1 rules our PDF fails on its own. Rules the source can't satisfy
+    /// (no title, pictures without descr) count too; the baseline absorbs them.
+    ua_fail: usize,
     deficit: Vec<String>,
     struct_score: f64,
     text_score: f64,
@@ -15,7 +18,8 @@ struct Scored {
 
 enum Outcome {
     Scored(Scored),
-    UntaggedReference,
+    /// No Word bar to compare with, so only (name, ua_fail).
+    UntaggedReference(String, usize),
     Error(String, String),
 }
 
@@ -25,7 +29,7 @@ fn gen_pdf_name() -> String {
     std::env::var("DOCXSIDE_A11Y_GEN").unwrap_or_else(|_| "generated.pdf".into())
 }
 
-fn write_detail(path: &Path, reference: &Analysis, generated: &Analysis, s: &Scored) {
+fn write_detail(path: &Path, reference: &Analysis, generated: &Analysis, s: &Scored, failing: &BTreeMap<&str, u64>) {
     let rules: Vec<_> = s
         .deficit
         .iter()
@@ -40,6 +44,7 @@ fn write_detail(path: &Path, reference: &Analysis, generated: &Analysis, s: &Sco
         })
         .collect();
     let detail = serde_json::json!({
+        "ua_fail": failing,
         "ua_deficit": rules,
         "a11y_struct": s.struct_score,
         "a11y_text": s.text_score,
@@ -61,10 +66,6 @@ fn analyze_fixture(fixture: &Path, gen_name: &str) -> Option<Outcome> {
         Ok(a) => a,
         Err(e) => return fail(e),
     };
-    // Untagged (macOS print-path) references give no bar to measure against.
-    if ref_a.elems.is_empty() {
-        return Some(Outcome::UntaggedReference);
-    }
 
     let gen_pdf = if gen_name == "generated.pdf" {
         match common::ensure_generated_pdf(fixture) {
@@ -82,9 +83,19 @@ fn analyze_fixture(fixture: &Path, gen_name: &str) -> Option<Outcome> {
         Ok(a) => a,
         Err(e) => return fail(e),
     };
+    let failing: BTreeMap<&str, u64> =
+        gen_a.rules.iter().filter(|(_, r)| r.failed > 0).map(|(id, r)| (id.as_str(), r.failed)).collect();
+    let detail_path = out.join(format!("{stem}.deficit.json"));
+    // Untagged (macOS print-path) references give no bar to measure against.
+    if ref_a.elems.is_empty() {
+        let detail = serde_json::json!({ "ua_fail": failing });
+        fs::write(&detail_path, serde_json::to_string_pretty(&detail).unwrap()).ok();
+        return Some(Outcome::UntaggedReference(name, failing.len()));
+    }
 
     let scored = Scored {
         name,
+        ua_fail: failing.len(),
         deficit: a11y::ua_deficit(&ref_a.rules, &gen_a.rules)
             .into_iter()
             .map(String::from)
@@ -92,7 +103,7 @@ fn analyze_fixture(fixture: &Path, gen_name: &str) -> Option<Outcome> {
         struct_score: a11y::struct_score(&ref_a.elems, &gen_a.elems),
         text_score: a11y::text_score(&ref_a.elems, &gen_a.elems),
     };
-    write_detail(&out.join(format!("{stem}.deficit.json")), &ref_a, &gen_a, &scored);
+    write_detail(&detail_path, &ref_a, &gen_a, &scored, &failing);
     Some(Outcome::Scored(scored))
 }
 
@@ -111,24 +122,26 @@ fn accessibility_vs_reference() {
 
     let mut results = Vec::new();
     let mut errors = Vec::new();
-    let mut untagged = 0;
+    let mut untagged = Vec::new();
     for o in outcomes {
         match o {
             Outcome::Scored(s) => results.push(s),
-            Outcome::UntaggedReference => untagged += 1,
+            Outcome::UntaggedReference(name, ua_fail) => untagged.push((name, ua_fail)),
             Outcome::Error(name, e) => errors.push(format!("{name}: {e}")),
         }
     }
     results.sort_by(|a, b| a.name.cmp(&b.name));
+    untagged.sort();
 
-    let name_w = results.iter().map(|r| r.name.len()).max().unwrap_or(4).max(4);
-    println!("\n  {:<name_w$}  UaDef  Struct    Text  Deficit rules ({gen_name})", "Case");
+    let name_w = results.iter().map(|r| r.name.len()).chain(untagged.iter().map(|u| u.0.len())).max().unwrap_or(4).max(4);
+    println!("\n  {:<name_w$}  UaFail  UaDef  Struct    Text  Deficit rules ({gen_name})", "Case");
     for r in &results {
         let shown: Vec<&str> = r.deficit.iter().take(6).map(String::as_str).collect();
         let more = r.deficit.len().saturating_sub(shown.len());
         println!(
-            "  {:<name_w$}  {:>5}  {:>5.1}%  {:>5.1}%  {}{}",
+            "  {:<name_w$}  {:>6}  {:>5}  {:>5.1}%  {:>5.1}%  {}{}",
             r.name,
+            r.ua_fail,
             r.deficit.len(),
             r.struct_score * 100.0,
             r.text_score * 100.0,
@@ -136,13 +149,24 @@ fn accessibility_vs_reference() {
             if more > 0 { format!(" +{more}") } else { String::new() }
         );
     }
+    for (name, ua_fail) in &untagged {
+        println!("  {name:<name_w$}  {ua_fail:>6}      -       -       -  (untagged reference)");
+    }
     let n = results.len().max(1) as f64;
     println!(
-        "\n  a11y ≥ Word (no UA-1 deficit): {}/{} · struct {:.1}% · text {:.1}% (means) · N/A untagged reference: {untagged}",
+        "\n  a11y ≥ Word (no UA-1 deficit): {}/{} · struct {:.1}% · text {:.1}% (means) · N/A untagged reference: {}",
         results.iter().filter(|r| r.deficit.is_empty()).count(),
         results.len(),
         results.iter().map(|r| r.struct_score).sum::<f64>() / n * 100.0,
         results.iter().map(|r| r.text_score).sum::<f64>() / n * 100.0,
+        untagged.len(),
+    );
+    let ua_fails: Vec<usize> = results.iter().map(|r| r.ua_fail).chain(untagged.iter().map(|u| u.1)).collect();
+    println!(
+        "  PDF/UA-1 rules failed on our own: {} total over {} PDFs · {} fail only one",
+        ua_fails.iter().sum::<usize>(),
+        ua_fails.len(),
+        ua_fails.iter().filter(|&&f| f == 1).count(),
     );
     for e in &errors {
         println!("  ERROR {e}");
@@ -157,6 +181,7 @@ fn accessibility_vs_reference() {
         .iter()
         .map(|r| {
             let b = common::Baselines {
+                ua_fail: Some(r.ua_fail),
                 ua_deficit: Some(r.deficit.len()),
                 a11y_struct: Some(r.struct_score),
                 a11y_text: Some(r.text_score),
@@ -164,21 +189,30 @@ fn accessibility_vs_reference() {
             };
             (r.name.clone(), b)
         })
+        .chain(untagged.iter().map(|(name, ua_fail)| {
+            (name.clone(), common::Baselines { ua_fail: Some(*ua_fail), ..Default::default() })
+        }))
         .collect();
     common::write_latest_scores(&updates);
 
     let baselines = common::read_baselines();
-    let regressions: Vec<&str> = results
+    let mut regressions: Vec<&str> = updates
         .iter()
-        .filter(|r| {
-            baselines.get(&r.name).is_some_and(|b| {
-                b.ua_deficit.is_some_and(|d| r.deficit.len() > d)
-                    || b.a11y_struct.is_some_and(|v| r.struct_score < v - common::REGRESSION_SLACK)
-                    || b.a11y_text.is_some_and(|v| r.text_score < v - common::REGRESSION_SLACK)
+        .filter(|(name, r)| {
+            baselines.get(*name).is_some_and(|b| {
+                let worse = |old: Option<usize>, new: Option<usize>| matches!((old, new), (Some(o), Some(n)) if n > o);
+                let dropped = |old: Option<f64>, new: Option<f64>| {
+                    matches!((old, new), (Some(o), Some(n)) if n < o - common::REGRESSION_SLACK)
+                };
+                worse(b.ua_fail, r.ua_fail)
+                    || worse(b.ua_deficit, r.ua_deficit)
+                    || dropped(b.a11y_struct, r.a11y_struct)
+                    || dropped(b.a11y_text, r.a11y_text)
             })
         })
-        .map(|r| r.name.as_str())
+        .map(|(name, _)| name.as_str())
         .collect();
+    regressions.sort();
     assert!(regressions.is_empty(), "a11y regression in: {}", regressions.join(", "));
 }
 

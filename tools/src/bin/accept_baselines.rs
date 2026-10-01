@@ -14,6 +14,8 @@ struct Scores {
     #[serde(skip_serializing_if = "Option::is_none")]
     convert_ms: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    ua_fail: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     ua_deficit: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     a11y_struct: Option<f64>,
@@ -142,6 +144,9 @@ fn main() {
                     if let Some(v) = new.convert_ms {
                         entry.convert_ms = Some(v);
                     }
+                    if let Some(v) = new.ua_fail {
+                        entry.ua_fail = Some(v);
+                    }
                     if let Some(v) = new.ua_deficit {
                         entry.ua_deficit = Some(v);
                     }
@@ -231,6 +236,7 @@ fn is_changed(existing: Option<&Scores>, new: &Scores) -> bool {
         || field_changed(old.ssim, new.ssim)
         || field_changed(old.text_boundary, new.text_boundary)
         || field_changed(old.convert_ms, new.convert_ms)
+        || deficit_changed(old.ua_fail, new.ua_fail)
         || deficit_changed(old.ua_deficit, new.ua_deficit)
         || field_changed(old.a11y_struct, new.a11y_struct)
         || field_changed(old.a11y_text, new.a11y_text)
@@ -294,8 +300,11 @@ fn print_change(
             .unwrap_or("-".into());
         parts.push(format!("ms:{old_ms}→{new_ms}"));
     }
+    let fmt = |v: Option<usize>| v.map_or("-".into(), |d| d.to_string());
+    if deficit_changed(old.ua_fail, new.ua_fail) {
+        parts.push(format!("UaFail:{}→{}", fmt(old.ua_fail), fmt(new.ua_fail)));
+    }
     if deficit_changed(old.ua_deficit, new.ua_deficit) {
-        let fmt = |v: Option<usize>| v.map_or("-".into(), |d| d.to_string());
         parts.push(format!("UA:{}→{}", fmt(old.ua_deficit), fmt(new.ua_deficit)));
     }
     for (label, o, n) in [

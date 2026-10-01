@@ -30,6 +30,8 @@ pub struct Baselines {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gen_pages: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub ua_fail: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ua_deficit: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub a11y_struct: Option<f64>,
@@ -193,6 +195,9 @@ pub fn write_latest_scores(updates: &HashMap<String, Baselines>) {
         }
         if let Some(v) = new.gen_pages {
             entry.gen_pages = Some(v);
+        }
+        if let Some(v) = new.ua_fail {
+            entry.ua_fail = Some(v);
         }
         if let Some(v) = new.ua_deficit {
             entry.ua_deficit = Some(v);
