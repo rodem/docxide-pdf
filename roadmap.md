@@ -220,7 +220,7 @@ Column auto-fit still measures cells without the marks (a mark's width).
 
 Rules derived from Word reference PDFs (borders, text positions measured with
 `mutool trace`/`stext`), one commit each. Fixture Jaccard over the round:
-cases 69.9 → 74.1, scraped 39.9 → 55.7, new 38.5 → 52.5, samples 35.4 → 52.8,
+cases 69.9 → 74.1, scraped 39.9 → 55.8, new 38.5 → 53.7, samples 35.4 → 52.8,
 hyphenation 61.2 → 63.2.
 
 1. **compatibilityMode** is parsed (`docx::settings`). Compat 15 tables sit at
@@ -273,6 +273,20 @@ hyphenation 61.2 → 63.2.
 25. `doNotExpandShiftReturn`: justified lines ending in a manual break keep
     their natural width (no fixture changes; spec setting).
 26. GIF and TIFF pictures are transcoded to PNG on load.
+27. A word wider than the line breaks at the last character that fits.
+28. URLs wrap only after a hyphen or at the margin (102 measured URL line
+    ends: 2 after a `/`); the old break points after `/ ? # & = ;` are gone.
+29. A float's reach is tested against the paragraph's first line (below the
+    inter-paragraph gap), not its slot top.
+30. A style's own `w:ind` beats the numbering it carries when the ind sits on
+    the numPr style or below it (§17.7.2); an ancestor's ind still yields.
+31. An empty paragraph's synthetic run inherits (so table-style sizes apply).
+32. A `w:br` directly under `w:p` breaks the line (malformed, Word honors it).
+33. **Keep with next** reserves the lines widow control keeps together: all of
+    a ≤3-line paragraph, two of a longer one, one without widow control (the
+    next paragraph is laid out to count).
+34. **contextualSpacing** drops spacing only beside a same-style paragraph
+    (§17.3.1.9), not whenever both neighbours carry the flag.
 
 Remaining gaps are mostly fonts we lack and small cumulative vertical drift
 (≈1–2px) that Jaccard punishes.
@@ -296,6 +310,12 @@ Open findings (not done):
   Normal win.
 - A nested header table (logo beside a title table) can sit 5–7pt low,
   pushing the body down.
+- macOS system fonts with only Mac-Roman name records (Helvetica, Times,
+  Courier, Optima, Geneva, Symbol… 54 faces) are never indexed, so Mac Word
+  references drawn in them get Arial/TNR. Indexing them needs care: Mac Word
+  uses its own Microsoft Symbol, and its Helvetica line is 1.2 em (neither
+  hhea 1.0 nor win 1.175).
+- Footnotes still drop contextual spacing when both paragraphs carry the flag.
 
 ## Annotation Fixes 2026-09-18 (5 fixes, one commit each)
 
