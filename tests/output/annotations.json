@@ -1,5 +1,5 @@
 {
-  "next_id": 250,
+  "next_id": 251,
   "annotations": [
     {
       "id": 208,
@@ -713,6 +713,17 @@
       "x_pt": 181.97098,
       "y_pt": 692.10095,
       "note": "\"Bullet points\" with arrows are rendered all wrong, overlaps text and the logo. Not enough margin between logo and text either.",
+      "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 250,
+      "case": "new/americas_counter_terrorism_agenda",
+      "page": 0,
+      "source": "Generated",
+      "x_pt": 121.88979,
+      "y_pt": 64.5119,
+      "note": "Some double rendering going on here on the logo/mark on the bottom",
       "fixed": false,
       "cleared": false
     }
