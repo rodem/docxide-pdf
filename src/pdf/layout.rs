@@ -637,7 +637,6 @@ fn word_width_for_run(
     }
 }
 
-/// Push WordChunks for a word, splitting into per-segment chunks for smallCaps.
 /// Record a break-space before the next word on the last glyph chunk laid out
 /// so far (see `WordChunk::space_after`).
 fn mark_space_after(chunks: &mut [WordChunk]) {
@@ -646,6 +645,7 @@ fn mark_space_after(chunks: &mut [WordChunk]) {
     }
 }
 
+/// Push WordChunks for a word, splitting into per-segment chunks for smallCaps.
 fn push_word_chunks(
     chunks: &mut Vec<WordChunk>,
     entry: &FontEntry,

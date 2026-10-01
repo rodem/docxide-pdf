@@ -8,7 +8,7 @@
 //! Offsets come from pdf-writer's own xref table, so no content is parsed; if
 //! the file doesn't look exactly like pdf-writer output it is returned as is.
 
-use std::fmt::Write as _;
+use std::io::Write as _;
 
 const OBJECTS_PER_STREAM: usize = 256;
 
@@ -49,8 +49,12 @@ fn try_pack(pdf: &[u8]) -> Option<Vec<u8>> {
     objects.sort_by_key(|&(_, off)| off);
     let first_obj = objects.first()?.1;
 
-    let mut out = pdf[..first_obj].to_vec();
-    let mut offsets = vec![None; size]; // type-1 entries: byte offset
+    let mut out = Vec::with_capacity(pdf.len());
+    out.extend_from_slice(&pdf[..first_obj]);
+    // Cross-reference rows (type, offset or stream id, generation or index):
+    // 0 free, 1 a plain object at an offset, 2 an object inside an ObjStm.
+    let mut xref_rows = vec![(0u8, 0usize, 0usize); size];
+    xref_rows[0].2 = 65535;
     let mut packed: Vec<(usize, &[u8])> = Vec::new();
     for (i, &(id, off)) in objects.iter().enumerate() {
         let end = objects.get(i + 1).map_or(xref_at, |o| o.1);
@@ -61,7 +65,7 @@ fn try_pack(pdf: &[u8]) -> Option<Vec<u8>> {
         let body = body.strip_suffix(b"\n").unwrap_or(body);
         // Streams can't live in object streams; anything that might be one stays.
         if find(body, b"stream\n").is_some() {
-            offsets[id] = Some(out.len());
+            xref_rows[id] = (1, out.len(), 0);
             out.extend_from_slice(raw);
         } else {
             packed.push((id, body));
@@ -71,27 +75,25 @@ fn try_pack(pdf: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
 
-    let mut in_stream = vec![None; size]; // type-2 entries: (stream id, index)
     let mut next_id = size;
     for group in packed.chunks(OBJECTS_PER_STREAM) {
         let stream_id = next_id;
         next_id += 1;
-        let mut index = String::new();
+        let mut index = Vec::new();
         let mut data = Vec::new();
         for (i, &(id, body)) in group.iter().enumerate() {
             let _ = write!(index, "{id} {} ", data.len());
             data.extend_from_slice(body);
             data.push(b'\n');
-            in_stream[id] = Some((stream_id, i));
+            xref_rows[id] = (2, stream_id, i);
         }
-        let mut plain = index.into_bytes();
+        let mut plain = index;
         let first = plain.len();
         plain.extend_from_slice(&data);
         let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&plain, 6);
-        offsets.push(Some(out.len()));
-        in_stream.push(None);
+        xref_rows.push((1, out.len(), 0));
         let _ = write!(
-            ByteWriter(&mut out),
+            out,
             "{stream_id} 0 obj\n<< /Type /ObjStm /N {} /First {first} /Filter /FlateDecode /Length {} >>\nstream\n",
             group.len(),
             compressed.len()
@@ -103,18 +105,12 @@ fn try_pack(pdf: &[u8]) -> Option<Vec<u8>> {
     // Cross-reference stream: W [1 4 2] = type, offset or stream id, index.
     let xref_id = next_id;
     let xref_size = xref_id + 1;
-    offsets.push(Some(out.len()));
-    in_stream.push(None);
+    xref_rows.push((1, out.len(), 0));
     let mut rows = Vec::with_capacity(xref_size * 7);
-    for id in 0..xref_size {
-        let (kind, a, b) = match (offsets[id], in_stream[id]) {
-            (Some(off), _) => (1u8, u32::try_from(off).ok()?, 0u16),
-            (None, Some((sid, idx))) => (2, sid as u32, u16::try_from(idx).ok()?),
-            (None, None) => (0, 0, if id == 0 { 65535 } else { 0 }),
-        };
+    for (kind, a, b) in xref_rows {
         rows.push(kind);
-        rows.extend_from_slice(&a.to_be_bytes());
-        rows.extend_from_slice(&b.to_be_bytes());
+        rows.extend_from_slice(&u32::try_from(a).ok()?.to_be_bytes());
+        rows.extend_from_slice(&u16::try_from(b).ok()?.to_be_bytes());
     }
     let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&rows, 6);
     // Keep the trailer's own keys (Root, Info, ID) minus the old /Size.
@@ -128,22 +124,13 @@ fn try_pack(pdf: &[u8]) -> Option<Vec<u8>> {
         .collect();
     let xref_at = out.len();
     let _ = write!(
-        ByteWriter(&mut out),
+        out,
         "{xref_id} 0 obj\n<< /Type /XRef /Size {xref_size} /W [1 4 2]{keys} /Filter /FlateDecode /Length {} >>\nstream\n",
         compressed.len()
     );
     out.extend_from_slice(&compressed);
-    let _ = write!(ByteWriter(&mut out), "\nendstream\nendobj\n\nstartxref\n{xref_at}\n%%EOF");
+    let _ = write!(out, "\nendstream\nendobj\n\nstartxref\n{xref_at}\n%%EOF");
     Some(out)
-}
-
-struct ByteWriter<'a>(&'a mut Vec<u8>);
-
-impl std::fmt::Write for ByteWriter<'_> {
-    fn write_str(&mut self, s: &str) -> std::fmt::Result {
-        self.0.extend_from_slice(s.as_bytes());
-        Ok(())
-    }
 }
 
 #[cfg(test)]

@@ -112,7 +112,8 @@ pub(super) fn render_floating_images(
     text_width: f32,
     slot_top: f32,
     content: &mut Content,
-    mut tag: Option<(&mut Tags, usize)>,
+    tags: &mut Tags,
+    page: usize,
 ) {
     for (fi_idx, fi) in floating_images.iter().enumerate() {
         if fi.behind_doc != behind_doc {
@@ -120,7 +121,7 @@ pub(super) fn render_floating_images(
         }
         render_one_floating_image(
             fi, fi_idx, global_block_idx, pdf_names, effect_pdf_names, sp, col_x, col_w,
-            text_width, slot_top, content, tag.as_mut().map(|(tags, page)| (&mut **tags, *page)),
+            text_width, slot_top, content, tags, page,
         );
     }
 }
@@ -143,7 +144,8 @@ pub(super) fn render_foreground_floating_images_deferred(
     text_width: f32,
     slot_top: f32,
     deferred: &mut Vec<(u32, Content)>,
-    mut tag: Option<(&mut Tags, usize)>,
+    tags: &mut Tags,
+    page: usize,
 ) {
     for (fi_idx, fi) in floating_images.iter().enumerate() {
         if fi.behind_doc {
@@ -152,7 +154,7 @@ pub(super) fn render_foreground_floating_images_deferred(
         let mut buf = super::tagging::artifact_content();
         if render_one_floating_image(
             fi, fi_idx, global_block_idx, pdf_names, effect_pdf_names, sp, col_x, col_w,
-            text_width, slot_top, &mut buf, tag.as_mut().map(|(tags, page)| (&mut **tags, *page)),
+            text_width, slot_top, &mut buf, tags, page,
         ) {
             deferred.push((fi.z_index, buf));
         }
@@ -174,9 +176,10 @@ fn render_one_floating_image(
     text_width: f32,
     slot_top: f32,
     content: &mut Content,
-    // (tags, page): tag the picture as a Figure hoisted after its anchor, like
-    // Word; `content` must then be inside the default artifact.
-    tag: Option<(&mut Tags, usize)>,
+    // The picture is tagged as a Figure hoisted after its anchor, like Word;
+    // `content` must be inside the default artifact.
+    tags: &mut Tags,
+    page: usize,
 ) -> bool {
     let Some(pdf_name) = pdf_names.get(&(global_block_idx, fi_idx)) else {
         return false;
@@ -215,16 +218,16 @@ fn render_one_floating_image(
     }
 
     // Only the picture itself: its shadow, glow, reflection and border are decoration.
-    let figure = tag.filter(|_| !img.decorative).map(|(tags, page)| {
+    if !img.decorative {
         let figure = tags.hoist_figure(img.alt.as_deref());
         tags.begin(content, page, figure);
-    });
+    }
     super::smartart::render_image_with_clip(
         content, pdf_name, fi_x, fi_y_bottom,
         img.display_width, img.display_height,
         img.clip_geometry.as_ref(),
     );
-    if figure.is_some() {
+    if !img.decorative {
         Tags::end(content);
     }
 

@@ -322,7 +322,6 @@ fn row_tag_span(row: &TableRow, ci: usize, span: usize, grid_cols: usize, grid_c
 
 /// The list label of a tagged cell list item goes in its Lbl, the rest of the
 /// paragraph in its LBody.
-#[allow(clippy::too_many_arguments)]
 fn draw_tagged_cell_label(
     content: &mut Content,
     tagger: &mut Option<CellTagger<'_>>,
@@ -720,11 +719,8 @@ fn render_table_rows(
                     links,
                     tagger,
                 );
-            } else if let Some(mut t) = tagger {
-                // Like body cells: an empty cell keeps its element (with an
-                // empty P) so every row has all its columns.
-                t.begin(content, 0, None, false);
-                Tags::end(content);
+            } else if let Some(t) = tagger {
+                t.empty_para(content);
             }
         }
 
@@ -1001,12 +997,20 @@ fn render_table_row(
         let cell_x = cell_x_offset(col_widths, table_left, grid_col);
         let cell_grid_col = grid_col;
         grid_col += span;
-        let tag_span = row_tag_span(row, ci, span, col_widths.len(), grid_col);
+        // None while repeated header rows are drawn (render_header_rows).
+        let page = pb.all_contents.len();
+        let tagger = pb.table_tags.as_mut().map(|table| CellTagger {
+            tags: &mut pb.tags,
+            table,
+            page,
+            row: row_idx,
+            cell: ci,
+            col_span: row_tag_span(row, ci, span, col_widths.len(), grid_col),
+        });
 
         if cell.v_merge == VMerge::Continue {
-            if let Some(table) = pb.table_tags.as_mut().filter(|t| !t.repeating) {
-                CellTagger { tags: &mut pb.tags, table, page: 0, row: row_idx, cell: ci, col_span: tag_span }
-                    .empty_cell();
+            if let Some(mut t) = tagger {
+                t.empty_cell();
             }
             continue;
         }
@@ -1030,38 +1034,25 @@ fn render_table_row(
 
         let has_content = cell_has_visible_content(&cell_layout.items);
         let ecm = cell.cell_margins.as_ref().unwrap_or(cm);
-        let page = pb.all_contents.len();
         let mut no_links = Vec::new();
-        let tagger = pb.table_tags.as_mut().filter(|t| !t.repeating).map(|table| CellTagger {
-            tags: &mut pb.tags,
-            table,
-            page,
-            row: row_idx,
-            cell: ci,
-            col_span: tag_span,
-        });
 
-        if has_content && cell_layout.text_direction == TextDirection::TbRl {
-            render_vertical_cjk_cell(
-                &mut pb.content,
-                cell_layout,
-                cell,
-                cell_x,
-                row_top,
-                effective_h,
-                col_w,
-                ecm,
-                ctx,
-            );
-            // ponytail: vertical cell text stays an artifact; the TD keeps rows the same width
-            if let Some(mut t) = tagger {
-                t.begin(&mut pb.content, 0, None, false);
-                Tags::end(&mut pb.content);
+        if !has_content || cell_layout.text_direction == TextDirection::TbRl {
+            if has_content {
+                render_vertical_cjk_cell(
+                    &mut pb.content,
+                    cell_layout,
+                    cell,
+                    cell_x,
+                    row_top,
+                    effective_h,
+                    col_w,
+                    ecm,
+                    ctx,
+                );
             }
-        } else if !has_content {
-            if let Some(mut t) = tagger {
-                t.begin(&mut pb.content, 0, None, false);
-                Tags::end(&mut pb.content);
+            // ponytail: vertical cell text stays an artifact; the TD keeps rows the same width
+            if let Some(t) = tagger {
+                t.empty_para(&mut pb.content);
             }
         } else {
             let content_h = cell_content_h_for_valign(&cell_layout.items);
@@ -1260,12 +1251,19 @@ fn render_partial_row(
         let col_w = cell_span_width(col_widths, grid_col, span);
         let cell_x = cell_x_offset(col_widths, table_left, grid_col);
         grid_col += span;
-        let tag_span = row_tag_span(row, ci, span, col_widths.len(), grid_col);
+        let page = pb.all_contents.len();
+        let tagger = pb.table_tags.as_mut().map(|table| CellTagger {
+            tags: &mut pb.tags,
+            table,
+            page,
+            row: row_idx,
+            cell: ci,
+            col_span: row_tag_span(row, ci, span, col_widths.len(), grid_col),
+        });
 
         if cell.v_merge == VMerge::Continue {
-            if let Some(table) = pb.table_tags.as_mut().filter(|t| !t.repeating) {
-                CellTagger { tags: &mut pb.tags, table, page: 0, row: row_idx, cell: ci, col_span: tag_span }
-                    .empty_cell();
+            if let Some(mut t) = tagger {
+                t.empty_cell();
             }
             continue;
         }
@@ -1290,16 +1288,6 @@ fn render_partial_row(
                 CellContentItem::NestedTable { height } => *height > 0.0,
             });
 
-        let page = pb.all_contents.len();
-        let mut no_links = Vec::new();
-        let tagger = pb.table_tags.as_mut().filter(|t| !t.repeating).map(|table| CellTagger {
-            tags: &mut pb.tags,
-            table,
-            page,
-            row: row_idx,
-            cell: ci,
-            col_span: tag_span,
-        });
         if has_content {
             render_partial_cell_content(
                 &mut pb.content,
@@ -1313,13 +1301,11 @@ fn render_partial_row(
                 cm,
                 ctx,
                 &mut pb.gradient_specs,
-                if tagger.is_some() { &mut pb.links } else { &mut no_links },
+                &mut pb.links,
                 tagger,
             );
-        } else if let Some(mut t) = tagger.filter(|_| start == CellCursor::default()) {
-            // An empty cell still gets its TD (and P), keeping rows the same width.
-            t.begin(&mut pb.content, 0, None, false);
-            Tags::end(&mut pb.content);
+        } else if let Some(t) = tagger.filter(|_| start == CellCursor::default()) {
+            t.empty_para(&mut pb.content);
         }
     }
 
@@ -1361,9 +1347,7 @@ fn render_header_rows(
     header_count: usize,
 ) {
     // Repeated header rows are page furniture: tagged once, where they first appear.
-    if let Some(t) = pb.table_tags.as_mut() {
-        t.repeating = true;
-    }
+    let table_tags = pb.table_tags.take();
     for hi in 0..header_count {
         render_table_row(
             &table.rows[hi],
@@ -1377,9 +1361,7 @@ fn render_header_rows(
             merge_spans,
         );
     }
-    if let Some(t) = pb.table_tags.as_mut() {
-        t.repeating = false;
-    }
+    pb.table_tags = table_tags;
 }
 
 /// `override_pos`: positioning info for floating tables.

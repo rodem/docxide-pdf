@@ -103,10 +103,12 @@ pub(super) fn render_single_textbox(
     gradient_specs: &mut Vec<GradientSpec>,
     ctx: &RenderContext,
     page_links: &mut Vec<LinkAnnotation>,
-    // (tags, page, the textbox's Sect): tag its text, which is otherwise an
-    // artifact. `content` must then be inside the default artifact.
-    tag: Option<(&mut Tags, usize, usize)>,
+    // Tags its text, otherwise an artifact, in a Sect hoisted after the anchor
+    // paragraph; `content` must be inside the default artifact.
+    tags: &mut Tags,
+    page: usize,
 ) {
+    let sect = tags.hoist("Sect");
     let tb_x = resolve_h_position(
         tb.h_relative_from,
         &tb.h_position,
@@ -304,7 +306,7 @@ pub(super) fn render_single_textbox(
         &tb.paragraphs, content, content_x, content_w, align_w,
         text_top - tb.margin_top - anchor_offset,
         0.0, 0.0, None, true, page_links, ctx, clip_bottom,
-        gradient_specs, tag,
+        gradient_specs, Some((tags, page, sect)),
     );
 
     if needs_clip {

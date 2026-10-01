@@ -14,19 +14,19 @@ use common::a11y;
 use rayon::prelude::*;
 use std::path::Path;
 
-/// Analyses are cached as `<png_dir>.a11y.json`, which for the harness's own output dirs
-/// is the very file tests/accessibility.rs writes, so either side reuses the other's work.
+/// A PNG dir is named after its PDF, so for the harness's own output dirs the
+/// analysis cache is the very file tests/accessibility.rs writes and either side
+/// reuses the other's work.
 fn a11y_metrics(ref_pdf: &Path, other_pdf: &Path, ref_dir: &Path, other_dir: &Path) -> Option<serde_json::Value> {
-    let cache = |dir: &Path| dir.with_extension("a11y.json");
-    let r = a11y::analyze_cached(ref_pdf, &cache(ref_dir)).ok()?;
-    let g = a11y::analyze_cached(other_pdf, &cache(other_dir)).ok()?;
-    // An untagged reference (macOS print path) gives no Word bar to compare against.
-    let tagged = !r.elems.is_empty();
+    let r = a11y::analyze_cached(ref_pdf, &a11y::cache_path(ref_dir)).ok()?;
+    let g = a11y::analyze_cached(other_pdf, &a11y::cache_path(other_dir)).ok()?;
+    let s = a11y::scores(&r, &g);
+    let v = s.vs_word.as_ref();
     Some(serde_json::json!({
-        "ua_fail": g.rules.values().filter(|r| r.failed > 0).count(),
-        "ua_deficit": tagged.then(|| a11y::ua_deficit(&r.rules, &g.rules).len()),
-        "a11y_struct": tagged.then(|| a11y::struct_score(&r.elems, &g.elems)),
-        "a11y_text": tagged.then(|| a11y::text_score(&r.elems, &g.elems)),
+        "ua_fail": s.ua_fail,
+        "ua_deficit": v.map(|v| v.deficit.len()),
+        "a11y_struct": v.map(|v| v.struct_score),
+        "a11y_text": v.map(|v| v.text_score),
     }))
 }
 

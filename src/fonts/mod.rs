@@ -85,12 +85,7 @@ impl FontEntry {
     /// char→gid map (embedded subset), else WinAnsi bytes (standard font).
     pub(crate) fn encode(&self, text: &str) -> Vec<u8> {
         match &self.char_to_gid {
-            Some(map) => {
-                if text.chars().any(|c| !map.contains_key(&c)) {
-                    self.drew_notdef.set(true);
-                }
-                encoding::encode_as_gids(text, map)
-            }
+            Some(map) => encoding::encode_as_gids_noting(text, map, &self.drew_notdef),
             None => encoding::to_winansi_bytes(text),
         }
     }

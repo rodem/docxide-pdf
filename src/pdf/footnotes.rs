@@ -121,7 +121,7 @@ pub(super) fn render_page_footnotes(
     margin_bottom: f32,
     text_width: f32,
     gradient_specs: &mut Vec<super::GradientSpec>,
-    notes: Option<NoteTagger<'_>>,
+    notes: NoteTagger<'_>,
 ) -> Vec<(u32, f32)> {
     if fn_ids.is_empty() {
         return Vec::new();
@@ -181,7 +181,7 @@ pub(super) fn render_endnotes_inline(
     margin_left: f32,
     text_width: f32,
     gradient_specs: &mut Vec<super::GradientSpec>,
-    notes: Option<NoteTagger<'_>>,
+    notes: NoteTagger<'_>,
 ) -> Vec<(u32, f32)> {
     if en_ids.is_empty() {
         return Vec::new();
@@ -214,7 +214,7 @@ fn render_notes_downward(
     margin_left: f32,
     text_width: f32,
     gradient_specs: &mut Vec<super::GradientSpec>,
-    mut notes: Option<NoteTagger<'_>>,
+    notes: NoteTagger<'_>,
 ) -> Vec<(u32, f32)> {
     // Top of each note drawn, for the link from its reference mark.
     let mut tops = Vec::new();
@@ -223,7 +223,7 @@ fn render_notes_downward(
             continue;
         };
         tops.push((*fn_id, fn_y));
-        let note = notes.as_mut().map(|t| t.tags.note(t.endnote, *fn_id, super::tagging::ROOT));
+        let note = notes.tags.note(notes.endnote, *fn_id, super::tagging::ROOT);
         let display_num = footnote_display_order
             .get(fn_id)
             .cloned()
@@ -259,10 +259,8 @@ fn render_notes_downward(
                 let baseline_y = fn_y - layout.font_size * layout.ascender_ratio;
                 let line_count = layout.lines.len();
 
-                if let (Some(t), Some(note)) = (notes.as_mut(), note) {
-                    let p = t.tags.add(note, "P");
-                    t.tags.begin(content, t.page, p);
-                }
+                let p = notes.tags.add(note, "P");
+                notes.tags.begin(content, notes.page, p);
                 render_list_label(
                     content,
                     para,
@@ -293,9 +291,7 @@ fn render_notes_downward(
                     None,
                     None,
                 );
-                if note.is_some() {
-                    super::tagging::Tags::end(content);
-                }
+                super::tagging::Tags::end(content);
 
                 fn_y -= line_count as f32 * layout.line_height;
             } else {

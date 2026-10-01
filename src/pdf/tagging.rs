@@ -31,6 +31,19 @@ struct Node {
     id: Option<String>,
 }
 
+impl Node {
+    fn new(kind: &'static str, parent: usize) -> Self {
+        Self { kind, parent, kids: Vec::new(), cell: None, alt: None, id: None }
+    }
+
+    fn child_nodes(&self) -> impl DoubleEndedIterator<Item = usize> + '_ {
+        self.kids.iter().filter_map(|k| match k {
+            Kid::Node(c) => Some(*c),
+            Kid::Mcid { .. } => None,
+        })
+    }
+}
+
 pub(crate) struct Tags {
     nodes: Vec<Node>,
     /// Marked-content ids are unique per page.
@@ -71,7 +84,6 @@ pub(crate) struct TableTags {
     cells: HashMap<(usize, usize), usize>,
     paras: HashMap<(usize, usize, usize), usize>,
     lists: HashMap<(usize, usize), Lists>,
-    pub(super) repeating: bool,
 }
 
 impl TableTags {
@@ -90,7 +102,6 @@ impl TableTags {
             cells: HashMap::new(),
             paras: HashMap::new(),
             lists: HashMap::new(),
-            repeating: false,
         }
     }
 
@@ -205,6 +216,13 @@ impl CellTagger<'_> {
     pub(super) fn empty_cell(&mut self) {
         self.table.cell(self.tags, self.row, self.cell, self.col_span);
     }
+
+    /// A cell with nothing tagged inside still gets its element with an empty
+    /// P, like Word, so every row has all its columns.
+    pub(super) fn empty_para(mut self, content: &mut Content) {
+        self.begin(content, 0, None, false);
+        Tags::end(content);
+    }
 }
 
 /// Tags the footnotes (or endnotes) drawn into a body page's stream.
@@ -233,27 +251,26 @@ pub(super) fn wrap_artifact(out: &mut Vec<u8>, raw: &[u8], pagination: bool) {
     out.extend_from_slice(b"\nEMC\n");
 }
 
-/// Drop the `/Artifact BMC EMC` pairs left with nothing inside when tagged
-/// regions follow each other.
-pub(super) fn strip_empty_artifacts(raw: &[u8]) -> Vec<u8> {
+/// Close a stream opened by `artifact_content`, dropping the `/Artifact BMC
+/// EMC` pairs left with nothing inside when tagged regions follow each other.
+pub(super) fn finish_artifact_content(content: Content) -> Vec<u8> {
     const EMPTY: &[u8] = b"/Artifact BMC\nEMC\n";
+    let mut raw = content.finish().into_vec();
+    raw.extend_from_slice(b"\nEMC\n");
     let mut out = Vec::with_capacity(raw.len());
-    let mut i = 0;
-    while i < raw.len() {
-        if raw[i..].starts_with(EMPTY) {
-            i += EMPTY.len();
-        } else {
-            out.push(raw[i]);
-            i += 1;
-        }
+    let mut rest = &raw[..];
+    while let Some(at) = rest.windows(EMPTY.len()).position(|w| w == EMPTY) {
+        out.extend_from_slice(&rest[..at]);
+        rest = &rest[at + EMPTY.len()..];
     }
+    out.extend_from_slice(rest);
     out
 }
 
 impl Tags {
     pub(super) fn new() -> Self {
         Self {
-            nodes: vec![Node { kind: "Document", parent: ROOT, kids: Vec::new(), cell: None, alt: None, id: None }],
+            nodes: vec![Node::new("Document", ROOT)],
             next_mcid: Vec::new(),
             notes: HashMap::new(),
             hoisted: Vec::new(),
@@ -264,9 +281,13 @@ impl Tags {
         self.nodes.len() == 1
     }
 
+    fn push(&mut self, kind: &'static str, parent: usize) -> usize {
+        self.nodes.push(Node::new(kind, parent));
+        self.nodes.len() - 1
+    }
+
     pub(super) fn add(&mut self, parent: usize, kind: &'static str) -> usize {
-        let id = self.nodes.len();
-        self.nodes.push(Node { kind, parent, kids: Vec::new(), cell: None, alt: None, id: None });
+        let id = self.push(kind, parent);
         self.nodes[parent].kids.push(Kid::Node(id));
         id
     }
@@ -276,8 +297,7 @@ impl Tags {
     // before textboxes), not the anchors' document order; an anchor index on
     // FloatingImage/Textbox fixes it if mixed paragraphs matter (3 fixtures)
     pub(super) fn hoist(&mut self, kind: &'static str) -> usize {
-        let id = self.nodes.len();
-        self.nodes.push(Node { kind, parent: ROOT, kids: Vec::new(), cell: None, alt: None, id: None });
+        let id = self.push(kind, ROOT);
         self.hoisted.push(id);
         id
     }
@@ -384,10 +404,7 @@ impl Tags {
                 }
                 level = l;
             }
-            stack.extend(node.kids.iter().rev().filter_map(|k| match k {
-                Kid::Node(c) => Some(*c),
-                Kid::Mcid { .. } => None,
-            }));
+            stack.extend(node.child_nodes().rev());
         }
         true
     }
@@ -413,6 +430,10 @@ impl Tags {
         let refs: Vec<Ref> = self.nodes.iter().map(|_| alloc()).collect();
         let mut owners: Vec<Vec<Option<Ref>>> =
             self.next_mcid.iter().map(|&n| vec![None; n as usize]).collect();
+        let mut node_annots: Vec<Vec<(usize, Ref)>> = vec![Vec::new(); self.nodes.len()];
+        for &(node, page, annot) in annots {
+            node_annots[node].push((page, annot));
+        }
 
         for (i, node) in self.nodes.iter().enumerate() {
             let mut elem = pdf.struct_element(refs[i]);
@@ -459,7 +480,7 @@ impl Tags {
                     }
                 }
             }
-            for &(_, page, annot) in annots.iter().filter(|&&(node, ..)| node == i) {
+            for &(page, annot) in &node_annots[i] {
                 kids.object_ref().object(annot).page(page_ids[page]);
             }
         }
@@ -505,9 +526,7 @@ mod tests {
         content.rect(0.0, 0.0, 1.0, 1.0).fill_nonzero();
         tags.begin(&mut content, 0, p);
         Tags::end(&mut content);
-        let mut raw = content.finish().to_vec();
-        raw.extend_from_slice(b"\nEMC\n");
-        let out = String::from_utf8(strip_empty_artifacts(&raw)).unwrap();
+        let out = String::from_utf8(finish_artifact_content(content)).unwrap();
         // The rectangle keeps its artifact; the empty ones around the tags go.
         assert_eq!(out.matches("/Artifact BMC").count(), 1);
         assert_eq!(out.matches("BMC").count() + out.matches("BDC").count(), out.matches("EMC").count());
@@ -522,14 +541,7 @@ mod tests {
         tags.add(sect, "P");
         let anchor = tags.add(ROOT, "P");
         tags.attach_hoisted();
-        let order: Vec<usize> = tags.nodes[ROOT]
-            .kids
-            .iter()
-            .filter_map(|k| match k {
-                Kid::Node(c) => Some(*c),
-                Kid::Mcid { .. } => None,
-            })
-            .collect();
+        let order: Vec<usize> = tags.nodes[ROOT].child_nodes().collect();
         assert_eq!(order, [before, anchor, sect]);
         tags.attach_hoisted();
         assert_eq!(tags.nodes[ROOT].kids.len(), 3);
@@ -564,16 +576,7 @@ mod tests {
         tags.list_item(&mut lists, ROOT, 7, 1, false);
         tags.list_item(&mut lists, ROOT, 7, 0, true);
         tags.list_item(&mut lists, ROOT, 8, 0, true);
-        let kids = |n: usize| -> Vec<&str> {
-            tags.nodes[n]
-                .kids
-                .iter()
-                .filter_map(|k| match k {
-                    Kid::Node(c) => Some(tags.nodes[*c].kind),
-                    Kid::Mcid { .. } => None,
-                })
-                .collect()
-        };
+        let kids = |n: usize| -> Vec<&str> { tags.nodes[n].child_nodes().map(|c| tags.nodes[c].kind).collect() };
         // A new list id starts a new L; the sub-list sits in the first item's body.
         assert_eq!(kids(ROOT), ["L", "L"]);
         assert_eq!(kids(tags.nodes[label.unwrap()].parent), ["Lbl", "LBody"]);

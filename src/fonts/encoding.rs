@@ -84,9 +84,22 @@ pub(crate) fn to_winansi_bytes(s: &str) -> Vec<u8> {
 
 /// Encode UTF-8 text as big-endian 2-byte glyph IDs for CIDFont content streams.
 pub(crate) fn encode_as_gids(text: &str, char_to_gid: &HashMap<char, u16>) -> Vec<u8> {
+    encode_as_gids_noting(text, char_to_gid, &std::cell::Cell::new(false))
+}
+
+/// `encode_as_gids`, setting `drew_notdef` when a char has no glyph.
+pub(super) fn encode_as_gids_noting(
+    text: &str,
+    char_to_gid: &HashMap<char, u16>,
+    drew_notdef: &std::cell::Cell<bool>,
+) -> Vec<u8> {
     let mut out = Vec::with_capacity(text.len() * 2);
     for ch in text.chars() {
-        out.extend_from_slice(&char_to_gid.get(&ch).copied().unwrap_or(0).to_be_bytes());
+        let gid = char_to_gid.get(&ch).copied().unwrap_or_else(|| {
+            drew_notdef.set(true);
+            0
+        });
+        out.extend_from_slice(&gid.to_be_bytes());
     }
     out
 }

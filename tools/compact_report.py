@@ -40,9 +40,8 @@ def fmt_val(m: str, v: float) -> str:
     return str(v) if m in LOWER_IS_BETTER else fmt_pct(v)
 
 
-def fmt_change(m: str, delta: float) -> str:
-    # delta is already sign-flipped for LOWER_IS_BETTER, so undo it for display
-    return f"{-delta:+d}" if m in LOWER_IS_BETTER else f"{delta * 100:+.1f}pp"
+def fmt_change(m: str, ov: float, nv: float) -> str:
+    return f"{nv - ov:+d}" if m in LOWER_IS_BETTER else f"{(nv - ov) * 100:+.1f}pp"
 
 
 def main():
@@ -93,7 +92,7 @@ def main():
         for name, m, ov, nv, delta in regressions:
             print(
                 f"  {short_name(name):<{name_w}}  {METRIC_NAMES.get(m, m):<7}  "
-                f"{fmt_val(m, ov)} -> {fmt_val(m, nv)}  {fmt_change(m, delta)}"
+                f"{fmt_val(m, ov)} -> {fmt_val(m, nv)}  {fmt_change(m, ov, nv)}"
             )
         print()
 
@@ -103,7 +102,7 @@ def main():
         for name, m, ov, nv, delta in improvements:
             print(
                 f"  {short_name(name):<{name_w}}  {METRIC_NAMES.get(m, m):<7}  "
-                f"{fmt_val(m, ov)} -> {fmt_val(m, nv)}  {fmt_change(m, delta)}"
+                f"{fmt_val(m, ov)} -> {fmt_val(m, nv)}  {fmt_change(m, ov, nv)}"
             )
         print()
 

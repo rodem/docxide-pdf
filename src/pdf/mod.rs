@@ -661,14 +661,14 @@ impl PageBuilder {
         }
         self.toc = None;
         self.toc_field = para.starts_toc_field;
-        match (para.list_level, para.list_id) {
-            (Some(level), Some(id)) if para.outline_level.is_none() => {
+        match para.list_item {
+            Some((level, id)) if para.outline_level.is_none() => {
                 let labelled = !para.list_label.is_empty();
                 self.tags.list_item(&mut self.lists, tagging::ROOT, id, level, labelled)
             }
             _ => {
                 self.lists.close();
-                (None, self.tags.add(tagging::ROOT, para_tag_kind(para, doc)))
+                (None, self.tags.add(tagging::ROOT, para_tag_kind(para, style_name)))
             }
         }
     }
@@ -676,9 +676,7 @@ impl PageBuilder {
     /// Tag a picture, chart or diagram paragraph the way Word does: an empty
     /// element for the paragraph mark, then the Figure hoisted beside it.
     fn begin_figure(&mut self, para: &Paragraph, doc: &Document, alt: Option<&str>) {
-        let mark = self.para_tags(para, doc);
-        self.begin_para_tags(mark, |_| {});
-        self.end_tag();
+        self.tag_empty_para(para, doc);
         let figure = self.tags.add_figure(tagging::ROOT, alt);
         self.begin_tag(figure);
     }
@@ -688,10 +686,15 @@ impl PageBuilder {
     /// alt text speaks for it.
     // ponytail: content-less Figure; tag the drawing itself if a validator asks for content
     fn figure_without_content(&mut self, para: &Paragraph, doc: &Document, alt: Option<&str>) {
+        self.tag_empty_para(para, doc);
+        self.tags.add_figure(tagging::ROOT, alt);
+    }
+
+    /// The paragraph's elements with nothing drawn inside.
+    fn tag_empty_para(&mut self, para: &Paragraph, doc: &Document) {
         let mark = self.para_tags(para, doc);
         self.begin_para_tags(mark, |_| {});
         self.end_tag();
-        self.tags.add_figure(tagging::ROOT, alt);
     }
 
     /// Draw the list label as its own Lbl (or inside the paragraph's element
@@ -1105,27 +1108,18 @@ fn compute_bookmark_positions(
     bookmark_positions
 }
 
-/// Render a single paragraph block. Returns `true` if the block was skipped
-/// (the caller should `continue` the block loop).
-#[allow(clippy::too_many_arguments)]
 /// Structure type of a body paragraph. Word tags outline levels as H1–H6
 /// (deeper levels stay H6) and its Title style as Title, role-mapped to H1.
-fn para_tag_kind(para: &Paragraph, doc: &Document) -> &'static str {
-    let style_name = para.style_id.as_ref().and_then(|id| doc.style_id_to_name.get(id));
+fn para_tag_kind(para: &Paragraph, style_name: Option<&String>) -> &'static str {
     if style_name.is_some_and(|n| n.eq_ignore_ascii_case("title")) {
         return "H1";
     }
-    match para.outline_level {
-        Some(0) => "H1",
-        Some(1) => "H2",
-        Some(2) => "H3",
-        Some(3) => "H4",
-        Some(4) => "H5",
-        Some(_) => "H6",
-        None => "P",
-    }
+    para.outline_level.map_or("P", |l| ["H1", "H2", "H3", "H4", "H5", "H6"][usize::from(l).min(5)])
 }
 
+/// Render a single paragraph block. Returns `true` if the block was skipped
+/// (the caller should `continue` the block loop).
+#[allow(clippy::too_many_arguments)]
 fn render_paragraph_block(
     para: &Paragraph,
     state: &mut LayoutState,
@@ -2457,7 +2451,8 @@ fn render_paragraph_block(
         text_width,
         float_anchor_top,
         &mut state.pb.content,
-        Some((&mut state.pb.tags, page)),
+        &mut state.pb.tags,
+        page,
     );
     for tb in sorted_by_z(para.textboxes.iter().filter(|t| t.behind_doc)) {
         let tb_col_x = if tb.indent_relative {
@@ -2465,7 +2460,6 @@ fn render_paragraph_block(
         } else {
             col_x
         };
-        let sect = state.pb.tags.hoist("Sect");
         render_single_textbox(
             tb,
             sp,
@@ -2477,7 +2471,8 @@ fn render_paragraph_block(
             &mut state.pb.gradient_specs,
             &ctx,
             &mut state.pb.links,
-            Some((&mut state.pb.tags, page, sect)),
+            &mut state.pb.tags,
+            page,
         );
     }
 
@@ -2528,7 +2523,8 @@ fn render_paragraph_block(
         text_width,
         float_anchor_top,
         &mut state.pb.deferred_shapes,
-        Some((&mut state.pb.tags, page)),
+        &mut state.pb.tags,
+        page,
     );
 
     // Set FloatZone for wrapping floating images
@@ -2563,7 +2559,6 @@ fn render_paragraph_block(
             col_x
         };
         let mut shape_content = tagging::artifact_content();
-        let sect = state.pb.tags.hoist("Sect");
         render_single_textbox(
             tb,
             sp,
@@ -2575,7 +2570,8 @@ fn render_paragraph_block(
             &mut state.pb.gradient_specs,
             &ctx,
             &mut state.pb.links,
-            Some((&mut state.pb.tags, page, sect)),
+            &mut state.pb.tags,
+            page,
         );
         state.pb.deferred_shapes.push((tb.z_index, shape_content));
     }
@@ -2764,9 +2760,7 @@ fn render_paragraph_block(
         state.pb.end_tag();
     } else {
         // Word tags empty paragraphs too; keeping them keeps the P sequence aligned.
-        let tags = state.pb.para_tags(para, doc);
-        state.pb.begin_para_tags(tags, |_| {});
-        state.pb.end_tag();
+        state.pb.tag_empty_para(para, doc);
     }
 
     // Draw paragraph borders — left/right borders extend outward
@@ -3391,7 +3385,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             bottom,
             text_width,
             &mut state.pb.all_gradient_specs[page_idx],
-            Some(tagging::NoteTagger { tags: &mut state.pb.tags, page: page_idx, endnote: false }),
+            tagging::NoteTagger { tags: &mut state.pb.tags, page: page_idx, endnote: false },
         );
         for (id, y) in tops {
             state.bookmark_positions.insert(footnotes::note_anchor(false, id), (page_idx, y));
@@ -3407,7 +3401,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 content_sp.margin_left,
                 text_width,
                 &mut state.pb.all_gradient_specs[page_idx],
-                Some(tagging::NoteTagger { tags: &mut state.pb.tags, page: page_idx, endnote: true }),
+                tagging::NoteTagger { tags: &mut state.pb.tags, page: page_idx, endnote: true },
             );
             for (id, y) in tops {
                 state.bookmark_positions.insert(footnotes::note_anchor(true, id), (page_idx, y));

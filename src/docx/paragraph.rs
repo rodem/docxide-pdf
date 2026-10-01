@@ -145,8 +145,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         bold: mut list_label_bold,
         color: mut list_label_color,
         suff: list_label_suff,
-        level: list_level,
-        list_id,
+        item: list_item,
     } = parse_list_info(
         num_pr,
         style_num,
@@ -396,8 +395,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         list_label_font_size,
         list_label_bold,
         list_label_color,
-        list_level,
-        list_id,
+        list_item,
         starts_toc_field: node.descendants().any(|n| {
             n.has_tag_name((WML_NS, "instrText"))
                 && n.text().is_some_and(|t| t.trim_start().starts_with("TOC"))

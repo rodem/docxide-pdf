@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Pseudo element kind for a content item's text, kept in the element list so
@@ -41,6 +41,40 @@ pub fn tools_available() -> bool {
         && Command::new("verapdf").arg("--version").output().is_ok()
 }
 
+/// How a PDF fares against Word's reference: what tests/accessibility.rs
+/// scores and the engine comparison shows.
+pub struct Scores {
+    /// PDF/UA-1 rules the PDF fails on its own.
+    pub ua_fail: usize,
+    /// The PDF claims PDF/UA-1 (rule 5-1 passes).
+    pub claims_ua: bool,
+    /// None for an untagged (macOS print-path) reference: no Word bar to measure against.
+    pub vs_word: Option<VsWord>,
+}
+
+pub struct VsWord {
+    pub deficit: Vec<String>,
+    pub struct_score: f64,
+    pub text_score: f64,
+}
+
+pub fn scores(reference: &Analysis, generated: &Analysis) -> Scores {
+    Scores {
+        ua_fail: generated.rules.values().filter(|r| r.failed > 0).count(),
+        claims_ua: !generated.rules.get("5-1").is_some_and(|r| r.failed > 0),
+        vs_word: (!reference.elems.is_empty()).then(|| VsWord {
+            deficit: ua_deficit(&reference.rules, &generated.rules).into_iter().map(String::from).collect(),
+            struct_score: struct_score(&reference.elems, &generated.elems),
+            text_score: text_score(&reference.elems, &generated.elems),
+        }),
+    }
+}
+
+/// The `analyze_cached` cache for `<dir>/<name>.pdf`, given `<dir>/<name>`.
+pub fn cache_path(stem: &Path) -> PathBuf {
+    stem.with_extension("a11y.json")
+}
+
 /// Analyse `pdf`, reusing `cache` while it is newer than the PDF.
 // ponytail: cache ignores the veraPDF/Poppler version; delete tests/output/**/*.a11y.json after upgrading them
 pub fn analyze_cached(pdf: &Path, cache: &Path) -> Result<Analysis, String> {
@@ -53,10 +87,9 @@ pub fn analyze_cached(pdf: &Path, cache: &Path) -> Result<Analysis, String> {
             return Ok(a);
         }
     }
-    let analysis = Analysis {
-        elems: struct_elems(pdf)?,
-        rules: ua_rules(pdf)?,
-    };
+    // veraPDF first, so a machine without it fails before the pdfinfo work.
+    let rules = ua_rules(pdf)?;
+    let analysis = Analysis { elems: struct_elems(pdf)?, rules };
     if let Ok(json) = serde_json::to_string(&analysis) {
         fs::write(cache, json).ok();
     }

@@ -867,7 +867,7 @@ pub(super) fn compute_row_layouts(
                                     float_indent_left,
                                     list_label: para.list_label.clone(),
                                     list_label_font: para.list_label_font.clone(),
-                                    list_item: para.list_level.zip(para.list_id),
+                                    list_item: para.list_item,
                                     label_color: para.runs.first().and_then(|r| r.color),
                                     first_run_font_key,
                                     image_name,
