@@ -40,10 +40,19 @@ jobs:
           ssh-key: ${{ secrets.ASSETS_DEPLOY_KEY }}
           path: assets
           fetch-depth: 0
-      - name: Install LibreOffice, mutool, cwebp, git-restore-mtime
+      - name: Install LibreOffice, mutool, cwebp, git-restore-mtime, pdfinfo, Java
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends mupdf-tools webp libreoffice-writer git-restore-mtime
+          sudo apt-get install -y -q --no-install-recommends mupdf-tools webp libreoffice-writer git-restore-mtime \
+            poppler-utils default-jre-headless
+      - name: Install veraPDF   # not in Ubuntu's archive; the official installer of the release Homebrew ships
+        env:
+          VERAPDF: "1.30.2"
+        run: |
+          curl -sSfL "https://software.verapdf.org/rel/${VERAPDF%.*}/verapdf-greenfield-${VERAPDF}-installer.zip" -o "$RUNNER_TEMP/verapdf.zip"
+          unzip -q "$RUNNER_TEMP/verapdf.zip" -d "$RUNNER_TEMP"
+          java -DINSTALL_PATH="$HOME/verapdf" -jar "$RUNNER_TEMP/verapdf-greenfield-${VERAPDF}/verapdf-izpack-installer-${VERAPDF}.jar" -options-system
+          echo "$HOME/verapdf" >> "$GITHUB_PATH"
       - name: Link private assets
         run: |
           ln -s "$PWD/assets/fonts" fonts
@@ -67,7 +76,7 @@ jobs:
           tool: office2pdf-cli   # installs `office2pdf`
       - name: Competitor versions for the cache key
         id: ver
-        run: echo "key=lo$(soffice --version | awk '{print $2}')-minipdf$(minipdf --version | awk '{print $NF}')-rdocx$(rdocx --version | awk '{print $NF}')-o2p$(office2pdf --version | awk '{print $NF}')-fonts${{ hashFiles('assets/fonts/**') }}" >> "$GITHUB_OUTPUT"
+        run: echo "key=lo$(soffice --version | awk '{print $2}')-minipdf$(minipdf --version | awk '{print $NF}')-rdocx$(rdocx --version | awk '{print $NF}')-o2p$(office2pdf --version | awk '{print $NF}')-verapdf$(verapdf --version | awk 'NR==1{print $NF}')-fonts${{ hashFiles('assets/fonts/**') }}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v6
         with:
           path: comparison

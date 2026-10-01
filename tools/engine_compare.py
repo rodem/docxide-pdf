@@ -19,6 +19,7 @@ rdocx: `rdocx` on PATH (cargo install rdocx) or RDOCX_BIN.
 MiniPdf: the Rust crate's CLI, `minipdf` on PATH (cargo install minipdf-cli) or MINIPDF_BIN.
 The .NET engine is a different implementation and is deliberately not what we compare against.
 office2pdf: `office2pdf` on PATH (cargo install office2pdf-cli) or OFFICE2PDF_BIN.
+Accessibility scores need verapdf and pdfinfo on PATH (brew install verapdf poppler); without them the column is empty.
 """
 from __future__ import annotations
 
@@ -259,7 +260,8 @@ def pdf_creator(pdf: Path) -> str:
 
 
 def engine_metrics(ref_pdf: Path, other_pdf: Path, ref_dir: Path, other_dir: Path) -> dict:
-    """Jaccard, SSIM and text-boundary in percent, computed by tools/page-metrics with the harness's own code."""
+    """Jaccard, SSIM and text-boundary in percent, plus the accessibility scores (rule counts as is,
+    structure/text in percent), computed by tools/page-metrics with the harness's own code."""
     if not METRICS_BIN.is_file():
         return {}
     r = subprocess.run([str(METRICS_BIN), str(ref_pdf), str(other_pdf), str(ref_dir), str(other_dir)],
@@ -268,7 +270,10 @@ def engine_metrics(ref_pdf: Path, other_pdf: Path, ref_dir: Path, other_dir: Pat
         m = json.loads(r.stdout)
     except ValueError:
         return {}
-    return {k: round(m[k] * 100, 1) for k in METRICS if m.get(k) is not None}
+    out = {k: round(m[k] * 100, 1) for k in METRICS if m.get(k) is not None}
+    if m.get("a11y"):
+        out["a11y"] = {k: round(v * 100, 1) if isinstance(v, float) else v for k, v in m["a11y"].items()}
+    return out
 
 
 def process_fixture(fixture: Path, group: str, tools: dict, opts) -> dict | None:
@@ -408,9 +413,11 @@ const DATA = __DATA__;
 const ENGINES = __ENGINES__;
 const METRICS = __METRICS__;
 const VERSIONS = __VERSIONS__;
-const TABLE_COLS = [...METRICS, 'time'];
-const METRIC_LABEL = { jaccard: 'J', ssim: 'SSIM', text_boundary: 'TB', time: 's' };
+const TABLE_COLS = [...METRICS, 'a11y', 'time'];
+const METRIC_LABEL = { jaccard: 'J', ssim: 'SSIM', text_boundary: 'TB', a11y: 'a11y', time: 's' };
+const A11Y = ['ua_fail', 'ua_deficit', 'a11y_struct', 'a11y_text'];
 const METRIC_INFO = {
+  a11y: 'Accessibility, scored as tests/accessibility.rs does, comma separated: PDF/UA-1 rules failed (veraPDF) · rules failed worse than Word (0 = as good as Word; the table sorts on this) · structure-tree tag sequence vs Word · block text in structure order vs Word. – = untagged Word reference, nothing to compare with.',
   time: 'Conversion time: wall-clock seconds for one DOCX→PDF run of the engine CLI (LibreOffice includes process start-up). Conversions run in parallel (--jobs), so compare engines against each other rather than reading absolute numbers.',
   jaccard: 'Jaccard on ink pixels: both pages rendered at 150 DPI, a pixel is ink when its luma is below 200, score = ink in both ÷ ink in either. Exact placement matters: a one-line vertical shift sends it toward zero.',
   ssim: 'Structural similarity on 8×8 luma windows, each window allowed to search ±8 px vertically for its best match, so small vertical drift is forgiven. Only windows that contain ink count. Measures shape and texture rather than exact position.',
@@ -453,8 +460,11 @@ function visibleCases() {
   return DATA.map((c,i) => [c,i]).filter(([c]) => !f || (c.case + ' ' + c.group).toLowerCase().includes(f));
 }
 function fmt(v) { return v == null ? '–' : v.toFixed(1) + '%'; }
-function fmtM(m, v) { return m === 'time' ? (v == null ? '–' : v.toFixed(2) + ' s') : fmt(v); }
+function fmtA11y(a) { return a ? A11Y.map(k => a[k] == null ? '–' : k.startsWith('a11y_') ? fmt(a[k]) : +a[k].toFixed(1)).join(', ') : '–'; }
+function fmtM(m, v) { return m === 'time' ? (v == null ? '–' : v.toFixed(2) + ' s') : m === 'a11y' ? fmtA11y(v) : fmt(v); }
 function val(c, k, m) { return (m === 'time' ? c.times?.[k] : c.scores[k]?.[m]) ?? null; }
+// Sort and best-engine value: the a11y cell holds four numbers, ranked by its UA deficit.
+function key(c, k, m) { return m === 'a11y' ? c.scores[k]?.a11y?.ua_deficit ?? null : val(c, k, m); }
 
 function renderList() {
   const list = $('#list'); list.innerHTML = '';
@@ -476,7 +486,7 @@ function renderScores() {
     { get: r => (r.c.pages.reference || []).length, show: r => (r.c.pages.reference || []).length, num: true },
   ];
   for (const [k] of engines) for (const m of TABLE_COLS)
-    cols.push({ k, m, num: true, get: r => val(r.c, k, m), show: r => fmtM(m, val(r.c, k, m)) });
+    cols.push({ k, m, num: true, get: r => key(r.c, k, m), show: r => fmtM(m, val(r.c, k, m)) });
 
   const rows = visibleCases().map(([c, i]) => ({ c, i }));
   const { col: sc, dir } = state.sort; const sortCol = cols[sc] || cols[0];
@@ -485,10 +495,11 @@ function renderScores() {
     if (x == null) return 1; if (y == null) return -1;
     return dir * (typeof x === 'string' ? x.localeCompare(y) : x - y);
   });
-  const mean = cl => { const v = rows.map(cl.get).filter(x => typeof x === 'number'); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const avg = xs => { const v = xs.filter(x => typeof x === 'number'); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const mean = cl => cl.m === 'a11y' ? Object.fromEntries(A11Y.map(a => [a, avg(rows.map(r => val(r.c, cl.k, 'a11y')?.[a]))])) : avg(rows.map(cl.get));
   const th = (j, label, cls = '') => `<th data-c="${j}" class="${cls}${j === sc ? ' sorted' : ''}">${label}${j === sc ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
 
-  let html = `<div class="note">${rows.length} cases · click a column to sort, a row to open it · green = best engine for that column (highest score, lowest time)</div><table><thead>`;
+  let html = `<div class="note">${rows.length} cases · click a column to sort, a row to open it · green = best engine for that column (highest score, lowest time and a11y deficit)</div><table><thead>`;
   html += `<tr>${th(0, 'case')}${th(1, 'group')}${th(2, 'pages', 'num')}` +
     engines.map(([, label]) => `<th class="eng" colspan="${TABLE_COLS.length}">${label}${VERSIONS[engines.find(e => e[1] === label)[0]] ? ` <span class="ver">${VERSIONS[engines.find(e => e[1] === label)[0]]}</span>` : ''}</th>`).join('') + '</tr>';
   html += '<tr><th></th><th></th><th></th>' + cols.slice(3).map((cl, j) => th(j + 3, `<span title="${METRIC_INFO[cl.m]}">${METRIC_LABEL[cl.m]}</span>`, 'num' + (cl.m === METRICS[0] ? ' first' : ''))).join('') + '</tr>';
@@ -496,7 +507,7 @@ function renderScores() {
   for (const r of rows) {
     // Highest score (lowest time) per column across engines; ties all count as best.
     const best = {};
-    for (const m of TABLE_COLS) { const v = engines.map(([k]) => val(r.c, k, m)).filter(x => x != null); best[m] = m === 'time' ? Math.min(...v) : Math.max(...v); }
+    for (const m of TABLE_COLS) { const v = engines.map(([k]) => key(r.c, k, m)).filter(x => x != null); best[m] = m === 'time' || m === 'a11y' ? Math.min(...v) : Math.max(...v); }
     html += `<tr data-i="${r.i}"${r.i === state.sel ? ' class="sel"' : ''}>` + cols.map((cl, j) =>
       `<td class="${cl.num ? 'num' : ''}${j >= 3 && cl.m === METRICS[0] ? ' first' : ''}${j >= 3 && cl.get(r) != null && cl.get(r) === best[cl.m] ? ' best' : ''}">${cl.show(r)}</td>`).join('') + '</tr>';
   }
@@ -553,7 +564,7 @@ function render() {
   const cols = [];
   for (const [key,label] of on) {
     const s = c.scores[key] || {}; const n = (c.pages[key]||[]).length;
-    const sc = METRICS.filter(m => s[m] != null).map(m => ` · <span title="${METRIC_INFO[m]}">${METRIC_LABEL[m]} ${fmt(s[m])}</span>`).join('');
+    const sc = [...METRICS, 'a11y'].filter(m => s[m] != null).map(m => ` · <span title="${METRIC_INFO[m]}">${METRIC_LABEL[m]} ${fmtM(m, s[m])}</span>`).join('');
     // Reference PDFs printed via macOS (Producer "Quartz PDFContext") differ from Word's own export; flag them.
     const odd = key === 'reference' && c.reference_app && c.reference_app !== 'Microsoft Word' ? ` (${c.reference_app})` : '';
     const ver = (VERSIONS[key] || '') + odd;
