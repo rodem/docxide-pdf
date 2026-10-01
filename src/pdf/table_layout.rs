@@ -110,7 +110,7 @@ fn natural_widths(table: &Table, fonts: &HashMap<String, FontEntry>, cm: &crate:
                         std::borrow::Cow::Borrowed(&run.text)
                     };
                     if run.small_caps {
-                        para_w += super::layout::smallcaps_segments(&text, fs).iter().map(|(seg, seg_fs)| {
+                        para_w += super::layout::smallcaps_segments(&text, fs).iter().map(|(seg, seg_fs, _)| {
                             let kern = run.kern_threshold.is_some_and(|t| *seg_fs >= t);
                             entry.word_width(seg, *seg_fs, kern)
                         }).sum::<f32>();
@@ -251,7 +251,7 @@ pub(super) fn auto_fit_columns(table: &Table, fonts: &HashMap<String, FontEntry>
                     let fs = run.font_size;
                     for word in text.split_whitespace() {
                         let ww = if run.small_caps {
-                            super::layout::smallcaps_segments(word, fs).iter().map(|(seg, seg_fs)| {
+                            super::layout::smallcaps_segments(word, fs).iter().map(|(seg, seg_fs, _)| {
                                 let kern = run.kern_threshold.is_some_and(|t| *seg_fs >= t);
                                 entry.word_width(seg, *seg_fs, kern)
                             }).sum::<f32>() + h_pad

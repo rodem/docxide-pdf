@@ -948,8 +948,22 @@ fn compute_text_hanging(para: &Paragraph, default_tab_stop: f32) -> f32 {
     }
 }
 
-/// Pre-compute bookmark page positions so PAGEREF fields (e.g. TOC) can
-/// show correct page numbers. Simulates page layout without rendering.
+/// Every run of the body: its paragraphs and table cells.
+fn body_runs<'a>(doc: &'a Document) -> impl Iterator<Item = &'a Run> + 'a {
+    doc.sections.iter().flat_map(|s| s.blocks.iter()).flat_map(|block| -> Box<dyn Iterator<Item = &'a Run> + 'a> {
+        match block {
+            Block::Paragraph(p) => Box::new(p.runs.iter()),
+            Block::Table(t) => Box::new(
+                t.rows
+                    .iter()
+                    .flat_map(|row| row.cells.iter())
+                    .flat_map(|cell| cell.all_paragraphs())
+                    .flat_map(|p| p.runs.iter()),
+            ),
+        }
+    })
+}
+
 /// The catalog `/Lang`: the language most of the body text is in (by letters,
 /// East Asian ones by their own language), so only passages in another one
 /// need a `/Lang` Span. The most common primary subtag wins (en-US and en-GB
@@ -957,45 +971,37 @@ fn compute_text_hanging(para: &Paragraph, default_tab_stop: f32) -> f32 {
 /// default, else Word's en-US.
 fn document_lang(doc: &Document) -> String {
     let mut letters: HashMap<&str, usize> = HashMap::new();
-    for section in &doc.sections {
-        for block in &section.blocks {
-            let paragraphs: Vec<&Paragraph> = match block {
-                Block::Paragraph(p) => vec![p],
-                Block::Table(t) => t.rows.iter().flat_map(|r| r.cells.iter()).flat_map(|c| c.all_paragraphs()).collect(),
-            };
-            for run in paragraphs.iter().flat_map(|p| p.runs.iter()) {
-                for ch in run.text.chars().filter(|c| c.is_alphabetic()) {
-                    let lang = if crate::docx::is_east_asian_char(ch) {
-                        run.text_lang_east_asia.as_deref().or(run.text_lang.as_deref())
-                    } else {
-                        run.text_lang.as_deref()
-                    };
-                    if let Some(lang) = lang {
-                        *letters.entry(lang).or_default() += 1;
-                    }
-                }
+    for run in body_runs(doc) {
+        let (mut latin, mut east_asian) = (0, 0);
+        for ch in run.text.chars().filter(|c| c.is_alphabetic()) {
+            if crate::docx::is_east_asian_char(ch) {
+                east_asian += 1;
+            } else {
+                latin += 1;
+            }
+        }
+        for (is_east_asian, n) in [(false, latin), (true, east_asian)] {
+            if let Some(lang) = layout::run_lang(run, is_east_asian).filter(|_| n > 0) {
+                *letters.entry(lang).or_default() += n;
             }
         }
     }
-    let primary = |l: &str| l.split('-').next().unwrap_or(l).to_ascii_lowercase();
+    let primary = |lang: &str| tagging::primary_subtag(lang).to_ascii_lowercase();
     let mut by_primary: HashMap<String, usize> = HashMap::new();
-    for (&lang, &n) in &letters {
+    for (lang, n) in &letters {
         *by_primary.entry(primary(lang)).or_default() += n;
     }
     // Ties go to the alphabetically first, so the output doesn't follow hash order.
-    let winner = by_primary.into_iter().max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0))).map(|(p, _)| p);
-    winner
-        .and_then(|p| {
-            letters
-                .into_iter()
-                .filter(|(l, _)| primary(l) == p)
-                .max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(a.0)))
-                .map(|(l, _)| l.to_string())
-        })
+    letters
+        .iter()
+        .max_by_key(|&(lang, n)| (by_primary[&primary(lang)], *n, std::cmp::Reverse(*lang)))
+        .map(|(lang, _)| lang.to_string())
         .or_else(|| doc.default_lang.clone())
         .unwrap_or_else(|| "en-US".to_string())
 }
 
+/// Pre-compute bookmark page positions so PAGEREF fields (e.g. TOC) can
+/// show correct page numbers. Simulates page layout without rendering.
 fn compute_bookmark_positions(
     doc: &Document,
     ctx: &RenderContext,
@@ -3015,38 +3021,18 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             .unwrap_or("lowerRoman");
         let mut next_fn_num = 1u32;
         let mut next_en_num = 1u32;
-        for section in &doc.sections {
-            for block in &section.blocks {
-                let runs: Box<dyn Iterator<Item = &Run>> = match block {
-                    Block::Paragraph(p) => Box::new(p.runs.iter()),
-                    Block::Table(t) => Box::new(
-                        t.rows
-                            .iter()
-                            .flat_map(|row| row.cells.iter())
-                            .flat_map(|cell| cell.all_paragraphs())
-                            .flat_map(|p| p.runs.iter()),
-                    ),
-                };
-                for run in runs {
-                    if let Some(id) = run.footnote_id {
-                        if !footnote_display_order.contains_key(&id) {
-                            footnote_display_order.insert(
-                                id,
-                                crate::docx::numbering::format_number(next_fn_num, fn_fmt),
-                            );
-                            next_fn_num += 1;
-                        }
-                    }
-                    if let Some(id) = run.endnote_id {
-                        if !endnote_display_order.contains_key(&id) {
-                            endnote_display_order.insert(
-                                id,
-                                crate::docx::numbering::format_number(next_en_num, en_fmt),
-                            );
-                            next_en_num += 1;
-                        }
-                    }
-                }
+        for run in body_runs(doc) {
+            if let Some(id) = run.footnote_id {
+                footnote_display_order.entry(id).or_insert_with(|| {
+                    next_fn_num += 1;
+                    crate::docx::numbering::format_number(next_fn_num - 1, fn_fmt)
+                });
+            }
+            if let Some(id) = run.endnote_id {
+                endnote_display_order.entry(id).or_insert_with(|| {
+                    next_en_num += 1;
+                    crate::docx::numbering::format_number(next_en_num - 1, en_fmt)
+                });
             }
         }
     }
@@ -3080,7 +3066,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         bookmark_positions,
         line_number_counter: 0,
     };
-    state.pb.tags.set_document_lang(&document_lang(doc));
+    state.pb.tags.lang = document_lang(doc);
 
     for (sect_idx, section) in doc.sections.iter().enumerate() {
         let sp = &section.properties;

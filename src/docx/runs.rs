@@ -120,8 +120,8 @@ struct RunFormat {
     text_shadow: Option<TextShadow>,
     text_glow: Option<TextGlow>,
     lang: Option<String>,
-    text_lang: Option<String>,
-    text_lang_east_asia: Option<String>,
+    text_lang: Option<std::sync::Arc<str>>,
+    text_lang_east_asia: Option<std::sync::Arc<str>>,
     /// True when font_size came only from ParagraphRunDefaults (doc defaults / para style),
     /// not from inline rPr or character style.
     font_size_from_default: bool,
@@ -486,11 +486,13 @@ impl ParagraphRunDefaults {
             text_lang: run_lang
                 .0
                 .or_else(|| char_style.and_then(|cs| cs.lang.clone()))
-                .or_else(|| self.lang.clone()),
+                .or_else(|| self.lang.clone())
+                .map(Into::into),
             text_lang_east_asia: run_lang
                 .1
                 .or_else(|| char_style.and_then(|cs| cs.lang_east_asia.clone()))
-                .or_else(|| self.lang_east_asia.clone()),
+                .or_else(|| self.lang_east_asia.clone())
+                .map(Into::into),
             font_size_from_default,
             font_name_from_default,
         }

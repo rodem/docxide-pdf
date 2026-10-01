@@ -443,8 +443,8 @@ pub struct Run {
     /// The language of the run's Latin and East Asian text, inherited (run,
     /// character style, paragraph style, docDefaults); `lang` is the run's own
     /// value only, which run merging compares.
-    pub text_lang: Option<String>,
-    pub text_lang_east_asia: Option<String>,
+    pub text_lang: Option<std::sync::Arc<str>>,
+    pub text_lang_east_asia: Option<std::sync::Arc<str>>,
     /// True when font_size was inherited from defaults, not set by inline rPr or char style.
     pub font_size_from_default: bool,
     /// True when font_name was inherited from defaults, not set by inline rPr or char style.

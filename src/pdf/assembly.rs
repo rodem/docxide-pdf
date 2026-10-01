@@ -510,7 +510,7 @@ pub(super) fn assemble_pdf_pages(
 
     // The language most of the text is in (`document_lang`); passages in
     // another one carry their own `/Lang`.
-    let lang = tags.lang();
+    let lang = tags.lang.as_str();
     // Claim PDF/UA-1 only when every machine check that depends on the
     // document is known to pass: a title, alt on every Figure, heading order,
     // all fonts embedded (no standard-14 fallback) and no .notdef drawn. The

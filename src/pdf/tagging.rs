@@ -57,8 +57,9 @@ pub(crate) struct Tags {
     /// Document-level elements for floating content (textboxes, pictures), drawn while
     /// their anchor paragraph renders but placed after its element, like Word.
     hoisted: Vec<usize>,
-    /// The document's language; text in another one gets a Span with `/Lang`.
-    lang: String,
+    /// The document's language (the catalog `/Lang`); text in another one
+    /// gets a Span with `/Lang`.
+    pub(super) lang: String,
 }
 
 /// Open list levels for L/LI nesting. Word nests a deeper level's L inside the
@@ -238,6 +239,11 @@ pub(super) struct NoteTagger<'a> {
     pub(super) endnote: bool,
 }
 
+/// The language part of a language tag ("en" of "en-GB").
+pub(super) fn primary_subtag(lang: &str) -> &str {
+    lang.split('-').next().unwrap_or(lang)
+}
+
 /// A fresh body page stream, inside the default artifact.
 pub(super) fn artifact_content() -> Content {
     let mut content = Content::new();
@@ -342,34 +348,24 @@ impl Tags {
         id
     }
 
-    /// A Span whose `/ActualText` replaces its glyphs for text extraction and
-    /// screen readers; `push_actual` adds to it as its content is drawn.
-    pub(super) fn add_span(&mut self, parent: usize) -> usize {
-        self.add(parent, "Span")
+    /// A Span with `/Lang` for text in another language, and/or `/ActualText`
+    /// replacing its glyphs for text extraction and screen readers;
+    /// `push_actual` adds to the latter as the Span's content is drawn.
+    pub(super) fn add_span(&mut self, parent: usize, lang: Option<&str>, actual: Option<&str>) -> usize {
+        let span = self.add(parent, "Span");
+        self.nodes[span].lang = lang.map(str::to_string);
+        self.nodes[span].actual = actual.map(str::to_string);
+        span
     }
 
     pub(super) fn push_actual(&mut self, node: usize, text: &str) {
         self.nodes[node].actual.get_or_insert_with(String::new).push_str(text);
     }
 
-    pub(super) fn set_lang(&mut self, node: usize, lang: &str) {
-        self.nodes[node].lang = Some(lang.to_string());
-    }
-
-    /// The document's language (the catalog `/Lang`).
-    pub(super) fn lang(&self) -> &str {
-        &self.lang
-    }
-
-    pub(super) fn set_document_lang(&mut self, lang: &str) {
-        self.lang = lang.to_string();
-    }
-
     /// True when `lang` is the document's language, by primary subtag: en-GB
     /// text in an en-US document needs no Span, French text does.
     pub(super) fn is_document_lang(&self, lang: &str) -> bool {
-        let primary = |l: &str| l.split('-').next().unwrap_or(l).to_ascii_lowercase();
-        primary(&self.lang) == primary(lang)
+        primary_subtag(&self.lang).eq_ignore_ascii_case(primary_subtag(lang))
     }
 
     /// LI for list `id` at `level` (a new L under `parent` when the list

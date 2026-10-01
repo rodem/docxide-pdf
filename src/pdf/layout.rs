@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use pdf_writer::types::TextRenderingMode;
 use pdf_writer::{Content, Name, Rect, Str};
@@ -229,7 +230,7 @@ pub(super) struct WordChunk {
     pub(super) actual_text: Option<String>,
     /// The language of this text (`w:lang`), for a `/Lang` Span when it isn't
     /// the document's.
-    pub(super) lang: Option<String>,
+    pub(super) lang: Option<Arc<str>>,
     /// Points already trimmed from a trailing full-width punctuation mark by
     /// `compress_punctuation`; caps further squeezing at half an em.
     pub(super) punct_compressed: f32,
@@ -528,13 +529,7 @@ impl<'a> LinkTagger<'a> {
         match wanted {
             None => self.resume(content),
             Some((lang, has_actual)) => {
-                let span = self.tags.add_span(self.open());
-                if let Some(l) = lang {
-                    self.tags.set_lang(span, l);
-                }
-                if let Some(text) = actual {
-                    self.tags.push_actual(span, text);
-                }
+                let span = self.tags.add_span(self.open(), lang, actual);
                 self.tags.begin(content, self.page, span);
                 self.span = Some((span, lang.map(str::to_string), has_actual));
             }
@@ -651,22 +646,25 @@ fn effective_text(run: &Run) -> Cow<'_, str> {
     // Note: smallCaps uppercasing is handled per-segment via smallcaps_segments()
 }
 
-/// The source words of a `w:caps` run, matching `split_preserving_spaces` of
-/// its uppercased `effective_text` one for one (uppercasing never adds or
-/// removes a space).
-fn caps_originals<'a>(run: &'a Run, shown: &[(usize, &str)]) -> Option<Vec<(usize, &'a str)>> {
-    run.caps
-        .then(|| split_preserving_spaces(&run.text))
-        .filter(|o| o.len() == shown.len())
+/// A word as `w:caps` draws it (capitals); words are uppercased one by one so
+/// the word as written stays at hand for `/ActualText`.
+fn caps_word<'a>(run: &Run, word: &'a str) -> Cow<'a, str> {
+    if run.caps {
+        Cow::Owned(word.to_uppercase())
+    } else {
+        Cow::Borrowed(word)
+    }
 }
 
-/// Split a word into (text, font_size) segments for smallCaps rendering.
+/// Split a word into (text, font_size, source) segments for smallCaps rendering.
 /// Lowercase chars are uppercased and rendered at base_fs - 2pt;
-/// uppercase chars and non-letters stay at base_fs.
-pub(super) fn smallcaps_segments(word: &str, base_fs: f32) -> Vec<(String, f32)> {
+/// uppercase chars and non-letters stay at base_fs. `source` is the
+/// segment's letters as written.
+pub(super) fn smallcaps_segments(word: &str, base_fs: f32) -> Vec<(String, f32, &str)> {
     let reduced = (base_fs - 2.0).max(1.0);
-    let mut segments: Vec<(String, f32)> = Vec::new();
-    for ch in word.chars() {
+    let mut segments: Vec<(String, f32, &str)> = Vec::new();
+    let mut start = 0;
+    for (i, ch) in word.char_indices() {
         let is_lower = ch.is_lowercase();
         let fs = if is_lower { reduced } else { base_fs };
         let display: String = if is_lower {
@@ -674,13 +672,16 @@ pub(super) fn smallcaps_segments(word: &str, base_fs: f32) -> Vec<(String, f32)>
         } else {
             ch.to_string()
         };
+        let end = i + ch.len_utf8();
         if let Some(last) = segments.last_mut() {
             if (last.1 - fs).abs() < 0.001 {
                 last.0.push_str(&display);
+                last.2 = &word[start..end];
                 continue;
             }
         }
-        segments.push((display, fs));
+        start = i;
+        segments.push((display, fs, &word[i..end]));
     }
     segments
 }
@@ -691,7 +692,7 @@ fn word_width_for_run(
     eff_fs: f32, kern: bool, cs: f32, ts: f32,
 ) -> f32 {
     if run.small_caps {
-        smallcaps_segments(word, eff_fs).iter().map(|(seg, fs)| {
+        smallcaps_segments(word, eff_fs).iter().map(|(seg, fs, _)| {
             let seg_kern = run.kern_threshold.is_some_and(|t| *fs >= t);
             entry.word_width(seg, *fs, seg_kern) * ts + cs * seg.chars().count() as f32
         }).sum()
@@ -709,34 +710,23 @@ fn mark_space_after(chunks: &mut [WordChunk]) {
     }
 }
 
-/// The language of `text` in `run`: Word takes East Asian text's from
+/// The language of a run's text: Word takes East Asian text's from
 /// `w:lang/@eastAsia`, the rest from `@val`.
-fn chunk_lang(run: &Run, text: &str) -> Option<String> {
-    if text.chars().any(crate::docx::is_east_asian_char) {
-        run.text_lang_east_asia.clone().or_else(|| run.text_lang.clone())
+pub(super) fn run_lang(run: &Run, east_asian: bool) -> Option<&Arc<str>> {
+    if east_asian {
+        run.text_lang_east_asia.as_ref().or(run.text_lang.as_ref())
     } else {
-        run.text_lang.clone()
+        run.text_lang.as_ref()
     }
 }
 
-/// The runs of lowercase vs other characters that `smallcaps_segments` sizes
-/// separately: the source letters behind each segment.
-fn case_groups(word: &str) -> Vec<&str> {
-    let mut groups = Vec::new();
-    let mut start = 0;
-    let mut prev = None;
-    for (i, ch) in word.char_indices() {
-        let lower = ch.is_lowercase();
-        if prev.is_some_and(|p| p != lower) {
-            groups.push(&word[start..i]);
-            start = i;
-        }
-        prev = Some(lower);
-    }
-    if !word.is_empty() {
-        groups.push(&word[start..]);
-    }
-    groups
+/// The language of `text` in `run`; only scans for East Asian characters
+/// when the run gives them a language of their own.
+fn chunk_lang(run: &Run, text: &str) -> Option<Arc<str>> {
+    let east_asian = run.text_lang_east_asia.is_some()
+        && run.text_lang_east_asia != run.text_lang
+        && text.chars().any(crate::docx::is_east_asian_char);
+    run_lang(run, east_asian).cloned()
 }
 
 /// Push WordChunks for a word, splitting into per-segment chunks for smallCaps.
@@ -756,24 +746,20 @@ fn push_word_chunks(
     let actual = |shown: &str, source: &str| (shown != source).then(|| source.to_string());
     if run.small_caps {
         let segs = smallcaps_segments(word, eff_fs);
-        // With caps on too the word is all capitals: one segment, whose
-        // source is the caps original.
-        let sources = case_groups(word);
-        let sources_match = sources.len() == segs.len();
         let mut seg_x = x_start;
-        for (i, (seg_text, seg_fs)) in segs.iter().enumerate() {
+        for (seg_text, seg_fs, source) in &segs {
             let seg_kern = run.kern_threshold.is_some_and(|t| *seg_fs >= t);
             let ts = run.text_scale / 100.0;
             let seg_w = entry.word_width(seg_text, *seg_fs, seg_kern) * ts
                 + cs * seg_text.chars().count() as f32;
             let mut chunk = WordChunk::text(entry, run, seg_text, *seg_fs, cs, y_off, seg_x, seg_w);
-            if sources_match {
-                let source = match original {
-                    Some(o) if segs.len() == 1 => o,
-                    _ => sources[i],
-                };
-                chunk.actual_text = actual(seg_text, source);
-            }
+            // With caps on too the word is already all capitals, one segment:
+            // its source is the caps original.
+            let source = match original {
+                Some(o) if segs.len() == 1 => o,
+                _ => *source,
+            };
+            chunk.actual_text = actual(seg_text, source);
             chunks.push(read_shadow_once(chunk));
             seg_x += seg_w;
         }
@@ -1093,7 +1079,7 @@ pub(super) fn build_paragraph_lines(
         let entry = seen_fonts.get(key).expect("font registered");
         let eff_fs = effective_font_size(run);
         let space_w = entry.space_width(eff_fs);
-        let text = effective_text(run);
+        let text = &run.text;
         let y_off = vert_y_offset(run);
 
         let cs = run.char_spacing;
@@ -1101,10 +1087,10 @@ pub(super) fn build_paragraph_lines(
         let space_w_cs = space_w * ts + cs;
 
         let mut is_first_word_in_run = true;
-        let words = split_preserving_spaces(&text);
-        let originals = caps_originals(run, &words);
-        for (wi, &(space_count, word)) in words.iter().enumerate() {
-            let original = originals.as_ref().map(|o| o[wi].1);
+        for (space_count, source) in split_preserving_spaces(text) {
+            let shown = caps_word(run, source);
+            let word: &str = &shown;
+            let original = run.caps.then_some(source);
             pending_space_w += space_count as f32 * space_w_cs;
             if space_count > 0 {
                 pending_real_space = true;
@@ -1674,15 +1660,16 @@ pub(super) fn build_tabbed_line(
             let eff_fs = effective_font_size(run);
             let space_w = entry.space_width(eff_fs);
             let y_off = vert_y_offset(run);
-            let text = effective_text(run);
+            let text = &run.text;
 
             let cs = run.char_spacing;
             let ts = run.text_scale / 100.0;
             let space_w_cs = space_w * ts + cs;
-            let segments = split_preserving_spaces(&text);
-            let originals = caps_originals(run, &segments);
-            for (seg_idx, &(space_count, word)) in segments.iter().enumerate() {
-                let original = originals.as_ref().map(|o| o[seg_idx].1);
+            let segments = split_preserving_spaces(text);
+            for (seg_idx, &(space_count, source)) in segments.iter().enumerate() {
+                let shown = caps_word(run, source);
+                let word: &str = &shown;
+                let original = run.caps.then_some(source);
                 let kern = run.kern_threshold.is_some_and(|t| eff_fs >= t);
                 let ww = word_width_for_run(entry, run, word, eff_fs, kern, cs, ts);
                 pending_space_w += space_count as f32 * space_w_cs;
@@ -2926,22 +2913,22 @@ mod tests {
     fn test_smallcaps_segments_mixed() {
         let segs = smallcaps_segments("Hello", 12.0);
         assert_eq!(segs.len(), 2);
-        assert_eq!(segs[0], ("H".to_string(), 12.0));     // uppercase stays at 12pt
-        assert_eq!(segs[1], ("ELLO".to_string(), 10.0));   // lowercase → uppercase at 10pt
+        assert_eq!(segs[0], ("H".to_string(), 12.0, "H"));     // uppercase stays at 12pt
+        assert_eq!(segs[1], ("ELLO".to_string(), 10.0, "ello"));   // lowercase → uppercase at 10pt
     }
 
     #[test]
     fn test_smallcaps_segments_all_upper() {
         let segs = smallcaps_segments("ABC", 12.0);
         assert_eq!(segs.len(), 1);
-        assert_eq!(segs[0], ("ABC".to_string(), 12.0));
+        assert_eq!(segs[0], ("ABC".to_string(), 12.0, "ABC"));
     }
 
     #[test]
     fn test_smallcaps_segments_all_lower() {
         let segs = smallcaps_segments("abc", 12.0);
         assert_eq!(segs.len(), 1);
-        assert_eq!(segs[0], ("ABC".to_string(), 10.0));
+        assert_eq!(segs[0], ("ABC".to_string(), 10.0, "abc"));
     }
 
     #[test]
@@ -2949,8 +2936,8 @@ mod tests {
         // Non-letter chars (digits, punctuation) stay at base size, grouped with adjacent same-size
         let segs = smallcaps_segments("A1b", 12.0);
         assert_eq!(segs.len(), 2);
-        assert_eq!(segs[0], ("A1".to_string(), 12.0));  // uppercase + digit both at base size
-        assert_eq!(segs[1], ("B".to_string(), 10.0));    // lowercase → uppercase at reduced size
+        assert_eq!(segs[0], ("A1".to_string(), 12.0, "A1"));  // uppercase + digit both at base size
+        assert_eq!(segs[1], ("B".to_string(), 10.0, "b"));    // lowercase → uppercase at reduced size
     }
 
     #[test]
@@ -2966,10 +2953,8 @@ mod tests {
             chunks_for(&small_caps, "Hello", None),
             [("H".into(), None), ("ELLO".into(), Some("ello".into()))]
         );
-        let caps = Run { caps: true, text: "Pirmasis skirsnis".into(), ..Run::default() };
-        let shown = split_preserving_spaces("PIRMASIS SKIRSNIS");
-        let originals = caps_originals(&caps, &shown).unwrap();
-        assert_eq!(originals[1].1, "skirsnis");
+        let caps = Run { caps: true, ..Run::default() };
+        assert_eq!(caps_word(&caps, "Pirmasis"), "PIRMASIS");
         assert_eq!(chunks_for(&caps, "PIRMASIS", Some("Pirmasis")), [("PIRMASIS".into(), Some("Pirmasis".into()))]);
         // Both on: the word is already all capitals, one segment, the caps original.
         let both = Run { caps: true, small_caps: true, ..Run::default() };
@@ -3015,7 +3000,7 @@ mod tests {
     fn another_language_gets_a_lang_span() {
         use super::super::tagging::{self, Tags, ROOT};
         let mut tags = Tags::new();
-        tags.set_document_lang("en-US");
+        tags.lang = "en-US".into();
         let p = tags.add(ROOT, "P");
         let mut content = tagging::artifact_content();
         tags.begin(&mut content, 0, p);
