@@ -790,11 +790,18 @@ pub(super) fn build_paragraph_lines(
     };
 
     for (run_idx, run) in runs.iter().enumerate() {
-        if run.vanish || run.is_tab {
+        if run.vanish {
+            continue;
+        }
+        // Tabs and breaks move the pen without a glyph; extraction still needs
+        // the word boundary, as Word's text has one there.
+        if run.is_tab {
+            pending_real_space = true;
             continue;
         }
 
         if run.is_line_break {
+            mark_space_after(&mut current_chunks);
             let line = finish_dual_line(&mut current_chunks, &mut in_right_region, &mut cur_right_info);
             let line = TextLine { ends_with_break: true, ..line };
             lines.push(line);
@@ -1264,6 +1271,9 @@ pub(super) fn build_tabbed_line(
         let mut tab_stop_pos: Option<f32> = None;
 
         if seg_idx > 0 {
+            // A tab is pure positioning here, but extraction must still see
+            // the word boundary (Word's text reads "(2) If", not "(2)If").
+            mark_space_after(&mut all_chunks);
             // Trailing-space handling before a tab depends on whether an
             // explicit tab stop applies:
             // - An explicit stop AFTER current_x consumes the trailing spaces
@@ -1415,6 +1425,7 @@ pub(super) fn build_tabbed_line(
         // Layout text in this segment from current_x
         for (local_idx, run) in seg_runs.iter().enumerate() {
             if run.is_line_break {
+                mark_space_after(&mut all_chunks);
                 result_lines.push(finish_line_with_break(&mut all_chunks));
                 current_x = 0.0;
                 is_first_line = false;
