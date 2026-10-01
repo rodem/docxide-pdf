@@ -352,8 +352,10 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
     let outline_level = if opts.resolve_outline_level {
         ppr.and_then(|ppr| wml_attr(ppr, "outlineLvl"))
             .and_then(|v| v.parse::<u8>().ok())
-            .filter(|&lvl| lvl <= 8)
+            .filter(|&lvl| lvl <= 9)
             .or_else(|| para_style.and_then(|s| s.outline_level))
+            // Level 9 is body text: it overrides the style's heading level.
+            .filter(|&lvl| lvl <= 8)
     } else {
         None
     };

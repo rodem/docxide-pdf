@@ -706,10 +706,12 @@ pub(super) fn parse_styles<R: Read + Seek>(
                     .and_then(|np| wml_attr(np, "ilvl"))
                     .and_then(|v| v.parse::<u8>().ok());
 
+                // 9 is kept: it is explicit body text and must stop a basedOn
+                // heading's level (TOC Heading is basedOn Heading 1 with level 9).
                 let outline_level = ppr
                     .and_then(|p| wml_attr(p, "outlineLvl"))
                     .and_then(|v| v.parse::<u8>().ok())
-                    .filter(|&lvl| lvl <= 8);
+                    .filter(|&lvl| lvl <= 9);
 
                 let snap_to_grid = ppr.and_then(|ppr| wml_bool(ppr, "snapToGrid"));
                 let auto_space_de = ppr.and_then(|ppr| wml_bool(ppr, "autoSpaceDE"));
