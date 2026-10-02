@@ -1,4 +1,4 @@
-use super::formulas::GuideEnv;
+use super::formulas::{GuideEnv, ang_to_rad};
 
 #[derive(Clone, Debug)]
 pub enum PathCommandDef {
@@ -37,13 +37,6 @@ pub enum PathCommandDef {
 pub enum PathFill {
     Norm,
     None,
-}
-
-impl PathFill {
-    #[allow(dead_code)]
-    pub fn is_filled(self) -> bool {
-        self != PathFill::None
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -349,13 +342,11 @@ fn arc_to_cubics(
     st_ang_60k: f64,
     sw_ang_60k: f64,
 ) {
-    use std::f64::consts::{FRAC_PI_2, PI};
+    use std::f64::consts::FRAC_PI_2;
 
     if wr < 0.001 || hr < 0.001 || sw_ang_60k.abs() < 1.0 {
         return;
     }
-
-    let ang_to_rad = |a: f64| a / (60000.0 * 180.0) * PI;
 
     let st_rad = ang_to_rad(-st_ang_60k);
     let sw_rad = ang_to_rad(-sw_ang_60k);
