@@ -1,6 +1,16 @@
 use pdf_writer::Content;
 
-use crate::model::{LineSpacing, Paragraph, ParagraphBorder, ParagraphBorders};
+use crate::model::{Alignment, LineSpacing, Paragraph, ParagraphBorder, ParagraphBorders, Run};
+
+/// How far an object `slack` narrower than its box moves to follow the
+/// paragraph alignment: centred takes half of it, right-aligned all of it.
+pub(super) fn align_offset(alignment: Alignment, slack: f32) -> f32 {
+    match alignment {
+        Alignment::Center => slack / 2.0,
+        Alignment::Right => slack,
+        _ => 0.0,
+    }
+}
 
 /// Approximate a circle with 4 cubic Bézier curves (path only — caller fills/strokes).
 pub(super) fn draw_circle(content: &mut Content, cx: f32, cy: f32, r: f32) {
@@ -61,6 +71,28 @@ pub(super) fn joins_border_group(a: &Paragraph, b: &Paragraph) -> bool {
         && same(a.indent_right, b.indent_right)
         && same(a.indent_hanging, b.indent_hanging)
         && same(a.indent_first_line, b.indent_first_line)
+}
+
+/// The paragraph's runs and those of the paragraphs in its textboxes, at any depth.
+pub(super) fn para_runs_with_textboxes(para: &Paragraph) -> Vec<&Run> {
+    let mut out: Vec<&Run> = para.runs.iter().collect();
+    for tb in &para.textboxes {
+        for tp in &tb.paragraphs {
+            out.extend(para_runs_with_textboxes(tp));
+        }
+    }
+    out
+}
+
+/// The paragraph and the paragraphs of its textboxes, at any depth.
+pub(super) fn collect_paras(para: &Paragraph) -> Vec<&Paragraph> {
+    let mut out = vec![para];
+    for tb in &para.textboxes {
+        for tp in &tb.paragraphs {
+            out.extend(collect_paras(tp));
+        }
+    }
+    out
 }
 
 #[cfg(test)]

@@ -10,6 +10,26 @@ pub(super) fn stroke_rgb(content: &mut Content, [r, g, b]: [u8; 3]) {
     content.set_stroke_rgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0);
 }
 
+/// Stroke one straight line in its own graphics state; `None` keeps the
+/// current stroke color.
+pub(super) fn stroke_segment(
+    content: &mut Content,
+    (x0, y0): (f32, f32),
+    (x1, y1): (f32, f32),
+    width: f32,
+    color: Option<[u8; 3]>,
+) {
+    content.save_state();
+    content.set_line_width(width);
+    if let Some(c) = color {
+        stroke_rgb(content, c);
+    }
+    content.move_to(x0, y0);
+    content.line_to(x1, y1);
+    content.stroke();
+    content.restore_state();
+}
+
 /// Set fill color from an optional RGB byte array, defaulting to black.
 pub(super) fn fill_color_or_black(content: &mut Content, color: Option<[u8; 3]>) {
     if let Some(c) = color {

@@ -25,12 +25,7 @@ pub(crate) fn resolve_h_position(
         HRelativeFrom::Column => (col_x, col_w),
         HRelativeFrom::Margin => (sp.margin_left, text_width),
     };
-    match h_position {
-        HorizontalPosition::AlignCenter => origin + (area_width - obj_width) / 2.0,
-        HorizontalPosition::AlignRight => origin + area_width - obj_width,
-        HorizontalPosition::AlignLeft => origin,
-        HorizontalPosition::Offset(o) => origin + o,
-    }
+    h_position.place(origin, area_width, obj_width)
 }
 
 pub(super) fn resolve_fi_x(
@@ -60,11 +55,7 @@ pub(super) fn wraps_in_column(
     col_w: f32,
     text_width: f32,
 ) -> bool {
-    use crate::model::WrapType;
-    matches!(
-        fi.wrap_type,
-        WrapType::Square | WrapType::Tight | WrapType::Through
-    ) && {
+    fi.wrap_type.wraps_beside() && {
         let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
         fi_x + fi.image.display_width + fi.dist_right > col_x && fi_x - fi.dist_left < col_x + col_w
     }

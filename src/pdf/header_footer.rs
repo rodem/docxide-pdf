@@ -3,14 +3,15 @@ use std::collections::HashMap;
 use pdf_writer::Content;
 
 use crate::model::{
-    Alignment, Block, Document, FieldCode, FrameProperties, HRelativeFrom, HeaderFooter,
-    HorizontalPosition, Paragraph, Run, SectionProperties, TextAnchor, VRelativeFrom,
-    VerticalPosition, WrapType,
+    Alignment, Block, Document, FieldCode, FrameProperties, HRelativeFrom, HeaderFooter, Paragraph,
+    Run, SectionProperties, TextAnchor, VRelativeFrom, VerticalPosition, WrapType,
 };
 
+use super::color::stroke_segment;
+use super::helpers::align_offset;
 use super::layout::{
-    TextLine, build_paragraph_lines, build_tabbed_line, is_text_empty, lines_height,
-    picture_line_bottom, render_paragraph_lines, runs_max_image_h, tallest_run_metrics,
+    LineOpts, build_lines, is_text_empty, lines_height, picture_line_bottom,
+    render_paragraph_lines, runs_max_image_h, tallest_run_metrics,
 };
 use super::positioning::resolve_h_position;
 use super::table;
@@ -97,13 +98,13 @@ fn below_blocking_frames(top: f32, line_h: f32, bands: &[(f32, f32)]) -> f32 {
         .map_or(top, |&(_, b_bot)| b_bot)
 }
 
-pub(super) fn compute_header_height(
+fn compute_header_height(
     hf: &HeaderFooter,
     ctx: &RenderContext,
     sp: &SectionProperties,
     is_header: bool,
 ) -> f32 {
-    let text_width = sp.page_width - sp.margin_left - sp.margin_right;
+    let text_width = sp.text_width();
     let mut height = 0.0f32;
     let mut prev_space_after = 0.0f32;
     // Track bottom of wrapping float zones (Square/Tight/Through): subsequent
@@ -152,11 +153,7 @@ pub(super) fn compute_header_height(
                         VerticalPosition::Offset(o) => o.max(0.0) + fi.image.display_height,
                         _ => fi.image.display_height,
                     };
-                    if matches!(
-                        fi.wrap_type,
-                        WrapType::Square | WrapType::Tight | WrapType::Through
-                    ) && fi.image.display_width < text_width * 0.5
-                    {
+                    if fi.wrap_type.wraps_beside() && fi.image.display_width < text_width * 0.5 {
                         // Narrow wrapping image: text flows beside it. Track
                         // its bottom separately instead of inflating content_h.
                         float_bottom_h = float_bottom_h.max(height + fi_h);
@@ -195,7 +192,7 @@ pub(super) fn compute_header_height(
                 prev_space_after = para.space_after;
             }
             Block::Table(table) => {
-                let content_w = sp.page_width - sp.margin_left - sp.margin_right;
+                let content_w = sp.text_width();
                 height += table::compute_hf_table_height(table, ctx, content_w);
                 prev_space_after = 0.0;
             }
@@ -297,72 +294,28 @@ pub(super) fn resolve_tb_y_top(
     }
 }
 
-fn build_lines(
-    runs: &[Run],
-    ctx: &RenderContext,
-    tab_stops: &[crate::model::TabStop],
-    text_width: f32,
-    inline_images: &HashMap<usize, String>,
-    indent_left: f32,
-    indent_right: f32,
-    text_hanging: f32,
-    alignment: crate::model::Alignment,
-) -> Vec<TextLine> {
-    build_lines_with_float(
-        runs,
-        ctx,
-        tab_stops,
-        text_width,
-        inline_images,
-        indent_left,
-        indent_right,
-        text_hanging,
-        None,
-        alignment,
-    )
+/// A wrapping float in a header or footer: its box (PDF coordinates) and the
+/// distances text keeps from its sides.
+#[derive(Clone, Copy)]
+struct HfFloatZone {
+    left: f32,
+    top: f32,
+    bottom: f32,
+    right: f32,
+    dist_left: f32,
+    dist_right: f32,
 }
 
-fn build_lines_with_float(
-    runs: &[Run],
-    ctx: &RenderContext,
-    tab_stops: &[crate::model::TabStop],
-    text_width: f32,
-    inline_images: &HashMap<usize, String>,
-    indent_left: f32,
-    indent_right: f32,
-    text_hanging: f32,
-    per_line_widths: Option<&[f32]>,
-    alignment: crate::model::Alignment,
-) -> Vec<TextLine> {
-    let empty_fx: HashMap<usize, super::images::EffectXObjs> = HashMap::new();
-    let has_tabs = runs.iter().any(|r| r.is_tab);
-    if has_tabs {
-        build_tabbed_line(
-            runs,
-            ctx.fonts,
-            tab_stops,
-            indent_left,
-            text_width,
-            indent_right,
-            text_hanging,
-            inline_images,
-            &empty_fx,
-            ctx.default_tab_stop,
-            &[],
-        )
-    } else {
-        build_paragraph_lines(
-            runs,
-            ctx.fonts,
-            text_width,
-            text_hanging,
-            inline_images,
-            &empty_fx,
-            None,
-            per_line_widths,
-            None,
-            ctx.cjk(true, alignment),
-        )
+impl HfFloatZone {
+    fn for_float(fi: &crate::model::FloatingImage, fi_x: f32, fi_y_top: f32) -> Self {
+        HfFloatZone {
+            left: fi_x,
+            top: fi_y_top,
+            bottom: fi_y_top - fi.image.display_height,
+            right: fi_x + fi.image.display_width,
+            dist_left: fi.dist_left,
+            dist_right: fi.dist_right,
+        }
     }
 }
 
@@ -375,8 +328,6 @@ pub(super) struct HfPageContext<'a> {
     pub(super) inline_image_names: &'a HashMap<(usize, usize), String>,
     pub(super) floating_image_names: &'a HashMap<(usize, usize), String>,
     pub(super) effect_para_names: &'a HashMap<usize, super::images::EffectXObjs>,
-    #[allow(dead_code)]
-    pub(super) effect_floating_names: &'a HashMap<(usize, usize), super::images::EffectXObjs>,
     pub(super) styleref_values: &'a HashMap<String, String>,
     pub(super) page_num_format: Option<&'a str>,
 }
@@ -397,7 +348,7 @@ pub(super) fn render_header_footer(
     let floating_image_names = pc.floating_image_names;
     let styleref_values = pc.styleref_values;
     let page_num_format = pc.page_num_format;
-    let text_width = sp.page_width - sp.margin_left - sp.margin_right;
+    let text_width = sp.text_width();
     let mut cursor_y = if is_header {
         sp.page_height - sp.header_margin
     } else {
@@ -406,10 +357,9 @@ pub(super) fn render_header_footer(
 
     let mut pi = 0usize;
     let mut prev_space_after = 0.0f32;
-    // Float zones: (fi_x, fi_y_top, fi_y_bottom, obj_right, dist_left, dist_right).
     // A header can hold several wrapping floats (e.g. a logo on each side of a
     // centered letterhead) — all of them constrain the text bounds together.
-    let mut hdr_fz: Vec<(f32, f32, f32, f32, f32, f32)> = Vec::new();
+    let mut hdr_fz: Vec<HfFloatZone> = Vec::new();
     let bands = if is_header {
         blocking_frame_bands(hf, sp)
     } else {
@@ -444,17 +394,15 @@ pub(super) fn render_header_footer(
                 let (font_size, _, tallest_ar) = tallest_run_metrics(&substituted_runs, ctx.fonts);
                 let ascender_ratio = tallest_ar.unwrap_or(0.75);
 
-                let empty_inline_imgs: HashMap<usize, String> = HashMap::new();
                 let lines = build_lines(
                     &substituted_runs,
                     ctx,
-                    &para.tab_stops,
                     text_width,
-                    &empty_inline_imgs,
-                    0.0,
-                    0.0,
-                    0.0,
-                    para.alignment,
+                    ctx.cjk(true, para.alignment),
+                    &LineOpts {
+                        tab_stops: &para.tab_stops,
+                        ..Default::default()
+                    },
                 );
                 let content_width = lines.iter().map(|l| l.total_width).fold(0.0f32, f32::max);
 
@@ -469,13 +417,7 @@ pub(super) fn render_header_footer(
                             (sp.margin_left, text_width)
                         }
                     };
-                    let frame_left = match fp.h_position {
-                        HorizontalPosition::AlignRight => origin + area_width - fp.width,
-                        HorizontalPosition::AlignCenter => origin + (area_width - fp.width) / 2.0,
-                        HorizontalPosition::AlignLeft => origin,
-                        HorizontalPosition::Offset(o) => origin + o,
-                    };
-                    frame_left + para.indent_left
+                    fp.h_position.place(origin, area_width, fp.width) + para.indent_left
                 } else {
                     resolve_h_position(
                         fp.h_relative_from,
@@ -621,10 +563,8 @@ pub(super) fn render_header_footer(
                                             .enumerate()
                                             .filter_map(|(ri, run)| {
                                                 let img = run.inline_image.as_ref()?;
-                                                let key =
-                                                    std::sync::Arc::as_ptr(&img.data) as usize;
                                                 ctx.textbox_image_names
-                                                    .get(&key)
+                                                    .get(&img.key())
                                                     .map(|name| (ri, name.clone()))
                                             })
                                             .collect()
@@ -634,13 +574,16 @@ pub(super) fn render_header_footer(
                                 let tb_lines = build_lines(
                                     &tp.runs,
                                     ctx,
-                                    &tp.tab_stops,
                                     tp_text_w,
-                                    &inline_imgs,
-                                    tp.indent_left,
-                                    tp.indent_right,
-                                    tp_hanging,
-                                    tp.alignment,
+                                    ctx.cjk(true, tp.alignment),
+                                    &LineOpts {
+                                        inline_images: Some(&inline_imgs),
+                                        tab_stops: &tp.tab_stops,
+                                        indent_left: tp.indent_left,
+                                        indent_right: tp.indent_right,
+                                        hanging: tp_hanging,
+                                        ..Default::default()
+                                    },
                                 );
                                 if tb_lines.is_empty() {
                                     let (fs, _, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
@@ -680,19 +623,13 @@ pub(super) fn render_header_footer(
                         };
 
                         if let Some(img) = super::textbox_render::textbox_para_block_image(tp) {
-                            let key = std::sync::Arc::as_ptr(&img.data) as usize;
-                            if let Some(pdf_name) = ctx.textbox_image_names.get(&key) {
+                            if let Some(pdf_name) = ctx.textbox_image_names.get(&img.key()) {
                                 let img_x = content_x
                                     + tp.indent_left
-                                    + match tp.alignment {
-                                        Alignment::Center => {
-                                            (tp_text_w - img.display_width).max(0.0) / 2.0
-                                        }
-                                        Alignment::Right => {
-                                            (tp_text_w - img.display_width).max(0.0)
-                                        }
-                                        _ => 0.0,
-                                    };
+                                    + align_offset(
+                                        tp.alignment,
+                                        (tp_text_w - img.display_width).max(0.0),
+                                    );
                                 let img_y = tb_cursor - tp.space_before - img.display_height;
                                 super::smartart::render_image_with_clip(
                                     content,
@@ -718,9 +655,8 @@ pub(super) fn render_header_footer(
                                     .enumerate()
                                     .filter_map(|(ri, run)| {
                                         let img = run.inline_image.as_ref()?;
-                                        let key = std::sync::Arc::as_ptr(&img.data) as usize;
                                         ctx.textbox_image_names
-                                            .get(&key)
+                                            .get(&img.key())
                                             .map(|name| (ri, name.clone()))
                                     })
                                     .collect()
@@ -730,13 +666,16 @@ pub(super) fn render_header_footer(
                         let tb_lines = build_lines(
                             &tp.runs,
                             ctx,
-                            &tp.tab_stops,
                             tp_text_w,
-                            &inline_imgs,
-                            tp.indent_left,
-                            tp.indent_right,
-                            tp_hanging,
-                            tp.alignment,
+                            ctx.cjk(true, tp.alignment),
+                            &LineOpts {
+                                inline_images: Some(&inline_imgs),
+                                tab_stops: &tp.tab_stops,
+                                indent_left: tp.indent_left,
+                                indent_right: tp.indent_right,
+                                hanging: tp_hanging,
+                                ..Default::default()
+                            },
                         );
                         if tb_lines.is_empty() {
                             let (fs, _, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
@@ -813,18 +752,8 @@ pub(super) fn render_header_footer(
                             img.clip_geometry.as_ref(),
                         );
                         // Register float zone for wrapping images
-                        if matches!(
-                            fi.wrap_type,
-                            WrapType::Square | WrapType::Tight | WrapType::Through
-                        ) {
-                            hdr_fz.push((
-                                fi_x,
-                                fi_y_top,
-                                fi_y_top - img.display_height,
-                                fi_x + img.display_width,
-                                fi.dist_left,
-                                fi.dist_right,
-                            ));
+                        if fi.wrap_type.wraps_beside() {
+                            hdr_fz.push(HfFloatZone::for_float(fi, fi_x, fi_y_top));
                         }
                     }
                 }
@@ -834,13 +763,10 @@ pub(super) fn render_header_footer(
                         let img = para.image.as_ref().unwrap();
                         let y_bottom = baseline_y + font_size * ascender_ratio - img.display_height;
                         let x = sp.margin_left
-                            + match para.alignment {
-                                Alignment::Center => {
-                                    (text_width - img.display_width).max(0.0) / 2.0
-                                }
-                                Alignment::Right => (text_width - img.display_width).max(0.0),
-                                _ => 0.0,
-                            };
+                            + align_offset(
+                                para.alignment,
+                                (text_width - img.display_width).max(0.0),
+                            );
                         let hf_fx = pc.effect_para_names.get(&pi);
                         if let Some(ref shadow) = img.shadow {
                             super::color::draw_image_shadow(
@@ -909,13 +835,13 @@ pub(super) fn render_header_footer(
                 let draw_para_borders = |content: &mut Content, box_bottom: f32| {
                     let draw_h_border =
                         |content: &mut Content, b: &crate::model::ParagraphBorder, y: f32| {
-                            content.save_state();
-                            content.set_line_width(b.width_pt);
-                            super::color::stroke_rgb(content, b.color);
-                            content.move_to(box_left, y);
-                            content.line_to(box_right, y);
-                            content.stroke();
-                            content.restore_state();
+                            stroke_segment(
+                                content,
+                                (box_left, y),
+                                (box_right, y),
+                                b.width_pt,
+                                Some(b.color),
+                            );
                         };
                     if let Some(b) = &bdr.top {
                         draw_h_border(content, b, box_top);
@@ -932,12 +858,7 @@ pub(super) fn render_header_footer(
                 // mirrors the body render path in pdf::mod.
                 if let Some(ref hr) = para.horizontal_rule {
                     let rule_w = text_width * hr.width_pct / 100.0;
-                    let rule_x = sp.margin_left
-                        + match para.alignment {
-                            Alignment::Center => (text_width - rule_w) / 2.0,
-                            Alignment::Right => text_width - rule_w,
-                            _ => 0.0,
-                        };
+                    let rule_x = sp.margin_left + align_offset(para.alignment, text_width - rule_w);
                     let draw_h = if hr.is_standard { 0.5 } else { hr.height_pt };
                     let rule_y = cursor_y - (line_h - draw_h) / 2.0 - draw_h;
                     content.save_state();
@@ -1005,35 +926,22 @@ pub(super) fn render_header_footer(
                 // Combine same-paragraph floats and cross-paragraph float zones so a
                 // logo on each side of a centered letterhead constrains both edges.
                 let mut hdr_line_geom: Option<Vec<(f32, f32)>> = None;
-                let mut zones: Vec<(f32, f32, f32, f32, f32, f32)> = para
+                let mut zones: Vec<HfFloatZone> = para
                     .floating_images
                     .iter()
-                    .filter(|fi| {
-                        matches!(
-                            fi.wrap_type,
-                            WrapType::Square | WrapType::Tight | WrapType::Through
-                        )
-                    })
+                    .filter(|fi| fi.wrap_type.wraps_beside())
                     .map(|fi| {
-                        let img = &fi.image;
                         let fi_x = super::resolve_h_position(
                             fi.h_relative_from,
                             &fi.h_position,
-                            img.display_width,
+                            fi.image.display_width,
                             sp,
                             sp.margin_left,
                             text_width,
                             text_width,
                         );
                         let fi_y_top = super::resolve_fi_y_top(fi, sp, slot_top);
-                        (
-                            fi_x,
-                            fi_y_top,
-                            fi_y_top - img.display_height,
-                            fi_x + img.display_width,
-                            fi.dist_left,
-                            fi.dist_right,
-                        )
+                        HfFloatZone::for_float(fi, fi_x, fi_y_top)
                     })
                     .collect();
                 zones.extend(hdr_fz.iter().copied());
@@ -1049,17 +957,15 @@ pub(super) fn render_header_footer(
                         let mut left = col_x;
                         let mut right = col_right;
                         let mut hit = false;
-                        for &(fi_x, fi_y_top, fi_y_bottom, obj_right, dist_left, dist_right) in
-                            &zones
-                        {
-                            if y_hi > fi_y_bottom && y_lo < fi_y_top {
+                        for z in &zones {
+                            if y_hi > z.bottom && y_lo < z.top {
                                 hit = true;
-                                let space_right = col_right - (obj_right + dist_right);
-                                let space_left = (fi_x - dist_left) - col_x;
+                                let space_right = col_right - (z.right + z.dist_right);
+                                let space_left = (z.left - z.dist_left) - col_x;
                                 if space_right >= space_left && space_right >= 36.0 {
-                                    left = left.max(obj_right + dist_right);
+                                    left = left.max(z.right + z.dist_right);
                                 } else if space_left >= 36.0 {
-                                    right = right.min(fi_x - dist_left);
+                                    right = right.min(z.left - z.dist_left);
                                 }
                             }
                         }
@@ -1083,7 +989,7 @@ pub(super) fn render_header_footer(
                         let ascender_ratio_e = tallest_ar.unwrap_or(0.75);
                         let full_w = (text_width - para.indent_left - para.indent_right).max(1.0);
                         let deepest_bottom =
-                            zones.iter().map(|z| z.2).fold(f32::INFINITY, f32::min);
+                            zones.iter().map(|z| z.bottom).fold(f32::INFINITY, f32::min);
                         let max_lines = ((slot_top - deepest_bottom) / line_h).ceil() as usize + 10;
                         let max_lines = max_lines.max(20);
                         let mut geom = Vec::with_capacity(max_lines);
@@ -1102,17 +1008,20 @@ pub(super) fn render_header_footer(
                     .as_ref()
                     .map(|g| g.iter().map(|&(_, w)| w).collect());
 
-                let lines = build_lines_with_float(
+                let lines = build_lines(
                     &substituted_runs,
                     ctx,
-                    &para.tab_stops,
                     para_text_width,
-                    &block_inline_images,
-                    para.indent_left,
-                    para.indent_right,
-                    text_hanging,
-                    per_line_widths.as_deref(),
-                    para.alignment,
+                    ctx.cjk(true, para.alignment),
+                    &LineOpts {
+                        inline_images: Some(&block_inline_images),
+                        tab_stops: &para.tab_stops,
+                        indent_left: para.indent_left,
+                        indent_right: para.indent_right,
+                        hanging: text_hanging,
+                        per_line_widths: per_line_widths.as_deref(),
+                        ..Default::default()
+                    },
                 );
 
                 let metrics = (font_size * ascender_ratio, picture_bottom);

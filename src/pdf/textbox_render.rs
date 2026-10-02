@@ -6,9 +6,10 @@ use crate::model::{EmbeddedImage, Paragraph, SectionProperties, TextAnchor, Text
 
 use super::color::{fill_rgb, stroke_rgb};
 use super::header_footer::resolve_tb_y_top;
+use super::helpers::align_offset;
 use super::layout::{
-    LinkAnnotation, LinkTagger, build_paragraph_lines, build_tabbed_line, lines_height,
-    picture_line_bottom, render_paragraph_lines, tallest_run_metrics,
+    LineOpts, LinkAnnotation, LinkTagger, build_lines, lines_height, picture_line_bottom,
+    render_paragraph_lines, tallest_run_metrics,
 };
 use super::list_label::render_list_label;
 use super::positioning::resolve_h_position;
@@ -49,8 +50,6 @@ pub(super) fn textbox_height(tb: &Textbox, ctx: &RenderContext) -> f32 {
         } else {
             (tb.width_pt - tb.margin_left - tb.margin_right).max(0.0)
         };
-        let empty_imgs: HashMap<usize, String> = HashMap::new();
-        let empty_fx: HashMap<usize, super::images::EffectXObjs> = HashMap::new();
         let mut h = 0.0f32;
         for tp in &tb.paragraphs {
             if let Some(img) = textbox_para_block_image(tp) {
@@ -70,34 +69,19 @@ pub(super) fn textbox_height(tb: &Textbox, ctx: &RenderContext) -> f32 {
             } else {
                 -tp.indent_first_line
             };
-            let lines = if tp.runs.iter().any(|r| r.is_tab) {
-                build_tabbed_line(
-                    &tp.runs,
-                    ctx.fonts,
-                    &tp.tab_stops,
-                    tp.indent_left,
-                    tw,
-                    tp.indent_right,
-                    hang,
-                    &empty_imgs,
-                    &empty_fx,
-                    ctx.default_tab_stop,
-                    &[],
-                )
-            } else {
-                build_paragraph_lines(
-                    &tp.runs,
-                    ctx.fonts,
-                    tw,
-                    hang,
-                    &empty_imgs,
-                    &empty_fx,
-                    None,
-                    None,
-                    None,
-                    ctx.cjk(true, tp.alignment),
-                )
-            };
+            let lines = build_lines(
+                &tp.runs,
+                ctx,
+                tw,
+                ctx.cjk(true, tp.alignment),
+                &LineOpts {
+                    tab_stops: &tp.tab_stops,
+                    indent_left: tp.indent_left,
+                    indent_right: tp.indent_right,
+                    hanging: hang,
+                    ..Default::default()
+                },
+            );
             let (fs, lhr, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
             let lh = resolve_line_h(tp_ls, fs, lhr);
             h += tp.space_before + lines.len().max(1) as f32 * lh + tp.space_after;
@@ -218,8 +202,6 @@ pub(super) fn render_single_textbox(
     let anchor_offset = match tb.text_anchor {
         TextAnchor::Top => 0.0,
         TextAnchor::Middle | TextAnchor::Bottom => {
-            let empty_inline_imgs_pre: HashMap<usize, String> = HashMap::new();
-            let empty_fx_pre: HashMap<usize, super::images::EffectXObjs> = HashMap::new();
             let mut total_h = 0.0f32;
             for tp in &tb.paragraphs {
                 let tp_ls = tp.line_spacing.unwrap_or(ctx.doc_line_spacing);
@@ -248,35 +230,19 @@ pub(super) fn render_single_textbox(
                     total_h += tp.space_before + image_block_height(img) + tp.space_after;
                     continue;
                 }
-                let has_tabs = tp.runs.iter().any(|r| r.is_tab);
-                let lines = if has_tabs {
-                    build_tabbed_line(
-                        &tp.runs,
-                        ctx.fonts,
-                        &tp.tab_stops,
-                        tp.indent_left,
-                        tp_text_w,
-                        tp.indent_right,
-                        text_hanging,
-                        &empty_inline_imgs_pre,
-                        &empty_fx_pre,
-                        ctx.default_tab_stop,
-                        &[],
-                    )
-                } else {
-                    build_paragraph_lines(
-                        &tp.runs,
-                        ctx.fonts,
-                        tp_text_w,
-                        text_hanging,
-                        &empty_inline_imgs_pre,
-                        &empty_fx_pre,
-                        None,
-                        None,
-                        None,
-                        ctx.cjk(true, tp.alignment),
-                    )
-                };
+                let lines = build_lines(
+                    &tp.runs,
+                    ctx,
+                    tp_text_w,
+                    ctx.cjk(true, tp.alignment),
+                    &LineOpts {
+                        tab_stops: &tp.tab_stops,
+                        indent_left: tp.indent_left,
+                        indent_right: tp.indent_right,
+                        hanging: text_hanging,
+                        ..Default::default()
+                    },
+                );
                 let (fs, lhr, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
                 let lh = resolve_line_h(tp_ls, fs, lhr);
                 let n = lines.len().max(1) as f32;
@@ -402,10 +368,8 @@ pub(super) fn render_textbox_paragraphs(
     // ponytail: list paragraphs are tagged P too; L/LI if a textbox list matters
     mut tag: Option<(&mut Tags, usize, usize)>,
 ) {
-    use crate::model::Alignment;
     let mut cursor_y = start_y;
     let mut prev_space_after = 0.0f32;
-    let empty_fx: HashMap<usize, super::images::EffectXObjs> = HashMap::new();
     for (tp_idx, tp) in paragraphs.iter().enumerate() {
         // Collapse adjacent spacing: use max(prev_after, current_before) like body text
         let inter_gap = if tp_idx == 0 {
@@ -439,16 +403,11 @@ pub(super) fn render_textbox_paragraphs(
         };
 
         if let Some(img) = textbox_para_block_image(tp) {
-            let key = std::sync::Arc::as_ptr(&img.data) as usize;
-            if let Some(pdf_name) = ctx.textbox_image_names.get(&key) {
+            if let Some(pdf_name) = ctx.textbox_image_names.get(&img.key()) {
                 let img_x = content_x
                     + tp.indent_left
                     + x_offset
-                    + match tp.alignment {
-                        Alignment::Center => (tp_align_w - img.display_width).max(0.0) / 2.0,
-                        Alignment::Right => (tp_align_w - img.display_width).max(0.0),
-                        _ => 0.0,
-                    };
+                    + align_offset(tp.alignment, (tp_align_w - img.display_width).max(0.0));
                 let img_y = cursor_y - inter_gap - img.display_height - y_offset;
                 super::smartart::render_image_with_clip(
                     content,
@@ -472,43 +431,28 @@ pub(super) fn render_textbox_paragraphs(
                     .enumerate()
                     .filter_map(|(ri, run)| {
                         let img = run.inline_image.as_ref()?;
-                        let key = std::sync::Arc::as_ptr(&img.data) as usize;
                         ctx.textbox_image_names
-                            .get(&key)
+                            .get(&img.key())
                             .map(|name| (ri, name.clone()))
                     })
                     .collect()
             } else {
                 HashMap::new()
             };
-        let tb_lines = if tp.runs.iter().any(|r| r.is_tab) {
-            build_tabbed_line(
-                &tp.runs,
-                ctx.fonts,
-                &tp.tab_stops,
-                tp.indent_left,
-                tp_text_w,
-                tp.indent_right,
-                text_hanging,
-                &inline_imgs,
-                &empty_fx,
-                ctx.default_tab_stop,
-                &[],
-            )
-        } else {
-            build_paragraph_lines(
-                &tp.runs,
-                ctx.fonts,
-                tp_text_w,
-                text_hanging,
-                &inline_imgs,
-                &empty_fx,
-                None,
-                None,
-                None,
-                ctx.cjk(true, tp.alignment),
-            )
-        };
+        let tb_lines = build_lines(
+            &tp.runs,
+            ctx,
+            tp_text_w,
+            ctx.cjk(true, tp.alignment),
+            &LineOpts {
+                inline_images: Some(&inline_imgs),
+                tab_stops: &tp.tab_stops,
+                indent_left: tp.indent_left,
+                indent_right: tp.indent_right,
+                hanging: text_hanging,
+                ..Default::default()
+            },
+        );
         if tb_lines.is_empty() {
             let (fs, lhr, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
             let lh = resolve_line_h(tp_ls, fs, lhr);

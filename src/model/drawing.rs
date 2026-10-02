@@ -57,6 +57,12 @@ pub struct EmbeddedImage {
 }
 
 impl EmbeddedImage {
+    /// Identity of the picture bytes, the key of the image name maps: pictures
+    /// sharing one `Arc` of data are embedded once.
+    pub fn key(&self) -> usize {
+        Arc::as_ptr(&self.data) as usize
+    }
+
     /// Size of the box an inline picture occupies in the line: the bounding box of
     /// the rotated frame. Word gives the 56×108pt signature turned -90° on
     /// italian_evaluation_minutes p7 a 56pt line, not 108pt.
