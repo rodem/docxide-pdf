@@ -1052,8 +1052,8 @@ fn line_space_width(chunks: &[WordChunk]) -> f32 {
 }
 
 /// Full-width East Asian closing punctuation whose right half is blank, which
-/// Word's `compressPunctuation` may squeeze (§17.15.1.15). Opening brackets
-/// compress on their left; ponytail: no fixture needs them, so they are left alone.
+/// Word's `compressPunctuation` may squeeze (§17.15.1.15). The middle dot,
+/// blank on both sides, squeezes like them.
 fn is_compressible_punct(c: char) -> bool {
     matches!(
         c,
@@ -1075,6 +1075,17 @@ fn is_compressible_punct(c: char) -> bool {
             | '》'
             | '〙'
             | '〗'
+            | '・'
+    )
+}
+
+/// Full-width opening brackets, blank on their left, which `compressPunctuation`
+/// squeezes from that side: japanese_medical's "（" sits 2pt into the gap
+/// before it on a tight line.
+fn is_compressible_opening(c: char) -> bool {
+    matches!(
+        c,
+        '（' | '［' | '｛' | '「' | '『' | '【' | '〔' | '〈' | '《' | '〘' | '〖'
     )
 }
 
@@ -1086,18 +1097,24 @@ fn is_compressible_punct(c: char) -> bool {
 /// em off) is the most Word ever took (annotation #238). Returns false and
 /// touches nothing when the marks cannot yield enough.
 fn compress_punctuation(chunks: &mut [WordChunk], needed: f32) -> bool {
-    let marks: Vec<usize> = chunks
+    // (chunk, squeezes at its end, squeezes at its start)
+    let marks: Vec<(usize, bool, bool)> = chunks
         .iter()
         .enumerate()
-        .filter(|(_, c)| {
-            c.inline_image_name.is_none()
-                && c.text.chars().last().is_some_and(is_compressible_punct)
+        .filter(|(_, c)| c.inline_image_name.is_none())
+        .map(|(i, c)| {
+            let end = c.text.chars().last().is_some_and(is_compressible_punct);
+            let start = c.text.chars().next().is_some_and(is_compressible_opening);
+            (i, end, start)
         })
-        .map(|(i, _)| i)
+        .filter(|&(_, end, start)| end || start)
         .collect();
     let room: Vec<f32> = marks
         .iter()
-        .map(|&i| (chunks[i].font_size * 0.25 - chunks[i].punct_compressed).max(0.0))
+        .map(|&(i, end, start)| {
+            let sides = end as u8 + start as u8;
+            (chunks[i].font_size * 0.25 * sides as f32 - chunks[i].punct_compressed).max(0.0)
+        })
         .collect();
     let total: f32 = room.iter().sum();
     if needed <= 0.0 || total + 0.01 < needed {
@@ -1110,9 +1127,19 @@ fn compress_punctuation(chunks: &mut [WordChunk], needed: f32) -> bool {
     let mut k = 0;
     for (i, chunk) in chunks.iter_mut().enumerate() {
         chunk.x_offset -= shift;
-        if k < marks.len() && marks[k] == i {
+        if k < marks.len() && marks[k].0 == i {
+            let (_, end, start) = marks[k];
             let cut = room[k] * scale;
-            chunk.width -= cut;
+            // An opening bracket loses its blank left: the chunk slides into
+            // the gap before it by its share of the cut, and only the rest
+            // comes off its right end.
+            let lead = match (start, end) {
+                (true, true) => cut / 2.0,
+                (true, false) => cut,
+                _ => 0.0,
+            };
+            chunk.x_offset -= lead;
+            chunk.width -= cut - lead;
             chunk.punct_compressed += cut;
             shift += cut;
             k += 1;
@@ -1423,7 +1450,10 @@ pub(super) fn build_paragraph_lines(
                     crate::docx::is_east_asian_char(prev_ch) || is_cjk_punctuation(prev_ch);
                 let cur_ea =
                     crate::docx::is_east_asian_char(first_ch) || is_cjk_punctuation(first_ch);
-                if prev_ea != cur_ea {
+                // An ideographic space is a space, not East Asian text: Word
+                // sets japanese_medical's "　kg　" with no gap around "kg".
+                let beside_space = prev_ch == '\u{3000}' || first_ch == '\u{3000}';
+                if prev_ea != cur_ea && !beside_space {
                     pending_space_w += eff_fs * 0.25;
                 }
             }
