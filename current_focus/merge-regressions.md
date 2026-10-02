@@ -240,9 +240,11 @@ Mean Jaccard went 51.2 → 63.4 and SSIM 70.9 → 80.5 over the merge.
   Read a row's face with the PDF's per-line font spans; for online exports
   check the embedded file, since "Helvetica" there is Arial.
 - **Open:** the `;` rule; Open Sans → Segoe UI; Helvetica Neue → Sylfaen
-  online; vendoring the four newly downloaded cloud fonts (Open Sans, Roboto,
-  Lato, Montserrat; sample500kB's "Open Sans;Arial" would then split to Open
-  Sans, where Word draws Segoe UI).
+  online. Open Sans, Roboto, Lato and Montserrat (Regular) are vendored
+  (assets `4661648`): missing_font_substitution J 18.7 → 39.9, SSIM 67.0 →
+  88.5; sample500kB J 34.7 → 38.4, SSIM 52.8 → 59.1 (its "Open Sans;Arial"
+  splits to Open Sans, closer to Word's Segoe UI than Arial). Baselines for
+  those two not yet accepted.
 
 ### 6. Per-line heights in headers
 
