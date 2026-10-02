@@ -7,19 +7,7 @@ license = "Apache-2.0"
 repository = "https://github.com/sverrejb/docxide-pdf"
 keywords = ["experimental", "docx", "pdf", "word", "converter"]
 categories = ["command-line-utilities", "text-processing", "text-editors"]
-exclude = [
-    "tools/",
-    "tests/",
-    "lancedb/",
-    "models/",
-    "specs/",
-    "CLAUDE.md",
-    ".claude/",
-    ".gitignore",
-    ".cargo/",
-    "roadmap.md",
-    "downloads/",
-]
+include = ["src/**/*.rs", "Cargo.toml", "README.md", "LICENSE"]
 
 [lib]
 name = "docxide_pdf"
@@ -50,11 +38,9 @@ miniz_oxide = "0.8"
 unicode-linebreak = "0.1.5"
 
 [dev-dependencies]
-image = { version = "0.25" }
+image = { version = "0.25", default-features = false, features = ["png"] }
 env_logger = "0.11"
 rayon = "1"
-zip = "8.1.0"
-roxmltree = "0.21"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
