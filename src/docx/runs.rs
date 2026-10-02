@@ -559,8 +559,10 @@ fn ensure_nonempty_paragraph(
         font_size_from_default: mark_size.is_none() && defaults.font_size_is_doc_default,
         font_name_from_default: mark_font.is_none() && defaults.font_name_is_doc_default,
         font_name: mark_font.unwrap_or_else(|| defaults.font_name.clone()),
-        bold: defaults.bold,
-        italic: defaults.italic,
+        // The mark's w:b picks the bold face's metrics: nabl's 39 empty Arial
+        // Narrow Bold marks are 0.14pt taller each than regular ones.
+        bold: mark_rpr.and_then(|r| wml_bool(r, "b")).unwrap_or(defaults.bold),
+        italic: mark_rpr.and_then(|r| wml_bool(r, "i")).unwrap_or(defaults.italic),
         ..Run::default()
     });
 }
