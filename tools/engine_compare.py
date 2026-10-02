@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Side-by-side engine comparison: Word reference | docxide-pdf | LibreOffice | MiniPdf | rdocx | office2pdf.
 
-Reuses PNGs the test harness already produced under tests/output/<group>/<case>/
-(reference/, generated/, libreoffice/) and only converts what is missing. Conversions and
+Reuses PNGs the test harness already produced under tests/output/<group>/<case>/ (reference/, and
+generated/ while its PDF is byte-identical to this run's conversion with the current binary). Conversions and
 screenshots are cached in comparison/work/. Every engine is additionally timed by converting
 into comparison/work/ once (seconds cached in a .time file beside the PDF). A conversion over
 TIMEOUT (120 s) is killed, logged to comparison/work/timeouts.tsv and not retried until the document,
@@ -30,6 +30,7 @@ Accessibility scores need verapdf and pdfinfo on PATH (brew install verapdf popp
 from __future__ import annotations
 
 import argparse
+import filecmp
 import functools
 import hashlib
 import html
@@ -482,30 +483,33 @@ def process_fixture(fixture: Path, group: str, tools: dict, opts) -> dict | None
     ref_dir = harness / "reference" if any((harness / "reference").glob("page_*.png")) else mine / "reference"
     add("reference", ref_pdf, ref_dir)
 
-    # Ours and LibreOffice: show the harness PDF when it exists so scores line up with run-tests.sh,
-    # but always time a conversion of our own so every engine's speed is measured by this script.
-    # --fresh: drop cached conversions and timeout markers so every engine runs again, and show
-    # those conversions rather than the harness PDFs, which may predate the current binaries.
+    # --fresh: drop cached conversions, timeout markers and scores so every engine runs again.
     if opts.fresh:
         for pattern in ("*.pdf", "*.time", "*.timeout", "*.score.json", "*.a11y.json"):
             for f in mine.glob(pattern):
                 f.unlink()
-    use_harness = not opts.fresh
+
+    def show_conversion(key: str) -> None:
+        """Show the conversion this run made with the current binary. The harness's copy (and its
+        renders) stands in only when byte-identical: it is as old as the last run-tests.sh, so after
+        a source change it shows the old code. LibreOffice stamps a creation date, so it never does."""
+        own, theirs = mine / f"{key}.pdf", harness / f"{key}.pdf"
+        if not opts.fresh and theirs.exists() and filecmp.cmp(theirs, own, shallow=False):
+            add(key, theirs, harness / key)
+        else:
+            add(key, own, mine / key)
+
     times: dict[str, float | None] = {}
     if tools.get("ours"):
         ok, times["generated"] = spent("convert generated", timed, convert_ours, docx, mine / "generated.pdf")
-        if use_harness and (harness / "generated.pdf").exists():
-            add("generated", harness / "generated.pdf", harness / "generated")
-        elif ok:
-            add("generated", mine / "generated.pdf", mine / "generated")
+        if ok:
+            show_conversion("generated")
 
     if tools.get("soffice"):
         ok, times["libreoffice"] = spent("convert libreoffice", timed, convert_libreoffice, tools["soffice"], docx,
                                          mine / "libreoffice.pdf")
-        if use_harness and (harness / "libreoffice.pdf").exists():
-            add("libreoffice", harness / "libreoffice.pdf", harness / "libreoffice")
-        elif ok:
-            add("libreoffice", mine / "libreoffice.pdf", mine / "libreoffice")
+        if ok:
+            show_conversion("libreoffice")
 
     for key, convert in (("minipdf", convert_minipdf), ("rdocx", convert_rdocx),
                          ("office2pdf", convert_office2pdf)):
