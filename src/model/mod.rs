@@ -506,6 +506,8 @@ pub struct Run {
     pub is_endnote_ref_mark: bool,
     /// `w:kern` in points; see `Run::kerns_at`.
     pub kern_threshold: Option<f32>,
+    /// Points the run is raised above the baseline (`w:position`; negative: lowered).
+    pub position: f32,
     pub char_style_id: Option<String>,
     pub text_outline: Option<TextOutline>,
     pub text_fill: Option<TextFill>,
@@ -609,6 +611,7 @@ impl Default for Run {
             endnote_id: None,
             is_endnote_ref_mark: false,
             kern_threshold: None,
+            position: 0.0,
             char_style_id: None,
             text_outline: None,
             text_fill: None,

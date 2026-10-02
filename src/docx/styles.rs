@@ -131,6 +131,7 @@ pub(super) struct StyleDefaults {
     pub(super) space_after: f32,
     pub(super) line_spacing: LineSpacing,
     pub(super) kern_threshold: Option<f32>,
+    pub(super) position: Option<f32>,
     pub(super) bold: bool,
     pub(super) italic: bool,
     pub(super) caps: bool,
@@ -189,6 +190,7 @@ pub(super) struct ParagraphStyle {
     pub(super) shading: Option<[u8; 3]>,
     pub(super) based_on: Option<String>,
     pub(super) kern_threshold: Option<f32>,
+    pub(super) position: Option<f32>,
     pub(super) tab_stops: Vec<TabStop>,
     pub(super) clear_tab_positions: Vec<f32>,
     pub(super) num_id: Option<String>,
@@ -234,6 +236,8 @@ pub(super) struct RunProps {
     pub(super) border: Option<crate::model::ParagraphBorder>,
     pub(super) char_spacing: Option<f32>,
     pub(super) kern_threshold: Option<f32>,
+    /// `w:position`: points the run is raised (negative: lowered).
+    pub(super) position: Option<f32>,
     pub(super) text_outline: Option<TextOutline>,
     pub(super) text_fill: Option<TextFill>,
     pub(super) text_shadow: Option<TextShadow>,
@@ -264,6 +268,7 @@ pub(super) fn parse_run_props(rpr: roxmltree::Node, theme: &ThemeFonts) -> RunPr
         border: wml(rpr, "bdr").and_then(parse_one_border),
         char_spacing: parse_char_spacing(rpr),
         kern_threshold: parse_kern(rpr),
+        position: half_points(rpr, "position"),
         text_outline: parse_text_outline(rpr, theme),
         text_fill: parse_text_fill(rpr, theme),
         text_shadow: parse_text_shadow(rpr, theme),
@@ -655,6 +660,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
         space_after: 0.0,
         line_spacing: LineSpacing::Auto(1.0),
         kern_threshold: None,
+        position: None,
         bold: false,
         italic: false,
         caps: false,
@@ -710,6 +716,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
             defaults.font_name = r.font_name.unwrap_or_else(|| theme.minor.clone());
             defaults.east_asia_font = r.east_asia_font;
             defaults.kern_threshold = r.kern_threshold;
+            defaults.position = r.position;
             defaults.bold = r.bold.unwrap_or(false);
             defaults.italic = r.italic.unwrap_or(false);
             defaults.caps = r.caps.unwrap_or(false);
@@ -823,6 +830,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
                     dstrike,
                     char_spacing,
                     kern_threshold,
+                    position,
                     color,
                     text_outline,
                     text_fill,
@@ -924,6 +932,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
                         shading,
                         based_on,
                         kern_threshold,
+                        position,
                         tab_stops,
                         clear_tab_positions,
                         num_id,
@@ -1119,6 +1128,7 @@ fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
                     indent_hanging,
                     indent_first_line,
                     kern_threshold,
+                    position,
                     widow_control,
                     num_id,
                     num_ilvl,

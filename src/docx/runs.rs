@@ -178,6 +178,7 @@ struct ParagraphRunDefaults {
     color: Option<[u8; 3]>,
     char_spacing: f32,
     kern_threshold: Option<f32>,
+    position: Option<f32>,
     east_asia_font: Option<String>,
     text_outline: Option<TextOutline>,
     text_fill: Option<TextFill>,
@@ -221,6 +222,7 @@ impl ParagraphRunDefaults {
             kern_threshold: para_style
                 .and_then(|s| s.kern_threshold)
                 .or(defaults.kern_threshold),
+            position: para_style.and_then(|s| s.position).or(defaults.position),
             east_asia_font: style_or_clone(|s| s.east_asia_font.as_ref(), &defaults.east_asia_font),
             text_outline: para_style.and_then(|s| s.text_outline.clone()),
             text_fill: para_style.and_then(|s| s.text_fill.clone()),
@@ -335,6 +337,11 @@ impl ParagraphRunDefaults {
                 .kern_threshold
                 .or_else(|| char_style.and_then(|cs| cs.kern_threshold))
                 .or(self.kern_threshold),
+            position: own
+                .position
+                .or_else(|| char_style.and_then(|cs| cs.position))
+                .or(self.position)
+                .unwrap_or(0.0),
             char_style_id: char_style_id_str.map(|s| s.to_string()),
             text_outline: own
                 .text_outline
@@ -714,6 +721,7 @@ fn merge_compatible_runs(runs: Vec<Run>) -> Vec<Run> {
                 && prev.border == run.border
                 && prev.vertical_align == run.vertical_align
                 && prev.kern_threshold == run.kern_threshold
+                && prev.position == run.position
                 && prev.hyperlink_url == run.hyperlink_url
                 && prev.text_outline == run.text_outline
                 && prev.text_fill == run.text_fill

@@ -250,6 +250,9 @@ pub(super) struct WordChunk {
     pub(super) char_spacing: f32,
     pub(super) text_scale: f32, // percentage, 100.0 = normal
     pub(super) y_offset: f32,   // vertical offset for superscript/subscript
+    /// `w:position` share of `y_offset`: it stretches the line box, unlike
+    /// super/subscript (see `size_lines_by_own_runs`).
+    pub(super) raise: f32,
     pub(super) hyperlink_url: Option<String>,
     pub(super) inline_image_name: Option<String>,
     pub(super) inline_image_height: f32,
@@ -354,6 +357,7 @@ impl WordChunk {
             char_spacing,
             text_scale: run.text_scale,
             y_offset,
+            raise: run.position,
             hyperlink_url: run.hyperlink_url.clone(),
             inline_image_name: None,
             inline_image_height: 0.0,
@@ -409,6 +413,7 @@ impl WordChunk {
             char_spacing: 0.0,
             text_scale: 100.0,
             y_offset: 0.0,
+            raise: 0.0,
             hyperlink_url: None,
             inline_image_name: Some(pdf_name.to_string()),
             inline_image_height: height,
@@ -464,6 +469,7 @@ impl WordChunk {
             char_spacing: 0.0,
             text_scale: 100.0,
             y_offset: 0.0,
+            raise: 0.0,
             hyperlink_url: None,
             inline_image_name: None,
             inline_image_height: 0.0,
@@ -524,6 +530,7 @@ impl WordChunk {
             char_spacing: 0.0,
             text_scale: 100.0,
             y_offset: 0.0,
+            raise: 0.0,
             hyperlink_url: None,
             inline_image_name: None,
             inline_image_height: 0.0,
@@ -754,8 +761,11 @@ pub(super) fn size_lines_by_own_runs(
             // Small caps' 80% letters and raised/lowered runs keep the run's
             // own size: italian_project_proposal's small-caps cell lines step
             // 14.64 like full-size ones.
-            ascent = ascent.max(c.line_font_size * ar + pad);
-            below = below.max(c.line_font_size * (lhr - ar).max(0.0) + pad);
+            // `w:position` does stretch the box, on its side only: a 6pt raise
+            // makes polish_building's formula line 5.95pt taller, and
+            // czech_municipal's Normal lowered 0.5pt steps 14.0 for 13.43.
+            ascent = ascent.max(c.line_font_size * ar + pad + c.raise.max(0.0));
+            below = below.max(c.line_font_size * (lhr - ar).max(0.0) + pad + (-c.raise).max(0.0));
             sized = true;
         }
         if !sized {
@@ -949,11 +959,12 @@ fn read_shadow_once(mut chunk: WordChunk) -> WordChunk {
 }
 
 fn vert_y_offset(run: &Run) -> f32 {
-    match run.vertical_align {
-        VertAlign::Superscript => run.font_size * 0.35,
-        VertAlign::Subscript => -run.font_size * 0.14,
-        VertAlign::Baseline => 0.0,
-    }
+    run.position
+        + match run.vertical_align {
+            VertAlign::Superscript => run.font_size * 0.35,
+            VertAlign::Subscript => -run.font_size * 0.14,
+            VertAlign::Baseline => 0.0,
+        }
 }
 
 const DEFAULT_TAB_INTERVAL: f32 = 36.0; // 0.5 inches
@@ -3877,5 +3888,12 @@ mod tests {
         let run = make_run(12.0, VertAlign::Subscript, false);
         let expected = -12.0 * 0.14; // -1.68
         assert!((vert_y_offset(&run) - expected).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_vert_y_offset_adds_position() {
+        let mut run = make_run(12.0, VertAlign::Superscript, false);
+        run.position = -3.0;
+        assert!((vert_y_offset(&run) - (12.0 * 0.35 - 3.0)).abs() < 0.01);
     }
 }
