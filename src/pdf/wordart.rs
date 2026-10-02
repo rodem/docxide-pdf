@@ -729,7 +729,7 @@ pub(super) fn render_text_on_path(
                 (pdf_x, pdf_y)
             };
 
-            emit_glyph_commands(&glyph, content, &transform_pt);
+            emit_glyph_commands(&glyph, content, transform_pt);
             cursor_s += advance;
         }
     };

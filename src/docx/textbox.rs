@@ -191,14 +191,14 @@ pub(super) fn parse_shape_geometry(sp_pr: roxmltree::Node) -> ShapeGeometry {
         };
     }
 
-    if let Some(cust_geom) = find_dml(sp_pr, "custGeom") {
-        if let Some(custom) = parse_custom_geometry(cust_geom) {
-            return ShapeGeometry {
-                preset: None,
-                adjustments: Vec::new(),
-                custom: Some(custom),
-            };
-        }
+    if let Some(cust_geom) = find_dml(sp_pr, "custGeom")
+        && let Some(custom) = parse_custom_geometry(cust_geom)
+    {
+        return ShapeGeometry {
+            preset: None,
+            adjustments: Vec::new(),
+            custom: Some(custom),
+        };
     }
 
     ShapeGeometry::default()

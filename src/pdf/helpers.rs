@@ -4,7 +4,7 @@ use crate::model::{LineSpacing, Paragraph, ParagraphBorder, ParagraphBorders};
 
 /// Approximate a circle with 4 cubic Bézier curves (path only — caller fills/strokes).
 pub(super) fn draw_circle(content: &mut Content, cx: f32, cy: f32, r: f32) {
-    let k = r * 0.5522847498;
+    let k = r * 0.552_284_8;
     content.move_to(cx + r, cy);
     content.cubic_to(cx + r, cy + k, cx + k, cy + r, cx, cy + r);
     content.cubic_to(cx - k, cy + r, cx - r, cy + k, cx - r, cy);

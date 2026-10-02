@@ -114,17 +114,17 @@ pub(super) fn parse_smartart_drawing<R: Read + Seek>(
 
         let diagram_rels = load_part_rels(zip, &zip_path);
 
-        if let Some(xml) = read_zip_text(zip, &zip_path) {
-            if let Ok(doc) = roxmltree::Document::parse(&xml) {
-                let sp_tree = dsp(doc.root(), "drawing").and_then(|d| dsp(d, "spTree"));
+        if let Some(xml) = read_zip_text(zip, &zip_path)
+            && let Ok(doc) = roxmltree::Document::parse(&xml)
+        {
+            let sp_tree = dsp(doc.root(), "drawing").and_then(|d| dsp(d, "spTree"));
 
-                if let Some(tree) = sp_tree {
-                    shapes = tree
-                        .children()
-                        .filter(|n| is_ns(*n, "sp", DSP_NS))
-                        .filter_map(|sp| parse_dsp_shape(sp, theme, &diagram_rels, zip))
-                        .collect();
-                }
+            if let Some(tree) = sp_tree {
+                shapes = tree
+                    .children()
+                    .filter(|n| is_ns(*n, "sp", DSP_NS))
+                    .filter_map(|sp| parse_dsp_shape(sp, theme, &diagram_rels, zip))
+                    .collect();
             }
         }
     }

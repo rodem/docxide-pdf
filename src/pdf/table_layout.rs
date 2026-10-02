@@ -304,23 +304,26 @@ pub(super) fn auto_fit_columns(
             .iter()
             .any(|c| c.content.iter().any(|b| matches!(b, Block::Table(_))))
     });
-    if table.auto_width && !table.fixed_layout && grid_uniform && has_nested_table {
-        if let Some(avail) = fill_width.filter(|a| *a > 0.0) {
-            let mut natural = natural_widths(table, fonts, cm);
-            raise_natural_for_nested_tables(table, fonts, cm, &mut natural);
-            let min_cell = cm.left + cm.right;
-            let maxw: Vec<f32> = (0..ncols)
-                .map(|i| natural[i].max(min_widths[i]).max(min_cell))
-                .collect();
-            // AutoFit to Contents: when every column fits at max-content
-            // width, Word leaves the table narrower than the window rather
-            // than stretching it to fill.
-            if maxw.iter().sum::<f32>() <= avail {
-                return maxw;
-            }
-            let minw: Vec<f32> = (0..ncols).map(|i| min_widths[i].max(min_cell)).collect();
-            return distribute_autofit(&minw, &maxw, avail);
+    if table.auto_width
+        && !table.fixed_layout
+        && grid_uniform
+        && has_nested_table
+        && let Some(avail) = fill_width.filter(|a| *a > 0.0)
+    {
+        let mut natural = natural_widths(table, fonts, cm);
+        raise_natural_for_nested_tables(table, fonts, cm, &mut natural);
+        let min_cell = cm.left + cm.right;
+        let maxw: Vec<f32> = (0..ncols)
+            .map(|i| natural[i].max(min_widths[i]).max(min_cell))
+            .collect();
+        // AutoFit to Contents: when every column fits at max-content
+        // width, Word leaves the table narrower than the window rather
+        // than stretching it to fill.
+        if maxw.iter().sum::<f32>() <= avail {
+            return maxw;
         }
+        let minw: Vec<f32> = (0..ncols).map(|i| min_widths[i].max(min_cell)).collect();
+        return distribute_autofit(&minw, &maxw, avail);
     }
 
     // For nested auto-fit tables, Word shrinks columns to content-based widths

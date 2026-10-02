@@ -129,7 +129,7 @@ fn decode_png_raw(data: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     let mut reader = decoder.read_info().ok()?;
     let buf_size = reader
         .output_buffer_size()
-        .unwrap_or(reader.info().raw_bytes() as usize);
+        .unwrap_or(reader.info().raw_bytes());
     let mut buf = vec![0u8; buf_size];
     let info = reader.next_frame(&mut buf).ok()?;
     let (w, h) = (info.width, info.height);
@@ -661,18 +661,18 @@ fn embed_image_effects(
     alloc: &mut impl FnMut() -> Ref,
 ) -> EffectXObjs {
     let mut fx = EffectXObjs::default();
-    if let Some(shadow) = img.shadow.as_ref() {
-        if shadow.blur_radius > 0.0 {
-            fx.shadow = Some(embed_shadow(
-                shadow,
-                img.display_width,
-                img.display_height,
-                image_xobjects,
-                effect_counter,
-                pdf,
-                alloc,
-            ));
-        }
+    if let Some(shadow) = img.shadow.as_ref()
+        && shadow.blur_radius > 0.0
+    {
+        fx.shadow = Some(embed_shadow(
+            shadow,
+            img.display_width,
+            img.display_height,
+            image_xobjects,
+            effect_counter,
+            pdf,
+            alloc,
+        ));
     }
     if let Some(glow) = img.glow.as_ref() {
         // Glow reuses shadow embedding: centered blur (zero offset) with glow color
@@ -892,12 +892,10 @@ pub(super) fn embed_all_images(
                 section.properties.header_even.as_ref(),
                 section.properties.footer_even.as_ref(),
             ];
-            for hf_opt in hf_list {
-                if let Some(hf) = hf_opt {
-                    for block in &hf.blocks {
-                        if let Block::Table(table) = block {
-                            tables.push(table);
-                        }
+            for hf in hf_list.into_iter().flatten() {
+                for block in &hf.blocks {
+                    if let Block::Table(table) = block {
+                        tables.push(table);
                     }
                 }
             }
@@ -908,9 +906,11 @@ pub(super) fn embed_all_images(
                     for para in cell.all_paragraphs() {
                         if let Some(img) = &para.image {
                             let key = std::sync::Arc::as_ptr(&img.data) as usize;
-                            if !table_cell_image_names.contains_key(&key) {
+                            if let std::collections::hash_map::Entry::Vacant(e) =
+                                table_cell_image_names.entry(key)
+                            {
                                 let name = embed_single_image(img, &mut image_xobjects, pdf, alloc);
-                                table_cell_image_names.insert(key, name.clone());
+                                e.insert(name.clone());
                                 let fx = embed_image_effects(
                                     img,
                                     &mut image_xobjects,
@@ -925,10 +925,12 @@ pub(super) fn embed_all_images(
                         }
                         for fi in &para.floating_images {
                             let key = std::sync::Arc::as_ptr(&fi.image.data) as usize;
-                            if !table_cell_image_names.contains_key(&key) {
+                            if let std::collections::hash_map::Entry::Vacant(e) =
+                                table_cell_image_names.entry(key)
+                            {
                                 let name =
                                     embed_single_image(&fi.image, &mut image_xobjects, pdf, alloc);
-                                table_cell_image_names.insert(key, name.clone());
+                                e.insert(name.clone());
                                 let fx = embed_image_effects(
                                     &fi.image,
                                     &mut image_xobjects,
@@ -964,11 +966,9 @@ pub(super) fn embed_all_images(
                 section.properties.header_even.as_ref(),
                 section.properties.footer_even.as_ref(),
             ];
-            for hf_opt in hf_list {
-                if let Some(hf) = hf_opt {
-                    for block in &hf.blocks {
-                        push_block_textboxes(block, &mut all_textboxes);
-                    }
+            for hf in hf_list.into_iter().flatten() {
+                for block in &hf.blocks {
+                    push_block_textboxes(block, &mut all_textboxes);
                 }
             }
         }
@@ -992,10 +992,9 @@ pub(super) fn embed_all_images(
                     for shape in &diagram.shapes {
                         if let Some(ref img) = shape.image_fill {
                             let key = std::sync::Arc::as_ptr(&img.data) as usize;
-                            if !smartart_image_names.contains_key(&key) {
-                                let name = embed_single_image(img, &mut image_xobjects, pdf, alloc);
-                                smartart_image_names.insert(key, name);
-                            }
+                            smartart_image_names.entry(key).or_insert_with(|| {
+                                embed_single_image(img, &mut image_xobjects, pdf, alloc)
+                            });
                         }
                     }
                 }
@@ -1053,10 +1052,9 @@ fn embed_keyed_image(
     alloc: &mut impl FnMut() -> Ref,
 ) {
     let key = std::sync::Arc::as_ptr(&img.data) as usize;
-    if !image_names.contains_key(&key) {
-        let name = embed_single_image(img, image_xobjects, pdf, alloc);
-        image_names.insert(key, name);
-    }
+    image_names
+        .entry(key)
+        .or_insert_with(|| embed_single_image(img, image_xobjects, pdf, alloc));
 }
 
 fn embed_textbox_images(

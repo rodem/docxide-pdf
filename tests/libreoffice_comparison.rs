@@ -132,28 +132,28 @@ fn score_fixture(fixture_dir: &std::path::Path, soffice: &std::path::Path) -> Op
             let mut ours_s = None;
             let mut lo_j = None;
             let mut lo_s = None;
-            if i < gen_pages.len() {
-                if let Ok(g) = image::open(&gen_pages[i]) {
-                    if let Ok(pr) = common::compare_and_diff(&r, &g) {
-                        ours_j = Some(pr.jaccard);
-                    }
-                    if let Ok(s) = common::ssim_score(&r, &g) {
-                        ours_s = Some(s);
-                    }
+            if i < gen_pages.len()
+                && let Ok(g) = image::open(&gen_pages[i])
+            {
+                if let Ok(pr) = common::compare_and_diff(&r, &g) {
+                    ours_j = Some(pr.jaccard);
+                }
+                if let Ok(s) = common::ssim_score(&r, &g) {
+                    ours_s = Some(s);
                 }
             }
-            if i < lo_pages.len() {
-                if let Ok(l) = image::open(&lo_pages[i]) {
-                    if let Ok(pr) = common::compare_and_diff(&r, &l) {
-                        lo_j = Some(pr.jaccard);
-                        if let Some(stem) = ref_pages[i].file_stem().and_then(|s| s.to_str()) {
-                            let _ = DynamicImage::ImageRgba8(pr.diff_img)
-                                .save(lo_diff_dir.join(format!("{stem}.png")));
-                        }
+            if i < lo_pages.len()
+                && let Ok(l) = image::open(&lo_pages[i])
+            {
+                if let Ok(pr) = common::compare_and_diff(&r, &l) {
+                    lo_j = Some(pr.jaccard);
+                    if let Some(stem) = ref_pages[i].file_stem().and_then(|s| s.to_str()) {
+                        let _ = DynamicImage::ImageRgba8(pr.diff_img)
+                            .save(lo_diff_dir.join(format!("{stem}.png")));
                     }
-                    if let Ok(s) = common::ssim_score(&r, &l) {
-                        lo_s = Some(s);
-                    }
+                }
+                if let Ok(s) = common::ssim_score(&r, &l) {
+                    lo_s = Some(s);
                 }
             }
             (ours_j, ours_s, lo_j, lo_s)

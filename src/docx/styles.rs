@@ -1079,10 +1079,10 @@ pub(super) fn parse_styles<R: Read + Seek>(
 
     // The default paragraph style (w:default="1") may carry properties like w:kern
     // that aren't in docDefaults. Merge kern_threshold into defaults if missing.
-    if defaults.kern_threshold.is_none() {
-        if let Some(default_para) = paragraph_styles.get(&default_paragraph_style_id) {
-            defaults.kern_threshold = default_para.kern_threshold;
-        }
+    if defaults.kern_threshold.is_none()
+        && let Some(default_para) = paragraph_styles.get(&default_paragraph_style_id)
+    {
+        defaults.kern_threshold = default_para.kern_threshold;
     }
 
     StylesInfo {

@@ -97,7 +97,7 @@ fn box_blur_3pass(buf: &mut [u8], px_w: u32, px_h: u32, box_r: usize) {
                 if right < w && x > 0 {
                     acc += buf[y * w + right] as u32;
                 }
-                let left_edge = if x > box_r { x - box_r } else { 0 };
+                let left_edge = x.saturating_sub(box_r);
                 let right_edge = right.min(w - 1);
                 let count = (right_edge - left_edge + 1) as u32;
                 tmp[y * w + x] = (acc / count).min(255) as u8;
@@ -117,7 +117,7 @@ fn box_blur_3pass(buf: &mut [u8], px_w: u32, px_h: u32, box_r: usize) {
                 if bottom < h && y > 0 {
                     acc += tmp[bottom * w + x] as u32;
                 }
-                let top_edge = if y > box_r { y - box_r } else { 0 };
+                let top_edge = y.saturating_sub(box_r);
                 let bottom_edge = bottom.min(h - 1);
                 let count = (bottom_edge - top_edge + 1) as u32;
                 buf[y * w + x] = (acc / count).min(255) as u8;

@@ -616,9 +616,7 @@ fn render_cell_floating_shapes(
     use crate::model::HorizontalPosition;
 
     for conn in &para.connectors {
-        let conn_x = match conn.connector_type {
-            _ => conn.x,
-        };
+        let conn_x = conn.x;
         let mut conn_clone = conn.clone();
         // Position relative to cell column origin and paragraph top
         conn_clone.x = conn_x;
@@ -672,24 +670,24 @@ fn render_simple_textbox(
     }
 
     // Stroke
-    if let Some(stroke) = tb.stroke_color {
-        if tb.stroke_width > 0.0 {
-            content.save_state();
-            content.set_line_width(tb.stroke_width);
-            stroke_rgb(content, stroke);
-            // Honor per-subpath stroke flags (brace/bracket pairs have a
-            // fill-only outline subpath), same as body-anchored textboxes.
-            draw_shape_stroke_path(
-                content,
-                tb_x,
-                tb_y_top - tb_height,
-                tb_width,
-                tb_height,
-                &tb.shape_type,
-            );
-            content.stroke();
-            content.restore_state();
-        }
+    if let Some(stroke) = tb.stroke_color
+        && tb.stroke_width > 0.0
+    {
+        content.save_state();
+        content.set_line_width(tb.stroke_width);
+        stroke_rgb(content, stroke);
+        // Honor per-subpath stroke flags (brace/bracket pairs have a
+        // fill-only outline subpath), same as body-anchored textboxes.
+        draw_shape_stroke_path(
+            content,
+            tb_x,
+            tb_y_top - tb_height,
+            tb_width,
+            tb_height,
+            &tb.shape_type,
+        );
+        content.stroke();
+        content.restore_state();
     }
 
     // Text: route through the shared textbox renderer (same path as body
@@ -745,8 +743,8 @@ fn render_table_rows(
             let col_w = cell_span_width(col_widths, grid_col, span);
             let cx = cell_x_offset(col_widths, table_left, grid_col);
             let tagger = tag.as_mut().map(|(tags, table_tags, page)| CellTagger {
-                tags: &mut **tags,
-                table: &mut **table_tags,
+                tags,
+                table: table_tags,
                 page: *page,
                 row: ri,
                 cell: ci,
@@ -1735,11 +1733,11 @@ pub(super) fn render_table(
         // page-break check below accounts for it before rendering.
         let mut row_fn_extra = 0.0f32;
         for &fn_id in &row_footnote_ids[ri] {
-            if !pb.footnote_ids_set.contains(&fn_id) {
-                if let Some(footnote) = footnotes.get(&fn_id) {
-                    row_fn_extra +=
-                        super::footnotes::compute_footnote_height(footnote, ctx, fn_text_width);
-                }
+            if !pb.footnote_ids_set.contains(&fn_id)
+                && let Some(footnote) = footnotes.get(&fn_id)
+            {
+                row_fn_extra +=
+                    super::footnotes::compute_footnote_height(footnote, ctx, fn_text_width);
             }
         }
         if row_fn_extra > 0.0 && pb.footnote_ids.is_empty() {

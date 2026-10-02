@@ -788,12 +788,12 @@ pub(super) fn smallcaps_segments(word: &str, base_fs: f32) -> Vec<(String, f32, 
             ch.to_string()
         };
         let end = i + ch.len_utf8();
-        if let Some(last) = segments.last_mut() {
-            if (last.1 - fs).abs() < 0.001 {
-                last.0.push_str(&display);
-                last.2 = &word[start..end];
-                continue;
-            }
+        if let Some(last) = segments.last_mut()
+            && (last.1 - fs).abs() < 0.001
+        {
+            last.0.push_str(&display);
+            last.2 = &word[start..end];
+            continue;
         }
         start = i;
         segments.push((display, fs, &word[i..end]));
@@ -937,10 +937,10 @@ fn count_script_boundaries(text: &str) -> usize {
             continue;
         }
         let is_cjk = crate::docx::is_east_asian_char(ch) || is_cjk_punctuation(ch);
-        if let Some(was_cjk) = prev_cjk {
-            if was_cjk != is_cjk {
-                count += 1;
-            }
+        if let Some(was_cjk) = prev_cjk
+            && was_cjk != is_cjk
+        {
+            count += 1;
         }
         prev_cjk = Some(is_cjk);
     }
@@ -1143,10 +1143,10 @@ pub(super) fn build_paragraph_lines(
     let mut word_start = 0usize;
 
     let left_max = |line_count: usize| -> f32 {
-        if let Some(dual) = per_line_dual {
-            if let Some(&(_, lw, _, _)) = dual.get(line_count) {
-                return lw;
-            }
+        if let Some(dual) = per_line_dual
+            && let Some(&(_, lw, _, _)) = dual.get(line_count)
+        {
+            return lw;
         }
         if let Some(widths) = per_line_widths {
             if let Some(&w) = widths.get(line_count) {
@@ -1171,7 +1171,7 @@ pub(super) fn build_paragraph_lines(
                     0.0
                 };
                 let rw = rw + shift;
-                (rw > 0.0).then(|| (rx - shift, rw, rw))
+                (rw > 0.0).then_some((rx - shift, rw, rw))
             })
         })
     };
@@ -1251,24 +1251,22 @@ pub(super) fn build_paragraph_lines(
                     line_max
                 };
                 if !current_chunks.is_empty() && proposed_x + img_w > cur_max {
-                    if !in_right_region {
-                        if let Some((rx, rw, _)) = right_region_for(lines.len()) {
-                            cur_right_info = Some((current_chunks.len(), rx, rw));
-                            in_right_region = true;
-                            pending_space_w = 0.0;
-                            // Retry placement in right region
-                            let proposed_x2 = 0.0;
-                            if proposed_x2 + img_w <= rw {
-                                current_chunks.push(WordChunk::image(
-                                    pdf_name,
-                                    run.font_size,
-                                    proposed_x2,
-                                    img,
-                                    effect_inline_names.get(&run_idx).cloned(),
-                                ));
-                                current_x = img_w;
-                                continue;
-                            }
+                    if !in_right_region && let Some((rx, rw, _)) = right_region_for(lines.len()) {
+                        cur_right_info = Some((current_chunks.len(), rx, rw));
+                        in_right_region = true;
+                        pending_space_w = 0.0;
+                        // Retry placement in right region
+                        let proposed_x2 = 0.0;
+                        if proposed_x2 + img_w <= rw {
+                            current_chunks.push(WordChunk::image(
+                                pdf_name,
+                                run.font_size,
+                                proposed_x2,
+                                img,
+                                effect_inline_names.get(&run_idx).cloned(),
+                            ));
+                            current_x = img_w;
+                            continue;
                         }
                     }
                     lines.push(finish_dual_line(
@@ -1327,19 +1325,18 @@ pub(super) fn build_paragraph_lines(
             // CJK auto-spacing (autoSpaceDE/DN): add ~0.25em gap at
             // script boundaries between East Asian and Latin/digit text
             // when there is no explicit whitespace.
-            if cjk.auto_space {
-                if let Some(prev_ch) = prev_last_char {
-                    if let Some(first_ch) = shown.chars().next() {
-                        if pending_space_w == 0.0 && space_count == 0 {
-                            let prev_ea = crate::docx::is_east_asian_char(prev_ch)
-                                || is_cjk_punctuation(prev_ch);
-                            let cur_ea = crate::docx::is_east_asian_char(first_ch)
-                                || is_cjk_punctuation(first_ch);
-                            if prev_ea != cur_ea {
-                                pending_space_w += eff_fs * 0.25;
-                            }
-                        }
-                    }
+            if cjk.auto_space
+                && let Some(prev_ch) = prev_last_char
+                && let Some(first_ch) = shown.chars().next()
+                && pending_space_w == 0.0
+                && space_count == 0
+            {
+                let prev_ea =
+                    crate::docx::is_east_asian_char(prev_ch) || is_cjk_punctuation(prev_ch);
+                let cur_ea =
+                    crate::docx::is_east_asian_char(first_ch) || is_cjk_punctuation(first_ch);
+                if prev_ea != cur_ea {
+                    pending_space_w += eff_fs * 0.25;
                 }
             }
 
@@ -1575,18 +1572,17 @@ pub(super) fn build_paragraph_lines(
                 current_x = 0.0;
                 // A word wider than the new line breaks at its margin too.
                 let room = left_max(lines.len());
-                if ww > room {
-                    if let Some(cut) =
+                if ww > room
+                    && let Some(cut) =
                         fitting_prefix_len(source, room, |w| width(&caps_word(run, w)))
-                    {
-                        words.push_front((0, &source[cut..]));
-                        source = &source[..cut];
-                        shown = caps_word(run, source);
-                        word = &shown;
-                        original = run.caps.then_some(source);
-                        ww = width(word);
-                        prev_last_char = word.chars().last();
-                    }
+                {
+                    words.push_front((0, &source[cut..]));
+                    source = &source[..cut];
+                    shown = caps_word(run, source);
+                    word = &shown;
+                    original = run.caps.then_some(source);
+                    ww = width(word);
+                    prev_last_char = word.chars().last();
                 }
                 // If the new line's left region is zero-width, go
                 // straight to the right region for this word.
@@ -2346,38 +2342,37 @@ pub(super) fn render_paragraph_lines(
             *ln.counter = idx + 1;
             let value = ln.start + ln.continuous_offset as i32 + idx as i32;
             let show = value >= 1 && (ln.count_by <= 1 || value % ln.count_by as i32 == 0);
-            if show {
-                if let Some((font, fs)) = line
+            if show
+                && let Some((font, fs)) = line
                     .chunks
                     .iter()
                     .find(|c| c.inline_image_name.is_none() && !c.text.is_empty())
                     .map(|c| (c.pdf_font.clone(), c.font_size))
-                {
-                    let s = value.to_string();
-                    let w = pdf_name_to_entry
-                        .get(font.as_str())
-                        .map(|e| e.word_width(&s, fs, false))
-                        .unwrap_or(fs * 0.5 * s.chars().count() as f32);
-                    let bytes = encode_text_for_pdf(&s, &font, &pdf_name_to_entry);
-                    let x = ln.right_x - w;
-                    let draw = |content: &mut Content| {
-                        content.save_state();
-                        content.set_char_spacing(0.0);
-                        content.set_horizontal_scaling(100.0);
-                        fill_color_or_black(content, None);
-                        content.begin_text();
-                        content.set_font(Name(font.as_bytes()), fs);
-                        content.next_line(x, y);
-                        content.show(Str(&bytes));
-                        content.end_text();
-                        content.restore_state();
-                    };
-                    // Margin numbering isn't the paragraph's text: a screen
-                    // reader would read "2Numbered line".
-                    match link_tags.as_mut() {
-                        Some(lt) => lt.artifact(content, draw),
-                        None => draw(content),
-                    }
+            {
+                let s = value.to_string();
+                let w = pdf_name_to_entry
+                    .get(font.as_str())
+                    .map(|e| e.word_width(&s, fs, false))
+                    .unwrap_or(fs * 0.5 * s.chars().count() as f32);
+                let bytes = encode_text_for_pdf(&s, &font, &pdf_name_to_entry);
+                let x = ln.right_x - w;
+                let draw = |content: &mut Content| {
+                    content.save_state();
+                    content.set_char_spacing(0.0);
+                    content.set_horizontal_scaling(100.0);
+                    fill_color_or_black(content, None);
+                    content.begin_text();
+                    content.set_font(Name(font.as_bytes()), fs);
+                    content.next_line(x, y);
+                    content.show(Str(&bytes));
+                    content.end_text();
+                    content.restore_state();
+                };
+                // Margin numbering isn't the paragraph's text: a screen
+                // reader would read "2Numbered line".
+                match link_tags.as_mut() {
+                    Some(lt) => lt.artifact(content, draw),
+                    None => draw(content),
                 }
             }
         }
@@ -2470,11 +2465,11 @@ pub(super) fn render_paragraph_lines(
 
         // Helper: compute absolute x for a chunk, accounting for dual regions
         let chunk_abs_x = |chunk_idx: usize, chunk: &WordChunk| -> f32 {
-            if let Some(ref rr) = line.right_region {
-                if chunk_idx >= rr.first_chunk_idx {
-                    let local_idx = chunk_idx - rr.first_chunk_idx;
-                    return right_start_x + chunk.x_offset + local_idx as f32 * right_extra_per_gap;
-                }
+            if let Some(ref rr) = line.right_region
+                && chunk_idx >= rr.first_chunk_idx
+            {
+                let local_idx = chunk_idx - rr.first_chunk_idx;
+                return right_start_x + chunk.x_offset + local_idx as f32 * right_extra_per_gap;
             }
             if is_char_justified {
                 // Tc adds extra space after each character; shift chunk start

@@ -150,22 +150,22 @@ pub(super) fn render_single_textbox(
         );
     }
 
-    if let Some(stroke) = tb.stroke_color {
-        if tb.stroke_width > 0.0 {
-            content.save_state();
-            content.set_line_width(tb.stroke_width);
-            stroke_rgb(content, stroke);
-            super::smartart::draw_shape_stroke_path(
-                content,
-                tb_x,
-                tb_y_top - tb_height,
-                tb.width_pt,
-                tb_height,
-                &tb.shape_type,
-            );
-            content.stroke();
-            content.restore_state();
-        }
+    if let Some(stroke) = tb.stroke_color
+        && tb.stroke_width > 0.0
+    {
+        content.save_state();
+        content.set_line_width(tb.stroke_width);
+        stroke_rgb(content, stroke);
+        super::smartart::draw_shape_stroke_path(
+            content,
+            tb_x,
+            tb_y_top - tb_height,
+            tb.width_pt,
+            tb_height,
+            &tb.shape_type,
+        );
+        content.stroke();
+        content.restore_state();
     }
 
     // Lay text out within the shape's text rectangle (e.g. an arrow's body,
@@ -414,10 +414,10 @@ pub(super) fn render_textbox_paragraphs(
             prev_space_after.max(tp.space_before)
         };
         // Stop rendering when content overflows the textbox bounds
-        if let Some(bottom) = clip_bottom {
-            if cursor_y - inter_gap < bottom {
-                break;
-            }
+        if let Some(bottom) = clip_bottom
+            && cursor_y - inter_gap < bottom
+        {
+            break;
         }
         // Word keeps empty and picture-only paragraphs as empty P elements.
         let para_tag = tag.as_mut().map(|(tags, _, sect)| tags.add(*sect, "P"));

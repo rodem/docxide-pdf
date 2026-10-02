@@ -17,13 +17,13 @@ fn extract_pdf_fonts(pdf: &Path) -> Result<BTreeSet<String>, String> {
 
     let mut families = BTreeSet::new();
     for line in text.lines() {
-        if let Some(start) = line.find('\'') {
-            if let Some(end) = line[start + 1..].find('\'') {
-                let raw_name = &line[start + 1..start + 1 + end];
-                let family = normalize_pdf_font_name(raw_name);
-                if !family.is_empty() {
-                    families.insert(family);
-                }
+        if let Some(start) = line.find('\'')
+            && let Some(end) = line[start + 1..].find('\'')
+        {
+            let raw_name = &line[start + 1..start + 1 + end];
+            let family = normalize_pdf_font_name(raw_name);
+            if !family.is_empty() {
+                families.insert(family);
             }
         }
     }
@@ -111,15 +111,13 @@ fn extract_docx_fonts(docx_path: &Path) -> Result<BTreeSet<String>, String> {
     }
 
     // Include default body font if any runs rely on style/default inheritance
-    if has_unstyled_runs {
-        if let Some(name) = &default_font {
-            fonts.insert(normalize_docx_font_name(name));
-        }
+    if has_unstyled_runs && let Some(name) = &default_font {
+        fonts.insert(normalize_docx_font_name(name));
     }
-    if fonts.is_empty() {
-        if let Some(name) = &default_font {
-            fonts.insert(normalize_docx_font_name(name));
-        }
+    if fonts.is_empty()
+        && let Some(name) = &default_font
+    {
+        fonts.insert(normalize_docx_font_name(name));
     }
 
     Ok(fonts)
@@ -204,10 +202,10 @@ fn parse_default_font(
                         let theme = rfonts
                             .attribute((w, "asciiTheme"))
                             .or_else(|| rfonts.attribute("asciiTheme"));
-                        if let Some(t) = theme {
-                            if let Some(resolved) = resolve_theme(t, theme_major, theme_minor) {
-                                return Some(resolved);
-                            }
+                        if let Some(t) = theme
+                            && let Some(resolved) = resolve_theme(t, theme_major, theme_minor)
+                        {
+                            return Some(resolved);
                         }
                     }
                 }
@@ -285,13 +283,7 @@ fn has_runs_without_font(doc: &roxmltree::Document, style_fonts: &HashMap<String
                     continue;
                 }
                 // Check if the parent paragraph's pStyle provides a font
-                let para = node.parent().and_then(|p| {
-                    if p.tag_name().name() == "p" {
-                        Some(p)
-                    } else {
-                        None
-                    }
-                });
+                let para = node.parent().filter(|&p| p.tag_name().name() == "p");
                 let style_has_font = para
                     .and_then(|p| {
                         p.descendants().find_map(|n| {
@@ -356,10 +348,8 @@ fn collect_used_styles(doc: &roxmltree::Document, styles: &mut BTreeSet<String>)
             !has_explicit_font
         });
 
-        if has_run_needing_style_font {
-            if let Some(style_id) = p_style {
-                styles.insert(style_id.to_string());
-            }
+        if has_run_needing_style_font && let Some(style_id) = p_style {
+            styles.insert(style_id.to_string());
         }
 
         // Also collect rStyle from runs that lack explicit w:rFonts
@@ -376,16 +366,12 @@ fn collect_used_styles(doc: &roxmltree::Document, styles: &mut BTreeSet<String>)
             let rpr = run.children().find(|c| c.tag_name().name() == "rPr");
             let has_explicit_font =
                 rpr.is_some_and(|rpr| rpr.children().any(|n| n.tag_name().name() == "rFonts"));
-            if !has_explicit_font {
-                if let Some(rpr) = rpr {
-                    for n in rpr.children() {
-                        if n.tag_name().name() == "rStyle" {
-                            if let Some(val) =
-                                n.attribute((w, "val")).or_else(|| n.attribute("val"))
-                            {
-                                styles.insert(val.to_string());
-                            }
-                        }
+            if !has_explicit_font && let Some(rpr) = rpr {
+                for n in rpr.children() {
+                    if n.tag_name().name() == "rStyle"
+                        && let Some(val) = n.attribute((w, "val")).or_else(|| n.attribute("val"))
+                    {
+                        styles.insert(val.to_string());
                     }
                 }
             }
@@ -429,13 +415,12 @@ fn parse_style_fonts(
         };
 
         for child in node.descendants() {
-            if child.tag_name().name() == "basedOn" {
-                if let Some(val) = child
+            if child.tag_name().name() == "basedOn"
+                && let Some(val) = child
                     .attribute((w, "val"))
                     .or_else(|| child.attribute("val"))
-                {
-                    based_on.insert(style_id.to_string(), val.to_string());
-                }
+            {
+                based_on.insert(style_id.to_string(), val.to_string());
             }
             if child.tag_name().name() == "rFonts" {
                 if let Some(name) = child
@@ -446,10 +431,9 @@ fn parse_style_fonts(
                 } else if let Some(theme) = child
                     .attribute((w, "asciiTheme"))
                     .or_else(|| child.attribute("asciiTheme"))
+                    && let Some(resolved) = resolve_theme(theme, theme_major, theme_minor)
                 {
-                    if let Some(resolved) = resolve_theme(theme, theme_major, theme_minor) {
-                        direct_font.insert(style_id.to_string(), resolved);
-                    }
+                    direct_font.insert(style_id.to_string(), resolved);
                 }
             }
         }
@@ -533,12 +517,12 @@ fn collect_fonts_from_xml(
             }
         }
         // DrawingML font declarations (SmartArt, charts, etc.)
-        if node.tag_name().name() == "latin" && node.tag_name().namespace() == Some(DML_NS) {
-            if let Some(name) = node.attribute("typeface") {
-                if !name.is_empty() {
-                    fonts.insert(normalize_docx_font_name(name));
-                }
-            }
+        if node.tag_name().name() == "latin"
+            && node.tag_name().namespace() == Some(DML_NS)
+            && let Some(name) = node.attribute("typeface")
+            && !name.is_empty()
+        {
+            fonts.insert(normalize_docx_font_name(name));
         }
     }
 }

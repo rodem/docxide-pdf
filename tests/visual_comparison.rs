@@ -21,8 +21,8 @@ fn generate_change_diff(ack_path: &Path, gen_path: &Path) -> Option<DynamicImage
     let h = ack_img.height().min(gen_img.height());
 
     let cell = 32u32;
-    let gw = (w + cell - 1) / cell;
-    let gh = (h + cell - 1) / cell;
+    let gw = w.div_ceil(cell);
+    let gh = h.div_ceil(cell);
     let mut grid = vec![false; (gw * gh) as usize];
 
     let mut buf = vec![255u8; (w * h * 4) as usize];
@@ -208,7 +208,7 @@ fn prepare_fixture(fixture_dir: &Path) -> Option<FixturePages> {
     let generated_screenshots = output_base.join("generated");
 
     if save_side_by_side_images() {
-        let _ = fs::remove_dir_all(&output_base.join("comparison"));
+        let _ = fs::remove_dir_all(output_base.join("comparison"));
     }
 
     let ref_fresh = common::pngs_fresh(&reference_pdf, &reference_screenshots);
@@ -408,10 +408,10 @@ fn score_fixture(fixture: &FixturePages) -> Option<FixtureResult> {
         for i in 0..page_count {
             let page_num = format!("page_{:03}", i + 1);
             let ack_path = ack_dir.join(format!("{page_num}.png"));
-            if ack_path.exists() {
-                if let Some(img) = generate_change_diff(&ack_path, &fixture.gen_pages[i]) {
-                    let _ = img.save(changes_dir.join(format!("{page_num}.png")));
-                }
+            if ack_path.exists()
+                && let Some(img) = generate_change_diff(&ack_path, &fixture.gen_pages[i])
+            {
+                let _ = img.save(changes_dir.join(format!("{page_num}.png")));
             }
         }
     }
@@ -469,10 +469,7 @@ fn visual_comparison() {
         .collect();
 
     let t_score = Instant::now();
-    let mut results: Vec<FixtureResult> = fixtures
-        .par_iter()
-        .filter_map(|fixture| score_fixture(fixture))
-        .collect();
+    let mut results: Vec<FixtureResult> = fixtures.par_iter().filter_map(score_fixture).collect();
     let _score_ms = t_score.elapsed().as_millis() as u64;
     results.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -560,7 +557,5 @@ fn ssim_comparison() {
     // so no duplicate work if visual_comparison already ran.
     let _ = env_logger::try_init();
     let fixtures = prepared_fixtures();
-    if fixtures.is_empty() {
-        return;
-    }
+    if fixtures.is_empty() {}
 }

@@ -108,7 +108,7 @@ fn parse_jpeg_dimensions(data: &[u8]) -> Option<(u32, u32, ImageFormat, u8)> {
             break;
         }
         let len = u16::from_be_bytes([data[i + 2], data[i + 3]]) as usize;
-        if matches!(marker, 0xC0 | 0xC1 | 0xC2) && i + 9 < data.len() {
+        if matches!(marker, 0xC0..=0xC2) && i + 9 < data.len() {
             let height = u16::from_be_bytes([data[i + 5], data[i + 6]]) as u32;
             let width = u16::from_be_bytes([data[i + 7], data[i + 8]]) as u32;
             let components = data[i + 9];
@@ -694,37 +694,36 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
             if let Some(conn) = parse_connector_from_wsp(container, ctx.theme) {
                 return Some(RunDrawingResult::Connector(conn));
             }
-            if let Some(embed_id) = find_blip_embed(container) {
-                if let Some(mut img) =
+            if let Some(embed_id) = find_blip_embed(container)
+                && let Some(mut img) =
                     read_image_from_zip(embed_id, ctx.rels, ctx.zip, display_w, display_h)
-                {
-                    apply_pic_props(&mut img, container);
-                    let (h_position, h_relative, v_position, v_relative) =
-                        parse_anchor_position(container);
-                    let (wrap_type, wrap_text, wrap_polygon) = parse_wrap_type(container);
-                    let behind_doc = container.attribute("behindDoc") == Some("1");
-                    let z_index = container
-                        .attribute("relativeHeight")
-                        .and_then(|v| v.parse::<u32>().ok())
-                        .unwrap_or(0);
-                    return Some(RunDrawingResult::Floating(FloatingImage {
-                        image: img,
-                        h_position,
-                        h_relative_from: h_relative,
-                        v_position,
-                        v_relative_from: v_relative,
-                        wrap_type,
-                        wrap_text,
-                        wrap_polygon,
-                        behind_doc,
-                        dist_top: emu_attr(container, "distT"),
-                        dist_bottom: emu_attr(container, "distB"),
-                        dist_left: emu_attr(container, "distL"),
-                        dist_right: emu_attr(container, "distR"),
-                        z_index,
-                        anchor_seq: 0,
-                    }));
-                }
+            {
+                apply_pic_props(&mut img, container);
+                let (h_position, h_relative, v_position, v_relative) =
+                    parse_anchor_position(container);
+                let (wrap_type, wrap_text, wrap_polygon) = parse_wrap_type(container);
+                let behind_doc = container.attribute("behindDoc") == Some("1");
+                let z_index = container
+                    .attribute("relativeHeight")
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(0);
+                return Some(RunDrawingResult::Floating(FloatingImage {
+                    image: img,
+                    h_position,
+                    h_relative_from: h_relative,
+                    v_position,
+                    v_relative_from: v_relative,
+                    wrap_type,
+                    wrap_text,
+                    wrap_polygon,
+                    behind_doc,
+                    dist_top: emu_attr(container, "distT"),
+                    dist_bottom: emu_attr(container, "distB"),
+                    dist_left: emu_attr(container, "distL"),
+                    dist_right: emu_attr(container, "distR"),
+                    z_index,
+                    anchor_seq: 0,
+                }));
             }
             // SmartArt diagrams lack floating layout support; treat anchored
             // diagrams the same as inline to avoid dropping them entirely
@@ -852,14 +851,14 @@ pub(super) fn compute_drawing_info<R: Read + Seek>(
             let (extra_h, extra_top) = inline_extra_height(container);
             max_height = max_height.max(display_h + extra_h);
 
-            if image.is_none() {
-                if let Some(embed_id) = find_blip_embed(container) {
-                    image = read_image_from_zip_extra(
-                        embed_id, rels, zip, display_w, display_h, extra_h, extra_top,
-                    );
-                    if let Some(ref mut img) = image {
-                        apply_pic_props(img, container);
-                    }
+            if image.is_none()
+                && let Some(embed_id) = find_blip_embed(container)
+            {
+                image = read_image_from_zip_extra(
+                    embed_id, rels, zip, display_w, display_h, extra_h, extra_top,
+                );
+                if let Some(ref mut img) = image {
+                    apply_pic_props(img, container);
                 }
             }
         }
@@ -1023,25 +1022,25 @@ fn object_dimensions(obj: roxmltree::Node) -> Option<(f32, f32)> {
         n.tag_name().namespace() == Some(VML_NS_LOCAL)
             && matches!(n.tag_name().name(), "rect" | "shape" | "oval" | "roundrect")
     });
-    if let Some(rect) = rect {
-        if let Some(style) = rect.attribute("style") {
-            let mut w_pt: Option<f32> = None;
-            let mut h_pt: Option<f32> = None;
-            for part in style.split(';') {
-                if let Some((key, val)) = part.trim().split_once(':') {
-                    let key = key.trim();
-                    if let Some(v) = parse_pt(val) {
-                        match key {
-                            "width" => w_pt = Some(v),
-                            "height" => h_pt = Some(v),
-                            _ => {}
-                        }
+    if let Some(rect) = rect
+        && let Some(style) = rect.attribute("style")
+    {
+        let mut w_pt: Option<f32> = None;
+        let mut h_pt: Option<f32> = None;
+        for part in style.split(';') {
+            if let Some((key, val)) = part.trim().split_once(':') {
+                let key = key.trim();
+                if let Some(v) = parse_pt(val) {
+                    match key {
+                        "width" => w_pt = Some(v),
+                        "height" => h_pt = Some(v),
+                        _ => {}
                     }
                 }
             }
-            if let (Some(w), Some(h)) = (w_pt, h_pt) {
-                return Some((w, h));
-            }
+        }
+        if let (Some(w), Some(h)) = (w_pt, h_pt) {
+            return Some((w, h));
         }
     }
     let dxa = twips_attr(obj, "dxaOrig");

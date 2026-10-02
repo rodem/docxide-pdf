@@ -747,10 +747,9 @@ fn parse_core_props<R: Read + std::io::Seek>(
         } else if child.tag_name().name() == "keywords"
             && child.tag_name().namespace()
                 == Some("http://schemas.openxmlformats.org/package/2006/metadata/core-properties")
+            && let Some(text) = child.text()
         {
-            if let Some(text) = child.text() {
-                keywords = Some(text.to_string());
-            }
+            keywords = Some(text.to_string());
         }
     }
 
@@ -859,10 +858,10 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
                     if para.space_before_auto {
                         para.space_before = 0.0;
                     }
-                    if let Some(Block::Paragraph(prev)) = blocks.last_mut() {
-                        if prev.space_after_auto {
-                            prev.space_after = 0.0;
-                        }
+                    if let Some(Block::Paragraph(prev)) = blocks.last_mut()
+                        && prev.space_after_auto
+                    {
+                        prev.space_after = 0.0;
                     }
                 }
                 prev_list_num_id = num_id;

@@ -664,10 +664,9 @@ fn collect_run_nodes<'a>(
             if let Some(id) = child
                 .attribute((WML_NS, "id"))
                 .and_then(|v| v.parse::<u32>().ok())
+                && let Some(pos) = active_comments.iter().rposition(|x| *x == id)
             {
-                if let Some(pos) = active_comments.iter().rposition(|x| *x == id) {
-                    active_comments.remove(pos);
-                }
+                active_comments.remove(pos);
             }
             continue;
         }
@@ -1115,7 +1114,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
                         // A field is visible content unless the innermost open
                         // field is still in its instruction region — in which
                         // case this is a field argument and never displays.
-                        let parent_visible = field_stack.last().map_or(true, |f| f.seen_sep);
+                        let parent_visible = field_stack.last().is_none_or(|f| f.seen_sep);
                         if field_stack.is_empty() {
                             flush_pending(&mut pending_text, &mut runs);
                         }
@@ -1132,44 +1131,44 @@ pub(super) fn parse_runs<R: Read + Seek>(
                         }
                     }
                     Some("end") => {
-                        if let Some(f) = field_stack.pop() {
-                            if f.visible {
-                                let keyword = f.instr.split_whitespace().next().unwrap_or("");
-                                let fc = if keyword.eq_ignore_ascii_case("PAGE") {
-                                    Some(FieldCode::Page)
-                                } else if keyword.eq_ignore_ascii_case("NUMPAGES") {
-                                    Some(FieldCode::NumPages)
-                                } else if keyword.eq_ignore_ascii_case("STYLEREF") {
-                                    parse_styleref_arg(&f.instr).map(FieldCode::StyleRef)
-                                } else if keyword.eq_ignore_ascii_case("PAGEREF") {
-                                    f.instr
-                                        .split_whitespace()
-                                        .nth(1)
-                                        .map(|s| FieldCode::PageRef(s.to_string()))
-                                } else {
-                                    None
+                        if let Some(f) = field_stack.pop()
+                            && f.visible
+                        {
+                            let keyword = f.instr.split_whitespace().next().unwrap_or("");
+                            let fc = if keyword.eq_ignore_ascii_case("PAGE") {
+                                Some(FieldCode::Page)
+                            } else if keyword.eq_ignore_ascii_case("NUMPAGES") {
+                                Some(FieldCode::NumPages)
+                            } else if keyword.eq_ignore_ascii_case("STYLEREF") {
+                                parse_styleref_arg(&f.instr).map(FieldCode::StyleRef)
+                            } else if keyword.eq_ignore_ascii_case("PAGEREF") {
+                                f.instr
+                                    .split_whitespace()
+                                    .nth(1)
+                                    .map(|s| FieldCode::PageRef(s.to_string()))
+                            } else {
+                                None
+                            };
+                            if let Some(code) = fc {
+                                // PAGEREF \h is a hyperlink to its bookmark (TOC page
+                                // numbers): Word tags it as the TOCI's Link.
+                                let url = match &code {
+                                    FieldCode::PageRef(bookmark)
+                                        if hyperlink_url.is_none()
+                                            && f.instr
+                                                .split_whitespace()
+                                                .any(|s| s.eq_ignore_ascii_case("\\h")) =>
+                                    {
+                                        Some(format!("#{bookmark}"))
+                                    }
+                                    _ => hyperlink_url.clone(),
                                 };
-                                if let Some(code) = fc {
-                                    // PAGEREF \h is a hyperlink to its bookmark (TOC page
-                                    // numbers): Word tags it as the TOCI's Link.
-                                    let url = match &code {
-                                        FieldCode::PageRef(bookmark)
-                                            if hyperlink_url.is_none()
-                                                && f.instr
-                                                    .split_whitespace()
-                                                    .any(|s| s.eq_ignore_ascii_case("\\h")) =>
-                                        {
-                                            Some(format!("#{bookmark}"))
-                                        }
-                                        _ => hyperlink_url.clone(),
-                                    };
-                                    runs.push(Run {
-                                        text: f.result,
-                                        field_code: Some(code),
-                                        hyperlink_url: url,
-                                        ..fmt.styled_run()
-                                    });
-                                }
+                                runs.push(Run {
+                                    text: f.result,
+                                    field_code: Some(code),
+                                    hyperlink_url: url,
+                                    ..fmt.styled_run()
+                                });
                             }
                         }
                     }
@@ -1178,16 +1177,15 @@ pub(super) fn parse_runs<R: Read + Seek>(
                 "instrText" => {
                     // Instruction text belongs to the innermost open field that
                     // has not yet reached its separator.
-                    if let Some(f) = field_stack.last_mut() {
-                        if !f.seen_sep {
-                            if let Some(t) = child.text() {
-                                f.instr.push_str(t);
-                            }
-                        }
+                    if let Some(f) = field_stack.last_mut()
+                        && !f.seen_sep
+                        && let Some(t) = child.text()
+                    {
+                        f.instr.push_str(t);
                     }
                 }
                 "t" => {
-                    let visible = field_stack.last().map_or(true, |f| f.seen_sep);
+                    let visible = field_stack.last().is_none_or(|f| f.seen_sep);
                     let dyn_result = field_stack
                         .last()
                         .is_some_and(|f| f.seen_sep && is_dynamic_field(&f.instr));
@@ -1197,17 +1195,15 @@ pub(super) fn parse_runs<R: Read + Seek>(
                         if let Some(t) = child.text() {
                             field_stack.last_mut().unwrap().result.push_str(t);
                         }
-                    } else if visible {
-                        if let Some(t) = child.text() {
-                            pending_text.push_str(&t.replace('\n', " "));
-                        }
+                    } else if visible && let Some(t) = child.text() {
+                        pending_text.push_str(&t.replace('\n', " "));
                     }
                 }
                 "noBreakHyphen" => {
                     pending_text.push('-');
                 }
                 "tab" => {
-                    let visible = field_stack.last().map_or(true, |f| f.seen_sep);
+                    let visible = field_stack.last().is_none_or(|f| f.seen_sep);
                     let dyn_result = field_stack
                         .last()
                         .is_some_and(|f| f.seen_sep && is_dynamic_field(&f.instr));
@@ -1219,7 +1215,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
                 "ptab" => {
                     // Positional tab: alignment positions the FOLLOWING text against the
                     // margin box (left/center/right), independent of paragraph tab stops.
-                    let visible = field_stack.last().map_or(true, |f| f.seen_sep);
+                    let visible = field_stack.last().is_none_or(|f| f.seen_sep);
                     let dyn_result = field_stack
                         .last()
                         .is_some_and(|f| f.seen_sep && is_dynamic_field(&f.instr));
@@ -1410,10 +1406,10 @@ fn parse_vml_horizontal_rule(pict_node: roxmltree::Node) -> Option<HorizontalRul
     let style_str = shape.attribute("style").unwrap_or("");
     let mut height_pt = 1.5_f32;
     for part in style_str.split(';') {
-        if let Some((key, val)) = part.trim().split_once(':') {
-            if key.trim() == "height" {
-                height_pt = parse_pt(val).unwrap_or(1.5);
-            }
+        if let Some((key, val)) = part.trim().split_once(':')
+            && key.trim() == "height"
+        {
+            height_pt = parse_pt(val).unwrap_or(1.5);
         }
     }
 

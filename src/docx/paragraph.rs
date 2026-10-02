@@ -14,6 +14,7 @@ use super::{
 };
 
 /// Options controlling which paragraph features to resolve.
+#[derive(Default)]
 pub(super) struct ParagraphOptions {
     /// Whether to resolve bookmarks from the node
     pub resolve_bookmarks: bool,
@@ -27,19 +28,6 @@ pub(super) struct ParagraphOptions {
     pub style_num_id: Option<String>,
     /// Style-level numbering ilvl fallback
     pub style_num_ilvl: Option<u8>,
-}
-
-impl Default for ParagraphOptions {
-    fn default() -> Self {
-        Self {
-            resolve_bookmarks: false,
-            resolve_outline_level: false,
-            resolve_drawings: false,
-            collect_extra_textboxes: false,
-            style_num_id: None,
-            style_num_ilvl: None,
-        }
-    }
 }
 
 pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
@@ -287,15 +275,15 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
     // Add the numbering level's explicit tab stop so the label-text
     // gap matches Word (which uses this instead of the implicit
     // hanging-indent tab when it is closer).
-    if let Some(nts) = num_tab_stop {
-        if !tab_stops.iter().any(|t| (t.position - nts).abs() < 0.5) {
-            tab_stops.push(TabStop {
-                position: nts,
-                alignment: TabAlignment::Left,
-                leader: None,
-            });
-            tab_stops.sort_by(|a, b| a.position.total_cmp(&b.position));
-        }
+    if let Some(nts) = num_tab_stop
+        && !tab_stops.iter().any(|t| (t.position - nts).abs() < 0.5)
+    {
+        tab_stops.push(TabStop {
+            position: nts,
+            alignment: TabAlignment::Left,
+            leader: None,
+        });
+        tab_stops.sort_by(|a, b| a.position.total_cmp(&b.position));
     }
     // OOXML 17.3.1.38: hanging indent implicitly creates a tab stop
     if indent_hanging > 0.0 {

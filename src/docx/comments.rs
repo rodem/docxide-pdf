@@ -59,10 +59,8 @@ fn collect_text(node: roxmltree::Node) -> String {
             }
             "tab" => buf.push('\t'),
             "br" => buf.push('\n'),
-            "p" => {
-                if !buf.is_empty() && !buf.ends_with('\n') {
-                    buf.push('\n');
-                }
+            "p" if !buf.is_empty() && !buf.ends_with('\n') => {
+                buf.push('\n');
             }
             _ => {}
         }

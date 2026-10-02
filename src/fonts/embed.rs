@@ -348,12 +348,12 @@ fn extract_gpos_pairs(
                             continue;
                         };
                         for &(r_orig, r_new) in char_gids {
-                            if let Some((val1, _)) = pair_set.get(r_orig) {
-                                if val1.x_advance != 0 {
-                                    kern_pairs
-                                        .entry((l_new, r_new))
-                                        .or_insert(val1.x_advance as f32 / units * 1000.0);
-                                }
+                            if let Some((val1, _)) = pair_set.get(r_orig)
+                                && val1.x_advance != 0
+                            {
+                                kern_pairs
+                                    .entry((l_new, r_new))
+                                    .or_insert(val1.x_advance as f32 / units * 1000.0);
                             }
                         }
                     }
@@ -370,12 +370,12 @@ fn extract_gpos_pairs(
                         let c1 = classes.0.get(l_orig);
                         for &(r_orig, r_new) in char_gids {
                             let c2 = classes.1.get(r_orig);
-                            if let Some((val1, _)) = matrix.get((c1, c2)) {
-                                if val1.x_advance != 0 {
-                                    kern_pairs
-                                        .entry((l_new, r_new))
-                                        .or_insert(val1.x_advance as f32 / units * 1000.0);
-                                }
+                            if let Some((val1, _)) = matrix.get((c1, c2))
+                                && val1.x_advance != 0
+                            {
+                                kern_pairs
+                                    .entry((l_new, r_new))
+                                    .or_insert(val1.x_advance as f32 / units * 1000.0);
                             }
                         }
                     }

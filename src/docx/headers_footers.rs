@@ -73,7 +73,7 @@ pub(super) fn parse_header_footer_xml<R: Read + Seek>(
         }
     }
 
-    (!blocks.is_empty()).then(|| HeaderFooter { blocks })
+    (!blocks.is_empty()).then_some(HeaderFooter { blocks })
 }
 
 pub(super) fn parse_footnotes<R: Read + Seek>(

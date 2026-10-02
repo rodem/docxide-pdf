@@ -271,8 +271,7 @@ fn break_run_lhr(runs: &[Run], break_fs: f32, fonts: &HashMap<String, FontEntry>
     // Find the break run with the matching font size
     let br_run = runs
         .iter()
-        .filter(|r| r.is_line_break && (r.font_size - break_fs).abs() < 0.01)
-        .last();
+        .rfind(|r| r.is_line_break && (r.font_size - break_fs).abs() < 0.01);
     if let Some(run) = br_run {
         let key = font_key(run);
         fonts.get(&key).and_then(|e| e.line_h_ratio)
@@ -320,11 +319,11 @@ fn update_styleref_from_para(
         }
     }
     for run in &para.runs {
-        if let Some(ref csid) = run.char_style_id {
-            if !run.text.is_empty() {
-                styleref_insert(running, csid, &run.text, style_id_to_name);
-                styleref_insert_first(page_first, csid, &run.text, style_id_to_name);
-            }
+        if let Some(ref csid) = run.char_style_id
+            && !run.text.is_empty()
+        {
+            styleref_insert(running, csid, &run.text, style_id_to_name);
+            styleref_insert_first(page_first, csid, &run.text, style_id_to_name);
         }
     }
 }
@@ -375,10 +374,10 @@ impl FloatZone {
     /// Returns (left_edge, right_edge) of the exclusion zone at the given Y.
     /// Falls back to rectangular bounds if no polygon or scanline misses.
     fn exclusion_at_y(&self, y: f32) -> (f32, f32) {
-        if let Some(ref pts) = self.polygon_pts {
-            if let Some((left, right)) = poly_scanline(pts, y) {
-                return (left, right);
-            }
+        if let Some(ref pts) = self.polygon_pts
+            && let Some((left, right)) = poly_scanline(pts, y)
+        {
+            return (left, right);
         }
         (self.obj_left, self.obj_right)
     }
@@ -497,17 +496,17 @@ fn draw_debug_wrap_overlay(content: &mut Content, fz: &FloatZone) {
     content.save_state();
 
     // Green: raw polygon outline
-    if let Some(ref pts) = fz.polygon_pts {
-        if pts.len() >= 3 {
-            content.set_stroke_rgb(0.0, 0.7, 0.0);
-            content.set_line_width(0.5);
-            content.move_to(pts[0].0, pts[0].1);
-            for &(x, y) in &pts[1..] {
-                content.line_to(x, y);
-            }
-            content.close_path();
-            content.stroke();
+    if let Some(ref pts) = fz.polygon_pts
+        && pts.len() >= 3
+    {
+        content.set_stroke_rgb(0.0, 0.7, 0.0);
+        content.set_line_width(0.5);
+        content.move_to(pts[0].0, pts[0].1);
+        for &(x, y) in &pts[1..] {
+            content.line_to(x, y);
         }
+        content.close_path();
+        content.stroke();
     }
 
     // Blue: effective wrap zone boundaries (polygon shifted by dist margins)
@@ -1348,9 +1347,9 @@ fn render_paragraph_block(
         let at_top = state.pb.is_at_page_top(sp);
         if !at_top || para.page_break_before_explicit {
             state.pb.flush_page(sect_idx);
-            state.pb.slot_top = effective_slot_top(sp, false, &ctx);
+            state.pb.slot_top = effective_slot_top(sp, false, ctx);
             state.pb.column_top_y = state.pb.slot_top;
-            state.effective_margin_bottom = compute_effective_margin_bottom(sp, false, &ctx);
+            state.effective_margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
             state.pb.is_first_page_of_section = false;
             state.current_col = 0;
         }
@@ -1369,7 +1368,7 @@ fn render_paragraph_block(
             sect_idx,
             sp,
             &mut state.effective_margin_bottom,
-            &ctx,
+            ctx,
         );
         state.prev_space_after = 0.0;
     }
@@ -1505,32 +1504,32 @@ fn render_paragraph_block(
     // and has text, set up the float zone NOW so width-narrowing
     // applies to this paragraph's own lines.  Always replace any
     // previous float zone — the paragraph's own image takes priority.
-    if !para.floating_images.is_empty() && !text_empty {
-        if let Some(fi) = para
+    if !para.floating_images.is_empty()
+        && !text_empty
+        && let Some(fi) = para
             .floating_images
             .iter()
             .find(|fi| wraps_in_column(fi, sp, col_x, col_w, text_width))
-        {
-            let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
-            // The previous paragraph may have re-wrapped around this float and
-            // grown; the float stays where that look-ahead anchored it
-            // (peeked here, taken below).
-            let anchor_top = state.pb.pending_float_anchor.unwrap_or(state.pb.slot_top);
-            let fi_y_top = resolve_fi_y_top(fi, sp, anchor_top);
-            state.pb.float_zone = Some(FloatZone::for_float(fi, fi_x, fi_y_top));
-            // Re-narrow para_text_x / para_text_width using the
-            // new float zone (same logic as the block above).
-            let fz = state.pb.float_zone.as_ref().unwrap();
-            fz.narrow_paragraph(
-                first_line_top,
-                col_x,
-                col_w,
-                para,
-                &mut para_text_x,
-                &mut para_text_width,
-                &mut label_x,
-            );
-        }
+    {
+        let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
+        // The previous paragraph may have re-wrapped around this float and
+        // grown; the float stays where that look-ahead anchored it
+        // (peeked here, taken below).
+        let anchor_top = state.pb.pending_float_anchor.unwrap_or(state.pb.slot_top);
+        let fi_y_top = resolve_fi_y_top(fi, sp, anchor_top);
+        state.pb.float_zone = Some(FloatZone::for_float(fi, fi_x, fi_y_top));
+        // Re-narrow para_text_x / para_text_width using the
+        // new float zone (same logic as the block above).
+        let fz = state.pb.float_zone.as_ref().unwrap();
+        fz.narrow_paragraph(
+            first_line_top,
+            col_x,
+            col_w,
+            para,
+            &mut para_text_x,
+            &mut para_text_width,
+            &mut label_x,
+        );
     }
 
     let cjk = ctx.cjk(para.auto_space_de || para.auto_space_dn, para.alignment);
@@ -2216,7 +2215,7 @@ fn render_paragraph_block(
         |id| {
             doc.footnotes
                 .get(&id)
-                .map_or(0.0, |f| compute_footnote_height(f, &ctx, text_width))
+                .map_or(0.0, |f| compute_footnote_height(f, ctx, text_width))
         },
     );
 
@@ -2324,7 +2323,7 @@ fn render_paragraph_block(
             // to the continuation page while the space stays reserved here.
             let first_part_fn_ids = line_footnote_ids(first_part);
             for &id in &first_part_fn_ids {
-                track_page_footnote(state, doc, &ctx, text_width, id);
+                track_page_footnote(state, doc, ctx, text_width, id);
             }
 
             state.pb.advance_column_or_page(
@@ -2333,7 +2332,7 @@ fn render_paragraph_block(
                 sect_idx,
                 sp,
                 &mut state.effective_margin_bottom,
-                &ctx,
+                ctx,
             );
 
             let rest = &lines[lines_that_fit..];
@@ -2389,15 +2388,15 @@ fn render_paragraph_block(
 
             // Track the remaining footnotes for the split paragraph on the new page
             for run in para.runs.iter() {
-                if let Some(id) = run.footnote_id {
-                    if !first_part_fn_ids.contains(&id) {
-                        track_page_footnote(state, doc, &ctx, text_width, id);
-                    }
+                if let Some(id) = run.footnote_id
+                    && !first_part_fn_ids.contains(&id)
+                {
+                    track_page_footnote(state, doc, ctx, text_width, id);
                 }
-                if let Some(id) = run.endnote_id {
-                    if state.pb.endnote_ids_set.insert(id) {
-                        state.pb.endnote_ids.push(id);
-                    }
+                if let Some(id) = run.endnote_id
+                    && state.pb.endnote_ids_set.insert(id)
+                {
+                    state.pb.endnote_ids.push(id);
                 }
             }
 
@@ -2411,7 +2410,7 @@ fn render_paragraph_block(
             sect_idx,
             sp,
             &mut state.effective_margin_bottom,
-            &ctx,
+            ctx,
         );
         inter_gap = 0.0;
     }
@@ -2487,8 +2486,8 @@ fn render_paragraph_block(
         &para.floating_images,
         true,
         state.global_block_idx,
-        &floating_image_pdf_names,
-        &effect_floating_names,
+        floating_image_pdf_names,
+        effect_floating_names,
         sp,
         col_x,
         col_w,
@@ -2513,7 +2512,7 @@ fn render_paragraph_block(
             float_anchor_top,
             &mut state.pb.content,
             &mut state.pb.gradient_specs,
-            &ctx,
+            ctx,
             &mut state.pb.links,
             &mut state.pb.tags,
             page,
@@ -2562,8 +2561,8 @@ fn render_paragraph_block(
     render_foreground_floating_images_deferred(
         &para.floating_images,
         state.global_block_idx,
-        &floating_image_pdf_names,
-        &effect_floating_names,
+        floating_image_pdf_names,
+        effect_floating_names,
         sp,
         col_x,
         col_w,
@@ -2590,10 +2589,8 @@ fn render_paragraph_block(
         state.pb.float_zone = Some(FloatZone::for_float(fi, fi_x, fi_y_top));
     }
 
-    if debug_wrap {
-        if let Some(ref fz) = state.pb.float_zone {
-            draw_debug_wrap_overlay(&mut state.pb.content, fz);
-        }
+    if debug_wrap && let Some(ref fz) = state.pb.float_zone {
+        draw_debug_wrap_overlay(&mut state.pb.content, fz);
     }
 
     for tb in para.textboxes.iter().filter(|t| !t.behind_doc) {
@@ -2615,7 +2612,7 @@ fn render_paragraph_block(
             float_anchor_top,
             &mut shape_content,
             &mut state.pb.gradient_specs,
-            &ctx,
+            ctx,
             &mut state.pb.links,
             &mut state.pb.tags,
             page,
@@ -2674,7 +2671,7 @@ fn render_paragraph_block(
                 state.pb.slot_top,
                 ctx.fonts,
                 smartart_font_key,
-                &smartart_image_names,
+                smartart_image_names,
             );
         }
     } else if let Some(ref hr) = para.horizontal_rule {
@@ -2899,10 +2896,8 @@ fn render_paragraph_block(
             content.restore_state();
         };
 
-        if !prev_borders_match {
-            if let Some(b) = &bdr.top {
-                draw_h_border(&mut state.pb.content, b, box_top);
-            }
+        if !prev_borders_match && let Some(b) = &bdr.top {
+            draw_h_border(&mut state.pb.content, b, box_top);
         }
         if bottom_collapses {
             if let Some(b) = &bdr.between {
@@ -2934,26 +2929,26 @@ fn render_paragraph_block(
 
     // Track footnotes referenced on this page
     for run in para.runs.iter() {
-        if let Some(id) = run.footnote_id {
-            if state.pb.footnote_ids_set.insert(id) {
-                state.pb.footnote_ids.push(id);
-                if let Some(footnote) = doc.footnotes.get(&id) {
-                    let fn_height = compute_footnote_height(footnote, &ctx, text_width);
-                    let separator_h = if state.pb.footnote_ids.len() == 1 {
-                        12.0
-                    } else {
-                        0.0
-                    };
-                    state.effective_margin_bottom += separator_h + fn_height;
-                }
+        if let Some(id) = run.footnote_id
+            && state.pb.footnote_ids_set.insert(id)
+        {
+            state.pb.footnote_ids.push(id);
+            if let Some(footnote) = doc.footnotes.get(&id) {
+                let fn_height = compute_footnote_height(footnote, ctx, text_width);
+                let separator_h = if state.pb.footnote_ids.len() == 1 {
+                    12.0
+                } else {
+                    0.0
+                };
+                state.effective_margin_bottom += separator_h + fn_height;
             }
         }
         // Endnotes render at end of document; just collect IDs in encounter
         // order — they're flushed to the last page in Phase 2c.
-        if let Some(id) = run.endnote_id {
-            if state.pb.endnote_ids_set.insert(id) {
-                state.pb.endnote_ids.push(id);
-            }
+        if let Some(id) = run.endnote_id
+            && state.pb.endnote_ids_set.insert(id)
+        {
+            state.pb.endnote_ids.push(id);
         }
     }
 
@@ -2966,9 +2961,9 @@ fn render_paragraph_block(
 
     if para.page_break_after {
         state.pb.flush_page(sect_idx);
-        state.pb.slot_top = effective_slot_top(sp, false, &ctx);
+        state.pb.slot_top = effective_slot_top(sp, false, ctx);
         state.pb.column_top_y = state.pb.slot_top;
-        state.effective_margin_bottom = compute_effective_margin_bottom(sp, false, &ctx);
+        state.effective_margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
         state.pb.is_first_page_of_section = false;
         state.prev_space_after = 0.0;
         state.current_col = 0;
@@ -3367,26 +3362,25 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             }
             // §17.3.3.1 br clear="all": content after this paragraph restarts
             // below any floating objects.
-            if let Block::Paragraph(p) = block {
-                if p.clears_floats {
-                    if let Some(ref fz) = state.pb.float_zone {
-                        if state.pb.slot_top > fz.bottom_y {
-                            // The line following the break resumes below the
-                            // float and still occupies its full line height
-                            // there (the break paragraph's mark line).
-                            let (fs, lhr, _) = tallest_run_metrics(&p.runs, ctx.fonts);
-                            let ls = p.line_spacing.unwrap_or(ctx.doc_line_spacing);
-                            state.pb.slot_top = fz.bottom_y - resolve_line_h(ls, fs, lhr);
-                        }
-                        state.pb.float_zone = None;
-                    }
+            if let Block::Paragraph(p) = block
+                && p.clears_floats
+                && let Some(ref fz) = state.pb.float_zone
+            {
+                if state.pb.slot_top > fz.bottom_y {
+                    // The line following the break resumes below the
+                    // float and still occupies its full line height
+                    // there (the break paragraph's mark line).
+                    let (fs, lhr, _) = tallest_run_metrics(&p.runs, ctx.fonts);
+                    let ls = p.line_spacing.unwrap_or(ctx.doc_line_spacing);
+                    state.pb.slot_top = fz.bottom_y - resolve_line_h(ls, fs, lhr);
                 }
+                state.pb.float_zone = None;
             }
             // Clear float zone once cursor passes below it
-            if let Some(ref fz) = state.pb.float_zone {
-                if state.pb.slot_top <= fz.bottom_y {
-                    state.pb.float_zone = None;
-                }
+            if let Some(ref fz) = state.pb.float_zone
+                && state.pb.slot_top <= fz.bottom_y
+            {
+                state.pb.float_zone = None;
             }
 
             state.global_block_idx += 1;
@@ -3408,21 +3402,21 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         let (.., si) = state.pb.page_section_indices[page_idx];
         let sp = &doc.sections[si].properties;
 
-        if let Some(cfg) = &sp.columns {
-            if cfg.sep {
-                let mut x = sp.margin_left;
-                for (i, col) in cfg.columns.iter().enumerate() {
-                    x += col.width;
-                    if i < cfg.columns.len() - 1 {
-                        let mid_x = x + col.space / 2.0;
-                        content.save_state();
-                        content.set_line_width(0.5);
-                        content.move_to(mid_x, sp.margin_bottom);
-                        content.line_to(mid_x, sp.page_height - sp.margin_top);
-                        content.stroke();
-                        content.restore_state();
-                        x += col.space;
-                    }
+        if let Some(cfg) = &sp.columns
+            && cfg.sep
+        {
+            let mut x = sp.margin_left;
+            for (i, col) in cfg.columns.iter().enumerate() {
+                x += col.width;
+                if i < cfg.columns.len() - 1 {
+                    let mid_x = x + col.space / 2.0;
+                    content.save_state();
+                    content.set_line_width(0.5);
+                    content.move_to(mid_x, sp.margin_bottom);
+                    content.line_to(mid_x, sp.page_height - sp.margin_top);
+                    content.stroke();
+                    content.restore_state();
+                    x += col.space;
                 }
             }
         }

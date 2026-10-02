@@ -447,12 +447,12 @@ pub(super) fn parse_list_info(
         .and_then(|m| m.get(&ilvl))
         .copied();
     let num_key_original: u32 = num_id_str.parse().unwrap_or(0);
-    if let Some(restart) = override_start {
-        if applied_overrides.insert((num_key_original, ilvl)) {
-            // First time seeing this numId+ilvl override — reset the
-            // shared counter so the next increment produces restart.
-            counters.insert((abs_key, ilvl), restart - 1);
-        }
+    if let Some(restart) = override_start
+        && applied_overrides.insert((num_key_original, ilvl))
+    {
+        // First time seeing this numId+ilvl override — reset the
+        // shared counter so the next increment produces restart.
+        counters.insert((abs_key, ilvl), restart - 1);
     }
 
     let start = override_start.unwrap_or(def.start);

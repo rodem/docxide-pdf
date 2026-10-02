@@ -56,11 +56,11 @@ pub(super) fn apply_color_transforms(base: [u8; 3], t: &ColorTransforms) -> [u8;
             (color[2] as f32 * shade).clamp(0.0, 255.0) as u8,
         ];
     }
-    if let Some(sat_mod) = t.sat_mod {
-        if (sat_mod - 1.0).abs() > 0.001 {
-            let (h, s, l) = rgb_to_hsl(color);
-            color = hsl_to_rgb(h, (s * sat_mod).clamp(0.0, 1.0), l);
-        }
+    if let Some(sat_mod) = t.sat_mod
+        && (sat_mod - 1.0).abs() > 0.001
+    {
+        let (h, s, l) = rgb_to_hsl(color);
+        color = hsl_to_rgb(h, (s * sat_mod).clamp(0.0, 1.0), l);
     }
     if t.lum_mod.is_some() || t.lum_off.is_some() {
         let m = t.lum_mod.unwrap_or(1.0);

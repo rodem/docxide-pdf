@@ -79,11 +79,11 @@ fn stext_lines(xml_lines: Vec<&str>) -> Vec<String> {
     lines.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
     let mut clusters: Vec<Vec<(f64, f64, String)>> = Vec::new();
     for item in lines {
-        if let Some(last) = clusters.last_mut() {
-            if (item.1 - last[0].1).abs() < 8.0 {
-                last.push(item);
-                continue;
-            }
+        if let Some(last) = clusters.last_mut()
+            && (item.1 - last[0].1).abs() < 8.0
+        {
+            last.push(item);
+            continue;
         }
         clusters.push(vec![item]);
     }

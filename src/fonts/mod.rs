@@ -633,7 +633,7 @@ pub(crate) fn register_font(
         .split(';')
         .map(|s| word_substitute(s.trim()).unwrap_or(s.trim()))
         .filter(|c| !(has_alt && discovery::is_mac_only_family(c)))
-        .find_map(|c| try_candidate(c))
+        .find_map(&mut try_candidate)
         .or_else(|| {
             let entry = table_entry?;
             let alt = entry.alt_name.as_ref()?;

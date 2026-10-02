@@ -802,15 +802,15 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                     let mut has_text = false;
                     let mut has_inline_images = false;
                     for run in &mut runs {
-                        if let Some(tfs) = eff_tbl_font_size {
-                            if run.font_size_from_default {
-                                run.font_size = tfs;
-                            }
+                        if let Some(tfs) = eff_tbl_font_size
+                            && run.font_size_from_default
+                        {
+                            run.font_size = tfs;
                         }
-                        if let Some(tfn) = eff_tbl_font_name {
-                            if run.font_name_from_default {
-                                run.font_name = tfn.to_string();
-                            }
+                        if let Some(tfn) = eff_tbl_font_name
+                            && run.font_name_from_default
+                        {
+                            run.font_name = tfn.to_string();
                         }
                         if eff_tbl_bold == Some(true) && !run.bold_is_direct {
                             run.bold = true;
@@ -818,10 +818,10 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         if eff_tbl_italic == Some(true) && !run.italic_is_direct {
                             run.italic = true;
                         }
-                        if let Some(cc) = cond_color {
-                            if run.color.is_none() {
-                                run.color = Some(cc);
-                            }
+                        if let Some(cc) = cond_color
+                            && run.color.is_none()
+                        {
+                            run.color = Some(cc);
                         }
                         if !run.text.is_empty() || run.is_tab {
                             has_text = true;

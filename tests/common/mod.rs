@@ -105,10 +105,10 @@ pub fn discover_fixtures() -> io::Result<Vec<PathBuf>> {
             continue;
         }
         let gname = group.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if let Some(ref gf) = group_filter {
-            if gname != gf.as_str() {
-                continue;
-            }
+        if let Some(ref gf) = group_filter
+            && gname != gf.as_str()
+        {
+            continue;
         }
         for entry in fs::read_dir(&group)? {
             let path = entry?.path();
@@ -202,10 +202,10 @@ fn dir_newest_mtime(dir: &Path) -> std::time::SystemTime {
             if sub > newest {
                 newest = sub;
             }
-        } else if let Ok(mtime) = fs::metadata(&path).and_then(|m| m.modified()) {
-            if mtime > newest {
-                newest = mtime;
-            }
+        } else if let Ok(mtime) = fs::metadata(&path).and_then(|m| m.modified())
+            && mtime > newest
+        {
+            newest = mtime;
         }
     }
     newest
@@ -335,10 +335,10 @@ pub fn pdf_page_count(pdf: &Path) -> Result<usize, String> {
         .map_err(|e| format!("Failed to run mutool info: {e}"))?;
     let text = String::from_utf8_lossy(&output.stdout);
     for line in text.lines() {
-        if let Some(rest) = line.strip_prefix("Pages:") {
-            if let Ok(n) = rest.trim().parse::<usize>() {
-                return Ok(n);
-            }
+        if let Some(rest) = line.strip_prefix("Pages:")
+            && let Ok(n) = rest.trim().parse::<usize>()
+        {
+            return Ok(n);
         }
     }
     Err("Could not determine page count".to_string())
@@ -412,7 +412,7 @@ pub fn pngs_fresh(pdf: &Path, screenshot_dir: &Path) -> bool {
     pngs.iter().all(|e| {
         e.metadata()
             .and_then(|m| m.modified())
-            .map_or(false, |t| t >= pdf_mtime)
+            .is_ok_and(|t| t >= pdf_mtime)
     })
 }
 
@@ -618,7 +618,7 @@ pub fn find_libreoffice() -> Option<PathBuf> {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
-        .map_or(false, |s| s.success())
+        .is_ok_and(|s| s.success())
     {
         return Some(PathBuf::from("soffice"));
     }

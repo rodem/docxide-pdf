@@ -355,11 +355,11 @@ pub(super) fn collect_and_register_fonts(
                                     let key = smartart_font_key_str(name, run.bold, run.italic);
                                     let chars = used_chars_per_font.entry(key).or_default();
                                     chars.extend(run.text.chars());
-                                    if i == 0 {
-                                        if let Some(ref b) = sa_para.bullet {
-                                            chars.extend(b.chars());
-                                            chars.insert(' ');
-                                        }
+                                    if i == 0
+                                        && let Some(ref b) = sa_para.bullet
+                                    {
+                                        chars.extend(b.chars());
+                                        chars.insert(' ');
                                     }
                                 }
                             }
