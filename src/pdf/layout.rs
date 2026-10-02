@@ -107,6 +107,13 @@ fn word_pair_rule(a: char, b: char) -> Option<bool> {
     if a == '-' && (b == '-' || b.is_ascii_digit()) {
         return Some(true);
     }
+    // Word breaks after any breaking space, also before what LB13 glues to it
+    // (`.`, `,`, `/`, `)`, `!`): czech_wastewater_discharge_permit wraps
+    // "Telefon" + 3 spaces + a dot leader, czech_works_contract before
+    // ",,zákon“", stem_partnerships before "/ events".
+    if is_break_space(a) && !is_break_space(b) {
+        return Some(true);
+    }
     // Class IN allows a break after an ellipsis before digits, but Word keeps
     // tokens like TOC dot-leaders typed as "…………45" unbreakable.
     if matches!(a, '\u{2024}' | '\u{2025}' | '\u{2026}') && !b.is_whitespace() {
