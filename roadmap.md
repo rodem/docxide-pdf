@@ -788,6 +788,21 @@ Found while doing it: `tests/text_boundary.rs` has had no `#[test]` since fb9373
 (2026-09-03), so the TxtBnd values in `tests/baselines.json` are frozen; whether that
 was intended is unverified.
 
+**Other Rust converters checked (2026-10-02)**, same scorer, 220 fixtures
+(cases/scraped/samples), ours 62.4 mean Jaccard on the same run:
+- `dxpdf` 0.8.1 (Skia, MIT, ~110k lines, spec-first with Microsoft's
+  [MS-OI29500] implementer notes cited at each Word deviation): 19.8 mean /
+  10.6 median, 8 strict-parse failures on real-world files (duplicate XML
+  children, `10923f` read as a float), 44 page-count mismatches, ~0.9 s per
+  document (ours ~0.04 s). No fonts flag: it reads the host font system, so it was scored
+  with a copy of `fonts/` in `~/Library/Fonts`. **That folder also changes our
+  own output** (user fonts outrank the vendored ones; 80 of 220 fixtures moved,
+  some 88 → 5) — never leave it in place, and score ours without it.
+- `libreoffice-pure` 0.5.8: a document-generation toolkit, not a layout engine
+  (≈6k lines for DOCX import + layout, standard-14 Helvetica only): 2.3 mean.
+- `libreoffice_convert_rust` 0.1.0: a wrapper that shells out to `soffice`;
+  its output is LibreOffice's.
+
 ## Picture Effects (PARTIALLY DONE)
 
 **Done:** Smooth outer shadow (rasterized Gaussian blur mask via SMask), soft edge (edge-fade SMask on image), glow (centered blur), inner shadow (inverted blur mask), reflection (flipped image with gradient SMask). All use the same rasterized mask + SMask XObject infrastructure. Test fixtures: case56 (shadow variations), case57 (2D effects), case58 (3D effects — deferred).

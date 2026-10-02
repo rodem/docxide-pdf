@@ -1,5 +1,5 @@
 {
-  "next_id": 252,
+  "next_id": 257,
   "annotations": [
     {
       "id": 208,
@@ -692,7 +692,7 @@
       "y_pt": 458.20145,
       "note": "Spurious sqare thing after \"date.\" here. Not present in reference.\n\nTRIAGE (2026-10-02): no longer reproduces at 48a4eba0 — only spaces follow \"date.\" in the fresh render.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 249,
@@ -724,6 +724,61 @@
       "x_pt": 297.0,
       "y_pt": 724.16,
       "note": "Header bottom is wrong: Word draws three thin rules at 120.3-121.8pt from the top (y 721.7-720.2), we draw one 0.5pt rule at 117.8pt. The body starts 1.17pt below Word (149.80 vs 150.97 from top). Since ed5e495c the Korinna BT paragraph marks under the header (family roman, altName Cambria Math, rejected) are Cambria-tall, adding 0.58pt to the old 0.59pt (J 48.3 -> 34.5). Which face and height Word uses for those marks is unknown; fix the header geometry first.",
+      "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 252,
+      "case": "scraped/nabl_lab_preassessment_guidelines",
+      "page": 0,
+      "source": "Generated",
+      "x_pt": 142.31418,
+      "y_pt": 718.8507,
+      "note": "mystic square outline around logo",
+      "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 253,
+      "case": "scraped/nabl_lab_preassessment_guidelines",
+      "page": 10,
+      "source": "Generated",
+      "x_pt": 546.04004,
+      "y_pt": 82.24475,
+      "note": "Is this \"NPF 2\" text right?  I do not see it in the reference",
+      "fixed": true,
+      "cleared": true
+    },
+    {
+      "id": 254,
+      "case": "scraped/nabl_lab_preassessment_guidelines",
+      "page": 10,
+      "source": "Generated",
+      "x_pt": 537.98706,
+      "y_pt": 83.49414,
+      "note": "NPF 2 on wrong page",
+      "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 255,
+      "case": "scraped/nabl_lab_preassessment_guidelines",
+      "page": 11,
+      "source": "Generated",
+      "x_pt": 265.0295,
+      "y_pt": 786.3405,
+      "note": "Content starts way too high",
+      "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 256,
+      "case": "scraped/czech_wastewater_discharge_permit",
+      "page": 4,
+      "source": "Generated",
+      "x_pt": 88.24426,
+      "y_pt": 770.7291,
+      "note": "Missing header",
       "fixed": false,
       "cleared": false
     }

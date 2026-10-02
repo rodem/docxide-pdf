@@ -52,6 +52,10 @@ tools/deploy_comparison.sh [remote] [branch]           # publish comparison/ (wo
 # CI does both on every push to main: .github/workflows/comparison.yml (fonts come from the private sverrejb/docxide-pdf-assets repo; only tracked cases/ are compared)
 # MiniPdf = the Rust crate's CLI (`cargo install minipdf-cli`), never the .NET engine; rdocx via `cargo install rdocx`; office2pdf via `cargo install office2pdf-cli`; LibreOffice via soffice
 
+# Word for Mac, unattended: export .docx → .pdf with Word itself (probe documents, what-if experiments)
+python3 tools/word_export.py <file-or-dir>... [--out DIR] [--force] [--timeout S]   # stages inside Word's container, answers dialogs, FAIL per bad file; needs the sandbox off
+python3 tools/word_export.py --check                   # preflight: Word present, Automation granted
+
 # Accuracy work: verify each rule change on all fixtures and, where available, an external corpus
 tools/score_snapshot.sh <label> [<prev label>]         # full visual suite → tests/output/snapshots/<label>.json, compared with <prev>
 python3 tools/compare_scores.py <a.json> <b.json>      # group means + every case that moved

@@ -570,6 +570,12 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Both text fields request focus every frame; with both open they steal it from
+        // each other and neither ever sees a keystroke, so a new note closes the search.
+        if self.pending_annotation.is_some() && self.search_active {
+            self.search_active = false;
+            self.search_query.clear();
+        }
         // Handle keyboard input (skip when text input has focus)
         let text_has_focus = (self.pending_annotation.is_some() || self.search_active)
             && ctx.memory(|m| m.focused().is_some());
