@@ -218,13 +218,30 @@ fn render_cell_inline_image(
     cursor_y: f32,
     cm: &CellMargins,
 ) -> f32 {
-    let text_w = (col_w - cm.left - cm.right).max(0.0);
-    let img_x = match para.alignment {
-        Alignment::Center => cell_x + cm.left + (text_w - para.image_width) / 2.0,
-        Alignment::Right => cell_x + cm.left + text_w - para.image_width,
-        _ => cell_x + cm.left,
-    };
+    // The picture is the paragraph's first line, so it starts at the first-line
+    // indent: nabl's logo paragraph (w:ind left=-198) sits 9.9pt into the cell
+    // margin in Word.
+    let left = cm.left + para.indent_left + para.indent_first_line - para.indent_hanging;
+    let text_w = (col_w - left - cm.right - para.indent_right).max(0.0);
+    let img_x = cell_x
+        + left
+        + match para.alignment {
+            Alignment::Center => (text_w - para.image_width) / 2.0,
+            Alignment::Right => text_w - para.image_width,
+            _ => 0.0,
+        };
     let img_y = cursor_y - para.image_height;
+
+    // Word clips a picture wider than its cell to the cell's edges (nabl's
+    // 90.75pt logo in an 81pt column).
+    let clip = img_x < cell_x || img_x + para.image_width > cell_x + col_w;
+    if clip {
+        content.save_state();
+        content
+            .rect(cell_x, img_y - 1.0, col_w, para.image_height + 2.0)
+            .clip_nonzero()
+            .end_path();
+    }
 
     if let Some(ref shadow) = para.image_shadow {
         super::color::draw_image_shadow(
@@ -270,6 +287,9 @@ fn render_cell_inline_image(
             para.image_stroke_width,
             para.image_clip.as_ref(),
         );
+    }
+    if clip {
+        content.restore_state();
     }
 
     para.image_height
