@@ -244,6 +244,18 @@ pub(super) struct TableBordersDef {
     pub(super) inside_v: CellBorder,
 }
 
+/// A `w:tblBorders` or `w:tcBorders` set.
+pub(super) fn parse_table_borders_def(bdr_node: roxmltree::Node) -> TableBordersDef {
+    TableBordersDef {
+        top: parse_cell_border(bdr_node, "top"),
+        bottom: parse_cell_border(bdr_node, "bottom"),
+        left: parse_cell_border_left(bdr_node),
+        right: parse_cell_border_right(bdr_node),
+        inside_h: parse_cell_border(bdr_node, "insideH"),
+        inside_v: parse_cell_border(bdr_node, "insideV"),
+    }
+}
+
 /// Conditional formatting for a specific table region (e.g. firstRow, band1Horz).
 pub(super) struct TableConditionalFormat {
     pub(super) borders: Option<TableBordersDef>,
@@ -636,20 +648,17 @@ pub(super) fn parse_styles<R: Read + Seek>(
     let mut style_id_to_name = HashMap::new();
     let mut default_paragraph_style_id = String::from("Normal");
 
-    let Some(mut xml_content) = read_zip_text(zip, "word/styles.xml") else {
-        return StylesInfo {
-            defaults,
-            paragraph_styles,
-            character_styles,
-            table_styles: HashMap::new(),
-            style_id_to_name,
-            default_paragraph_style_id,
-        };
-    };
-    if from_normal_template {
-        xml_content = with_normal_template(&xml_content);
-    }
-    let Ok(xml) = roxmltree::Document::parse(&xml_content) else {
+    let xml_content = read_zip_text(zip, "word/styles.xml").map(|xml| {
+        if from_normal_template {
+            with_normal_template(&xml)
+        } else {
+            xml
+        }
+    });
+    let Some(xml) = xml_content
+        .as_deref()
+        .and_then(|xml| roxmltree::Document::parse(xml).ok())
+    else {
         return StylesInfo {
             defaults,
             paragraph_styles,
@@ -965,14 +974,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
             Some("table") => {
                 let base_borders = wml(style_node, "tblPr")
                     .and_then(|pr| wml(pr, "tblBorders"))
-                    .map(|tbl_borders| TableBordersDef {
-                        top: parse_cell_border(tbl_borders, "top"),
-                        bottom: parse_cell_border(tbl_borders, "bottom"),
-                        left: parse_cell_border_left(tbl_borders),
-                        right: parse_cell_border_right(tbl_borders),
-                        inside_h: parse_cell_border(tbl_borders, "insideH"),
-                        inside_v: parse_cell_border(tbl_borders, "insideV"),
-                    });
+                    .map(parse_table_borders_def);
 
                 // Parse base rPr from the table style
                 let base_rpr = wml(style_node, "rPr");
@@ -989,17 +991,9 @@ pub(super) fn parse_styles<R: Read + Seek>(
                     let Some(cond_type) = child.attribute((WML_NS, "type")) else {
                         continue;
                     };
-                    let cond_borders =
-                        wml(child, "tcPr")
-                            .and_then(|tc| wml(tc, "tcBorders"))
-                            .map(|b| TableBordersDef {
-                                top: parse_cell_border(b, "top"),
-                                bottom: parse_cell_border(b, "bottom"),
-                                left: parse_cell_border_left(b),
-                                right: parse_cell_border_right(b),
-                                inside_h: parse_cell_border(b, "insideH"),
-                                inside_v: parse_cell_border(b, "insideV"),
-                            });
+                    let cond_borders = wml(child, "tcPr")
+                        .and_then(|tc| wml(tc, "tcBorders"))
+                        .map(parse_table_borders_def);
                     let cond_shading = wml(child, "tcPr")
                         .and_then(|tc| wml(tc, "shd"))
                         .and_then(super::shd_color);
@@ -1009,7 +1003,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
                     let cond_color = cond_rpr
                         .and_then(|rpr| wml_attr(rpr, "color"))
                         .and_then(parse_text_color);
-                    let cond_font_size = cond_rpr.and_then(|rpr| parse_font_size(rpr));
+                    let cond_font_size = cond_rpr.and_then(parse_font_size);
                     let cond_font_name = cond_rpr.and_then(rfonts_ascii_name);
                     if cond_borders.is_some()
                         || cond_shading.is_some()
