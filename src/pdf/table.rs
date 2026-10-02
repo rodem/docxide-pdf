@@ -482,7 +482,7 @@ fn render_cell_content(
                 );
                 end_cell_tag(content, &tagger);
 
-                cursor_y -= para.lines.len() as f32 * para.line_h;
+                cursor_y -= super::table_layout::cell_lines_h(para, 0..para.lines.len());
 
                 if let Some(src) = source_para {
                     render_cell_floating_shapes(
@@ -920,7 +920,7 @@ fn render_partial_cell_content(
                 );
                 end_cell_tag(content, &tagger);
 
-                cursor_y -= (l1 - l0) as f32 * para.line_h;
+                cursor_y -= super::table_layout::cell_lines_h(para, l0..l1);
             }
             CellContentItem::NestedTable { height } => {
                 let bi = item_to_block.get(pi).copied().unwrap_or(0);

@@ -70,8 +70,14 @@ pub(super) fn para_block_height(p: &CellParagraphLayout) -> f32 {
             p.line_h
         }
     } else {
-        p.lines.len() as f32 * p.line_h
+        cell_lines_h(p, 0..p.lines.len())
     }
+}
+
+/// Height of a cell paragraph's lines `range`, each at its own pitch
+/// (`size_lines_by_own_runs`).
+pub(super) fn cell_lines_h(p: &CellParagraphLayout, range: std::ops::Range<usize>) -> f32 {
+    p.lines[range].iter().map(|l| l.pitch.unwrap_or(p.line_h)).sum()
 }
 
 /// Auto-fit column widths so that the longest non-breakable word in each column
@@ -732,7 +738,7 @@ pub(super) fn compute_row_layouts(
                                         para.indent_hanging
                                     };
                                     let has_tabs = runs.iter().any(|r| r.is_tab);
-                                    let lines = if has_tabs {
+                                    let mut lines = if has_tabs {
                                         build_tabbed_line(
                                             runs,
                                             ctx.fonts,
@@ -766,7 +772,19 @@ pub(super) fn compute_row_layouts(
                                                 max_rotated_line_w.max(line.total_width);
                                         }
                                     }
-                                    total_h += lines.len() as f32 * line_h;
+                                    // Each line is as tall as its own runs, as in body
+                                    // text: nabl's "(Mark √ in the" header line, √ a
+                                    // w:sym Symbol run, steps 12.24 where Arial gives 11.50.
+                                    if !east_asian && !matches!(effective_ls, crate::model::LineSpacing::Exact(_)) {
+                                        super::layout::size_lines_by_own_runs(
+                                            &mut lines,
+                                            ctx.fonts,
+                                            effective_ls,
+                                            line_h,
+                                            font_size * ascender_ratio,
+                                        );
+                                    }
+                                    total_h += lines.iter().map(|l| l.pitch.unwrap_or(line_h)).sum::<f32>();
                                     lines
                                 } else {
                                     if para.paragraph_mark_vanish {
@@ -1061,7 +1079,7 @@ pub(super) fn cursor_chunks(
 pub(super) fn item_chunk_height(item: &CellContentItem, l0: usize, l1: Option<usize>) -> f32 {
     match item {
         CellContentItem::Paragraph(p) if !p.lines.is_empty() => {
-            (l1.unwrap_or(p.lines.len()) - l0) as f32 * p.line_h
+            cell_lines_h(p, l0..l1.unwrap_or(p.lines.len()))
         }
         CellContentItem::Paragraph(p) => para_block_height(p),
         CellContentItem::NestedTable { height } => *height,
@@ -1106,7 +1124,14 @@ pub(super) fn find_cell_split(
         }
         if let CellContentItem::Paragraph(p) = item {
             let remaining = p.lines.len().saturating_sub(l0);
-            let room = ((available_h - h - sb) / p.line_h).floor().max(0.0) as usize;
+            let mut used = h + sb;
+            let room = p.lines[l0..]
+                .iter()
+                .take_while(|l| {
+                    used += l.pitch.unwrap_or(p.line_h);
+                    used <= available_h
+                })
+                .count();
             let fit = room.min(remaining.saturating_sub(2));
             if fit >= 2 {
                 return CellCursor { item: pi, line: l0 + fit };

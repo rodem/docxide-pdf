@@ -216,6 +216,9 @@ pub(super) struct WordChunk {
     pub(super) pdf_font: String,
     pub(super) text: String,
     pub(super) font_size: f32,
+    /// The run's own size before small caps or super/subscript shrink it; a
+    /// line is as tall as its runs at this size (`size_lines_by_own_runs`).
+    pub(super) line_font_size: f32,
     pub(super) color: Option<[u8; 3]>,
     pub(super) highlight: Option<[u8; 3]>,
     pub(super) shading: Option<[u8; 3]>,
@@ -312,6 +315,7 @@ impl WordChunk {
             pdf_font: entry.pdf_name.clone(),
             text: word.to_string(),
             font_size: eff_fs,
+            line_font_size: run.font_size,
             color: run.color,
             highlight: run.highlight,
             shading: if run.shading.is_none() && !run.comment_ids.is_empty() {
@@ -370,6 +374,7 @@ impl WordChunk {
             pdf_font: String::new(),
             text: String::new(),
             font_size,
+            line_font_size: font_size,
             color: None,
             highlight: None,
             shading: None,
@@ -424,6 +429,7 @@ impl WordChunk {
             pdf_font: entry.pdf_name.clone(),
             text,
             font_size,
+            line_font_size: font_size,
             color,
             highlight: None,
             shading: None,
@@ -481,6 +487,7 @@ impl WordChunk {
             pdf_font: entry.pdf_name.clone(),
             text: String::new(),
             font_size,
+            line_font_size: font_size,
             color,
             highlight: None,
             shading: None,
@@ -711,8 +718,11 @@ pub(super) fn size_lines_by_own_runs(
             let pad = c.border.as_ref().map_or(0.0, |b| b.width_pt + b.space_pt);
             // A raised or lowered run keeps the line's box: lithuanian_excise's
             // subscript "CO2" lines step like the lines around them.
-            ascent = ascent.max(c.font_size * ar + pad);
-            below = below.max(c.font_size * (lhr - ar).max(0.0) + pad);
+            // Small caps' 80% letters and raised/lowered runs keep the run's
+            // own size: italian_project_proposal's small-caps cell lines step
+            // 14.64 like full-size ones.
+            ascent = ascent.max(c.line_font_size * ar + pad);
+            below = below.max(c.line_font_size * (lhr - ar).max(0.0) + pad);
             sized = true;
         }
         if !sized {
