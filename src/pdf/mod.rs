@@ -3005,8 +3005,6 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         effect_floating_names,
         effect_inline_names,
         effect_hf_names,
-        effect_hf_inline_names: _,
-        effect_hf_floating_names,
         effect_table_names,
     } = embed_all_images(doc, &mut pdf, &mut alloc);
 
@@ -3489,13 +3487,12 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
     let total_pages = state.pb.all_contents.len();
 
     // Pre-index header/footer image maps by (section_index, hf_type)
-    // Fields: (para_images, inline_images, floating_images, effect_para, effect_floating)
+    // Fields: (para_images, inline_images, floating_images, effect_para)
     type HfMaps = (
         HashMap<usize, String>,
         HashMap<(usize, usize), String>,
         HashMap<(usize, usize), String>,
         HashMap<usize, EffectXObjs>,
-        HashMap<(usize, usize), EffectXObjs>,
     );
     let mut hf_maps_index: HashMap<(usize, u8), HfMaps> = HashMap::new();
     for ((s, t, pi), name) in &hf_image_names {
@@ -3525,13 +3522,6 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             .or_default()
             .3
             .insert(*pi, fx.clone());
-    }
-    for ((s, t, pi, fi), fx) in &effect_hf_floating_names {
-        hf_maps_index
-            .entry((*s, *t))
-            .or_default()
-            .4
-            .insert((*pi, *fi), fx.clone());
     }
     let empty_hf_maps: HfMaps = Default::default();
 
@@ -3610,7 +3600,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
         let (header, hdr_type, hdr_si) = resolve_header_for_page(doc, si, is_first, page_num);
         if let Some(header_data) = header {
-            let (pi_map, ii_map, fi_map, sh_para, sh_float) = hf_maps_index
+            let (pi_map, ii_map, fi_map, sh_para) = hf_maps_index
                 .get(&(hdr_si, hdr_type))
                 .unwrap_or(&empty_hf_maps);
             let pc = HfPageContext {
@@ -3620,7 +3610,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 inline_image_names: ii_map,
                 floating_image_names: fi_map,
                 effect_para_names: sh_para,
-                effect_floating_names: sh_float,
+
                 styleref_values: page_styleref,
                 page_num_format: effective_page_num_format,
             };
@@ -3638,7 +3628,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
         let (footer, ftr_type, ftr_si) = resolve_footer_for_page(doc, si, is_first, page_num);
         if let Some(footer_data) = footer {
-            let (pi_map, ii_map, fi_map, sh_para, sh_float) = hf_maps_index
+            let (pi_map, ii_map, fi_map, sh_para) = hf_maps_index
                 .get(&(ftr_si, ftr_type))
                 .unwrap_or(&empty_hf_maps);
             let pc = HfPageContext {
@@ -3648,7 +3638,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 inline_image_names: ii_map,
                 floating_image_names: fi_map,
                 effect_para_names: sh_para,
-                effect_floating_names: sh_float,
+
                 styleref_values: page_styleref,
                 page_num_format: effective_page_num_format,
             };

@@ -925,28 +925,6 @@ fn vert_y_offset(run: &Run) -> f32 {
 
 const DEFAULT_TAB_INTERVAL: f32 = 36.0; // 0.5 inches
 
-/// Count CJK↔Latin/Digit boundaries in text for autoSpaceDE/DN.
-/// Word adds ~1/4 em spacing at each boundary by default.
-#[allow(dead_code)]
-fn count_script_boundaries(text: &str) -> usize {
-    let mut count = 0;
-    let mut prev_cjk: Option<bool> = None;
-    for ch in text.chars() {
-        if ch.is_whitespace() {
-            prev_cjk = None;
-            continue;
-        }
-        let is_cjk = crate::docx::is_east_asian_char(ch) || is_cjk_punctuation(ch);
-        if let Some(was_cjk) = prev_cjk
-            && was_cjk != is_cjk
-        {
-            count += 1;
-        }
-        prev_cjk = Some(is_cjk);
-    }
-    count
-}
-
 fn is_cjk_punctuation(ch: char) -> bool {
     matches!(ch as u32,
         0x3000..=0x303F  // CJK Symbols and Punctuation (includes ，。、)
@@ -2784,7 +2762,6 @@ pub(super) fn render_paragraph_lines(
                     .flatten();
 
                 if let (Some(primary), Some(fallback)) = (primary_entry, fallback_entry) {
-                    let _primary_gids = primary.char_to_gid.as_ref();
                     let fallback_gids = fallback.char_to_gid.as_ref();
                     // Split text into runs of primary vs fallback chars
                     let mut seg_start = 0;
