@@ -13,6 +13,8 @@ use super::cache::{CachedFace, CachedFile, FontCache, dir_mtime, load_cache, sav
 type FontLookup = HashMap<(String, bool, bool), (PathBuf, u32)>;
 
 static FONT_INDEX: OnceLock<FontLookup> = OnceLock::new();
+/// Lowercase families that only Mac Roman–named macOS system faces provide.
+static MAC_ONLY_FAMILIES: OnceLock<HashSet<String>> = OnceLock::new();
 
 /// Return all localized family names for a font face (deduplicated by lowercase),
 /// and whether they came only from Mac Roman records: macOS system faces such as
@@ -217,9 +219,14 @@ fn scan_font_dirs() -> FontLookup {
         }
     }
 
+    let mut mac_only = HashSet::new();
     for (key, value) in mac_roman_index {
-        index.entry(key).or_insert(value);
+        if let std::collections::hash_map::Entry::Vacant(slot) = index.entry(key) {
+            mac_only.insert(slot.key().0.clone());
+            slot.insert(value);
+        }
     }
+    let _ = MAC_ONLY_FAMILIES.set(mac_only);
 
     if !no_cache {
         save_cache(&new_cache);
@@ -239,6 +246,13 @@ fn scan_font_dirs() -> FontLookup {
 
 fn get_font_index() -> &'static FontLookup {
     FONT_INDEX.get_or_init(scan_font_dirs)
+}
+
+/// True if only a macOS system face provides this family (Helvetica, Optima…),
+/// which Windows Word, including Mac Word's online PDF export, never has.
+pub(super) fn is_mac_only_family(name: &str) -> bool {
+    get_font_index();
+    MAC_ONLY_FAMILIES.get().is_some_and(|s| s.contains(&name.to_lowercase()))
 }
 
 /// Parse one face of a font file (memory-mapped, so only the tables touched are read).

@@ -500,14 +500,22 @@ pub(crate) fn register_font(
     };
     let cjk_fonts = cjk_fallback_fonts(script, serif);
 
-    // If the fontTable provides an altName, try it first — it's the document's
-    // explicit mapping and more reliable than the system font index (which may
-    // resolve a localized name like "바탕" to a different font than "Batang").
-    // Math fonts are excluded: an altName like "Cambria Math" (seen for
-    // "Korinna BT") has enormous win ascent/descent metrics that balloon every
-    // line; Word substitutes body text with a normal family fallback instead.
-    let result = table_entry
-        .and_then(|entry| {
+    // The fontTable altName only stands in for a missing font: Word draws an
+    // installed Calibri (altName DejaVu Sans, chinese_student_union) and Source
+    // Sans Pro (altName Corbel) as requested. A macOS-only face counts as missing
+    // when there is an altName, since the reference may come from Windows Word:
+    // eco_int's Helvetica (altName Arial) is Arial in Word's online export.
+    // Math fonts are excluded: an altName like "Cambria Math" (seen for "Korinna
+    // BT") has enormous win ascent/descent metrics that balloon every line; Word
+    // substitutes body text with a normal family fallback instead.
+    let has_alt = table_entry.is_some_and(|e| e.alt_name.is_some());
+    let result = font_name
+        .split(';')
+        .map(|s| word_substitute(s.trim()).unwrap_or(s.trim()))
+        .filter(|c| !(has_alt && discovery::is_mac_only_family(c)))
+        .find_map(|c| try_candidate(c))
+        .or_else(|| {
+            let entry = table_entry?;
             let alt = entry.alt_name.as_ref()?;
             // "SignPainter-HouseScript": Word-for-Mac writes this cursive face as
             // altName for fonts missing on the authoring machine (e.g. Merriweather);
@@ -530,12 +538,6 @@ pub(crate) fn register_font(
             }
             log::info!("Font substitution: {primary} → altName \"{alt}\"");
             Some(m)
-        })
-        .or_else(|| {
-            font_name
-                .split(';')
-                .map(|s| s.trim())
-                .find_map(|c| try_candidate(word_substitute(c).unwrap_or(c)))
         })
         .or_else(|| {
             let alias = known_font_alias(primary)?;
@@ -701,6 +703,37 @@ mod tests {
         assert_eq!(cjk_fallback_fonts(CjkScript::Korean, false)[0], "Malgun Gothic");
         assert_eq!(cjk_fallback_fonts(CjkScript::Japanese, true)[0], "MS Mincho");
         assert_eq!(cjk_fallback_fonts(CjkScript::Unknown, true)[0], "MS Mincho");
+    }
+
+    #[test]
+    fn alt_name_only_stands_in_for_a_missing_font() {
+        let resolve = |name: &str| {
+            let table: FontTable = [(
+                name.to_string(),
+                crate::model::FontTableEntry {
+                    alt_name: Some("Arial".into()),
+                    family: FontFamily::Swiss,
+                    charset: None,
+                    pitch_fixed: false,
+                },
+            )]
+            .into();
+            let mut next = 0;
+            let mut alloc = || {
+                next += 1;
+                Ref::new(next)
+            };
+            let chars: HashSet<char> = "Ab".chars().collect();
+            let entry = register_font(
+                &mut Pdf::new(), name, false, false, "F1".into(), &mut alloc,
+                &EmbeddedFonts::new(), &chars, &table, "",
+            );
+            let path = entry.font_path.expect("resolved to a file");
+            path.file_name().unwrap().to_string_lossy().to_lowercase()
+        };
+        assert_eq!(resolve("Calibri"), "calibri.ttf");
+        // macOS's Helvetica (absent elsewhere) yields to the altName.
+        assert_eq!(resolve("Helvetica"), "arial.ttf");
     }
 
     #[test]
