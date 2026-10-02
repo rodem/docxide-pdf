@@ -393,9 +393,11 @@ HTML_TEMPLATE = r"""<!doctype html>
 :root { --bg:#1e1e1e; --panel:#252526; --fg:#ddd; --muted:#888; --accent:#4ea1ff; --border:#3a3a3a; }
 * { box-sizing:border-box; }
 body { margin:0; font:13px/1.4 -apple-system, Helvetica, Arial, sans-serif; background:var(--bg); color:var(--fg); display:grid; grid-template-columns:280px 1fr; grid-template-rows:auto auto 1fr; height:100vh; }
-#legend { grid-column:1/3; padding:3px 10px 5px; font-size:11px; line-height:1.5; color:var(--muted); background:var(--panel); border-bottom:1px solid var(--border); }
+#legend { grid-column:1/3; padding:3px 10px; font-size:11px; line-height:1.5; color:var(--muted); background:var(--panel); border-bottom:1px solid var(--border); }
 #legend b { color:var(--fg); }
-#legend span { margin-right:14px; }
+#legend summary { cursor:pointer; user-select:none; }
+#legend .items { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:6px; margin:4px 0 5px; }
+#legend .item { border:1px solid var(--border); border-radius:6px; background:#2a2a2a; padding:4px 9px; }
 #bar { grid-column:1/3; display:flex; gap:14px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--border); flex-wrap:wrap; }
 #bar label { display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none; }
 #bar .grp { display:inline-flex; gap:8px; align-items:center; padding-right:14px; border-right:1px solid var(--border); }
@@ -403,8 +405,19 @@ body { margin:0; font:13px/1.4 -apple-system, Helvetica, Arial, sans-serif; back
 #bar button:hover { background:#444; }
 kbd { background:#333; border:1px solid #555; border-radius:3px; padding:0 4px; font-size:11px; color:var(--muted); }
 .ver { color:var(--muted); font-weight:400; font-size:11px; }
+#navPos { color:var(--muted); font-size:11px; min-width:5.5em; text-align:center; font-variant-numeric:tabular-nums; }
+body.noside { grid-template-columns:1fr; }
+body.noside #side { display:none; }
 #side { overflow:auto; background:var(--panel); border-right:1px solid var(--border); }
-#side input { width:100%; padding:6px 8px; background:#333; color:var(--fg); border:0; border-bottom:1px solid var(--border); font:inherit; position:sticky; top:0; }
+#sidehead { position:sticky; top:0; z-index:1; background:var(--panel); border-bottom:1px solid var(--border); }
+#filter { width:100%; padding:6px 8px; background:#333; color:var(--fg); border:0; border-bottom:1px solid var(--border); font:inherit; }
+#fx { display:grid; grid-template-columns:auto minmax(0, 1fr); gap:4px 8px; padding:6px 8px; font-size:12px; align-items:center; }
+#fx > label { color:var(--muted); }
+#fx select, #fx input, #fx button { background:#333; color:var(--fg); border:1px solid #555; border-radius:3px; padding:1px 4px; font:inherit; min-width:0; }
+#fx input[type=number] { width:4.5em; }
+#fx .row { display:flex; gap:4px; align-items:center; }
+#fx .foot { grid-column:1/3; display:flex; align-items:center; }
+#fxn { color:var(--muted); margin-right:auto; }
 #side .case { padding:4px 8px; cursor:pointer; border-bottom:1px solid #2e2e2e; display:grid; grid-template-columns:1fr auto; gap:0 8px; align-items:baseline; }
 #side .case:hover { background:#2c2c2c; }
 #side .case.sel { background:#094771; }
@@ -439,6 +452,7 @@ kbd { background:#333; border:1px solid #555; border-radius:3px; padding:0 4px; 
 #more:hover { background:#444; }
 </style>
 <div id="bar">
+  <span class="grp"><button id="sideToggle" title="hide / show the case list (s)">&#9776;</button><button id="prev" title="previous case (&uarr;)">&lsaquo; prev</button><button id="rand" title="random case (r)">random</button><button id="next" title="next case (&darr;)">next &rsaquo;</button><span id="navPos"></span></span>
   <span class="grp" id="engines"></span>
   <span class="grp">
     <span id="pageinfo"></span>
@@ -451,10 +465,17 @@ kbd { background:#333; border:1px solid #555; border-radius:3px; padding:0 4px; 
     <input type="range" id="alpha" min="0" max="100" value="50">
   </span>
   <span class="grp"><button id="viewToggle">Scores table</button></span>
-  <span style="color:var(--muted)"><kbd>1</kbd>-<kbd>6</kbd> engines &nbsp;<kbd>&uarr;</kbd><kbd>&darr;</kbd> cases &nbsp;<kbd>o</kbd> overlay &nbsp;<kbd>m</kbd> more pages &nbsp;<kbd>t</kbd> scores table</span>
+  <span style="color:var(--muted)"><kbd>1</kbd>-<kbd>6</kbd> engines &nbsp;<kbd>&uarr;</kbd><kbd>&darr;</kbd> cases &nbsp;<kbd>r</kbd> random &nbsp;<kbd>s</kbd> case list &nbsp;<kbd>o</kbd> overlay &nbsp;<kbd>m</kbd> more pages &nbsp;<kbd>t</kbd> scores table</span>
 </div>
-<div id="legend"></div>
-<div id="side"><input id="filter" placeholder="filter cases (name, group)…"><div id="list"></div></div>
+<details id="legend"></details>
+<div id="side"><div id="sidehead"><input id="filter" placeholder="filter cases (name, group)…"><div id="fx">
+  <label for="fxGroup">group</label><select id="fxGroup"><option value="">all</option></select>
+  <label for="fxPages">pages</label><select id="fxPages"><option value="">any</option><option value="1-1">1</option><option value="2-3">2–3</option><option value="4-10">4–10</option><option value="11-1e9">11+</option></select>
+  <label for="fxEng">engine</label><select id="fxEng"></select>
+  <label for="fxMetric">score</label><span class="row"><select id="fxMetric"></select> ≤ <input type="number" id="fxMax" min="0" max="100" placeholder="any"></span>
+  <span></span><label class="row"><input type="checkbox" id="fxDiffer"> page count differs from Word</label>
+  <span class="foot"><span id="fxn"></span><button id="fxClear">clear filters</button></span>
+</div></div><div id="list"></div></div>
 <div id="main"><div id="grid"></div><div id="overlay" class="hidden"></div><button id="more" class="hidden">more pages</button><div id="scores" class="hidden"></div></div>
 <script>
 const DATA = __DATA__;
@@ -478,7 +499,8 @@ const save = (k,v) => { try { localStorage.setItem('ec.'+k, JSON.stringify(v)); 
 
 let state = Object.assign({ on: {},
   shown: PAGE_STEP, zoom: 600, ovl: false, ovlA: 'reference', ovlB: 'generated', blend: 'normal', alpha: 50, sel: 0, filter: '',
-  view: 'viewer', sort: { col: 0, dir: 1 } },
+  view: 'viewer', sort: { col: 0, dir: 1 }, noside: false, legend: false,
+  fx: { group: '', pages: '', eng: 'generated', metric: METRICS[0], max: '', differ: false } },
   store('state') || {});
 // Engines added after a viewer state was saved default to visible.
 for (const [k] of ENGINES) if (state.on[k] == null) state.on[k] = true;
@@ -497,7 +519,9 @@ window.onhashchange = () => { if (applyHash()) render(); };
 // engine toggles
 ENGINES.forEach(([key,label],i) => {
   const l = document.createElement('label');
-  l.innerHTML = `<input type="checkbox" data-e="${key}"> ${label}${VERSIONS[key] ? ` <small class="ver">${VERSIONS[key]}</small>` : ''} <kbd>${i+1}</kbd>`;
+  // The version shows in each column header; here it is a tooltip so the bar stays one line.
+  l.innerHTML = `<input type="checkbox" data-e="${key}"> ${label} <kbd>${i+1}</kbd>`;
+  l.title = VERSIONS[key] || '';
   $('#engines').appendChild(l);
   ['#ovlA','#ovlB'].forEach(s => { const o = document.createElement('option'); o.value = key; o.textContent = label; $(s).appendChild(o); });
 });
@@ -505,7 +529,57 @@ document.querySelectorAll('#engines input').forEach(cb => cb.onchange = () => { 
 
 function visibleCases() {
   const f = state.filter.toLowerCase();
-  return DATA.map((c,i) => [c,i]).filter(([c]) => !f || (c.case + ' ' + c.group).toLowerCase().includes(f));
+  return DATA.map((c,i) => [c,i]).filter(([c]) => (!f || (c.case + ' ' + c.group).toLowerCase().includes(f)) && passesFx(c));
+}
+const pageCount = (c, k) => (c.pages[k] || []).length;
+function passesFx(c) {
+  const fx = state.fx;
+  if (fx.group && c.group !== fx.group) return false;
+  if (fx.pages) {
+    const [lo, hi] = fx.pages.split('-').map(Number), n = pageCount(c, 'reference');
+    if (n < lo || n > hi) return false;
+  }
+  if (fx.max !== '') {
+    const v = c.scores[fx.eng]?.[fx.metric];
+    if (v == null || v > +fx.max) return false;
+  }
+  return !fx.differ || pageCount(c, fx.eng) !== pageCount(c, 'reference');
+}
+function select(i) { state.sel = i; state.shown = PAGE_STEP; }
+// Prev/next walk the filtered list and wrap at both ends.
+function step(d) {
+  const vis = visibleCases().map(([, i]) => i); if (!vis.length) return;
+  const at = vis.indexOf(state.sel);
+  select(at < 0 ? vis[0] : vis[(at + d + vis.length) % vis.length]);
+}
+function pickRandom() {
+  const vis = visibleCases(); if (vis.length) select(vis[Math.floor(Math.random() * vis.length)][1]);
+}
+// The sticky filter panel covers the top of the list, so centre the selection rather than scroll it to the nearest edge.
+function showSel() { document.querySelector('#side .sel')?.scrollIntoView({ block: 'center' }); }
+function fxChanged() {
+  const vis = visibleCases();
+  if (vis.length && !vis.some(([, i]) => i === state.sel)) select(vis[0][1]);
+  render(); showSel();
+}
+function setupFx() {
+  const fx = state.fx, add = (sel, value, text) => { const o = document.createElement('option'); o.value = value; o.textContent = text; $(sel).appendChild(o); };
+  const engines = ENGINES.filter(([k]) => k !== 'reference');
+  for (const g of new Set(DATA.map(c => c.group))) add('#fxGroup', g, g);
+  for (const [k, label] of engines) add('#fxEng', k, label);
+  for (const m of METRICS) add('#fxMetric', m, METRIC_LABEL[m]);
+  if (!engines.some(([k]) => k === fx.eng)) fx.eng = engines[0][0];
+  if (!METRICS.includes(fx.metric)) fx.metric = METRICS[0];
+  // Filters saved on an earlier visit may match nothing in today's data; start unfiltered instead of on an empty list.
+  if (!visibleCases().length) Object.assign(fx, { group: '', pages: '', max: '', differ: false });
+  const bind = (id, prop, k) => { $(id)[prop] = fx[k]; $(id).oninput = e => { fx[k] = e.target[prop]; fxChanged(); }; };
+  bind('#fxGroup', 'value', 'group'); bind('#fxPages', 'value', 'pages'); bind('#fxEng', 'value', 'eng');
+  bind('#fxMetric', 'value', 'metric'); bind('#fxMax', 'value', 'max'); bind('#fxDiffer', 'checked', 'differ');
+  $('#fxClear').onclick = () => {
+    Object.assign(fx, { group: '', pages: '', max: '', differ: false }); state.filter = '';
+    $('#filter').value = ''; $('#fxGroup').value = ''; $('#fxPages').value = ''; $('#fxMax').value = ''; $('#fxDiffer').checked = false;
+    fxChanged();
+  };
 }
 function fmt(v) { return v == null ? '–' : v.toFixed(1) + '%'; }
 function fmtA11y(a) { return a ? A11Y.map(k => a[k] == null ? '–' : k.startsWith('a11y_') ? fmt(a[k]) : +a[k].toFixed(1)).join(', ') : '–'; }
@@ -516,13 +590,17 @@ function key(c, k, m) { return m === 'a11y' ? c.scores[k]?.a11y?.ua_deficit ?? n
 
 function renderList() {
   const list = $('#list'); list.innerHTML = '';
-  for (const [c,i] of visibleCases()) {
+  const vis = visibleCases();
+  for (const [c,i] of vis) {
     const d = document.createElement('div');
     d.className = 'case' + (i === state.sel ? ' sel' : '');
     d.innerHTML = `<span class="name" title="${c.case}">${c.case}</span><span class="grp">${c.group}</span>`;
-    d.onclick = () => { state.sel = i; state.shown = PAGE_STEP; state.view = 'viewer'; render(); };
+    d.onclick = () => { select(i); state.view = 'viewer'; render(); };
     list.appendChild(d);
   }
+  const at = vis.findIndex(([, i]) => i === state.sel);
+  $('#navPos').textContent = `${at < 0 ? '–' : at + 1} / ${vis.length}`;
+  $('#fxn').textContent = `${vis.length} of ${DATA.length} cases`;
 }
 
 function renderScores() {
@@ -563,11 +641,12 @@ function renderScores() {
   el.querySelectorAll('th[data-c]').forEach(h => h.onclick = () => {
     const j = +h.dataset.c; state.sort = { col: j, dir: j === state.sort.col ? -state.sort.dir : (j >= 3 ? -1 : 1) }; render();
   });
-  el.querySelectorAll('tbody tr').forEach(tr => tr.onclick = () => { state.sel = +tr.dataset.i; state.shown = PAGE_STEP; state.view = 'viewer'; render(); });
+  el.querySelectorAll('tbody tr').forEach(tr => tr.onclick = () => { select(+tr.dataset.i); state.view = 'viewer'; render(); });
 }
 
 function render() {
   save('state', state);
+  document.body.classList.toggle('noside', state.noside);
   document.querySelectorAll('#engines input').forEach(cb => cb.checked = !!state.on[cb.dataset.e]);
   $('#zoom').value = state.zoom; $('#ovl').checked = state.ovl;
   $('#ovlA').value = state.ovlA; $('#ovlB').value = state.ovlB; $('#blend').value = state.blend; $('#alpha').value = state.alpha;
@@ -639,24 +718,32 @@ $('#ovlA').onchange = e => { state.ovlA = e.target.value; render(); };
 $('#ovlB').onchange = e => { state.ovlB = e.target.value; render(); };
 $('#blend').onchange = e => { state.blend = e.target.value; render(); };
 $('#alpha').oninput = e => { state.alpha = +e.target.value; render(); };
-$('#legend').innerHTML = '<span>All scores are against the Word reference, averaged over the pages both PDFs have; extra pages are ignored.</span>' +
-  TABLE_COLS.map(m => `<span><b>${METRIC_LABEL[m]}</b> ${METRIC_INFO[m]}</span>`).join('');
+$('#sideToggle').onclick = () => { state.noside = !state.noside; render(); showSel(); };
+$('#prev').onclick = () => { step(-1); render(); showSel(); };
+$('#next').onclick = () => { step(1); render(); showSel(); };
+$('#rand').onclick = () => { pickRandom(); render(); showSel(); };
+$('#legend').innerHTML = '<summary><b>How to read the scores</b> · all scores are against the Word reference, averaged over the pages both PDFs have; extra pages are ignored.</summary><div class="items">' +
+  TABLE_COLS.map(m => `<div class="item"><b>${METRIC_LABEL[m]}</b> ${METRIC_INFO[m]}</div>`).join('') + '</div>';
+$('#legend').open = state.legend;
+$('#legend').ontoggle = () => { state.legend = $('#legend').open; save('state', state); };
 $('#filter').value = state.filter;
 $('#filter').oninput = e => { state.filter = e.target.value; renderList(); };
+setupFx();
 document.onkeydown = e => {
-  if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;
-  const vis = visibleCases().map(([,i]) => i); const at = vis.indexOf(state.sel);
-  if (e.key === 'ArrowDown') { state.sel = vis[Math.min(at+1, vis.length-1)] ?? state.sel; state.shown = PAGE_STEP; }
-  else if (e.key === 'ArrowUp') { state.sel = vis[Math.max(at-1, 0)] ?? state.sel; state.shown = PAGE_STEP; }
+  if (e.target.tagName === 'SELECT' || ['text', 'number'].includes(e.target.type)) return;
+  if (e.key === 'ArrowDown') step(1);
+  else if (e.key === 'ArrowUp') step(-1);
+  else if (e.key === 'r') pickRandom();
+  else if (e.key === 's') state.noside = !state.noside;
   else if (e.key === 'o') state.ovl = !state.ovl;
   else if (e.key === 'm') state.shown += PAGE_STEP;
   else if (e.key === 't') state.view = state.view === 'scores' ? 'viewer' : 'scores';
   else if (/^[1-9]$/.test(e.key) && ENGINES[+e.key-1]) { const k = ENGINES[+e.key-1][0]; state.on[k] = !state.on[k]; }
   else return;
-  e.preventDefault(); render();
-  document.querySelector('#side .sel')?.scrollIntoView({block:'nearest'});
+  e.preventDefault(); render(); showSel();
 };
 render();
+showSel();
 </script>
 """
 
