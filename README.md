@@ -186,11 +186,8 @@ apt install mupdf-tools   # Debian/Ubuntu
 # Run all tests
 cargo test -- --nocapture
 
-# Run only Jaccard visual comparison
+# Run only the visual comparison (Jaccard and SSIM)
 cargo test visual_comparison -- --nocapture
-
-# Run only SSIM comparison
-cargo test ssim_comparison -- --nocapture
 ```
 
 [SCORING.md](SCORING.md) explains every score: the visual metrics, the accessibility metrics and what fails the suite.

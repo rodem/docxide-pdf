@@ -123,12 +123,7 @@ fn accessibility_vs_reference() {
         .filter_map(|r| Some((r, r.scores.vs_word.as_ref()?)))
         .collect();
 
-    let name_w = results
-        .iter()
-        .map(|r| r.name.len())
-        .max()
-        .unwrap_or(4)
-        .max(4);
+    let name_w = common::name_width(results.iter().map(|r| r.name.as_str()), 4);
     println!(
         "\n  {:<name_w$}  UaFail  UaDef  Struct    Text  Deficit rules ({gen_name})",
         "Case"

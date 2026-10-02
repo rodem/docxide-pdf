@@ -40,14 +40,13 @@ fn conversion_speed() {
         let previous_ms = baselines.get(&name).and_then(|b| b.convert_ms);
 
         let t0 = Instant::now();
-        let result =
-            std::panic::catch_unwind(|| docxide_pdf::convert_docx_to_pdf(&input_docx, &output_pdf));
+        let result = common::convert(&input_docx, &output_pdf);
         let elapsed_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
         // Clean up the temp PDF
         std::fs::remove_file(&output_pdf).ok();
 
-        if result.is_err() || result.unwrap().is_err() {
+        if result.is_err() {
             continue;
         }
 

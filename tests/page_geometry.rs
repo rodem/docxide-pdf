@@ -1,14 +1,9 @@
 mod common;
 
 use std::path::Path;
-use std::process::Command;
 
 fn pdf_mediabox(pdf: &Path) -> Option<(f32, f32)> {
-    let output = Command::new("mutool")
-        .args(["info", pdf.to_str().unwrap()])
-        .output()
-        .ok()?;
-    let text = String::from_utf8_lossy(&output.stdout);
+    let text = common::mutool_info(pdf).ok()?;
     let mut in_mediaboxes = false;
     for line in text.lines() {
         if line.starts_with("Mediaboxes") {

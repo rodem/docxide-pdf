@@ -81,8 +81,7 @@ pub fn cache_path(stem: &Path) -> PathBuf {
 /// Analyse `pdf`, reusing `cache` while it is newer than the PDF.
 // ponytail: cache ignores the veraPDF/Poppler version; delete tests/output/**/*.a11y.json after upgrading them
 pub fn analyze_cached(pdf: &Path, cache: &Path) -> Result<Analysis, String> {
-    let mtime = |p: &Path| fs::metadata(p).and_then(|m| m.modified()).ok();
-    if matches!((mtime(cache), mtime(pdf)), (Some(c), Some(p)) if c >= p)
+    if matches!((super::mtime(cache), super::mtime(pdf)), (Some(c), Some(p)) if c >= p)
         && let Some(a) = fs::read_to_string(cache)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
