@@ -399,9 +399,12 @@ locations and the measuring method: `current_focus/merge-regressions.md`.
    missing file. **2026-10-02:** Word takes the run's "Open Sans;Arial"
    literally and finds no fontTable entry (that is "Open Sans"), so neither
    altName nor family applies; the face is Word's default for an unknown
-   font, which differs between the online export (Cambria) and local Mac Word
-   (Segoe UI). Fixture `fonts/missing_font_substitution` awaits Word's
-   references to pin the rule down (`merge-regressions.md` item 5).
+   font. Fixture `fonts/missing_font_substitution` (42 rows, local and online
+   exports) pinned the rule down: missing with no usable altName → Cambria
+   (roman family or no entry) or Calibri (any other family); panose, pitch and
+   the theme play no part; Helvetica → Arial online. Implemented on
+   `font-rules`; german_mezzo J 50.3 → 69.0. Open: the `;` rule, Open Sans →
+   Segoe UI (`merge-regressions.md` item 5).
 3. **East Asian leading stacks with another run's descent** (fix 11,
    `5e613494`). usep_handbook's checkbox lines (☐ in MS Gothic, text in
    Calibri) are 1.53pt taller each than Word's: we put Calibri's win descent

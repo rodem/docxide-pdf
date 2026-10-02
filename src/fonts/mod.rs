@@ -222,16 +222,14 @@ fn lookup_font_table<'a>(
 /// what a bare Linux or macOS box has.
 const LAST_RESORT_FONTS: &[&str] = &["Arial", "Liberation Sans", "Arimo", "Helvetica", "DejaVu Sans"];
 
-fn family_fallback(family: FontFamily) -> Option<&'static str> {
+/// Word's face for a missing font with no usable altName: Cambria for a roman
+/// family or no fontTable entry at all, Calibri for every other family. Panose,
+/// pitch and the theme fonts play no part; local and online exports agree
+/// (fixture fonts/missing_font_substitution).
+fn family_fallback(family: Option<FontFamily>) -> &'static str {
     match family {
-        FontFamily::Roman => Some("Times New Roman"),
-        FontFamily::Swiss => Some("Arial"),
-        FontFamily::Modern => Some("Courier New"),
-        FontFamily::Script | FontFamily::Decorative => Some("Times New Roman"),
-        // `w:family="auto"` (unspecified): Word substitutes the document theme's
-        // body font (see `register_font`); Calibri, the usual theme body font,
-        // is the last resort when the theme gives nothing usable.
-        FontFamily::Auto => Some("Calibri"),
+        Some(FontFamily::Roman) | None => "Cambria",
+        Some(_) => "Calibri",
     }
 }
 
@@ -249,18 +247,26 @@ fn face_is_script_design(path: &std::path::Path, face_index: u32) -> bool {
 
 /// Names Word draws with its own face even where the OS has one: Mac Word sets
 /// "Times" in Times New Roman (no fontTable entry, or altName Times New Roman),
-/// and Windows maps Times and Courier to Times New Roman and Courier New. Apple's
-/// Times and Courier are indexed only as Mac-only faces (`discovery`).
+/// and Windows maps Times, Courier and Helvetica to Times New Roman, Courier New
+/// and Arial. Word's online export, which made most references, runs on Windows;
+/// local Mac Word draws macOS Helvetica. Apple's Times, Courier and Helvetica are
+/// indexed only as Mac-only faces (`discovery`).
 fn word_substitute(name: &str) -> Option<&'static str> {
     match name.to_ascii_lowercase().as_str() {
         "times" => Some("Times New Roman"),
         "courier" => Some("Courier New"),
+        "helvetica" => Some("Arial"),
         _ => None,
     }
 }
 
 fn known_font_alias(name: &str) -> Option<&'static str> {
     match name {
+        // Word's own mapping for LibreOffice's metric clones; Liberation Mono,
+        // Arimo and Tinos get none (Cambria, like any unknown name).
+        "Liberation Sans" => Some("Arial"),
+        "Liberation Serif" => Some("Times New Roman"),
+        "Carlito" => Some("Calibri"),
         "Palatino Linotype" => Some("Palatino"),
         "標楷體" | "DFKai-SB" => Some("BiauKai"),
         _ => None,
@@ -455,7 +461,7 @@ pub(crate) fn register_font(
     embedded_fonts: &EmbeddedFonts,
     used_chars: &HashSet<char>,
     font_table: &FontTable,
-    theme_body_font: &str,
+    word_text: bool,
 ) -> FontEntry {
     let t0 = Instant::now();
     let font_ref = alloc();
@@ -479,7 +485,9 @@ pub(crate) fn register_font(
         )
     };
 
-    let table_entry = lookup_font_table(font_table, primary);
+    // Word looks the run's whole name up: "Archivo;sans-serif" has no entry
+    // even when "Archivo" has one.
+    let table_entry = lookup_font_table(font_table, font_name.trim());
     let script =
         classify_cjk_script(primary, table_entry.and_then(|e| e.charset), used_chars);
     // The declared script, not the sampled text, decides whether this is a CJK
@@ -503,8 +511,8 @@ pub(crate) fn register_font(
     // The fontTable altName only stands in for a missing font: Word draws an
     // installed Calibri (altName DejaVu Sans, chinese_student_union) and Source
     // Sans Pro (altName Corbel) as requested. A macOS-only face counts as missing
-    // when there is an altName, since the reference may come from Windows Word:
-    // eco_int's Helvetica (altName Arial) is Arial in Word's online export.
+    // when there is an altName, since the reference may come from Windows Word,
+    // which lacks it.
     // Math fonts are excluded: an altName like "Cambria Math" (seen for "Korinna
     // BT") has enormous win ascent/descent metrics that balloon every line; Word
     // substitutes body text with a normal family fallback instead.
@@ -545,41 +553,26 @@ pub(crate) fn register_font(
             log::info!("Font substitution: {primary} → alias \"{alias}\"");
             Some(m)
         })
-        .or_else(|| {
-            let entry = table_entry?;
-            // Try CJK fallback before family fallback — family fonts (TNR, Courier)
-            // lack CJK glyphs and would produce squares
-            if needs_cjk {
-                if let Some(m) = try_list("CJK fallback", cjk_fonts, &mut try_candidate) {
-                    return Some(m);
-                }
-            }
-            // A missing font with no declared family gets the theme's body
-            // font, as Word's export does: bosch (theme Calibri) embeds
-            // Calibri, german_mezzo (theme Arial) embeds Arial, and the
-            // panose match (Bosch Office Sans = Arial's) plays no part.
-            // (try_candidate writes the font once it resolves: call it once.)
-            if entry.family == FontFamily::Auto && !theme_body_font.is_empty() {
-                if let Some(m) = try_candidate(theme_body_font) {
-                    log::info!("Font substitution: {primary} → theme body font \"{theme_body_font}\"");
-                    substituted.set(true);
-                    return Some(m);
-                }
-            }
-            let fallback = family_fallback(entry.family)?;
-            let m = try_candidate(fallback)?;
-            log::info!(
-                "Font substitution: {primary} → family {:?} fallback \"{fallback}\"",
-                entry.family
-            );
-            substituted.set(true);
-            Some(m)
-        })
+        // CJK fallback before Word's Latin defaults, which lack CJK glyphs and
+        // would produce squares
         .or_else(|| {
             if !needs_cjk {
                 return None;
             }
             try_list("CJK fallback", cjk_fonts, &mut try_candidate)
+        })
+        .or_else(|| {
+            // DrawingML text (SmartArt) with no fontTable entry keeps the last
+            // resort: case60's "Futura Medium" is Arial in Word's export.
+            if table_entry.is_none() && !word_text {
+                return None;
+            }
+            let family = table_entry.map(|e| e.family);
+            let fallback = family_fallback(family);
+            let m = try_candidate(fallback)?;
+            log::info!("Font substitution: {primary} → family {family:?} fallback \"{fallback}\"");
+            substituted.set(true);
+            Some(m)
         })
         // A real font before the standard-14 Helvetica, which is neither
         // embedded nor ToUnicode-mapped (PDF/UA 7.21.4.1). Word gives an
@@ -706,18 +699,17 @@ mod tests {
     }
 
     #[test]
-    fn alt_name_only_stands_in_for_a_missing_font() {
-        let resolve = |name: &str| {
-            let table: FontTable = [(
-                name.to_string(),
-                crate::model::FontTableEntry {
-                    alt_name: Some("Arial".into()),
-                    family: FontFamily::Swiss,
-                    charset: None,
-                    pitch_fixed: false,
-                },
-            )]
-            .into();
+    fn missing_fonts_resolve_as_word_does() {
+        // Rows of the fixture fonts/missing_font_substitution.
+        let resolve = |run: &str, entry: Option<(&str, FontFamily, Option<&str>)>| {
+            let table: FontTable = entry
+                .map(|(name, family, alt)| {
+                    let alt_name = alt.map(Into::into);
+                    let e = crate::model::FontTableEntry { alt_name, family, charset: None, pitch_fixed: false };
+                    (name.to_string(), e)
+                })
+                .into_iter()
+                .collect();
             let mut next = 0;
             let mut alloc = || {
                 next += 1;
@@ -725,15 +717,26 @@ mod tests {
             };
             let chars: HashSet<char> = "Ab".chars().collect();
             let entry = register_font(
-                &mut Pdf::new(), name, false, false, "F1".into(), &mut alloc,
-                &EmbeddedFonts::new(), &chars, &table, "",
+                &mut Pdf::new(), run, false, false, "F1".into(), &mut alloc,
+                &EmbeddedFonts::new(), &chars, &table, true,
             );
             let path = entry.font_path.expect("resolved to a file");
             path.file_name().unwrap().to_string_lossy().to_lowercase()
         };
-        assert_eq!(resolve("Calibri"), "calibri.ttf");
-        // macOS's Helvetica (absent elsewhere) yields to the altName.
-        assert_eq!(resolve("Helvetica"), "arial.ttf");
+        use FontFamily::*;
+        let aptos = Some("Aptos");
+        // The altName only stands in for a missing font.
+        assert_eq!(resolve("Calibri", Some(("Calibri", Swiss, aptos))), "calibri.ttf");
+        assert_eq!(resolve("Zqx Dalt", Some(("Zqx Dalt", Swiss, aptos))), "aptos.ttf");
+        // No usable altName: Cambria for roman or no entry, Calibri otherwise.
+        assert_eq!(resolve("Zqx Broman", Some(("Zqx Broman", Roman, None))), "cambria.ttc");
+        assert_eq!(resolve("Zqx Bauto", Some(("Zqx Bauto", Auto, Some("sans-serif")))), "calibri.ttf");
+        assert_eq!(resolve("Zqx Alpha", None), "cambria.ttc");
+        // A "X;Y" run has no entry even when "X" does.
+        assert_eq!(resolve("Zqx Elist;sans-serif", Some(("Zqx Elist", Auto, None))), "cambria.ttc");
+        // Windows' and Word's own name mappings beat the altName.
+        assert_eq!(resolve("Helvetica", Some(("Helvetica", Swiss, aptos))), "arial.ttf");
+        assert_eq!(resolve("Liberation Sans", None), "arial.ttf");
     }
 
     #[test]

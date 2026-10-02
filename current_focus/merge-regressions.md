@@ -188,14 +188,61 @@ Mean Jaccard went 51.2 → 63.4 and SSIM 70.9 → 80.5 over the merge.
     font → Cambria in german_mezzo (online), Segoe UI in sample500kB (local).
     In eco_int (online) "Helvetica" and "Helvetica,Italic" embed **Arial**
     (Windows maps Helvetica → Arial), not macOS Helvetica.
-- **Next:** `tests/fixtures/fonts/missing_font_substitution` (uncommitted in
-  the `font-rules` worktree until its references exist): 24 rows, one
+- **Fixture round 1, local Mac Word** (rows A–E; the "online" export the user
+  made was also Quartz, i.e. local; 172 of 223 fixture references are online):
+  - installed font → itself, even macOS-only Helvetica with altName Georgia;
+  - missing, exact fontTable entry, installed altName → altName (Georgia,
+    Calibri); bogus altName "sans-serif" → as if none;
+  - missing, entry, family **roman → Cambria**; auto, swiss, modern (even
+    pitch fixed), script, decorative → **Calibri**. Panose and the theme
+    (Verdana) play no part: bosch's "theme body font" was Calibri by
+    coincidence;
+  - no entry for the run's exact name → **Cambria**, including "Zqx;Arial",
+    "Georgia;Arial" and "X;Arial" whose "X" has an entry (the `;` name is
+    never split);
+  - except well-known names: "Open Sans;Arial" → Segoe UI, and in
+    sample500kB "Liberation Sans;Arial" (its Heading style) → Arial. No
+    substitution list found on disk (Word.app, Office group container; the
+    registry's `Shared Tools\Panose` key is only a cache of names seen).
+  - online evidence so far agrees: german_mezzo "Archivo;sans-serif" →
+    Cambria, altNames used for missing fonts. case60's SmartArt "Futura
+    Medium" (no entry) is Arial online: DrawingML text may differ.
+- **Round 2** (rows F added; a real online export this time): local and online
+  agree on every row except macOS faces. Online (Windows) maps **Helvetica →
+  Arial** even over an altName (A5, E2; eco_int), Times → Times New Roman,
+  Courier → Courier New, and **Helvetica Neue → Sylfaen** (F13; traditional_
+  skills embeds Sylfaen too). No entry: Liberation Sans → Arial, Liberation
+  Serif → Times New Roman, Carlito → Calibri; Liberation Mono, Arimo, Tinos,
+  Caladea, Inter → Cambria. Cloud-catalog fonts (Open Sans, Roboto, Lato,
+  Montserrat) were downloaded on open and drawn as themselves. `;` names stay
+  unexplained: "Liberation Sans;Arial", "Roboto;Arial", "Source Sans
+  Pro;Arial" → Arial, but "Zqx;Arial", "Georgia;Arial" → Cambria and "Open
+  Sans;Arial" (with an entry) → Segoe UI.
+- **Implemented** (branch `font-rules`): fontTable entry looked up by the run's
+  whole name; missing with no usable altName → Cambria (roman or no entry) or
+  Calibri (any other family), replacing Times New Roman / Arial / Courier New
+  and the theme-body rule; SmartArt and internal lookups without an entry keep
+  the Arial last resort; aliases Liberation Sans/Serif, Carlito;
+  `word_substitute` Helvetica → Arial. The `;` split is kept (it gets
+  sample500kB's "Liberation Sans;Arial" heading right). Fixture rows: 31/42
+  match Word online (was 7/42); the rest are 4 undownloaded cloud fonts, the
+  `;` rows, Open Sans → Segoe UI and Helvetica Neue → Sylfaen.
+  german_mezzo J 50.3 → 69.0, SSIM 52.2 → 81.2. slovak_pedagogical J 48.3 →
+  34.5 (SSIM flat): its header's Korinna BT marks (roman, altName Cambria
+  Math, rejected) are now Cambria-tall, the body starts 1.17pt low (was 0.59);
+  that header is already wrong (Word: three thin rules at 120.3–121.8pt, ours
+  one at 117.8pt).
+- **Fixture:** `tests/fixtures/fonts/missing_font_substitution`, 42 rows, one
   condition each (no entry, family only, family + panose, altName, `X;Arial`,
-  replicas of the two LibreOffice cases), theme Verdana / Trebuchet MS so a
-  theme fallback is visible. The user exports it twice: `reference.pdf`
-  (local) and `reference_online.pdf` (online); Word's Font Substitution dialog
-  (Preferences → Compatibility) lists Mac Word's own choices. Then derive the
-  rule and change `register_font`.
+  LibreOffice replicas, well-known names), theme Verdana / Trebuchet MS so a
+  theme fallback is visible. `reference.pdf` is the local export,
+  `reference_online.pdf` the online one (the harness reads only the first).
+  Read a row's face with the PDF's per-line font spans; for online exports
+  check the embedded file, since "Helvetica" there is Arial.
+- **Open:** the `;` rule; Open Sans → Segoe UI; Helvetica Neue → Sylfaen
+  online; vendoring the four newly downloaded cloud fonts (Open Sans, Roboto,
+  Lato, Montserrat; sample500kB's "Open Sans;Arial" would then split to Open
+  Sans, where Word draws Segoe UI).
 
 ### 6. Per-line heights in headers
 
