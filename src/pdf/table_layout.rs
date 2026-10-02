@@ -472,8 +472,6 @@ pub(super) struct CellFloatingImageLayout {
     /// carry this just like body floats, else e.g. a 90°-rotated vertical label
     /// renders horizontally.
     pub(super) rotation_deg: f32,
-    #[allow(dead_code)]
-    pub(super) behind_doc: bool,
     /// wp:anchor relativeHeight, so a cell picture can paint over a
     /// connector/textbox anchored in the same paragraph (annotation #241).
     pub(super) z_index: u32,
@@ -490,7 +488,6 @@ pub(super) struct CellParagraphLayout {
     pub(super) alignment: Alignment,
     pub(super) space_before: f32,
     pub(super) indent_left: f32,
-    #[allow(dead_code)]
     pub(super) indent_right: f32,
     pub(super) indent_hanging: f32,
     pub(super) indent_first_line: f32,
@@ -528,8 +525,6 @@ pub(super) enum CellContentItem {
 
 pub(super) struct CellLayout {
     pub(super) items: Vec<CellContentItem>,
-    #[allow(dead_code)]
-    pub(super) total_height: f32,
     pub(super) text_direction: TextDirection,
 }
 
@@ -577,7 +572,6 @@ pub(super) fn compute_row_layouts(
                     if cell.v_merge == VMerge::Continue {
                         return CellLayout {
                             items: vec![],
-                            total_height: 14.4,
                             text_direction: TextDirection::LrTb,
                         };
                     }
@@ -878,7 +872,6 @@ pub(super) fn compute_row_layouts(
                                             h_offset,
                                             v_offset,
                                             rotation_deg: fi.image.rotation_deg,
-                                            behind_doc: fi.behind_doc,
                                             z_index: fi.z_index,
                                         })
                                     })
@@ -963,7 +956,6 @@ pub(super) fn compute_row_layouts(
                     }
                     CellLayout {
                         items,
-                        total_height: total_h,
                         text_direction: cell.text_direction,
                     }
                 })
@@ -1160,7 +1152,6 @@ mod tests {
         };
         let cell = CellLayout {
             items: vec![para(1), para(10)],
-            total_height: 0.0,
             text_direction: TextDirection::default(),
         };
         let cm = CellMargins {

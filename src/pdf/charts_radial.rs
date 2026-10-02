@@ -25,18 +25,19 @@ fn arc_segment_count(sweep: f32) -> usize {
     ((ARC_SEGMENTS as f32 * sweep / TAU).ceil() as usize).max(2)
 }
 
-fn emit_arc(content: &mut Content, cx: f32, cy: f32, radius: f32, start: f32, sweep: f32) {
-    let n = arc_segment_count(sweep);
+/// `n` line segments from `start` clockwise through `sweep` (a negative
+/// sweep runs the arc back anticlockwise).
+fn emit_arc(
+    content: &mut Content,
+    cx: f32,
+    cy: f32,
+    radius: f32,
+    start: f32,
+    sweep: f32,
+    n: usize,
+) {
     for s in 0..=n {
         let a = start - (s as f32 / n as f32) * sweep;
-        content.line_to(cx + radius * a.cos(), cy + radius * a.sin());
-    }
-}
-
-fn emit_arc_reverse(content: &mut Content, cx: f32, cy: f32, radius: f32, end: f32, sweep: f32) {
-    let n = arc_segment_count(sweep);
-    for s in 0..=n {
-        let a = end + (s as f32 / n as f32) * sweep;
         content.line_to(cx + radius * a.cos(), cy + radius * a.sin());
     }
 }
@@ -141,58 +142,16 @@ fn render_radial_legend(
     );
 }
 
-pub(super) fn render_pie(
+/// A pie, or with `hole_pct` (the doughnut hole as a percentage of the
+/// radius) a doughnut.
+pub(super) fn render_radial(
     chart: &InlineChart,
     content: &mut Content,
     x: f32,
     y: f32,
-    has_font: bool,
     label_font_key: &str,
     label_font: Option<&FontEntry>,
-) {
-    let Some(layout) = setup_radial_chart(chart, x, y, label_font) else {
-        return;
-    };
-    let c = &chart.chart;
-    let h = chart.display_height;
-    let margin = chart.display_width * 0.05;
-    let radius = (h - margin * 2.0) / 2.0;
-
-    content.save_state();
-
-    let mut angle = FRAC_PI_2;
-    let values = &c.series[0].values;
-    let total: f32 = values.iter().sum();
-
-    for (i, &val) in values.iter().enumerate() {
-        let sweep = (val / total) * TAU;
-        fill_rgb(content, layout.colors[i % layout.colors.len()]);
-
-        content.move_to(layout.cx, layout.cy);
-        emit_arc(content, layout.cx, layout.cy, radius, angle, sweep);
-        content.close_path();
-        content.fill_nonzero();
-
-        angle -= sweep;
-    }
-
-    if has_font {
-        render_radial_legend(content, &layout, label_font_key, y, h, label_font);
-    }
-
-    content.set_fill_gray(0.0);
-    content.restore_state();
-}
-
-pub(super) fn render_doughnut(
-    chart: &InlineChart,
-    content: &mut Content,
-    x: f32,
-    y: f32,
-    has_font: bool,
-    label_font_key: &str,
-    hole_size_pct: f32,
-    label_font: Option<&FontEntry>,
+    hole_pct: Option<f32>,
 ) {
     let Some(layout) = setup_radial_chart(chart, x, y, label_font) else {
         return;
@@ -201,7 +160,7 @@ pub(super) fn render_doughnut(
     let h = chart.display_height;
     let margin = chart.display_width * 0.05;
     let outer_r = (h - margin * 2.0) / 2.0;
-    let inner_r = outer_r * (hole_size_pct / 100.0);
+    let inner_r = hole_pct.map(|pct| outer_r * (pct / 100.0));
 
     content.save_state();
 
@@ -211,23 +170,37 @@ pub(super) fn render_doughnut(
 
     for (i, &val) in values.iter().enumerate() {
         let sweep = (val / total) * TAU;
+        let n = arc_segment_count(sweep);
         fill_rgb(content, layout.colors[i % layout.colors.len()]);
 
-        // Outer arc (clockwise = decreasing angle)
-        content.move_to(
-            layout.cx + outer_r * angle.cos(),
-            layout.cy + outer_r * angle.sin(),
-        );
-        emit_arc(content, layout.cx, layout.cy, outer_r, angle, sweep);
-        // Inner arc backwards (increasing angle)
-        emit_arc_reverse(content, layout.cx, layout.cy, inner_r, angle - sweep, sweep);
+        if inner_r.is_some() {
+            content.move_to(
+                layout.cx + outer_r * angle.cos(),
+                layout.cy + outer_r * angle.sin(),
+            );
+        } else {
+            content.move_to(layout.cx, layout.cy);
+        }
+        // Outer arc clockwise (decreasing angle), then the inner arc back.
+        emit_arc(content, layout.cx, layout.cy, outer_r, angle, sweep, n);
+        if let Some(inner_r) = inner_r {
+            emit_arc(
+                content,
+                layout.cx,
+                layout.cy,
+                inner_r,
+                angle - sweep,
+                -sweep,
+                n,
+            );
+        }
         content.close_path();
         content.fill_nonzero();
 
         angle -= sweep;
     }
 
-    if has_font {
+    if label_font.is_some() {
         render_radial_legend(content, &layout, label_font_key, y, h, label_font);
     }
 
