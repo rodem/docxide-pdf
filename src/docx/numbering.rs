@@ -87,7 +87,15 @@ fn parse_level_def(lvl: roxmltree::Node) -> Option<(u8, LevelDef)> {
             .find_map(|t| twips_attr(t, "pos"))
     });
     let rpr = wml(lvl, "rPr");
-    let rpr_font = rpr.and_then(rfonts_ascii_name);
+    // §17.3.2.26: characters past U+007F take the hAnsi font. Word draws
+    // welsh_palliative_care_abstract_form's "·" marker (ascii Lucida Grande,
+    // hAnsi Symbol) as Symbol's large bullet.
+    let rpr_font = rpr.and_then(|r| {
+        let hansi = (!lvl_text.is_ascii())
+            .then(|| wml(r, "rFonts")?.attribute((WML_NS, "hAnsi")))
+            .flatten();
+        hansi.map(str::to_string).or_else(|| rfonts_ascii_name(r))
+    });
     let label_font_size = rpr.and_then(parse_font_size);
     let label_bold = rpr.and_then(|r| wml_bool(r, "b")).unwrap_or(false);
     let label_color = rpr
