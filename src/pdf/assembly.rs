@@ -5,9 +5,9 @@ use pdf_writer::{Content, Filter, Name, Pdf, Rect, Ref, Str, TextStr};
 use crate::fonts::FontEntry;
 use crate::model::{Document, PageBorderDisplay, PageBorders, ParagraphBorder, SectionProperties};
 
+use super::GradientSpec;
 use super::comments::{BODY_SCALE, BODY_TX, BODY_TY, render_comment_pane};
 use super::layout::LinkAnnotation;
-use super::GradientSpec;
 
 pub(crate) struct HeadingEntry {
     pub(super) title: String,
@@ -98,7 +98,10 @@ fn xmp_packet(doc: &Document, lang: &str, claims_ua: bool) -> String {
         );
     }
     if let Some(a) = &doc.author {
-        props += &format!("<dc:creator><rdf:Seq><rdf:li>{}</rdf:li></rdf:Seq></dc:creator>", esc(a));
+        props += &format!(
+            "<dc:creator><rdf:Seq><rdf:li>{}</rdf:li></rdf:Seq></dc:creator>",
+            esc(a)
+        );
     }
     if claims_ua {
         props += "<pdfuaid:part>1</pdfuaid:part>";
@@ -159,8 +162,8 @@ pub(super) fn assemble_pdf_pages(
     let page_ids: Vec<Ref> = (0..n).map(|_| alloc()).collect();
     let content_ids: Vec<Ref> = (0..n).map(|_| alloc()).collect();
 
-    let has_any_comments = !doc.comments.is_empty()
-        && all_page_comment_anchors.iter().any(|p| !p.is_empty());
+    let has_any_comments =
+        !doc.comments.is_empty() && all_page_comment_anchors.iter().any(|p| !p.is_empty());
 
     // (Link element, page, annotation) for the structure tree's OBJR kids; the
     // annotations' /StructParent keys follow the pages' keys.
@@ -271,8 +274,7 @@ pub(super) fn assemble_pdf_pages(
                             .iter()
                             .map(|s| s.1)
                             .collect();
-                        let encode: Vec<f32> =
-                            sub_refs.iter().flat_map(|_| [0.0, 1.0]).collect();
+                        let encode: Vec<f32> = sub_refs.iter().flat_map(|_| [0.0, 1.0]).collect();
 
                         let stitch_ref = alloc();
                         pdf.stitching_function(stitch_ref)
@@ -287,9 +289,8 @@ pub(super) fn assemble_pdf_pages(
                     let (sin_a, cos_a) = ang_rad.sin_cos();
                     let cx = spec.x + spec.w / 2.0;
                     let cy = spec.y + spec.h / 2.0;
-                    let half_len = ((spec.w / 2.0 * cos_a).powi(2)
-                        + (spec.h / 2.0 * sin_a).powi(2))
-                    .sqrt();
+                    let half_len =
+                        ((spec.w / 2.0 * cos_a).powi(2) + (spec.h / 2.0 * sin_a).powi(2)).sqrt();
                     let x0 = cx - half_len * cos_a;
                     let y0 = cy + half_len * sin_a;
                     let x1 = cx + half_len * cos_a;
@@ -479,8 +480,7 @@ pub(super) fn assemble_pdf_pages(
             let pos_in_siblings = siblings.iter().position(|&s| s == i).unwrap();
 
             let mut item = pdf.outline_item(item_refs[i]);
-            item.title(TextStr(&entry.title))
-                .parent(parent_ref);
+            item.title(TextStr(&entry.title)).parent(parent_ref);
 
             if pos_in_siblings > 0 {
                 item.prev(item_refs[siblings[pos_in_siblings - 1]]);
@@ -495,7 +495,9 @@ pub(super) fn assemble_pdf_pages(
                     .count(count_descendants(i, &children_of));
             }
 
-            item.dest().page(page_ids[entry.page_idx]).xyz(0.0, entry.y_position, None);
+            item.dest()
+                .page(page_ids[entry.page_idx])
+                .xyz(0.0, entry.y_position, None);
         }
 
         // Write outline root
@@ -519,7 +521,9 @@ pub(super) fn assemble_pdf_pages(
     let claims_ua = !tags.is_empty()
         && doc.title.as_deref().is_some_and(|t| !t.trim().is_empty())
         && tags.ua_structure_ok()
-        && seen_fonts.values().all(|f| f.char_to_gid.is_some() && !f.drew_notdef.get());
+        && seen_fonts
+            .values()
+            .all(|f| f.char_to_gid.is_some() && !f.drew_notdef.get());
     let metadata_id = alloc();
     pdf.metadata(metadata_id, xmp_packet(doc, lang, claims_ua).as_bytes());
     let struct_root = (!tags.is_empty()).then(|| tags.write(pdf, alloc, &page_ids, &tagged_annots));
@@ -527,7 +531,8 @@ pub(super) fn assemble_pdf_pages(
         let mut catalog = pdf.catalog(catalog_id);
         catalog.pages(pages_id);
         if let Some(oid) = outline_id {
-            catalog.outlines(oid)
+            catalog
+                .outlines(oid)
                 .page_mode(pdf_writer::types::PageMode::UseOutlines);
         }
         catalog.lang(TextStr(lang)).metadata(metadata_id);
@@ -538,7 +543,11 @@ pub(super) fn assemble_pdf_pages(
         }
     }
 
-    if doc.title.is_some() || doc.author.is_some() || doc.subject.is_some() || doc.keywords.is_some() {
+    if doc.title.is_some()
+        || doc.author.is_some()
+        || doc.subject.is_some()
+        || doc.keywords.is_some()
+    {
         let info_id = alloc();
         let mut info = pdf.document_info(info_id);
         if let Some(ref t) = doc.title {

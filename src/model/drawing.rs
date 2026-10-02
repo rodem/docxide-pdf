@@ -76,7 +76,7 @@ pub struct ImageShadow {
     pub offset_y: f32,    // points, positive = down (screen coords, not PDF)
     pub blur_radius: f32, // points
     pub color: [u8; 3],
-    pub alpha: f32,       // 0.0–1.0
+    pub alpha: f32, // 0.0–1.0
 }
 
 #[derive(Clone, Debug)]
@@ -86,9 +86,9 @@ pub struct SoftEdge {
 
 #[derive(Clone, Debug)]
 pub struct ImageGlow {
-    pub radius: f32,    // points
+    pub radius: f32, // points
     pub color: [u8; 3],
-    pub alpha: f32,     // 0.0–1.0
+    pub alpha: f32, // 0.0–1.0
 }
 
 #[derive(Clone, Debug)]

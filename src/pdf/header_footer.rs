@@ -4,7 +4,8 @@ use pdf_writer::Content;
 
 use crate::model::{
     Alignment, Block, Document, FieldCode, FrameProperties, HRelativeFrom, HeaderFooter,
-    HorizontalPosition, Paragraph, Run, SectionProperties, TextAnchor, VRelativeFrom, VerticalPosition, WrapType,
+    HorizontalPosition, Paragraph, Run, SectionProperties, TextAnchor, VRelativeFrom,
+    VerticalPosition, WrapType,
 };
 
 use super::layout::{
@@ -81,7 +82,10 @@ fn anchored_frame_top(fp: &FrameProperties, sp: &SectionProperties) -> Option<f3
 /// The band a bottom border adds below a paragraph: its `space` and its stroke
 /// (the body path's `bdr_bottom_extent`). The next paragraph starts below it.
 fn bottom_border_band(para: &Paragraph) -> f32 {
-    para.borders.bottom.as_ref().map_or(0.0, |b| b.space_pt + b.width_pt)
+    para.borders
+        .bottom
+        .as_ref()
+        .map_or(0.0, |b| b.space_pt + b.width_pt)
 }
 
 /// Where a line of height `line_h` whose top sits `top` below the page top
@@ -105,7 +109,11 @@ pub(super) fn compute_header_height(
     // Track bottom of wrapping float zones (Square/Tight/Through): subsequent
     // paragraphs flow beside the image so their height is absorbed, not additive.
     let mut float_bottom_h = 0.0f32;
-    let bands = if is_header { blocking_frame_bands(hf, sp) } else { Vec::new() };
+    let bands = if is_header {
+        blocking_frame_bands(hf, sp)
+    } else {
+        Vec::new()
+    };
     for block in &hf.blocks {
         match block {
             Block::Paragraph(para) if para.frame_props.is_some() => {
@@ -231,9 +239,7 @@ pub(super) fn compute_effective_margin_bottom(
     let base = sp.margin_bottom;
     match footer {
         Some(_) if sp.margin_bottom_fixed => base,
-        Some(hf) => {
-            base.max(sp.footer_margin + compute_header_height(hf, ctx, sp, false))
-        }
+        Some(hf) => base.max(sp.footer_margin + compute_header_height(hf, ctx, sp, false)),
         None => base,
     }
 }
@@ -276,10 +282,9 @@ pub(super) fn resolve_tb_y_top(
     use crate::model::VerticalPosition;
     let (region_top, region_bottom) = match v_relative_from {
         VRelativeFrom::Page => (sp.page_height, 0.0),
-        VRelativeFrom::Margin | VRelativeFrom::TopMargin => (
-            sp.page_height - sp.margin_top,
-            sp.margin_bottom,
-        ),
+        VRelativeFrom::Margin | VRelativeFrom::TopMargin => {
+            (sp.page_height - sp.margin_top, sp.margin_bottom)
+        }
         VRelativeFrom::Paragraph => (slot_top, slot_top - tb_height),
     };
     match v_position {
@@ -303,7 +308,18 @@ fn build_lines(
     text_hanging: f32,
     alignment: crate::model::Alignment,
 ) -> Vec<TextLine> {
-    build_lines_with_float(runs, ctx, tab_stops, text_width, inline_images, indent_left, indent_right, text_hanging, None, alignment)
+    build_lines_with_float(
+        runs,
+        ctx,
+        tab_stops,
+        text_width,
+        inline_images,
+        indent_left,
+        indent_right,
+        text_hanging,
+        None,
+        alignment,
+    )
 }
 
 fn build_lines_with_float(
@@ -321,9 +337,32 @@ fn build_lines_with_float(
     let empty_fx: HashMap<usize, super::images::EffectXObjs> = HashMap::new();
     let has_tabs = runs.iter().any(|r| r.is_tab);
     if has_tabs {
-        build_tabbed_line(runs, ctx.fonts, tab_stops, indent_left, text_width, indent_right, text_hanging, inline_images, &empty_fx, ctx.default_tab_stop, &[])
+        build_tabbed_line(
+            runs,
+            ctx.fonts,
+            tab_stops,
+            indent_left,
+            text_width,
+            indent_right,
+            text_hanging,
+            inline_images,
+            &empty_fx,
+            ctx.default_tab_stop,
+            &[],
+        )
     } else {
-        build_paragraph_lines(runs, ctx.fonts, text_width, text_hanging, inline_images, &empty_fx, None, per_line_widths, None, ctx.cjk(true, alignment))
+        build_paragraph_lines(
+            runs,
+            ctx.fonts,
+            text_width,
+            text_hanging,
+            inline_images,
+            &empty_fx,
+            None,
+            per_line_widths,
+            None,
+            ctx.cjk(true, alignment),
+        )
     }
 }
 
@@ -371,7 +410,11 @@ pub(super) fn render_header_footer(
     // A header can hold several wrapping floats (e.g. a logo on each side of a
     // centered letterhead) — all of them constrain the text bounds together.
     let mut hdr_fz: Vec<(f32, f32, f32, f32, f32, f32)> = Vec::new();
-    let bands = if is_header { blocking_frame_bands(hf, sp) } else { Vec::new() };
+    let bands = if is_header {
+        blocking_frame_bands(hf, sp)
+    } else {
+        Vec::new()
+    };
     for block in &hf.blocks {
         match block {
             Block::Table(table) => {
@@ -392,22 +435,28 @@ pub(super) fn render_header_footer(
             Block::Paragraph(para) if para.frame_props.is_some() => {
                 let fp = para.frame_props.as_ref().unwrap();
                 let substituted_runs = substitute_hf_runs(
-                    &para.runs, page_num, total_pages, styleref_values,
+                    &para.runs,
+                    page_num,
+                    total_pages,
+                    styleref_values,
                     page_num_format,
                 );
-                let (font_size, _, tallest_ar) =
-                    tallest_run_metrics(&substituted_runs, ctx.fonts);
+                let (font_size, _, tallest_ar) = tallest_run_metrics(&substituted_runs, ctx.fonts);
                 let ascender_ratio = tallest_ar.unwrap_or(0.75);
 
                 let empty_inline_imgs: HashMap<usize, String> = HashMap::new();
                 let lines = build_lines(
-                    &substituted_runs, ctx, &para.tab_stops,
-                    text_width, &empty_inline_imgs,
-                    0.0, 0.0, 0.0, para.alignment,
+                    &substituted_runs,
+                    ctx,
+                    &para.tab_stops,
+                    text_width,
+                    &empty_inline_imgs,
+                    0.0,
+                    0.0,
+                    0.0,
+                    para.alignment,
                 );
-                let content_width = lines.iter()
-                    .map(|l| l.total_width)
-                    .fold(0.0f32, f32::max);
+                let content_width = lines.iter().map(|l| l.total_width).fold(0.0f32, f32::max);
 
                 // A framePr with an explicit width (w:w) positions a fixed-width
                 // frame box within the anchor area; text then flows from the
@@ -422,17 +471,20 @@ pub(super) fn render_header_footer(
                     };
                     let frame_left = match fp.h_position {
                         HorizontalPosition::AlignRight => origin + area_width - fp.width,
-                        HorizontalPosition::AlignCenter => {
-                            origin + (area_width - fp.width) / 2.0
-                        }
+                        HorizontalPosition::AlignCenter => origin + (area_width - fp.width) / 2.0,
                         HorizontalPosition::AlignLeft => origin,
                         HorizontalPosition::Offset(o) => origin + o,
                     };
                     frame_left + para.indent_left
                 } else {
                     resolve_h_position(
-                        fp.h_relative_from, &fp.h_position, content_width,
-                        sp, sp.margin_left, text_width, text_width,
+                        fp.h_relative_from,
+                        &fp.h_position,
+                        content_width,
+                        sp,
+                        sp.margin_left,
+                        text_width,
+                        text_width,
                     )
                 };
                 // vAnchor + w:y pin the frame top to the page/margin, independent
@@ -444,10 +496,20 @@ pub(super) fn render_header_footer(
 
                 // Frame text carries no inline pictures, so no descent is needed.
                 render_paragraph_lines(
-                    content, &lines, &Alignment::Left,
-                    frame_x, content_width, frame_baseline,
-                    font_size, (font_size * ascender_ratio, 0.0), lines.len(), 0,
-                    &mut Vec::new(), 0.0, ctx.fonts, None,
+                    content,
+                    &lines,
+                    &Alignment::Left,
+                    frame_x,
+                    content_width,
+                    frame_baseline,
+                    font_size,
+                    (font_size * ascender_ratio, 0.0),
+                    lines.len(),
+                    0,
+                    &mut Vec::new(),
+                    0.0,
+                    ctx.fonts,
+                    None,
                     gradient_specs,
                     None,
                     None,
@@ -463,8 +525,13 @@ pub(super) fn render_header_footer(
 
                 cursor_y -= prev_space_after.max(para.space_before);
 
-                let substituted_runs =
-                    substitute_hf_runs(&para.runs, page_num, total_pages, styleref_values, page_num_format);
+                let substituted_runs = substitute_hf_runs(
+                    &para.runs,
+                    page_num,
+                    total_pages,
+                    styleref_values,
+                    page_num_format,
+                );
 
                 let (font_size, tallest_lhr, tallest_ar) =
                     tallest_run_metrics(&substituted_runs, ctx.fonts);
@@ -587,8 +654,7 @@ pub(super) fn render_header_footer(
                                     + tp.space_after
                             };
                             let total_h: f32 = tb.paragraphs.iter().map(tp_height).sum();
-                            let available =
-                                (tb_height - tb.margin_top - tb.margin_bottom).max(0.0);
+                            let available = (tb_height - tb.margin_top - tb.margin_bottom).max(0.0);
                             let gap = (available - total_h).max(0.0);
                             match tb.text_anchor {
                                 TextAnchor::Middle => gap / 2.0,
@@ -778,15 +844,23 @@ pub(super) fn render_header_footer(
                         let hf_fx = pc.effect_para_names.get(&pi);
                         if let Some(ref shadow) = img.shadow {
                             super::color::draw_image_shadow(
-                                content, shadow, x, y_bottom,
-                                img.display_width, img.display_height,
+                                content,
+                                shadow,
+                                x,
+                                y_bottom,
+                                img.display_width,
+                                img.display_height,
                                 hf_fx.and_then(|fx| fx.shadow.as_deref()),
                             );
                         }
                         if let Some(ref glow) = img.glow {
                             super::color::draw_image_glow(
-                                content, glow, x, y_bottom,
-                                img.display_width, img.display_height,
+                                content,
+                                glow,
+                                x,
+                                y_bottom,
+                                img.display_width,
+                                img.display_height,
                                 hf_fx.and_then(|fx| fx.glow.as_deref()),
                             );
                         }
@@ -801,9 +875,13 @@ pub(super) fn render_header_footer(
                         );
                         if let Some(sc) = img.stroke_color {
                             super::smartart::stroke_image_border(
-                                content, x, y_bottom,
-                                img.display_width, img.display_height,
-                                sc, img.stroke_width,
+                                content,
+                                x,
+                                y_bottom,
+                                img.display_width,
+                                img.display_height,
+                                sc,
+                                img.stroke_width,
                                 img.clip_geometry.as_ref(),
                             );
                         }
@@ -903,7 +981,9 @@ pub(super) fn render_header_footer(
                     (text_width - para.indent_left - para.indent_right).max(1.0);
                 let text_hanging = if !para.list_label.is_empty() {
                     if let Some(nts) = para.num_level_tab_stop {
-                        if nts < para.indent_left && (para.indent_left - para.indent_hanging).abs() < 0.5 {
+                        if nts < para.indent_left
+                            && (para.indent_left - para.indent_hanging).abs() < 0.5
+                        {
                             (para.indent_left - nts).max(0.0)
                         } else if para.indent_first_line > 0.0 && para.indent_hanging == 0.0 {
                             -para.indent_first_line
@@ -1001,19 +1081,14 @@ pub(super) fn render_header_footer(
                         // Build per-line geometry for multi-line paragraphs that may
                         // span above and through the float zones
                         let ascender_ratio_e = tallest_ar.unwrap_or(0.75);
-                        let full_w =
-                            (text_width - para.indent_left - para.indent_right).max(1.0);
+                        let full_w = (text_width - para.indent_left - para.indent_right).max(1.0);
                         let deepest_bottom =
                             zones.iter().map(|z| z.2).fold(f32::INFINITY, f32::min);
-                        let max_lines = ((slot_top - deepest_bottom) / line_h)
-                            .ceil() as usize
-                            + 10;
+                        let max_lines = ((slot_top - deepest_bottom) / line_h).ceil() as usize + 10;
                         let max_lines = max_lines.max(20);
                         let mut geom = Vec::with_capacity(max_lines);
                         for i in 0..max_lines {
-                            let y = slot_top
-                                - font_size * ascender_ratio_e
-                                - i as f32 * line_h;
+                            let y = slot_top - font_size * ascender_ratio_e - i as f32 * line_h;
                             match bounds_at(y, y) {
                                 Some((lb, rb)) => geom.push(indented(lb, rb)),
                                 None => geom.push((col_x + para.indent_left, full_w)),
@@ -1023,8 +1098,9 @@ pub(super) fn render_header_footer(
                     }
                 }
 
-                let per_line_widths: Option<Vec<f32>> =
-                    hdr_line_geom.as_ref().map(|g| g.iter().map(|&(_, w)| w).collect());
+                let per_line_widths: Option<Vec<f32>> = hdr_line_geom
+                    .as_ref()
+                    .map(|g| g.iter().map(|&(_, w)| w).collect());
 
                 let lines = build_lines_with_float(
                     &substituted_runs,

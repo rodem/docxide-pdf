@@ -8,15 +8,14 @@ use crate::model::{
     ShapeGeometry, TextAnchor, TextWarp, Textbox, VRelativeFrom, VerticalPosition, WrapType,
 };
 
-use super::images::{extent_dimensions, parse_anchor_position};
-use super::color::{apply_color_transforms, parse_line_stroke, parse_solid_fill, resolve_dml_color};
-use super::styles::{
-    ThemeFillStyle, ThemeFonts,
+use super::color::{
+    apply_color_transforms, parse_line_stroke, parse_solid_fill, resolve_dml_color,
 };
+use super::images::{extent_dimensions, parse_anchor_position};
+use super::styles::{ThemeFillStyle, ThemeFonts};
 use super::{
-    DML_NS, MC_NS_TOP, ParseContext, VML_NS, WML_NS, WPD_NS, WPS_NS,
-    dml as find_dml, dml_children as find_dml_all, wps as find_wps,
-    emu_attr, parse_pt,
+    DML_NS, MC_NS_TOP, ParseContext, VML_NS, WML_NS, WPD_NS, WPS_NS, dml as find_dml,
+    dml_children as find_dml_all, emu_attr, parse_pt, wps as find_wps,
 };
 
 struct VmlBoxStyle {
@@ -109,7 +108,12 @@ pub(super) fn parse_txbx_content_paragraphs<R: Read + std::io::Seek>(
         .filter(|n| n.tag_name().name() == "p" && n.tag_name().namespace() == Some(WML_NS))
     {
         paragraphs.push(super::paragraph::build_paragraph(
-            p, ctx, &mut counters, &mut last_seen_level, &mut applied_overrides, &opts,
+            p,
+            ctx,
+            &mut counters,
+            &mut last_seen_level,
+            &mut applied_overrides,
+            &opts,
         ));
     }
     paragraphs
@@ -403,7 +407,8 @@ pub(super) fn parse_wsp_shape<R: Read + std::io::Seek>(
     let prst = sp_pr
         .and_then(|sp| find_dml(sp, "prstGeom"))
         .and_then(|g| g.attribute("prst"));
-    if matches!(prst, Some("line" | "straightConnector1" | "arc")) && find_wps(wsp, "txbx").is_none()
+    if matches!(prst, Some("line" | "straightConnector1" | "arc"))
+        && find_wps(wsp, "txbx").is_none()
     {
         return None;
     }
@@ -806,9 +811,10 @@ pub(super) fn parse_textbox_from_vml<R: Read + std::io::Seek>(
         .children()
         .find(|n| n.tag_name().name() == "textbox" && n.tag_name().namespace() == Some(VML_NS))
     else {
-        if let Some(tp) = shape.children().find(|n| {
-            n.tag_name().name() == "textpath" && n.tag_name().namespace() == Some(VML_NS)
-        }) {
+        if let Some(tp) = shape
+            .children()
+            .find(|n| n.tag_name().name() == "textpath" && n.tag_name().namespace() == Some(VML_NS))
+        {
             return super::wordart::parse_vml_wordart(shape, tp, ctx.styles, ctx.theme);
         }
         // Stroke-only VML preset shapes (e.g. a curly brace, o:spt 87) have
@@ -850,8 +856,7 @@ pub(super) fn parse_textbox_from_vml<R: Read + std::io::Seek>(
         (None, 0.0)
     };
 
-    let paragraphs =
-        parse_txbx_content_paragraphs(txbx_content, ctx);
+    let paragraphs = parse_txbx_content_paragraphs(txbx_content, ctx);
     if paragraphs.is_empty() {
         return None;
     }
@@ -913,9 +918,7 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
                     }) {
                         let (display_w, display_h) = extent_dimensions(container);
 
-                        if let Some(wsp) =
-                            parse_textbox_from_wsp(container, ctx)
-                        {
+                        if let Some(wsp) = parse_textbox_from_wsp(container, ctx) {
                             let (h_position, h_relative, v_pos, v_relative) =
                                 parse_anchor_position(container);
                             let v_offset = match v_pos {
@@ -966,9 +969,7 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
                 for pict in branch.children().filter(|n| {
                     n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "pict"
                 }) {
-                    if let Some(tb) =
-                        parse_textbox_from_vml(pict, ctx)
-                    {
+                    if let Some(tb) = parse_textbox_from_vml(pict, ctx) {
                         textboxes.push(tb);
                     }
                 }
@@ -978,9 +979,7 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
                     for pict in r.children().filter(|n| {
                         n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "pict"
                     }) {
-                        if let Some(tb) =
-                            parse_textbox_from_vml(pict, ctx)
-                        {
+                        if let Some(tb) = parse_textbox_from_vml(pict, ctx) {
                             textboxes.push(tb);
                         }
                     }

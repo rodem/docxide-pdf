@@ -11,10 +11,7 @@ use super::{
     resolve_theme_color_key,
 };
 
-fn find_w14<'a>(
-    parent: roxmltree::Node<'a, 'a>,
-    name: &str,
-) -> Option<roxmltree::Node<'a, 'a>> {
+fn find_w14<'a>(parent: roxmltree::Node<'a, 'a>, name: &str) -> Option<roxmltree::Node<'a, 'a>> {
     find_child(parent, name, W14_NS)
 }
 
@@ -65,10 +62,7 @@ pub(super) fn parse_wordart_body_pr(body_pr: roxmltree::Node) -> WordArtBodyProp
 }
 
 /// Parse w14:textOutline from a w:rPr node.
-pub(super) fn parse_text_outline(
-    rpr: roxmltree::Node,
-    theme: &ThemeFonts,
-) -> Option<TextOutline> {
+pub(super) fn parse_text_outline(rpr: roxmltree::Node, theme: &ThemeFonts) -> Option<TextOutline> {
     let outline = find_w14(rpr, "textOutline")?;
 
     let width_pt = outline
@@ -89,8 +83,7 @@ pub(super) fn parse_text_fill(rpr: roxmltree::Node, theme: &ThemeFonts) -> Optio
         return Some(TextFill::NoFill);
     }
 
-    if let Some(color) =
-        find_w14(text_fill, "solidFill").and_then(|n| resolve_w14_color(n, theme))
+    if let Some(color) = find_w14(text_fill, "solidFill").and_then(|n| resolve_w14_color(n, theme))
     {
         return Some(TextFill::Solid(color));
     }

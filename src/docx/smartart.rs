@@ -3,9 +3,9 @@ use std::io::{Read, Seek};
 
 use crate::model::{EmbeddedImage, SmartArtDiagram, SmartArtShape};
 
-use super::styles::ThemeFonts;
 use super::color::{parse_line_stroke, parse_solid_fill, resolve_dml_color};
 use super::images::{find_blip_embed, read_image_from_zip};
+use super::styles::ThemeFonts;
 use super::textbox::parse_shape_geometry;
 use super::{DML_NS, DSP_NS, dml, dsp, emu_attr, read_zip_text};
 
@@ -84,8 +84,7 @@ fn find_diagram_drawing(
     rels: &HashMap<String, String>,
 ) -> Option<String> {
     let dgm_rel_ids = container.descendants().find(|n| {
-        n.tag_name().name() == "relIds"
-            && n.tag_name().namespace() == Some(DIAGRAM_URI)
+        n.tag_name().name() == "relIds" && n.tag_name().namespace() == Some(DIAGRAM_URI)
     })?;
     let dm_rid = dgm_rel_ids.attribute((super::REL_NS, "dm"))?;
     let data_target = rels.get(dm_rid)?;
@@ -102,8 +101,11 @@ pub(super) fn parse_smartart_drawing<R: Read + Seek>(
 ) -> SmartArtDiagram {
     let mut shapes = Vec::new();
 
-    let drawing_target = find_diagram_drawing(container, rels)
-        .or_else(|| rels.values().find(|t| t.contains("diagrams/drawing")).cloned());
+    let drawing_target = find_diagram_drawing(container, rels).or_else(|| {
+        rels.values()
+            .find(|t| t.contains("diagrams/drawing"))
+            .cloned()
+    });
     if let Some(target) = drawing_target {
         let zip_path = target
             .strip_prefix('/')
@@ -180,14 +182,18 @@ fn parse_dsp_shape<R: Read + Seek>(
         .and_then(|style| dml(style, "fontRef"))
         .and_then(|fr| parse_solid_fill(fr, theme).or_else(|| resolve_dml_color(fr, theme)));
 
-    let paragraphs: Vec<SmartArtPara> = tp.paragraphs.into_iter().map(|mut para| {
-        for run in &mut para.runs {
-            if run.color.is_none() {
-                run.color = default_text_color;
+    let paragraphs: Vec<SmartArtPara> = tp
+        .paragraphs
+        .into_iter()
+        .map(|mut para| {
+            for run in &mut para.runs {
+                if run.color.is_none() {
+                    run.color = default_text_color;
+                }
             }
-        }
-        para
-    }).collect();
+            para
+        })
+        .collect();
 
     // dsp:txXfrm provides a separate rectangle for text placement
     let text_rect = dsp(sp, "txXfrm").and_then(|tx| {
@@ -201,7 +207,9 @@ fn parse_dsp_shape<R: Read + Seek>(
         ))
     });
 
-    let has_text = paragraphs.iter().any(|p| p.runs.iter().any(|r| !r.text.is_empty()));
+    let has_text = paragraphs
+        .iter()
+        .any(|p| p.runs.iter().any(|r| !r.text.is_empty()));
     if fill.is_none() && image_fill.is_none() && !has_text && stroke_color.is_none() {
         return None;
     }
@@ -224,7 +232,7 @@ fn parse_dsp_shape<R: Read + Seek>(
     })
 }
 
-use crate::model::{SmartArtPara, SmartArtRun, SmartArtTextAnchor, SmartArtTextAlign};
+use crate::model::{SmartArtPara, SmartArtRun, SmartArtTextAlign, SmartArtTextAnchor};
 
 struct DspTextProps {
     paragraphs: Vec<SmartArtPara>,
@@ -237,12 +245,20 @@ fn parse_dsp_text(sp: roxmltree::Node, theme: &ThemeFonts) -> DspTextProps {
     let Some(body) = dsp(sp, "txBody") else {
         return DspTextProps {
             paragraphs: Vec::new(),
-            insets: (0.0, 0.0, 0.0, 0.0), anchor: SmartArtTextAnchor::Top,
+            insets: (0.0, 0.0, 0.0, 0.0),
+            anchor: SmartArtTextAnchor::Top,
         };
     };
     let body_pr = dml(body, "bodyPr");
     let insets = body_pr
-        .map(|bp| (emu_attr(bp, "tIns"), emu_attr(bp, "rIns"), emu_attr(bp, "bIns"), emu_attr(bp, "lIns")))
+        .map(|bp| {
+            (
+                emu_attr(bp, "tIns"),
+                emu_attr(bp, "rIns"),
+                emu_attr(bp, "bIns"),
+                emu_attr(bp, "lIns"),
+            )
+        })
         .unwrap_or((0.0, 0.0, 0.0, 0.0));
     let anchor = match body_pr.and_then(|bp| bp.attribute("anchor")) {
         Some("ctr") => SmartArtTextAnchor::Center,
@@ -281,11 +297,10 @@ fn parse_dsp_text(sp: roxmltree::Node, theme: &ThemeFonts) -> DspTextProps {
 
         let mut runs = Vec::new();
         for r in p.children().filter(|n| is_ns(*n, "r", DML_NS)) {
-            let text = dml(r, "t")
-                .and_then(|t| t.text())
-                .unwrap_or("")
-                .to_string();
-            if text.is_empty() { continue; }
+            let text = dml(r, "t").and_then(|t| t.text()).unwrap_or("").to_string();
+            if text.is_empty() {
+                continue;
+            }
 
             let rpr = dml(r, "rPr");
             let font_size = rpr
@@ -306,20 +321,22 @@ fn parse_dsp_text(sp: roxmltree::Node, theme: &ThemeFonts) -> DspTextProps {
 
             let bold = rpr.and_then(|rp| rp.attribute("b")) == Some("1");
             let italic = rpr.and_then(|rp| rp.attribute("i")) == Some("1");
-            let underline = rpr.and_then(|rp| rp.attribute("u")).is_some_and(|v| v != "none");
-            let strikethrough = rpr.and_then(|rp| rp.attribute("strike")).is_some_and(|v| v != "noStrike");
+            let underline = rpr
+                .and_then(|rp| rp.attribute("u"))
+                .is_some_and(|v| v != "none");
+            let strikethrough = rpr
+                .and_then(|rp| rp.attribute("strike"))
+                .is_some_and(|v| v != "noStrike");
             let baseline = rpr
                 .and_then(|rp| rp.attribute("baseline"))
                 .and_then(|v| v.parse::<i32>().ok())
                 .unwrap_or(0);
 
             let color = rpr.and_then(|rp| parse_solid_fill(rp, theme));
-            let highlight = rpr
-                .and_then(|rp| dml(rp, "highlight"))
-                .and_then(|hl| {
-                    let clr = dml(hl, "srgbClr")?;
-                    super::parse_hex_color(clr.attribute("val")?)
-                });
+            let highlight = rpr.and_then(|rp| dml(rp, "highlight")).and_then(|hl| {
+                let clr = dml(hl, "srgbClr")?;
+                super::parse_hex_color(clr.attribute("val")?)
+            });
 
             runs.push(SmartArtRun {
                 text,
@@ -344,9 +361,18 @@ fn parse_dsp_text(sp: roxmltree::Node, theme: &ThemeFonts) -> DspTextProps {
             .unwrap_or(0.0);
 
         if !runs.is_empty() {
-            paragraphs.push(SmartArtPara { runs, bullet, align, line_spacing_pct });
+            paragraphs.push(SmartArtPara {
+                runs,
+                bullet,
+                align,
+                line_spacing_pct,
+            });
         }
     }
 
-    DspTextProps { paragraphs, insets, anchor }
+    DspTextProps {
+        paragraphs,
+        insets,
+        anchor,
+    }
 }

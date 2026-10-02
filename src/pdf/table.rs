@@ -4,24 +4,22 @@ use pdf_writer::{Content, Name, Str};
 
 use crate::fonts::FontEntry;
 use crate::model::{
-    Alignment, Block, BorderStyle, CellBorder, CellMargins, CellVAlign,
-    Paragraph, SectionProperties, Table, TableAlignment, TableRow, TextDirection, VMerge,
+    Alignment, Block, BorderStyle, CellBorder, CellMargins, CellVAlign, Paragraph,
+    SectionProperties, Table, TableAlignment, TableRow, TextDirection, VMerge,
 };
 
 use super::color::{fill_rgb, stroke_rgb};
 use super::header_footer::{compute_effective_margin_bottom, effective_slot_top};
 
 use super::RenderContext;
-use super::tagging::{CellTagger, TableTags, Tags};
-use super::layout::{
-    LinkAnnotation, LinkTagger, encode_text_for_pdf, render_paragraph_lines,
-};
+use super::layout::{LinkAnnotation, LinkTagger, encode_text_for_pdf, render_paragraph_lines};
 use super::table_layout::{
     CellContentItem, CellCursor, CellFloatingImageLayout, CellLayout, CellParagraphLayout,
     HfSubstitution, RowLayout, apply_pct_width, auto_fit_columns, cell_span_width, cell_x_offset,
     chunk_space_before, compute_merge_spans, compute_row_layouts, cursor_chunks, find_cell_split,
     item_chunk_height, para_block_height,
 };
+use super::tagging::{CellTagger, TableTags, Tags};
 
 fn draw_border(content: &mut Content, border: &CellBorder, x1: f32, y1: f32, x2: f32, y2: f32) {
     if !border.present {
@@ -50,10 +48,7 @@ fn draw_border(content: &mut Content, border: &CellBorder, x1: f32, y1: f32, x2:
             content.set_dash_pattern([w * 4.0, w * 2.0, 0.0, w * 2.0], 0.0);
         }
         BorderStyle::DashDotDot => {
-            content.set_dash_pattern(
-                [w * 4.0, w * 2.0, 0.0, w * 2.0, 0.0, w * 2.0],
-                0.0,
-            );
+            content.set_dash_pattern([w * 4.0, w * 2.0, 0.0, w * 2.0, 0.0, w * 2.0], 0.0);
         }
         BorderStyle::Double => {
             // Word renders each line of a double border at the full specified
@@ -128,7 +123,14 @@ fn paint_cell_background(
 
 /// Draw a `w:shd` line/cross pattern as real hatching: a background fill plus
 /// thin stroked lines clipped to the cell rect.
-fn draw_hatch(content: &mut Content, hp: &crate::model::HatchPattern, x: f32, y: f32, w: f32, h: f32) {
+fn draw_hatch(
+    content: &mut Content,
+    hp: &crate::model::HatchPattern,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) {
     use crate::model::HatchKind::*;
     if w <= 0.0 || h <= 0.0 {
         return;
@@ -191,7 +193,8 @@ fn draw_cell_shading(
     h: f32,
 ) {
     let bw = |b: &crate::model::CellBorder| if b.present { b.width } else { 0.0 };
-    let inset = (bw(&borders.top) + bw(&borders.bottom) + bw(&borders.left) + bw(&borders.right)) / 8.0;
+    let inset =
+        (bw(&borders.top) + bw(&borders.bottom) + bw(&borders.left) + bw(&borders.right)) / 8.0;
     paint_cell_background(
         content,
         shading,
@@ -225,30 +228,46 @@ fn render_cell_inline_image(
 
     if let Some(ref shadow) = para.image_shadow {
         super::color::draw_image_shadow(
-            content, shadow, img_x, img_y,
-            para.image_width, para.image_height,
+            content,
+            shadow,
+            img_x,
+            img_y,
+            para.image_width,
+            para.image_height,
             para.image_shadow_xobj.as_deref(),
         );
     }
     if let Some(ref glow) = para.image_glow {
         super::color::draw_image_glow(
-            content, glow, img_x, img_y,
-            para.image_width, para.image_height,
+            content,
+            glow,
+            img_x,
+            img_y,
+            para.image_width,
+            para.image_height,
             para.image_glow_xobj.as_deref(),
         );
     }
 
     super::smartart::render_image_with_clip(
-        content, img_name, img_x, img_y,
-        para.image_width, para.image_height,
+        content,
+        img_name,
+        img_x,
+        img_y,
+        para.image_width,
+        para.image_height,
         para.image_clip.as_ref(),
     );
 
     if let Some(sc) = para.image_stroke_color {
         super::smartart::stroke_image_border(
-            content, img_x, img_y,
-            para.image_width, para.image_height,
-            sc, para.image_stroke_width,
+            content,
+            img_x,
+            img_y,
+            para.image_width,
+            para.image_height,
+            sc,
+            para.image_stroke_width,
             para.image_clip.as_ref(),
         );
     }
@@ -297,8 +316,7 @@ fn cell_content_h_for_valign(items: &[CellContentItem]) -> f32 {
             && (!last_para.lines.is_empty()
                 || (last_para.content_height <= 0.0 && !last_para.paragraph_mark_vanish))
         {
-            let ink_bottom =
-                last_para.font_size * (1.0 + last_para.descender_ratio);
+            let ink_bottom = last_para.font_size * (1.0 + last_para.descender_ratio);
             h -= (last_para.line_h - ink_bottom).max(0.0);
         }
     }
@@ -316,9 +334,19 @@ fn cell_has_visible_content(items: &[CellContentItem]) -> bool {
 /// lends the skipped columns to its first cell and one that stops short
 /// (`w:gridAfter`) the rest to its last cell, so every TR spans the table's
 /// columns (PDF/UA 7.2-42/43).
-fn row_tag_span(row: &TableRow, ci: usize, span: usize, grid_cols: usize, grid_col_after: usize) -> i32 {
+fn row_tag_span(
+    row: &TableRow,
+    ci: usize,
+    span: usize,
+    grid_cols: usize,
+    grid_col_after: usize,
+) -> i32 {
     let lead = if ci == 0 { row.grid_before } else { 0 };
-    let span = if ci + 1 == row.cells.len() { span + grid_cols.saturating_sub(grid_col_after) } else { span };
+    let span = if ci + 1 == row.cells.len() {
+        span + grid_cols.saturating_sub(grid_col_after)
+    } else {
+        span
+    };
     (lead + span) as i32
 }
 
@@ -344,7 +372,10 @@ fn draw_tagged_cell_label(
 }
 
 /// Links and footnote references in a tagged cell paragraph nest in its P.
-fn cell_link_tagger<'a>(tagger: &'a mut Option<CellTagger<'_>>, para: Option<usize>) -> Option<LinkTagger<'a>> {
+fn cell_link_tagger<'a>(
+    tagger: &'a mut Option<CellTagger<'_>>,
+    para: Option<usize>,
+) -> Option<LinkTagger<'a>> {
     let t = tagger.as_mut()?;
     Some(LinkTagger::new(&mut *t.tags, t.page, para?))
 }
@@ -390,15 +421,17 @@ fn render_cell_content(
                 }
 
                 // Word tags every cell paragraph, empty ones included.
-                let cell_nodes = tagger
-                    .as_mut()
-                    .map(|t| t.begin(content, item_idx, para.list_item, !para.list_label.is_empty()));
+                let cell_nodes = tagger.as_mut().map(|t| {
+                    t.begin(
+                        content,
+                        item_idx,
+                        para.list_item,
+                        !para.list_label.is_empty(),
+                    )
+                });
                 let cell_para = cell_nodes.map(|(_, body)| body);
                 let para_top = cursor_y;
-                if !para_has_visible_content(para)
-                    && !para.has_textboxes
-                    && !para.has_connectors
-                {
+                if !para_has_visible_content(para) && !para.has_textboxes && !para.has_connectors {
                     cursor_y -= para.space_before + para_block_height(para);
                     end_cell_tag(content, &tagger);
                     continue;
@@ -452,7 +485,15 @@ fn render_cell_content(
                     para.indent_hanging
                 } else {
                     let label_x = cell_x + cm.left + para.indent_left - para.indent_hanging;
-                    draw_tagged_cell_label(content, &mut tagger, cell_nodes, para, label_x, baseline_y, ctx.fonts);
+                    draw_tagged_cell_label(
+                        content,
+                        &mut tagger,
+                        cell_nodes,
+                        para,
+                        label_x,
+                        baseline_y,
+                        ctx.fonts,
+                    );
                     if para.indent_first_line > 0.0 && para.indent_hanging == 0.0 {
                         -para.indent_first_line
                     } else {
@@ -486,12 +527,22 @@ fn render_cell_content(
 
                 if let Some(src) = source_para {
                     render_cell_floating_shapes(
-                        content, src, cell_x, col_w, para_top + valign_off, ctx,
+                        content,
+                        src,
+                        cell_x,
+                        col_w,
+                        para_top + valign_off,
+                        ctx,
                         gradient_specs,
                     );
                 }
                 for fi in para.floating_images.iter().filter(above_shapes) {
-                    draw_cell_float(content, fi, cell_x, para_top - para.space_before + valign_off);
+                    draw_cell_float(
+                        content,
+                        fi,
+                        cell_x,
+                        para_top - para.space_before + valign_off,
+                    );
                 }
             }
             CellContentItem::NestedTable { height } => {
@@ -527,19 +578,26 @@ fn render_cell_content(
 }
 
 /// Draw one floating picture anchored to a cell paragraph whose top is `para_y`.
-fn draw_cell_float(
-    content: &mut Content,
-    fi: &CellFloatingImageLayout,
-    cell_x: f32,
-    para_y: f32,
-) {
+fn draw_cell_float(content: &mut Content, fi: &CellFloatingImageLayout, cell_x: f32, para_y: f32) {
     let fi_x = cell_x + fi.h_offset;
     let fi_y_bottom = para_y - fi.v_offset - fi.display_height;
     content.save_state();
     super::positioning::push_center_rotation(
-        content, fi_x, fi_y_bottom, fi.display_width, fi.display_height, fi.rotation_deg,
+        content,
+        fi_x,
+        fi_y_bottom,
+        fi.display_width,
+        fi.display_height,
+        fi.rotation_deg,
     );
-    content.transform([fi.display_width, 0.0, 0.0, fi.display_height, fi_x, fi_y_bottom]);
+    content.transform([
+        fi.display_width,
+        0.0,
+        0.0,
+        fi.display_height,
+        fi_x,
+        fi_y_bottom,
+    ]);
     content.x_object(Name(fi.pdf_name.as_bytes()));
     content.restore_state();
 }
@@ -554,8 +612,8 @@ fn render_cell_floating_shapes(
     ctx: &RenderContext,
     gradient_specs: &mut Vec<super::GradientSpec>,
 ) {
-    use crate::model::HorizontalPosition;
     use super::positioning::render_connector;
+    use crate::model::HorizontalPosition;
 
     for conn in &para.connectors {
         let conn_x = match conn.connector_type {
@@ -590,9 +648,9 @@ fn render_simple_textbox(
     ctx: &RenderContext,
     gradient_specs: &mut Vec<super::GradientSpec>,
 ) {
-    use crate::model::ShapeFill;
     use super::smartart::{draw_shape_path, draw_shape_stroke_path};
     use super::textbox_render::render_textbox_paragraphs;
+    use crate::model::ShapeFill;
 
     let tb_width = tb.width_pt;
     let tb_height = super::textbox_render::textbox_height(tb, ctx);
@@ -601,7 +659,14 @@ fn render_simple_textbox(
     if let Some(ShapeFill::Solid(color)) = &tb.fill {
         content.save_state();
         fill_rgb(content, *color);
-        draw_shape_path(content, tb_x, tb_y_top - tb_height, tb_width, tb_height, &tb.shape_type);
+        draw_shape_path(
+            content,
+            tb_x,
+            tb_y_top - tb_height,
+            tb_width,
+            tb_height,
+            &tb.shape_type,
+        );
         content.fill_nonzero();
         content.restore_state();
     }
@@ -614,7 +679,14 @@ fn render_simple_textbox(
             stroke_rgb(content, stroke);
             // Honor per-subpath stroke flags (brace/bracket pairs have a
             // fill-only outline subpath), same as body-anchored textboxes.
-            draw_shape_stroke_path(content, tb_x, tb_y_top - tb_height, tb_width, tb_height, &tb.shape_type);
+            draw_shape_stroke_path(
+                content,
+                tb_x,
+                tb_y_top - tb_height,
+                tb_width,
+                tb_height,
+                &tb.shape_type,
+            );
             content.stroke();
             content.restore_state();
         }
@@ -667,7 +739,9 @@ fn render_table_rows(
         let row_top = *cursor_y;
         let row_bottom = row_top - row_h;
 
-        for (ci, ((grid_col, span, cell), cell_layout)) in row.grid_cells().zip(layout.cells.iter()).enumerate() {
+        for (ci, ((grid_col, span, cell), cell_layout)) in
+            row.grid_cells().zip(layout.cells.iter()).enumerate()
+        {
             let col_w = cell_span_width(col_widths, grid_col, span);
             let cx = cell_x_offset(col_widths, table_left, grid_col);
             let tagger = tag.as_mut().map(|(tags, table_tags, page)| CellTagger {
@@ -686,13 +760,18 @@ fn render_table_rows(
                 continue;
             }
 
-            let merge_extra = merge_spans
-                .get(&(ri, grid_col))
-                .copied()
-                .unwrap_or(0.0);
+            let merge_extra = merge_spans.get(&(ri, grid_col)).copied().unwrap_or(0.0);
             let effective_h = row_h + merge_extra;
 
-            paint_cell_background(content, cell.shading, cell.hatch, cx, row_bottom, col_w, row_h);
+            paint_cell_background(
+                content,
+                cell.shading,
+                cell.hatch,
+                cx,
+                row_bottom,
+                col_w,
+                row_h,
+            );
 
             if cell_has_visible_content(&cell_layout.items) {
                 let ecm = cell.cell_margins.as_ref().unwrap_or(cm);
@@ -729,10 +808,7 @@ fn render_table_rows(
                 continue;
             }
 
-            let merge_extra = merge_spans
-                .get(&(ri, grid_col))
-                .copied()
-                .unwrap_or(0.0);
+            let merge_extra = merge_spans.get(&(ri, grid_col)).copied().unwrap_or(0.0);
             let effective_bottom = row_bottom - merge_extra;
 
             draw_cell_borders(
@@ -776,7 +852,10 @@ fn render_nested_table(
     let merge_spans = compute_merge_spans(table, &row_layouts);
 
     let mut nested = tagger.as_mut().map(|t| t.nested_table(table));
-    let tag = tagger.as_mut().zip(nested.as_mut()).map(|(t, n)| (&mut *t.tags, n, t.page));
+    let tag = tagger
+        .as_mut()
+        .zip(nested.as_mut())
+        .map(|(t, n)| (&mut *t.tags, n, t.page));
     render_table_rows(
         table,
         &row_layouts,
@@ -841,7 +920,11 @@ fn render_partial_cell_content(
     for (pi, l0, l1) in cursor_chunks(items, start, end) {
         match &items[pi] {
             CellContentItem::Paragraph(para) => {
-                let sb = if pi == start.item { 0.0 } else { para.space_before };
+                let sb = if pi == start.item {
+                    0.0
+                } else {
+                    para.space_before
+                };
 
                 let cell_nodes = tagger
                     .as_mut()
@@ -888,7 +971,15 @@ fn render_partial_cell_content(
                 } else {
                     if l0 == 0 {
                         let label_x = cell_x + cm.left + para.indent_left - para.indent_hanging;
-                        draw_tagged_cell_label(content, &mut tagger, cell_nodes, para, label_x, baseline_y, ctx.fonts);
+                        draw_tagged_cell_label(
+                            content,
+                            &mut tagger,
+                            cell_nodes,
+                            para,
+                            label_x,
+                            baseline_y,
+                            ctx.fonts,
+                        );
                     }
                     if para.indent_first_line > 0.0 && para.indent_hanging == 0.0 {
                         -para.indent_first_line
@@ -926,8 +1017,15 @@ fn render_partial_cell_content(
                 let bi = item_to_block.get(pi).copied().unwrap_or(0);
                 if let Some(Block::Table(table)) = blocks.get(bi) {
                     render_nested_table(
-                        table, content, cell_x + cm.left, col_w - cm.left - cm.right,
-                        &mut cursor_y, ctx, gradient_specs, links, &mut tagger,
+                        table,
+                        content,
+                        cell_x + cm.left,
+                        col_w - cm.left - cm.right,
+                        &mut cursor_y,
+                        ctx,
+                        gradient_specs,
+                        links,
+                        &mut tagger,
                     );
                 } else {
                     cursor_y -= height;
@@ -982,7 +1080,9 @@ fn render_table_row(
     let row_top = pb.slot_top;
     let row_bottom = row_top - row_h;
 
-    for (ci, ((grid_col, span, cell), cell_layout)) in row.grid_cells().zip(layout.cells.iter()).enumerate() {
+    for (ci, ((grid_col, span, cell), cell_layout)) in
+        row.grid_cells().zip(layout.cells.iter()).enumerate()
+    {
         let col_w = cell_span_width(col_widths, grid_col, span);
         let cell_x = cell_x_offset(col_widths, table_left, grid_col);
         // None while repeated header rows are drawn (render_header_rows).
@@ -1061,7 +1161,11 @@ fn render_table_row(
                 ctx,
                 &mut pb.gradient_specs,
                 // Repeated header rows are untagged artifacts: no link annotations.
-                if tagger.is_some() { &mut pb.links } else { &mut no_links },
+                if tagger.is_some() {
+                    &mut pb.links
+                } else {
+                    &mut no_links
+                },
                 tagger,
             );
         }
@@ -1228,7 +1332,9 @@ fn render_partial_row(
     let row_h = max_h;
     let row_bottom = row_top - row_h;
 
-    for (ci, ((grid_col, span, cell), cell_layout)) in row.grid_cells().zip(layout.cells.iter()).enumerate() {
+    for (ci, ((grid_col, span, cell), cell_layout)) in
+        row.grid_cells().zip(layout.cells.iter()).enumerate()
+    {
         let col_w = cell_span_width(col_widths, grid_col, span);
         let cell_x = cell_x_offset(col_widths, table_left, grid_col);
         let page = pb.all_contents.len();
@@ -1262,11 +1368,12 @@ fn render_partial_row(
             row_h,
         );
 
-        let has_content =
-            cursor_chunks(&cell_layout.items, start, end).any(|(pi, _, _)| match &cell_layout.items[pi] {
+        let has_content = cursor_chunks(&cell_layout.items, start, end).any(|(pi, _, _)| {
+            match &cell_layout.items[pi] {
                 CellContentItem::Paragraph(p) => para_has_visible_content(p),
                 CellContentItem::NestedTable { height } => *height > 0.0,
-            });
+            }
+        });
 
         if has_content {
             render_partial_cell_content(
@@ -1398,15 +1505,16 @@ pub(super) fn render_table(
         .as_ref()
         .is_some_and(|fp| fp.v_anchor_text && fp.v_offset_pt >= 0.0);
     let keep_with_anchor = is_floating && !flows_inline;
-    let (table_left, saved_slot_top, text_margins) =
-        if let Some(ref fp) = override_pos {
-            let saved = Some((pb.slot_top - prev_space_after, fp.y));
-            pb.slot_top = fp.y;
-            (fp.x, saved, (fp.top_from_text, fp.bottom_from_text))
-        } else {
+    let (table_left, saved_slot_top, text_margins) = if let Some(ref fp) = override_pos {
+        let saved = Some((pb.slot_top - prev_space_after, fp.y));
+        pb.slot_top = fp.y;
+        (fp.x, saved, (fp.top_from_text, fp.bottom_from_text))
+    } else {
         use crate::model::TableAlignment;
-        let (area_left, area_width) = column_bounds
-            .unwrap_or((sp.margin_left, sp.page_width - sp.margin_left - sp.margin_right));
+        let (area_left, area_width) = column_bounds.unwrap_or((
+            sp.margin_left,
+            sp.page_width - sp.margin_left - sp.margin_right,
+        ));
         let table_total_w: f32 = col_widths.iter().sum();
         let left = match table.alignment {
             TableAlignment::Center => area_left + (area_width - table_total_w) / 2.0,
@@ -1420,8 +1528,8 @@ pub(super) fn render_table(
             // sits at the margin and the text inside it.
             TableAlignment::Left => {
                 let ind = table.table_indent;
-                let explicit_real_indent = table.table_indent_explicit
-                    && (ind - cm.left).abs() > 1.0;
+                let explicit_real_indent =
+                    table.table_indent_explicit && (ind - cm.left).abs() > 1.0;
                 if ctx.compat_mode >= 15 {
                     area_left + ind + word2013_border_shift(table)
                 } else if explicit_real_indent {
@@ -1444,7 +1552,13 @@ pub(super) fn render_table(
         row.map_or(0.0, |r| {
             r.cells
                 .iter()
-                .map(|c| if top { c.borders.top.band() } else { c.borders.bottom.band() })
+                .map(|c| {
+                    if top {
+                        c.borders.top.band()
+                    } else {
+                        c.borders.bottom.band()
+                    }
+                })
                 .fold(0.0f32, f32::max)
         })
     };
@@ -1456,32 +1570,40 @@ pub(super) fn render_table(
 
     // Pre-scan each row for footnote and endnote references so we can reserve
     // space as rows containing notes are rendered.
-    let row_footnote_ids: Vec<Vec<u32>> = table.rows.iter().map(|row| {
-        let mut ids = Vec::new();
-        for cell in &row.cells {
-            for p in cell.all_paragraphs() {
-                for run in &p.runs {
-                    if let Some(id) = run.footnote_id {
-                        ids.push(id);
+    let row_footnote_ids: Vec<Vec<u32>> = table
+        .rows
+        .iter()
+        .map(|row| {
+            let mut ids = Vec::new();
+            for cell in &row.cells {
+                for p in cell.all_paragraphs() {
+                    for run in &p.runs {
+                        if let Some(id) = run.footnote_id {
+                            ids.push(id);
+                        }
                     }
                 }
             }
-        }
-        ids
-    }).collect();
-    let row_endnote_ids: Vec<Vec<u32>> = table.rows.iter().map(|row| {
-        let mut ids = Vec::new();
-        for cell in &row.cells {
-            for p in cell.all_paragraphs() {
-                for run in &p.runs {
-                    if let Some(id) = run.endnote_id {
-                        ids.push(id);
+            ids
+        })
+        .collect();
+    let row_endnote_ids: Vec<Vec<u32>> = table
+        .rows
+        .iter()
+        .map(|row| {
+            let mut ids = Vec::new();
+            for cell in &row.cells {
+                for p in cell.all_paragraphs() {
+                    for run in &p.runs {
+                        if let Some(id) = run.endnote_id {
+                            ids.push(id);
+                        }
                     }
                 }
             }
-        }
-        ids
-    }).collect();
+            ids
+        })
+        .collect();
 
     // Text width for footnote height computation (same as paragraph layout uses).
     let fn_text_width = sp.page_width - sp.margin_left - sp.margin_right;
@@ -1524,11 +1646,11 @@ pub(super) fn render_table(
     // Split an oversized row across pages, rendering partial rows and
     // flushing pages between chunks until every cell is fully emitted.
     let split_row_across_pages = |row: &TableRow,
-                                   layout: &RowLayout,
-                                   pb: &mut super::PageBuilder,
-                                   ri: usize,
-                                   did_flush: &mut bool,
-                                   emb: &mut f32| {
+                                  layout: &RowLayout,
+                                  pb: &mut super::PageBuilder,
+                                  ri: usize,
+                                  did_flush: &mut bool,
+                                  emb: &mut f32| {
         let ncells = layout.cells.len();
         let mut starts = vec![CellCursor::default(); ncells];
         loop {
@@ -1545,8 +1667,16 @@ pub(super) fn render_table(
             }
 
             render_partial_row(
-                row, layout, &col_widths, cm, table_left,
-                pb, ctx, &starts, &ends, ri,
+                row,
+                layout,
+                &col_widths,
+                cm,
+                table_left,
+                pb,
+                ctx,
+                &starts,
+                &ends,
+                ri,
             );
 
             if all_done {
@@ -1607,9 +1737,8 @@ pub(super) fn render_table(
         for &fn_id in &row_footnote_ids[ri] {
             if !pb.footnote_ids_set.contains(&fn_id) {
                 if let Some(footnote) = footnotes.get(&fn_id) {
-                    row_fn_extra += super::footnotes::compute_footnote_height(
-                        footnote, ctx, fn_text_width,
-                    );
+                    row_fn_extra +=
+                        super::footnotes::compute_footnote_height(footnote, ctx, fn_text_width);
                 }
             }
         }
@@ -1644,7 +1773,9 @@ pub(super) fn render_table(
         // instead).
         let any_cell_multi_item = layout.cells.iter().any(|c| {
             c.items.len() > 1
-                || c.items.iter().any(|it| matches!(it, CellContentItem::Paragraph(p) if p.lines.len() >= 4))
+                || c.items
+                    .iter()
+                    .any(|it| matches!(it, CellContentItem::Paragraph(p) if p.lines.len() >= 4))
         });
         let first_chunk_fits = layout.cells.iter().all(|c| {
             c.items.first().is_none_or(|it| {
@@ -1668,9 +1799,23 @@ pub(super) fn render_table(
             && first_chunk_fits;
 
         if row_h > available_h && (row_h > page_content_h || keep_with_anchor) && !row.cant_split {
-            split_row_across_pages(row, layout, pb, ri, &mut did_flush_while_floating, effective_margin_bottom);
+            split_row_across_pages(
+                row,
+                layout,
+                pb,
+                ri,
+                &mut did_flush_while_floating,
+                effective_margin_bottom,
+            );
         } else if row_h > available_h && can_meaningfully_split {
-            split_row_across_pages(row, layout, pb, ri, &mut did_flush_while_floating, effective_margin_bottom);
+            split_row_across_pages(
+                row,
+                layout,
+                pb,
+                ri,
+                &mut did_flush_while_floating,
+                effective_margin_bottom,
+            );
         } else if !at_page_top && row_h > available_h {
             if is_floating {
                 did_flush_while_floating = true;
@@ -1684,12 +1829,27 @@ pub(super) fn render_table(
             let new_eff_bot = *effective_margin_bottom;
             let new_available = pb.slot_top - new_eff_bot;
             let new_page_h = new_eff_top - new_eff_bot;
-            if row_h > new_available && (row_h > new_page_h || keep_with_anchor) && !row.cant_split {
-                split_row_across_pages(row, layout, pb, ri, &mut did_flush_while_floating, effective_margin_bottom);
+            if row_h > new_available && (row_h > new_page_h || keep_with_anchor) && !row.cant_split
+            {
+                split_row_across_pages(
+                    row,
+                    layout,
+                    pb,
+                    ri,
+                    &mut did_flush_while_floating,
+                    effective_margin_bottom,
+                );
             } else {
                 render_table_row(
-                    row, layout, &col_widths, cm, table_left,
-                    pb, ctx, ri, &merge_spans,
+                    row,
+                    layout,
+                    &col_widths,
+                    cm,
+                    table_left,
+                    pb,
+                    ctx,
+                    ri,
+                    &merge_spans,
                 );
             }
         } else {
@@ -1711,10 +1871,13 @@ pub(super) fn render_table(
             if pb.footnote_ids_set.insert(fn_id) {
                 pb.footnote_ids.push(fn_id);
                 if let Some(footnote) = footnotes.get(&fn_id) {
-                    let fn_h = super::footnotes::compute_footnote_height(
-                        footnote, ctx, fn_text_width,
-                    );
-                    let sep = if pb.footnote_ids.len() == 1 { 12.0 } else { 0.0 };
+                    let fn_h =
+                        super::footnotes::compute_footnote_height(footnote, ctx, fn_text_width);
+                    let sep = if pb.footnote_ids.len() == 1 {
+                        12.0
+                    } else {
+                        0.0
+                    };
                     *effective_margin_bottom += sep + fn_h;
                 }
             }
@@ -1731,7 +1894,11 @@ pub(super) fn render_table(
         if pb.slot_top < *effective_margin_bottom - 1.0 {
             log::warn!(
                 "Table overflow: row={} slot_top={:.2} < eff_margin_bottom={:.2} row_h={:.2} page={}",
-                ri, pb.slot_top, *effective_margin_bottom, row_h, pb.all_contents.len(),
+                ri,
+                pb.slot_top,
+                *effective_margin_bottom,
+                row_h,
+                pb.all_contents.len(),
             );
         }
     }
@@ -1759,38 +1926,38 @@ pub(super) fn render_table(
                 pb.slot_top += text_anchor_offset;
             }
         } else {
-        let table_total_w: f32 = col_widths.iter().sum();
-        let (top_margin, bottom_margin) = text_margins;
-        let table_bottom = pb.slot_top;
+            let table_total_w: f32 = col_widths.iter().sum();
+            let (top_margin, bottom_margin) = text_margins;
+            let table_bottom = pb.slot_top;
 
-        // Always restore cursor to body text position — the float zone lets
-        // paragraph layout decide whether to wrap beside or push below.
-        pb.slot_top = saved;
+            // Always restore cursor to body text position — the float zone lets
+            // paragraph layout decide whether to wrap beside or push below.
+            pb.slot_top = saved;
 
-        if table_bottom < saved {
-            let fp = override_pos.as_ref().unwrap();
-            // Use BothSides wrapping when the table has >=72pt of space on each side
-            let text_area_left = sp.margin_left;
-            let text_area_right = sp.page_width - sp.margin_right;
-            let space_left = table_left - text_area_left;
-            let space_right = text_area_right - (table_left + table_total_w);
-            let wrap_text = if space_left >= 72.0 && space_right >= 72.0 {
-                crate::model::WrapText::BothSides
-            } else {
-                crate::model::WrapText::Largest
-            };
-            pb.float_zone = Some(super::FloatZone {
-                top_y: table_top_y + top_margin,
-                bottom_y: table_bottom - bottom_margin,
-                obj_left: table_left,
-                obj_right: table_left + table_total_w,
-                left_from_text: fp.left_from_text,
-                right_from_text: fp.right_from_text,
-                polygon_pts: None,
-                wrap_text,
-                para_relative: false,
-            });
-        }
+            if table_bottom < saved {
+                let fp = override_pos.as_ref().unwrap();
+                // Use BothSides wrapping when the table has >=72pt of space on each side
+                let text_area_left = sp.margin_left;
+                let text_area_right = sp.page_width - sp.margin_right;
+                let space_left = table_left - text_area_left;
+                let space_right = text_area_right - (table_left + table_total_w);
+                let wrap_text = if space_left >= 72.0 && space_right >= 72.0 {
+                    crate::model::WrapText::BothSides
+                } else {
+                    crate::model::WrapText::Largest
+                };
+                pb.float_zone = Some(super::FloatZone {
+                    top_y: table_top_y + top_margin,
+                    bottom_y: table_bottom - bottom_margin,
+                    obj_left: table_left,
+                    obj_right: table_left + table_total_w,
+                    left_from_text: fp.left_from_text,
+                    right_from_text: fp.right_from_text,
+                    polygon_pts: None,
+                    wrap_text,
+                    para_relative: false,
+                });
+            }
         }
     }
 }

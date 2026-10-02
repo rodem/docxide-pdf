@@ -239,7 +239,9 @@ pub fn ensure_generated_pdf(fixture_dir: &Path) -> Result<PathBuf, String> {
     let newest_input = mtime(&input_docx).max(src_newest_mtime());
     let stamp_value = format!(
         "{:?}",
-        newest_input.duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap_or_default()
+        newest_input
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
     );
     let up_to_date = generated_pdf.exists()
         && (mtime(&generated_pdf) >= newest_input

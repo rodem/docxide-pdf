@@ -218,7 +218,11 @@ fn parse_css_border(val: &str) -> Option<CellBorder> {
             width = parse_css_length_pt(p);
         }
     }
-    Some(CellBorder::visible(Some([0, 0, 0]), width, BorderStyle::Single))
+    Some(CellBorder::visible(
+        Some([0, 0, 0]),
+        width,
+        BorderStyle::Single,
+    ))
 }
 
 fn parse_css_properties(decl_block: &str) -> CssProperties {
@@ -520,7 +524,10 @@ fn collect_text(node: roxmltree::Node) -> String {
 /// Strip leading/trailing whitespace-only runs from a block element's run list.
 /// Matches HTML rendering: whitespace at the start/end of block elements is ignored.
 fn trim_block_whitespace(runs: &mut Vec<Run>) {
-    let start = runs.iter().position(|r| !r.text.trim().is_empty()).unwrap_or(runs.len());
+    let start = runs
+        .iter()
+        .position(|r| !r.text.trim().is_empty())
+        .unwrap_or(runs.len());
     if start > 0 {
         runs.drain(..start);
     }

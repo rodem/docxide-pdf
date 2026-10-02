@@ -482,7 +482,8 @@ impl Run {
     /// switches it off — Word writes 0 for an unticked "Kerning for fonts", so
     /// a Normal style's 0 overrides docDefaults' 1pt (slovak_pedagogical).
     pub fn kerns_at(&self, font_size: f32) -> bool {
-        self.kern_threshold.is_some_and(|t| t > 0.0 && font_size >= t)
+        self.kern_threshold
+            .is_some_and(|t| t > 0.0 && font_size >= t)
     }
 }
 

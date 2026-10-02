@@ -23,17 +23,15 @@ use super::{
 /// `shd_color`).
 fn approx_pattern_shade(val: &str, color: Option<[u8; 3]>) -> Option<[u8; 3]> {
     let coverage = match val {
-        "thinHorzStripe" | "thinVertStripe" | "thinDiagStripe"
-        | "thinReverseDiagStripe" => 0.30,
+        "thinHorzStripe" | "thinVertStripe" | "thinDiagStripe" | "thinReverseDiagStripe" => 0.30,
         "horzStripe" | "vertStripe" | "diagStripe" | "reverseDiagStripe" => 0.45,
         "thinHorzCross" | "thinDiagCross" => 0.40,
         "horzCross" | "diagCross" => 0.55,
         _ => return None,
     };
     let fg = color.unwrap_or([0, 0, 0]);
-    let blend = |bg: u8, ink: u8| {
-        (bg as f32 * (1.0 - coverage) + ink as f32 * coverage).round() as u8
-    };
+    let blend =
+        |bg: u8, ink: u8| (bg as f32 * (1.0 - coverage) + ink as f32 * coverage).round() as u8;
     Some([blend(255, fg[0]), blend(255, fg[1]), blend(255, fg[2])])
 }
 
@@ -149,7 +147,6 @@ fn resolve_h_border(upper_bottom: CellBorder, lower_top: CellBorder) -> CellBord
     upper_bottom
 }
 
-
 pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
     node: roxmltree::Node,
     ctx: &mut ParseContext<'_, R>,
@@ -160,7 +157,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
     let mut col_widths: Vec<f32> = wml(node, "tblGrid")
         .into_iter()
         .flat_map(|grid| grid.children())
-        .filter(|n| is_wml(*n,"gridCol"))
+        .filter(|n| is_wml(*n, "gridCol"))
         .filter_map(|n| twips_attr(n, "w"))
         .collect();
 
@@ -183,7 +180,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
             // Fall back to first row's w:trPr/w:jc if table-level jc absent
             collect_block_nodes(node)
                 .into_iter()
-                .find(|n| is_wml(*n,"tr"))
+                .find(|n| is_wml(*n, "tr"))
                 .and_then(|tr| wml(tr, "trPr"))
                 .and_then(|pr| wml(pr, "jc"))
                 .and_then(|jc| jc.attribute((WML_NS, "val")))
@@ -200,12 +197,10 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
         .and_then(|n| n.attribute((WML_NS, "type")))
         .is_some_and(|v| v == "fixed");
 
-    let auto_width = tbl_pr
-        .and_then(|pr| wml(pr, "tblW"))
-        .is_none_or(|n| {
-            n.attribute((WML_NS, "type")).is_none_or(|t| t == "auto")
-                || twips_attr(n, "w").is_none_or(|w| w <= 0.0)
-        });
+    let auto_width = tbl_pr.and_then(|pr| wml(pr, "tblW")).is_none_or(|n| {
+        n.attribute((WML_NS, "type")).is_none_or(|t| t == "auto")
+            || twips_attr(n, "w").is_none_or(|w| w <= 0.0)
+    });
 
     // ST_MeasurementOrPercent: pct values are in 5000ths ("5000" = 100%),
     // or the literal "NN%" text form.
@@ -337,7 +332,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
 
     let tbl_rows: Vec<_> = collect_block_nodes(node)
         .into_iter()
-        .filter(|n| is_wml(*n,"tr"))
+        .filter(|n| is_wml(*n, "tr"))
         .collect();
 
     // OOXML §17.4.48 requires tblGrid, but some generators (e.g. SpecLink)
@@ -349,7 +344,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
             let mut row_widths: Vec<f32> = Vec::new();
             for tc in collect_block_nodes(*tr)
                 .into_iter()
-                .filter(|n| is_wml(*n,"tc"))
+                .filter(|n| is_wml(*n, "tc"))
             {
                 let tc_pr = wml(tc, "tcPr");
                 let w = tc_pr
@@ -386,7 +381,9 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
             })
             .unwrap_or((None, false));
         let is_header = tr_pr.and_then(|pr| wml(pr, "tblHeader")).is_some();
-        let cant_split = tr_pr.and_then(|pr| wml_bool(pr, "cantSplit")).unwrap_or(false);
+        let cant_split = tr_pr
+            .and_then(|pr| wml_bool(pr, "cantSplit"))
+            .unwrap_or(false);
         let grid_before = tr_pr
             .and_then(|pr| wml_attr(pr, "gridBefore"))
             .and_then(|v| v.parse::<u16>().ok())
@@ -394,21 +391,20 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
 
         // Per-row table property exceptions (§17.4.60): merge with base table
         // borders — specified exception borders override, unspecified inherit.
-        let row_effective_tbl_borders = match wml(*tr, "tblPrEx")
-            .and_then(|prex| wml(prex, "tblBorders"))
-        {
-            Some(bdr_node) => {
-                let exc = parse_table_borders_def(bdr_node);
-                Some(merged_tbl_borders.map_or(exc, |base| merge_table_borders(exc, base)))
-            }
-            None => merged_tbl_borders,
-        };
+        let row_effective_tbl_borders =
+            match wml(*tr, "tblPrEx").and_then(|prex| wml(prex, "tblBorders")) {
+                Some(bdr_node) => {
+                    let exc = parse_table_borders_def(bdr_node);
+                    Some(merged_tbl_borders.map_or(exc, |base| merge_table_borders(exc, base)))
+                }
+                None => merged_tbl_borders,
+            };
 
         let mut cells = Vec::new();
         let mut grid_col = grid_before;
         for tc in collect_block_nodes(*tr)
             .into_iter()
-            .filter(|n| is_wml(*n,"tc"))
+            .filter(|n| is_wml(*n, "tc"))
         {
             let ci = grid_col;
             let tc_pr = wml(tc, "tcPr");
@@ -445,8 +441,9 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                 Some("btLr" | "lr" | "lrV" | "lrTbV") => TextDirection::BtLr,
                 _ => TextDirection::LrTb,
             };
-            let hide_mark =
-                tc_pr.and_then(|pr| wml_bool(pr, "hideMark")).unwrap_or(false);
+            let hide_mark = tc_pr
+                .and_then(|pr| wml_bool(pr, "hideMark"))
+                .unwrap_or(false);
 
             let span_end = ci + grid_span as usize;
 
@@ -480,50 +477,49 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
             let mut cond_font_size: Option<f32> = None;
             let mut cond_font_name: Option<String> = None;
             if let Some(style_def) = tbl_style {
-                let apply_cond =
-                    |key: &str,
-                     borders: &mut CellBorders,
-                     shading: &mut Option<[u8; 3]>,
-                     bold: &mut Option<bool>,
-                     italic: &mut Option<bool>,
-                     color: &mut Option<[u8; 3]>,
-                     font_size: &mut Option<f32>,
-                     font_name: &mut Option<String>,
-                     top_edge: bool,
-                     bottom_edge: bool,
-                     left_edge: bool,
-                     right_edge: bool| {
-                        if let Some(cond) = style_def.conditionals.get(key) {
-                            if let Some(cb) = &cond.borders {
-                                let ct = if top_edge { cb.top } else { cb.inside_h };
-                                let cb_b = if bottom_edge { cb.bottom } else { cb.inside_h };
-                                let cl = if left_edge { cb.left } else { cb.inside_v };
-                                let cr = if right_edge { cb.right } else { cb.inside_v };
-                                borders.top = border_or_fallback(ct, borders.top);
-                                borders.bottom = border_or_fallback(cb_b, borders.bottom);
-                                borders.left = border_or_fallback(cl, borders.left);
-                                borders.right = border_or_fallback(cr, borders.right);
-                            }
-                            if let Some(s) = cond.shading {
-                                *shading = Some(s);
-                            }
-                            if let Some(b) = cond.bold {
-                                *bold = Some(b);
-                            }
-                            if let Some(i) = cond.italic {
-                                *italic = Some(i);
-                            }
-                            if let Some(c) = cond.color {
-                                *color = Some(c);
-                            }
-                            if let Some(fs) = cond.font_size {
-                                *font_size = Some(fs);
-                            }
-                            if let Some(ref fn_name) = cond.font_name {
-                                *font_name = Some(fn_name.clone());
-                            }
+                let apply_cond = |key: &str,
+                                  borders: &mut CellBorders,
+                                  shading: &mut Option<[u8; 3]>,
+                                  bold: &mut Option<bool>,
+                                  italic: &mut Option<bool>,
+                                  color: &mut Option<[u8; 3]>,
+                                  font_size: &mut Option<f32>,
+                                  font_name: &mut Option<String>,
+                                  top_edge: bool,
+                                  bottom_edge: bool,
+                                  left_edge: bool,
+                                  right_edge: bool| {
+                    if let Some(cond) = style_def.conditionals.get(key) {
+                        if let Some(cb) = &cond.borders {
+                            let ct = if top_edge { cb.top } else { cb.inside_h };
+                            let cb_b = if bottom_edge { cb.bottom } else { cb.inside_h };
+                            let cl = if left_edge { cb.left } else { cb.inside_v };
+                            let cr = if right_edge { cb.right } else { cb.inside_v };
+                            borders.top = border_or_fallback(ct, borders.top);
+                            borders.bottom = border_or_fallback(cb_b, borders.bottom);
+                            borders.left = border_or_fallback(cl, borders.left);
+                            borders.right = border_or_fallback(cr, borders.right);
                         }
-                    };
+                        if let Some(s) = cond.shading {
+                            *shading = Some(s);
+                        }
+                        if let Some(b) = cond.bold {
+                            *bold = Some(b);
+                        }
+                        if let Some(i) = cond.italic {
+                            *italic = Some(i);
+                        }
+                        if let Some(c) = cond.color {
+                            *color = Some(c);
+                        }
+                        if let Some(fs) = cond.font_size {
+                            *font_size = Some(fs);
+                        }
+                        if let Some(ref fn_name) = cond.font_name {
+                            *font_name = Some(fn_name.clone());
+                        }
+                    }
+                };
                 let is_first_col = ci == 0;
                 let is_last_col = span_end >= num_cols;
                 let is_first_row = ri == 0;
@@ -534,11 +530,26 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                     let skip_last = look_last_row && is_last_row;
                     if !skip_first && !skip_last {
                         let band_row = if look_first_row { ri - 1 } else { ri };
-                        let key = if band_row % 2 == 0 { "band1Horz" } else { "band2Horz" };
+                        let key = if band_row % 2 == 0 {
+                            "band1Horz"
+                        } else {
+                            "band2Horz"
+                        };
                         // Row bands: single row, so top/bottom are always edges
-                        apply_cond(key, &mut cond_borders, &mut cond_shading,
-                            &mut cond_bold, &mut cond_italic, &mut cond_color, &mut cond_font_size, &mut cond_font_name,
-                            true, true, is_first_col, is_last_col);
+                        apply_cond(
+                            key,
+                            &mut cond_borders,
+                            &mut cond_shading,
+                            &mut cond_bold,
+                            &mut cond_italic,
+                            &mut cond_color,
+                            &mut cond_font_size,
+                            &mut cond_font_name,
+                            true,
+                            true,
+                            is_first_col,
+                            is_last_col,
+                        );
                     }
                 }
                 // Column banding — skip cols consumed by firstCol/lastCol
@@ -547,55 +558,158 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                     let skip_last = look_last_col && is_last_col;
                     if !skip_first && !skip_last {
                         let band_col = if look_first_col { ci - 1 } else { ci };
-                        let key = if band_col % 2 == 0 { "band1Vert" } else { "band2Vert" };
+                        let key = if band_col % 2 == 0 {
+                            "band1Vert"
+                        } else {
+                            "band2Vert"
+                        };
                         // Column bands: single column, so left/right are always edges
-                        apply_cond(key, &mut cond_borders, &mut cond_shading,
-                            &mut cond_bold, &mut cond_italic, &mut cond_color, &mut cond_font_size, &mut cond_font_name,
-                            is_first_row, is_last_row, true, true);
+                        apply_cond(
+                            key,
+                            &mut cond_borders,
+                            &mut cond_shading,
+                            &mut cond_bold,
+                            &mut cond_italic,
+                            &mut cond_color,
+                            &mut cond_font_size,
+                            &mut cond_font_name,
+                            is_first_row,
+                            is_last_row,
+                            true,
+                            true,
+                        );
                     }
                 }
                 // First/last row — row region: top/bottom are edges, left/right depend on col
                 if look_first_row && is_first_row {
-                    apply_cond("firstRow", &mut cond_borders, &mut cond_shading,
-                        &mut cond_bold, &mut cond_italic, &mut cond_color, &mut cond_font_size, &mut cond_font_name,
-                        true, true, is_first_col, is_last_col);
+                    apply_cond(
+                        "firstRow",
+                        &mut cond_borders,
+                        &mut cond_shading,
+                        &mut cond_bold,
+                        &mut cond_italic,
+                        &mut cond_color,
+                        &mut cond_font_size,
+                        &mut cond_font_name,
+                        true,
+                        true,
+                        is_first_col,
+                        is_last_col,
+                    );
                 }
                 if look_last_row && is_last_row {
-                    apply_cond("lastRow", &mut cond_borders, &mut cond_shading,
-                        &mut cond_bold, &mut cond_italic, &mut cond_color, &mut cond_font_size, &mut cond_font_name,
-                        true, true, is_first_col, is_last_col);
+                    apply_cond(
+                        "lastRow",
+                        &mut cond_borders,
+                        &mut cond_shading,
+                        &mut cond_bold,
+                        &mut cond_italic,
+                        &mut cond_color,
+                        &mut cond_font_size,
+                        &mut cond_font_name,
+                        true,
+                        true,
+                        is_first_col,
+                        is_last_col,
+                    );
                 }
                 // First/last column — column region: left/right are edges, top/bottom depend on row
                 if look_first_col && is_first_col {
-                    apply_cond("firstCol", &mut cond_borders, &mut cond_shading,
-                        &mut cond_bold, &mut cond_italic, &mut cond_color, &mut cond_font_size, &mut cond_font_name,
-                        is_first_row, is_last_row, true, true);
+                    apply_cond(
+                        "firstCol",
+                        &mut cond_borders,
+                        &mut cond_shading,
+                        &mut cond_bold,
+                        &mut cond_italic,
+                        &mut cond_color,
+                        &mut cond_font_size,
+                        &mut cond_font_name,
+                        is_first_row,
+                        is_last_row,
+                        true,
+                        true,
+                    );
                 }
                 if look_last_col && is_last_col {
-                    apply_cond("lastCol", &mut cond_borders, &mut cond_shading,
-                        &mut cond_bold, &mut cond_italic, &mut cond_color, &mut cond_font_size, &mut cond_font_name,
-                        is_first_row, is_last_row, true, true);
+                    apply_cond(
+                        "lastCol",
+                        &mut cond_borders,
+                        &mut cond_shading,
+                        &mut cond_bold,
+                        &mut cond_italic,
+                        &mut cond_color,
+                        &mut cond_font_size,
+                        &mut cond_font_name,
+                        is_first_row,
+                        is_last_row,
+                        true,
+                        true,
+                    );
                 }
                 // Corner cells — single cell, all edges
                 if look_first_row && is_first_row && look_first_col && is_first_col {
-                    apply_cond("nwCell", &mut cond_borders, &mut cond_shading,
-                        &mut cond_bold, &mut cond_italic, &mut cond_color, &mut cond_font_size, &mut cond_font_name,
-                        true, true, true, true);
+                    apply_cond(
+                        "nwCell",
+                        &mut cond_borders,
+                        &mut cond_shading,
+                        &mut cond_bold,
+                        &mut cond_italic,
+                        &mut cond_color,
+                        &mut cond_font_size,
+                        &mut cond_font_name,
+                        true,
+                        true,
+                        true,
+                        true,
+                    );
                 }
                 if look_first_row && is_first_row && look_last_col && is_last_col {
-                    apply_cond("neCell", &mut cond_borders, &mut cond_shading,
-                        &mut cond_bold, &mut cond_italic, &mut cond_color, &mut cond_font_size, &mut cond_font_name,
-                        true, true, true, true);
+                    apply_cond(
+                        "neCell",
+                        &mut cond_borders,
+                        &mut cond_shading,
+                        &mut cond_bold,
+                        &mut cond_italic,
+                        &mut cond_color,
+                        &mut cond_font_size,
+                        &mut cond_font_name,
+                        true,
+                        true,
+                        true,
+                        true,
+                    );
                 }
                 if look_last_row && is_last_row && look_first_col && is_first_col {
-                    apply_cond("swCell", &mut cond_borders, &mut cond_shading,
-                        &mut cond_bold, &mut cond_italic, &mut cond_color, &mut cond_font_size, &mut cond_font_name,
-                        true, true, true, true);
+                    apply_cond(
+                        "swCell",
+                        &mut cond_borders,
+                        &mut cond_shading,
+                        &mut cond_bold,
+                        &mut cond_italic,
+                        &mut cond_color,
+                        &mut cond_font_size,
+                        &mut cond_font_name,
+                        true,
+                        true,
+                        true,
+                        true,
+                    );
                 }
                 if look_last_row && is_last_row && look_last_col && is_last_col {
-                    apply_cond("seCell", &mut cond_borders, &mut cond_shading,
-                        &mut cond_bold, &mut cond_italic, &mut cond_color, &mut cond_font_size, &mut cond_font_name,
-                        true, true, true, true);
+                    apply_cond(
+                        "seCell",
+                        &mut cond_borders,
+                        &mut cond_shading,
+                        &mut cond_bold,
+                        &mut cond_italic,
+                        &mut cond_color,
+                        &mut cond_font_size,
+                        &mut cond_font_name,
+                        true,
+                        true,
+                        true,
+                        true,
+                    );
                 }
             }
 
@@ -604,7 +718,10 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                 .and_then(|pr| wml(pr, "tcBorders"))
                 .map(|bdr| CellBorders {
                     top: border_or_fallback(parse_cell_border(bdr, "top"), cond_borders.top),
-                    bottom: border_or_fallback(parse_cell_border(bdr, "bottom"), cond_borders.bottom),
+                    bottom: border_or_fallback(
+                        parse_cell_border(bdr, "bottom"),
+                        cond_borders.bottom,
+                    ),
                     left: border_or_fallback(parse_cell_border_left(bdr), cond_borders.left),
                     right: border_or_fallback(parse_cell_border_right(bdr), cond_borders.right),
                 })
@@ -657,32 +774,30 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                     top: wml(mar, "top")
                         .and_then(|n| twips_attr(n, "w"))
                         .unwrap_or(cell_margins.top),
-                    left: margin_twips(mar, "left", "start")
-                        .unwrap_or(cell_margins.left),
+                    left: margin_twips(mar, "left", "start").unwrap_or(cell_margins.left),
                     bottom: wml(mar, "bottom")
                         .and_then(|n| twips_attr(n, "w"))
                         .unwrap_or(cell_margins.bottom),
-                    right: margin_twips(mar, "right", "end")
-                        .unwrap_or(cell_margins.right),
+                    right: margin_twips(mar, "right", "end").unwrap_or(cell_margins.right),
                 });
 
             let mut cell_blocks: Vec<Block> = Vec::new();
             let block_nodes = collect_block_nodes(tc);
             for n in &block_nodes {
-                if is_wml(*n,"p") {
+                if is_wml(*n, "p") {
                     let p = *n;
                     let parsed = parse_runs(p, ctx);
                     let mut runs = parsed.runs;
                     // Apply table style rPr: conditional > base, only when
                     // the run inherited from doc defaults (not set explicitly).
-                    let eff_tbl_font_size = cond_font_size
-                        .or_else(|| tbl_style.and_then(|s| s.base_font_size));
-                    let eff_tbl_font_name = cond_font_name.as_deref()
+                    let eff_tbl_font_size =
+                        cond_font_size.or_else(|| tbl_style.and_then(|s| s.base_font_size));
+                    let eff_tbl_font_name = cond_font_name
+                        .as_deref()
                         .or_else(|| tbl_style.and_then(|s| s.base_font_name.as_deref()));
-                    let eff_tbl_bold = cond_bold
-                        .or_else(|| tbl_style.and_then(|s| s.base_bold));
-                    let eff_tbl_italic = cond_italic
-                        .or_else(|| tbl_style.and_then(|s| s.base_italic));
+                    let eff_tbl_bold = cond_bold.or_else(|| tbl_style.and_then(|s| s.base_bold));
+                    let eff_tbl_italic =
+                        cond_italic.or_else(|| tbl_style.and_then(|s| s.base_italic));
 
                     let mut has_text = false;
                     let mut has_inline_images = false;
@@ -791,12 +906,10 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                     } else {
                         ctx.styles.defaults.space_after
                     });
-                    let mut tab_stops: Vec<crate::model::TabStop> = para_style
-                        .map(|s| s.tab_stops.clone())
-                        .unwrap_or_default();
-                    let (para_tabs, para_clears) = ppr
-                        .map(parse_tab_stops_with_clears)
-                        .unwrap_or_default();
+                    let mut tab_stops: Vec<crate::model::TabStop> =
+                        para_style.map(|s| s.tab_stops.clone()).unwrap_or_default();
+                    let (para_tabs, para_clears) =
+                        ppr.map(parse_tab_stops_with_clears).unwrap_or_default();
                     if !para_tabs.is_empty() || !para_clears.is_empty() {
                         merge_tab_stops(&mut tab_stops, &para_clears, para_tabs);
                         tab_stops.sort_by(|a, b| a.position.total_cmp(&b.position));
@@ -826,10 +939,9 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         tab_stops,
                         ..Paragraph::default()
                     }));
-                } else if is_wml(*n,"tbl") {
-                    let nested = parse_table_node(
-                        *n, ctx, counters, last_seen_level, applied_overrides,
-                    );
+                } else if is_wml(*n, "tbl") {
+                    let nested =
+                        parse_table_node(*n, ctx, counters, last_seen_level, applied_overrides);
                     cell_blocks.push(Block::Table(nested));
                 }
             }
@@ -939,9 +1051,14 @@ fn propagate_vmerge_borders(rows: &mut [TableRow]) {
             .collect();
         for (ci, grid_col) in restarts {
             let last_ri = (ri + 1..rows.len())
-                .take_while(|&n| cell_at(&rows[n], grid_col).is_some_and(|c| c.v_merge == VMerge::Continue))
+                .take_while(|&n| {
+                    cell_at(&rows[n], grid_col).is_some_and(|c| c.v_merge == VMerge::Continue)
+                })
                 .last();
-            if let Some(bottom) = last_ri.and_then(|n| cell_at(&rows[n], grid_col)).map(|c| c.borders.bottom) {
+            if let Some(bottom) = last_ri
+                .and_then(|n| cell_at(&rows[n], grid_col))
+                .map(|c| c.borders.bottom)
+            {
                 rows[ri].cells[ci].borders.bottom = bottom;
             }
         }
@@ -950,7 +1067,9 @@ fn propagate_vmerge_borders(rows: &mut [TableRow]) {
 
 /// The cell of `row` that starts at `grid_col`, if any.
 fn cell_at(row: &TableRow, grid_col: usize) -> Option<&TableCell> {
-    row.grid_cells().find(|(g, _, _)| *g == grid_col).map(|(_, _, c)| c)
+    row.grid_cells()
+        .find(|(g, _, _)| *g == grid_col)
+        .map(|(_, _, c)| c)
 }
 
 #[cfg(test)]

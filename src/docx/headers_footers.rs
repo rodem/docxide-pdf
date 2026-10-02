@@ -54,7 +54,10 @@ pub(super) fn parse_header_footer_xml<R: Read + Seek>(
             }
             "p" => {
                 let mut para = super::paragraph::build_paragraph(
-                    node, ctx, &mut counters, &mut last_seen_level,
+                    node,
+                    ctx,
+                    &mut counters,
+                    &mut last_seen_level,
                     &mut applied_overrides,
                     &super::paragraph::ParagraphOptions::default(),
                 );
@@ -82,7 +85,14 @@ pub(super) fn parse_footnotes<R: Read + Seek>(
     // Footnotes use the simple paragraph builder for backwards compatibility
     // with rendering tuned against the existing corpus. Bullets/lists inside
     // footnotes are not exercised by current fixtures.
-    parse_notes_simple(zip, styles, theme, "word/footnotes.xml", "footnote", "FootnoteText")
+    parse_notes_simple(
+        zip,
+        styles,
+        theme,
+        "word/footnotes.xml",
+        "footnote",
+        "FootnoteText",
+    )
 }
 
 pub(super) fn parse_endnotes<R: Read + Seek>(
@@ -91,7 +101,14 @@ pub(super) fn parse_endnotes<R: Read + Seek>(
     theme: &ThemeFonts,
     numbering: &NumberingInfo,
 ) -> HashMap<u32, Footnote> {
-    parse_notes_rich(zip, styles, theme, numbering, "word/endnotes.xml", "endnote")
+    parse_notes_rich(
+        zip,
+        styles,
+        theme,
+        numbering,
+        "word/endnotes.xml",
+        "endnote",
+    )
 }
 
 /// Simple parsing: paragraph runs and indents only, no list-numbering.

@@ -8,9 +8,8 @@ use super::runs::{parse_runs, push_textbox};
 use super::styles::{parse_alignment, parse_font_size, resolve_font_from_node_opt};
 use super::textbox::collect_textboxes_from_paragraph;
 use super::{
-    ParseContext, WML_NS, extract_indents, parse_frame_props,
-    merge_tab_stops, parse_paragraph_borders, parse_paragraph_spacing, parse_tab_stops_with_clears,
-    wml, wml_attr,
+    ParseContext, WML_NS, extract_indents, merge_tab_stops, parse_frame_props,
+    parse_paragraph_borders, parse_paragraph_spacing, parse_tab_stops_with_clears, wml, wml_attr,
     wml_bool,
 };
 
@@ -88,8 +87,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
     let inline_shd_node = ppr.and_then(|ppr| wml(ppr, "shd"));
     let para_shading = if inline_shd_node.is_some() {
         // Inline w:shd present — use it even if fill="auto" (None), don't inherit
-        inline_shd_node
-            .and_then(super::shd_color)
+        inline_shd_node.and_then(super::shd_color)
     } else {
         // No inline w:shd — inherit from paragraph style
         para_style.and_then(|s| s.shading)
@@ -195,37 +193,36 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
     // only on a style above the numPr stays under the level's.
     let style_ind_wins = num_pr.is_none() && para_style.is_some_and(|s| s.ind_over_numbering);
     let numbering_ind = !style_ind_wins && (indent_left != 0.0 || indent_hanging != 0.0);
-    let (left, right, hanging, first) =
-        if let Some(ind) = ppr.and_then(|ppr| wml(ppr, "ind")) {
-            let (l, r, h, f) = extract_indents(ind, Some(char_width_fs / 2.0));
-            // Merge: inline w:ind attributes override style, but missing
-            // attributes fall back to the paragraph style values.
-            if let Some(s) = para_style {
-                if numbering_ind {
-                    (l, r.or(s.indent_right), h, f.or(s.indent_first_line))
-                } else {
-                    (
-                        l.or(s.indent_left),
-                        r.or(s.indent_right),
-                        h.or(s.indent_hanging),
-                        f.or(s.indent_first_line),
-                    )
-                }
+    let (left, right, hanging, first) = if let Some(ind) = ppr.and_then(|ppr| wml(ppr, "ind")) {
+        let (l, r, h, f) = extract_indents(ind, Some(char_width_fs / 2.0));
+        // Merge: inline w:ind attributes override style, but missing
+        // attributes fall back to the paragraph style values.
+        if let Some(s) = para_style {
+            if numbering_ind {
+                (l, r.or(s.indent_right), h, f.or(s.indent_first_line))
             } else {
-                (l, r, h, f)
+                (
+                    l.or(s.indent_left),
+                    r.or(s.indent_right),
+                    h.or(s.indent_hanging),
+                    f.or(s.indent_first_line),
+                )
             }
-        } else if (list_label.is_empty() || style_ind_wins)
-            && let Some(s) = para_style
-        {
-            (
-                s.indent_left,
-                s.indent_right,
-                s.indent_hanging,
-                s.indent_first_line,
-            )
         } else {
-            (None, None, None, None)
-        };
+            (l, r, h, f)
+        }
+    } else if (list_label.is_empty() || style_ind_wins)
+        && let Some(s) = para_style
+    {
+        (
+            s.indent_left,
+            s.indent_right,
+            s.indent_hanging,
+            s.indent_first_line,
+        )
+    } else {
+        (None, None, None, None)
+    };
     if let Some(v) = left {
         indent_left = v;
     } else if indent_left == 0.0 {
@@ -282,9 +279,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
     } else {
         vec![]
     };
-    let (para_tabs, para_clears) = ppr
-        .map(parse_tab_stops_with_clears)
-        .unwrap_or_default();
+    let (para_tabs, para_clears) = ppr.map(parse_tab_stops_with_clears).unwrap_or_default();
     if !para_tabs.is_empty() || !para_clears.is_empty() {
         merge_tab_stops(&mut tab_stops, &para_clears, para_tabs);
         tab_stops.sort_by(|a, b| a.position.total_cmp(&b.position));
@@ -375,8 +370,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
     let bookmarks: Vec<String> = if opts.resolve_bookmarks {
         node.children()
             .filter(|n| {
-                n.tag_name().namespace() == Some(WML_NS)
-                    && n.tag_name().name() == "bookmarkStart"
+                n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "bookmarkStart"
             })
             .filter_map(|n| n.attribute((WML_NS, "name")).map(|s| s.to_string()))
             .collect()

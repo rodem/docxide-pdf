@@ -4,7 +4,7 @@ use pdf_writer::Content;
 
 use crate::fonts::FontEntry;
 use crate::geometry::{self, ResolvedCommand};
-use crate::model::{ShapeGeometry, SmartArtDiagram, SmartArtTextAnchor, SmartArtTextAlign};
+use crate::model::{ShapeGeometry, SmartArtDiagram, SmartArtTextAlign, SmartArtTextAnchor};
 
 use super::charts;
 use super::color;
@@ -30,7 +30,11 @@ pub(super) fn draw_shape_path(
 /// than the bounding box (e.g. an arrow's text sits in its rectangular body,
 /// not over the arrowhead). Returns `(x_from_left, y_from_bottom, w, h)` in
 /// points, or None for custom geometry / shapes without a defined text rect.
-pub(super) fn shape_text_rect(shape: &ShapeGeometry, w: f32, h: f32) -> Option<(f32, f32, f32, f32)> {
+pub(super) fn shape_text_rect(
+    shape: &ShapeGeometry,
+    w: f32,
+    h: f32,
+) -> Option<(f32, f32, f32, f32)> {
     let eval = evaluate_shape_geometry(shape, w as f64, h as f64)?;
     let (l, b, rw, rh) = eval.text_rect?;
     Some((l as f32, b as f32, rw as f32, rh as f32))
@@ -176,16 +180,22 @@ pub(super) fn render_smartart(
         .or_else(|| seen_fonts.values().next());
     let sa_font_pdf_name = sa_font_entry.map(|e| e.pdf_name.as_str()).unwrap_or("F1");
 
-    let apply_rotation = |content: &mut Content, shape: &crate::model::SmartArtShape, sx: f32, sy: f32| -> bool {
-        let rotated = shape.rotation_deg.abs() > 0.01;
-        if rotated {
-            content.save_state();
-            super::positioning::push_center_rotation(
-                content, sx, sy, shape.width, shape.height, shape.rotation_deg,
-            );
-        }
-        rotated
-    };
+    let apply_rotation =
+        |content: &mut Content, shape: &crate::model::SmartArtShape, sx: f32, sy: f32| -> bool {
+            let rotated = shape.rotation_deg.abs() > 0.01;
+            if rotated {
+                content.save_state();
+                super::positioning::push_center_rotation(
+                    content,
+                    sx,
+                    sy,
+                    shape.width,
+                    shape.height,
+                    shape.rotation_deg,
+                );
+            }
+            rotated
+        };
 
     // Pass 1: Fill all shapes
     for shape in &diagram.shapes {
@@ -199,7 +209,14 @@ pub(super) fn render_smartart(
         if let Some(fill) = shape.fill {
             content.save_state();
             color::fill_rgb(content, fill);
-            draw_shape_path(content, sx, sy, shape.width, shape.height, &shape.shape_type);
+            draw_shape_path(
+                content,
+                sx,
+                sy,
+                shape.width,
+                shape.height,
+                &shape.shape_type,
+            );
             content.fill_nonzero();
             content.restore_state();
         }
@@ -208,7 +225,14 @@ pub(super) fn render_smartart(
             let key = std::sync::Arc::as_ptr(&img.data) as usize;
             if let Some(pdf_name) = image_names.get(&key) {
                 content.save_state();
-                draw_shape_path(content, sx, sy, shape.width, shape.height, &shape.shape_type);
+                draw_shape_path(
+                    content,
+                    sx,
+                    sy,
+                    shape.width,
+                    shape.height,
+                    &shape.shape_type,
+                );
                 content.clip_nonzero();
                 content.end_path();
                 let img_aspect = img.pixel_width as f32 / img.pixel_height.max(1) as f32;
@@ -226,13 +250,17 @@ pub(super) fn render_smartart(
             }
         }
 
-        if rotated { content.restore_state(); }
+        if rotated {
+            content.restore_state();
+        }
     }
 
     // Pass 2: Stroke all shapes (on top of all fills)
     for shape in &diagram.shapes {
         let has_stroke = shape.stroke_color.is_some() && shape.stroke_width > 0.0;
-        if !has_stroke { continue; }
+        if !has_stroke {
+            continue;
+        }
         let sx = diag_x + shape.x;
         let sy = diag_y - shape.y - shape.height;
         let rotated = apply_rotation(content, shape, sx, sy);
@@ -242,16 +270,27 @@ pub(super) fn render_smartart(
             content.set_line_width(shape.stroke_width);
             color::stroke_rgb(content, stroke);
         }
-        draw_shape_stroke_path(content, sx, sy, shape.width, shape.height, &shape.shape_type);
+        draw_shape_stroke_path(
+            content,
+            sx,
+            sy,
+            shape.width,
+            shape.height,
+            &shape.shape_type,
+        );
         content.stroke();
         content.restore_state();
 
-        if rotated { content.restore_state(); }
+        if rotated {
+            content.restore_state();
+        }
     }
 
     // Pass 3: Render all text on top of geometry (with word-wrapping)
     for shape in &diagram.shapes {
-        if shape.paragraphs.is_empty() { continue; }
+        if shape.paragraphs.is_empty() {
+            continue;
+        }
 
         let (txt_x, txt_y, txt_w, txt_h) = if let Some((tx, ty, tw, th)) = shape.text_rect {
             (tx, ty, tw, th)
@@ -262,7 +301,9 @@ pub(super) fn render_smartart(
         let (ins_top, ins_right, ins_bottom, ins_left) = shape.text_insets;
         let avail_w = (txt_w - ins_left - ins_right).max(1.0);
 
-        let base_fs = shape.paragraphs.iter()
+        let base_fs = shape
+            .paragraphs
+            .iter()
             .flat_map(|p| p.runs.iter())
             .map(|r| r.font_size)
             .find(|&fs| fs > 0.0)
@@ -285,7 +326,9 @@ pub(super) fn render_smartart(
         let mut all_lines: Vec<WrappedLine<'_>> = Vec::new();
 
         for para in &shape.paragraphs {
-            let para_fs = para.runs.iter()
+            let para_fs = para
+                .runs
+                .iter()
                 .map(|r| r.font_size)
                 .find(|&fs| fs > 0.0)
                 .unwrap_or(base_fs);
@@ -328,8 +371,14 @@ pub(super) fn render_smartart(
                 let space_w = charts::text_width(" ", efs, fe);
 
                 for (i, word) in run.text.split(' ').enumerate() {
-                    if word.is_empty() && i > 0 { continue; }
-                    let ww = if word.is_empty() { 0.0 } else { charts::text_width(word, efs, fe) };
+                    if word.is_empty() && i > 0 {
+                        continue;
+                    }
+                    let ww = if word.is_empty() {
+                        0.0
+                    } else {
+                        charts::text_width(word, efs, fe)
+                    };
                     words.push(WordSeg {
                         text: word.to_string(),
                         width: ww,
@@ -345,7 +394,11 @@ pub(super) fn render_smartart(
             let mut cur_w = 0.0_f32;
 
             for seg in &words {
-                let needed = if cur_line.is_empty() { seg.width } else { seg.space_w + seg.width };
+                let needed = if cur_line.is_empty() {
+                    seg.width
+                } else {
+                    seg.space_w + seg.width
+                };
                 if !cur_line.is_empty() && cur_w + needed > avail_w + 0.05 {
                     let total_w = cur_w;
                     all_lines.push(WrappedLine {
@@ -390,7 +443,9 @@ pub(super) fn render_smartart(
         let content_h = txt_h - ins_top - ins_bottom;
         let text_top_y = match shape.text_anchor {
             SmartArtTextAnchor::Top => diag_y - txt_y - ins_top,
-            SmartArtTextAnchor::Center => diag_y - txt_y - ins_top - (content_h - total_text_h) / 2.0,
+            SmartArtTextAnchor::Center => {
+                diag_y - txt_y - ins_top - (content_h - total_text_h) / 2.0
+            }
             SmartArtTextAnchor::Bottom => diag_y - txt_y - ins_top - (content_h - total_text_h),
         };
 
@@ -416,11 +471,14 @@ pub(super) fn render_smartart(
         // Render each wrapped line
         let mut y_cursor = 0.0_f32;
         for line in &all_lines {
-            let line_x = diag_x + txt_x + ins_left + match line.align {
-                SmartArtTextAlign::Left => 0.0,
-                SmartArtTextAlign::Center => (avail_w - line.total_w) / 2.0,
-                SmartArtTextAlign::Right => avail_w - line.total_w,
-            };
+            let line_x = diag_x
+                + txt_x
+                + ins_left
+                + match line.align {
+                    SmartArtTextAlign::Left => 0.0,
+                    SmartArtTextAlign::Center => (avail_w - line.total_w) / 2.0,
+                    SmartArtTextAlign::Right => avail_w - line.total_w,
+                };
             let line_y = text_top_y - first_ascent - y_cursor;
 
             content.save_state();
@@ -428,7 +486,10 @@ pub(super) fn render_smartart(
 
             for piece in &line.pieces {
                 let efs = effective_font_size(piece.run);
-                let fpn = piece.fe.map(|e| e.pdf_name.as_str()).unwrap_or(sa_font_pdf_name);
+                let fpn = piece
+                    .fe
+                    .map(|e| e.pdf_name.as_str())
+                    .unwrap_or(sa_font_pdf_name);
                 let y_offset = baseline_y_offset(piece.run, base_fs);
                 let ry = line_y + y_offset;
 
@@ -440,14 +501,22 @@ pub(super) fn render_smartart(
                     content.restore_state();
                 }
 
-                if let Some(c) = piece.run.color { color::fill_rgb(content, c); }
-                else { content.set_fill_gray(0.0); }
-                let needs_synthetic_bold = piece.run.bold && piece.fe.is_some_and(|e| e.synthetic_bold);
+                if let Some(c) = piece.run.color {
+                    color::fill_rgb(content, c);
+                } else {
+                    content.set_fill_gray(0.0);
+                }
+                let needs_synthetic_bold =
+                    piece.run.bold && piece.fe.is_some_and(|e| e.synthetic_bold);
                 if needs_synthetic_bold {
                     content.set_line_width(efs * 0.02);
-                    if let Some(c) = piece.run.color { color::stroke_rgb(content, c); }
-                    else { content.set_stroke_gray(0.0); }
-                    content.set_text_rendering_mode(pdf_writer::types::TextRenderingMode::FillStroke);
+                    if let Some(c) = piece.run.color {
+                        color::stroke_rgb(content, c);
+                    } else {
+                        content.set_stroke_gray(0.0);
+                    }
+                    content
+                        .set_text_rendering_mode(pdf_writer::types::TextRenderingMode::FillStroke);
                 }
                 charts::show_text_encoded(content, fpn, efs, cx, ry, &piece.text, piece.fe);
                 if needs_synthetic_bold {
@@ -483,7 +552,9 @@ fn resolve_run_font<'a>(
     seen_fonts: &'a HashMap<String, FontEntry>,
     fallback: Option<&'a FontEntry>,
 ) -> (Option<&'a FontEntry>, Option<&'a str>) {
-    let fe = run.font_name.as_ref()
+    let fe = run
+        .font_name
+        .as_ref()
         .and_then(|n| {
             let key = super::fonts::smartart_font_key_str(n, run.bold, run.italic);
             seen_fonts.get(&key)
@@ -494,12 +565,23 @@ fn resolve_run_font<'a>(
 }
 
 fn effective_font_size(run: &crate::model::SmartArtRun) -> f32 {
-    if run.baseline != 0 { run.font_size * 0.58 } else { run.font_size }
+    if run.baseline != 0 {
+        run.font_size * 0.58
+    } else {
+        run.font_size
+    }
 }
 
 fn baseline_y_offset(run: &crate::model::SmartArtRun, base_fs: f32) -> f32 {
-    if run.baseline > 0 { base_fs * 0.35 }       // superscript
-    else if run.baseline < 0 { -base_fs * 0.14 }  // subscript
-    else { 0.0 }
+    if run.baseline > 0 {
+        base_fs * 0.35
+    }
+    // superscript
+    else if run.baseline < 0 {
+        -base_fs * 0.14
+    }
+    // subscript
+    else {
+        0.0
+    }
 }
-

@@ -72,13 +72,29 @@ pub(super) fn textbox_height(tb: &Textbox, ctx: &RenderContext) -> f32 {
             };
             let lines = if tp.runs.iter().any(|r| r.is_tab) {
                 build_tabbed_line(
-                    &tp.runs, ctx.fonts, &tp.tab_stops, tp.indent_left,
-                    tw, tp.indent_right, hang, &empty_imgs, &empty_fx, ctx.default_tab_stop,
+                    &tp.runs,
+                    ctx.fonts,
+                    &tp.tab_stops,
+                    tp.indent_left,
+                    tw,
+                    tp.indent_right,
+                    hang,
+                    &empty_imgs,
+                    &empty_fx,
+                    ctx.default_tab_stop,
                     &[],
                 )
             } else {
                 build_paragraph_lines(
-                    &tp.runs, ctx.fonts, tw, hang, &empty_imgs, &empty_fx, None, None, None,
+                    &tp.runs,
+                    ctx.fonts,
+                    tw,
+                    hang,
+                    &empty_imgs,
+                    &empty_fx,
+                    None,
+                    None,
+                    None,
                     ctx.cjk(true, tp.alignment),
                 )
             };
@@ -119,13 +135,7 @@ pub(super) fn render_single_textbox(
         text_width,
     );
     let tb_height = textbox_height(tb, ctx);
-    let tb_y_top = resolve_tb_y_top(
-        tb.v_relative_from,
-        &tb.v_position,
-        tb_height,
-        sp,
-        slot_top,
-    );
+    let tb_y_top = resolve_tb_y_top(tb.v_relative_from, &tb.v_position, tb_height, sp, slot_top);
 
     if let Some(ref fill) = tb.fill {
         render_shape_fill(
@@ -161,9 +171,12 @@ pub(super) fn render_single_textbox(
     // Lay text out within the shape's text rectangle (e.g. an arrow's body,
     // not its head). For plain rectangles this is the full box, so non-shape
     // textboxes are unaffected. Body-margin insets apply within the text rect.
-    let (txt_l, txt_b, txt_w, txt_h) =
-        super::smartart::shape_text_rect(&tb.shape_type, tb.width_pt, tb_height)
-            .unwrap_or((0.0, 0.0, tb.width_pt, tb_height));
+    let (txt_l, txt_b, txt_w, txt_h) = super::smartart::shape_text_rect(
+        &tb.shape_type,
+        tb.width_pt,
+        tb_height,
+    )
+    .unwrap_or((0.0, 0.0, tb.width_pt, tb_height));
     let text_top = tb_y_top - tb_height + txt_b + txt_h;
 
     let content_x = tb_x + txt_l + tb.margin_left;
@@ -189,11 +202,15 @@ pub(super) fn render_single_textbox(
         .is_some_and(|w| w.preset != "textNoShape")
     {
         if wordart::render_warped_textbox(tb, content, ctx.fonts, tb_x, tb_y_top, align_w) {
-            if needs_clip { content.restore_state(); }
+            if needs_clip {
+                content.restore_state();
+            }
             return;
         }
         if wordart::render_text_on_path(tb, content, ctx.fonts, tb_x, tb_y_top, align_w) {
-            if needs_clip { content.restore_state(); }
+            if needs_clip {
+                content.restore_state();
+            }
             return;
         }
     }
@@ -209,7 +226,8 @@ pub(super) fn render_single_textbox(
                 let tp_text_w = (content_w - tp.indent_left - tp.indent_right).max(1.0);
                 let text_hanging = if !tp.list_label.is_empty() {
                     if let Some(nts) = tp.num_level_tab_stop {
-                        if nts < tp.indent_left && (tp.indent_left - tp.indent_hanging).abs() < 0.5 {
+                        if nts < tp.indent_left && (tp.indent_left - tp.indent_hanging).abs() < 0.5
+                        {
                             (tp.indent_left - nts).max(0.0)
                         } else if tp.indent_first_line > 0.0 && tp.indent_hanging == 0.0 {
                             -tp.indent_first_line
@@ -233,13 +251,29 @@ pub(super) fn render_single_textbox(
                 let has_tabs = tp.runs.iter().any(|r| r.is_tab);
                 let lines = if has_tabs {
                     build_tabbed_line(
-                        &tp.runs, ctx.fonts, &tp.tab_stops, tp.indent_left,
-                        tp_text_w, tp.indent_right, text_hanging, &empty_inline_imgs_pre,
-                        &empty_fx_pre, ctx.default_tab_stop, &[],
+                        &tp.runs,
+                        ctx.fonts,
+                        &tp.tab_stops,
+                        tp.indent_left,
+                        tp_text_w,
+                        tp.indent_right,
+                        text_hanging,
+                        &empty_inline_imgs_pre,
+                        &empty_fx_pre,
+                        ctx.default_tab_stop,
+                        &[],
                     )
                 } else {
                     build_paragraph_lines(
-                        &tp.runs, ctx.fonts, tp_text_w, text_hanging, &empty_inline_imgs_pre, &empty_fx_pre, None, None, None,
+                        &tp.runs,
+                        ctx.fonts,
+                        tp_text_w,
+                        text_hanging,
+                        &empty_inline_imgs_pre,
+                        &empty_fx_pre,
+                        None,
+                        None,
+                        None,
                         ctx.cjk(true, tp.alignment),
                     )
                 };
@@ -274,10 +308,21 @@ pub(super) fn render_single_textbox(
         content.set_text_rendering_mode(pdf_writer::types::TextRenderingMode::Stroke);
         let mut discard_links: Vec<LinkAnnotation> = Vec::new();
         render_textbox_paragraphs(
-            &tb.paragraphs, content, content_x, content_w, align_w,
+            &tb.paragraphs,
+            content,
+            content_x,
+            content_w,
+            align_w,
             text_top - tb.margin_top - anchor_offset,
-            0.0, 0.0, None, false, &mut discard_links, ctx, clip_bottom,
-            gradient_specs, None,
+            0.0,
+            0.0,
+            None,
+            false,
+            &mut discard_links,
+            ctx,
+            clip_bottom,
+            gradient_specs,
+            None,
         );
         content.restore_state();
     }
@@ -293,20 +338,41 @@ pub(super) fn render_single_textbox(
         ];
         let mut discard_links: Vec<LinkAnnotation> = Vec::new();
         render_textbox_paragraphs(
-            &tb.paragraphs, content, content_x, content_w, align_w,
+            &tb.paragraphs,
+            content,
+            content_x,
+            content_w,
+            align_w,
             text_top - tb.margin_top - anchor_offset,
-            shadow.offset_x, shadow.offset_y, Some(shadow_color),
-            false, &mut discard_links, ctx, clip_bottom,
-            gradient_specs, None,
+            shadow.offset_x,
+            shadow.offset_y,
+            Some(shadow_color),
+            false,
+            &mut discard_links,
+            ctx,
+            clip_bottom,
+            gradient_specs,
+            None,
         );
         content.restore_state();
     }
 
     render_textbox_paragraphs(
-        &tb.paragraphs, content, content_x, content_w, align_w,
+        &tb.paragraphs,
+        content,
+        content_x,
+        content_w,
+        align_w,
         text_top - tb.margin_top - anchor_offset,
-        0.0, 0.0, None, true, page_links, ctx, clip_bottom,
-        gradient_specs, Some((tags, page, sect)),
+        0.0,
+        0.0,
+        None,
+        true,
+        page_links,
+        ctx,
+        clip_bottom,
+        gradient_specs,
+        Some((tags, page, sect)),
     );
 
     if needs_clip {
@@ -399,30 +465,47 @@ pub(super) fn render_textbox_paragraphs(
             continue;
         }
 
-        let inline_imgs: HashMap<usize, String> = if tp.runs.iter().any(|r| r.inline_image.is_some()) {
-            tp.runs
-                .iter()
-                .enumerate()
-                .filter_map(|(ri, run)| {
-                    let img = run.inline_image.as_ref()?;
-                    let key = std::sync::Arc::as_ptr(&img.data) as usize;
-                    ctx.textbox_image_names
-                        .get(&key)
-                        .map(|name| (ri, name.clone()))
-                })
-                .collect()
-        } else {
-            HashMap::new()
-        };
+        let inline_imgs: HashMap<usize, String> =
+            if tp.runs.iter().any(|r| r.inline_image.is_some()) {
+                tp.runs
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(ri, run)| {
+                        let img = run.inline_image.as_ref()?;
+                        let key = std::sync::Arc::as_ptr(&img.data) as usize;
+                        ctx.textbox_image_names
+                            .get(&key)
+                            .map(|name| (ri, name.clone()))
+                    })
+                    .collect()
+            } else {
+                HashMap::new()
+            };
         let tb_lines = if tp.runs.iter().any(|r| r.is_tab) {
             build_tabbed_line(
-                &tp.runs, ctx.fonts, &tp.tab_stops, tp.indent_left,
-                tp_text_w, tp.indent_right, text_hanging, &inline_imgs, &empty_fx, ctx.default_tab_stop,
+                &tp.runs,
+                ctx.fonts,
+                &tp.tab_stops,
+                tp.indent_left,
+                tp_text_w,
+                tp.indent_right,
+                text_hanging,
+                &inline_imgs,
+                &empty_fx,
+                ctx.default_tab_stop,
                 &[],
             )
         } else {
             build_paragraph_lines(
-                &tp.runs, ctx.fonts, tp_text_w, text_hanging, &inline_imgs, &empty_fx, None, None, None,
+                &tp.runs,
+                ctx.fonts,
+                tp_text_w,
+                text_hanging,
+                &inline_imgs,
+                &empty_fx,
+                None,
+                None,
+                None,
                 ctx.cjk(true, tp.alignment),
             )
         };
@@ -462,13 +545,26 @@ pub(super) fn render_textbox_paragraphs(
             );
         }
         render_paragraph_lines(
-            content, &tb_lines, &tp.alignment, tp_text_x, tp_align_w,
-            tb_baseline, tb_line_h, tb_metrics, tb_lines.len(), 0,
-            links, 0.0, ctx.fonts, None,
+            content,
+            &tb_lines,
+            &tp.alignment,
+            tp_text_x,
+            tp_align_w,
+            tb_baseline,
+            tb_line_h,
+            tb_metrics,
+            tb_lines.len(),
+            0,
+            links,
+            0.0,
+            ctx.fonts,
+            None,
             gradient_specs,
             None,
             None,
-            tag.as_mut().zip(para_tag).map(|((tags, page, _), p)| LinkTagger::new(tags, *page, p)),
+            tag.as_mut()
+                .zip(para_tag)
+                .map(|((tags, page, _), p)| LinkTagger::new(tags, *page, p)),
         );
         if para_tag.is_some() {
             Tags::end(content);

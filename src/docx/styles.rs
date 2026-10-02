@@ -2,18 +2,17 @@ use std::collections::{HashMap, HashSet};
 use std::io::{Read, Seek};
 
 use crate::model::{
-    Alignment, CellBorder, LineSpacing, ParagraphBorders, TabStop, TextFill, TextGlow,
-    TextOutline, TextShadow,
+    Alignment, CellBorder, LineSpacing, ParagraphBorders, TabStop, TextFill, TextGlow, TextOutline,
+    TextShadow,
 };
 
 pub(super) use super::color::{ColorTransforms, parse_color_transforms};
 use super::wordart::{parse_text_fill, parse_text_glow, parse_text_outline, parse_text_shadow};
 use super::{
-    DML_NS, WML_NS, dml, extract_indents, highlight_color, parse_cell_border,
-    parse_cell_border_left, parse_cell_border_right, parse_hex_color, parse_one_border,
-    merge_tab_stops, parse_on_off, parse_paragraph_borders, parse_run_shd,
-    parse_tab_stops_with_clears, parse_text_color, read_zip_text, twips_attr, twips_to_pts, wml,
-    wml_attr, wml_bool,
+    DML_NS, WML_NS, dml, extract_indents, highlight_color, merge_tab_stops, parse_cell_border,
+    parse_cell_border_left, parse_cell_border_right, parse_hex_color, parse_on_off,
+    parse_one_border, parse_paragraph_borders, parse_run_shd, parse_tab_stops_with_clears,
+    parse_text_color, read_zip_text, twips_attr, twips_to_pts, wml, wml_attr, wml_bool,
 };
 
 fn dml_typeface<'a>(node: roxmltree::Node<'a, 'a>, element: &str) -> Option<&'a str> {
@@ -24,7 +23,11 @@ fn dml_typeface<'a>(node: roxmltree::Node<'a, 'a>, element: &str) -> Option<&'a 
 
 /// A theme font group's `ea`/`cs` typeface; an empty one defers to the
 /// group's font for `script`.
-fn group_typeface<'a>(font_group: roxmltree::Node<'a, 'a>, element: &str, script: Option<&str>) -> String {
+fn group_typeface<'a>(
+    font_group: roxmltree::Node<'a, 'a>,
+    element: &str,
+    script: Option<&str>,
+) -> String {
     dml_typeface(font_group, element)
         .or_else(|| script.and_then(|s| script_font_typeface(font_group, s)))
         .unwrap_or("")
@@ -50,14 +53,20 @@ pub(super) fn parse_lang(rpr: roxmltree::Node) -> (Option<String>, Option<String
     let Some(lang) = wml(rpr, "lang") else {
         return (None, None);
     };
-    let tag = |attr| lang.attribute((WML_NS, attr)).filter(|v| is_lang_tag(v)).map(str::to_string);
+    let tag = |attr| {
+        lang.attribute((WML_NS, attr))
+            .filter(|v| is_lang_tag(v))
+            .map(str::to_string)
+    };
     (tag("val"), tag("eastAsia"))
 }
 
 /// A BCP 47-shaped language tag: a 2–3 letter language, then alphanumeric subtags.
 fn is_lang_tag(tag: &str) -> bool {
     let mut parts = tag.split('-');
-    parts.next().is_some_and(|p| (2..=3).contains(&p.len()) && p.chars().all(|c| c.is_ascii_alphabetic()))
+    parts
+        .next()
+        .is_some_and(|p| (2..=3).contains(&p.len()) && p.chars().all(|c| c.is_ascii_alphabetic()))
         && parts.all(|p| (1..=8).contains(&p.len()) && p.chars().all(|c| c.is_ascii_alphanumeric()))
 }
 
@@ -387,9 +396,7 @@ pub(super) fn parse_theme<R: Read + Seek>(
                         }
                         let scheme_name = child.tag_name().name();
                         if let Some(srgb) = dml(child, "srgbClr") {
-                            if let Some(hex) =
-                                srgb.attribute("val").and_then(parse_hex_color)
-                            {
+                            if let Some(hex) = srgb.attribute("val").and_then(parse_hex_color) {
                                 colors.insert(scheme_name.to_string(), hex);
                             }
                         } else if let Some(hex) = dml(child, "sysClr")
@@ -473,7 +480,10 @@ pub(super) fn resolve_font(
     if let Some(f) = ascii {
         return f.to_string();
     }
-    ascii_theme.and_then(|t| theme.slot(t)).unwrap_or(default_font).to_string()
+    ascii_theme
+        .and_then(|t| theme.slot(t))
+        .unwrap_or(default_font)
+        .to_string()
 }
 
 pub(super) fn resolve_font_from_node(
@@ -539,7 +549,11 @@ pub(super) fn parse_line_spacing(spacing_node: roxmltree::Node, line_val: f32) -
 /// Word gives its built-in "heading N" styles outline level N−1 even when the
 /// style omits `w:outlineLvl` (it tags and bookmarks them as headings).
 fn builtin_heading_level(name: &str) -> Option<u8> {
-    let level = name.to_ascii_lowercase().strip_prefix("heading ")?.parse::<u8>().ok()?;
+    let level = name
+        .to_ascii_lowercase()
+        .strip_prefix("heading ")?
+        .parse::<u8>()
+        .ok()?;
     (1..=9).contains(&level).then(|| level - 1)
 }
 
@@ -572,16 +586,22 @@ fn with_normal_template(xml: &str) -> String {
     match wml(root, "docDefaults") {
         Some(n) => edits.push((n.range(), defaults)),
         None => {
-            let at = root.first_child().map_or(root.range().end, |c| c.range().start);
+            let at = root
+                .first_child()
+                .map_or(root.range().end, |c| c.range().start);
             edits.push((at..at, defaults));
         }
     }
     if let Some(normal) = root.children().find(|n| {
         n.tag_name().name() == "style"
             && n.attribute((WML_NS, "type")) == Some("paragraph")
-            && n.attribute((WML_NS, "default")).is_some_and(super::parse_on_off)
+            && n.attribute((WML_NS, "default"))
+                .is_some_and(super::parse_on_off)
     }) {
-        for pr in ["pPr", "rPr"].into_iter().filter_map(|name| wml(normal, name)) {
+        for pr in ["pPr", "rPr"]
+            .into_iter()
+            .filter_map(|name| wml(normal, name))
+        {
             edits.push((pr.range(), String::new()));
         }
     }
@@ -746,7 +766,10 @@ pub(super) fn parse_styles<R: Read + Seek>(
 
         match style_node.attribute((WML_NS, "type")) {
             Some("paragraph") => {
-                if style_node.attribute((WML_NS, "default")).is_some_and(super::parse_on_off) {
+                if style_node
+                    .attribute((WML_NS, "default"))
+                    .is_some_and(super::parse_on_off)
+                {
                     default_paragraph_style_id = style_id.to_string();
                 }
 
@@ -759,9 +782,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
                 let space_after_autospacing = spacing
                     .and_then(|n| n.attribute((WML_NS, "afterAutospacing")).map(parse_on_off));
                 let borders = ppr.and_then(parse_paragraph_borders).unwrap_or_default();
-                let shading = ppr
-                    .and_then(|n| wml(n, "shd"))
-                    .and_then(super::shd_color);
+                let shading = ppr.and_then(|n| wml(n, "shd")).and_then(super::shd_color);
 
                 let rpr = wml(style_node, "rPr");
 
@@ -816,9 +837,8 @@ pub(super) fn parse_styles<R: Read + Seek>(
                     .map(|ind| extract_indents(ind, None))
                     .unwrap_or_default();
 
-                let (tab_stops, clear_tab_positions) = ppr
-                    .map(parse_tab_stops_with_clears)
-                    .unwrap_or_default();
+                let (tab_stops, clear_tab_positions) =
+                    ppr.map(parse_tab_stops_with_clears).unwrap_or_default();
 
                 let style_num_pr = ppr.and_then(|p| wml(p, "numPr"));
                 let num_id = style_num_pr
@@ -988,16 +1008,17 @@ pub(super) fn parse_styles<R: Read + Seek>(
                     let Some(cond_type) = child.attribute((WML_NS, "type")) else {
                         continue;
                     };
-                    let cond_borders = wml(child, "tcPr")
-                        .and_then(|tc| wml(tc, "tcBorders"))
-                        .map(|b| TableBordersDef {
-                            top: parse_cell_border(b, "top"),
-                            bottom: parse_cell_border(b, "bottom"),
-                            left: parse_cell_border_left(b),
-                            right: parse_cell_border_right(b),
-                            inside_h: parse_cell_border(b, "insideH"),
-                            inside_v: parse_cell_border(b, "insideV"),
-                        });
+                    let cond_borders =
+                        wml(child, "tcPr")
+                            .and_then(|tc| wml(tc, "tcBorders"))
+                            .map(|b| TableBordersDef {
+                                top: parse_cell_border(b, "top"),
+                                bottom: parse_cell_border(b, "bottom"),
+                                left: parse_cell_border_left(b),
+                                right: parse_cell_border_right(b),
+                                inside_h: parse_cell_border(b, "insideH"),
+                                inside_v: parse_cell_border(b, "insideV"),
+                            });
                     let cond_shading = wml(child, "tcPr")
                         .and_then(|tc| wml(tc, "shd"))
                         .and_then(super::shd_color);
@@ -1017,15 +1038,18 @@ pub(super) fn parse_styles<R: Read + Seek>(
                         || cond_font_name.is_some()
                         || cond_italic.is_some()
                     {
-                        conditionals.insert(cond_type.to_string(), TableConditionalFormat {
-                            borders: cond_borders,
-                            shading: cond_shading,
-                            bold: cond_bold,
-                            italic: cond_italic,
-                            color: cond_color,
-                            font_size: cond_font_size,
-                            font_name: cond_font_name,
-                        });
+                        conditionals.insert(
+                            cond_type.to_string(),
+                            TableConditionalFormat {
+                                borders: cond_borders,
+                                shading: cond_shading,
+                                bold: cond_bold,
+                                italic: cond_italic,
+                                color: cond_color,
+                                font_size: cond_font_size,
+                                font_name: cond_font_name,
+                            },
+                        );
                     }
                 }
 
@@ -1077,9 +1101,20 @@ fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
     let own_ind_or_num: HashMap<String, Option<bool>> = styles
         .iter()
         .map(|(id, s)| {
-            let ind = s.indent_left.is_some() || s.indent_hanging.is_some() || s.indent_first_line.is_some();
+            let ind = s.indent_left.is_some()
+                || s.indent_hanging.is_some()
+                || s.indent_first_line.is_some();
             let num = s.num_id.is_some() || s.num_ilvl.is_some();
-            (id.clone(), if ind { Some(true) } else if num { Some(false) } else { None })
+            (
+                id.clone(),
+                if ind {
+                    Some(true)
+                } else if num {
+                    Some(false)
+                } else {
+                    None
+                },
+            )
         })
         .collect();
     for id in ids {
@@ -1244,7 +1279,18 @@ mod tests {
         assert_eq!(font("majorEastAsia"), "MS Gothic");
         assert_eq!(font("minorBidi"), "Arial");
         assert_eq!(font("majorBidi"), "Times New Roman");
-        assert_eq!(resolve_font(None, Some("minorBidi"), &ThemeFonts { minor_cs: String::new(), ..theme }, "Calibri"), "Calibri");
+        assert_eq!(
+            resolve_font(
+                None,
+                Some("minorBidi"),
+                &ThemeFonts {
+                    minor_cs: String::new(),
+                    ..theme
+                },
+                "Calibri"
+            ),
+            "Calibri"
+        );
     }
 
     #[test]
@@ -1270,7 +1316,10 @@ mod tests {
         );
         styles.insert(
             "BodyText3".to_string(),
-            ParagraphStyle { based_on: Some("Normal".into()), ..Default::default() },
+            ParagraphStyle {
+                based_on: Some("Normal".into()),
+                ..Default::default()
+            },
         );
         resolve_based_on(&mut styles);
         assert_eq!(styles["BodyText3"].lang.as_deref(), Some("lt-LT"));

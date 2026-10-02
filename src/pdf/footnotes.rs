@@ -4,14 +4,14 @@ use pdf_writer::Content;
 
 use crate::model::{Footnote, LineSpacing, Paragraph, Run};
 
-use super::helpers::drops_contextual_spacing;
 use super::RenderContext;
+use super::helpers::drops_contextual_spacing;
 use super::layout::{
     TextLine, build_paragraph_lines, is_text_empty, render_paragraph_lines, tallest_run_metrics,
 };
 use super::list_label::render_list_label;
-use super::tagging::NoteTagger;
 use super::resolve_line_h;
+use super::tagging::NoteTagger;
 
 /// Destination name a note's reference mark links to. Word bookmark names
 /// can't contain spaces, so it never collides with a real bookmark.
@@ -53,7 +53,18 @@ fn layout_paragraph(
     }
     let (fs, tallest_lhr, tallest_ar) = tallest_run_metrics(runs, ctx.fonts);
     let lh = resolve_line_h(line_spacing, fs, tallest_lhr);
-    let lines = build_paragraph_lines(runs, ctx.fonts, text_width, first_line_hanging, &HashMap::new(), &HashMap::new(), None, None, None, ctx.cjk(true, alignment));
+    let lines = build_paragraph_lines(
+        runs,
+        ctx.fonts,
+        text_width,
+        first_line_hanging,
+        &HashMap::new(),
+        &HashMap::new(),
+        None,
+        None,
+        None,
+        ctx.cjk(true, alignment),
+    );
     if lines.is_empty() {
         return None;
     }
@@ -82,10 +93,16 @@ pub(super) fn compute_footnote_height(
     let mut prev_para = None;
     for (i, para) in footnote.paragraphs.iter().enumerate() {
         let ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
-        let para_text_width =
-            (text_width - para.indent_left - para.indent_right).max(1.0);
+        let para_text_width = (text_width - para.indent_left - para.indent_right).max(1.0);
         let hanging = super::compute_text_hanging(para, 0.0);
-        let layout = layout_paragraph(&para.runs, ls, ctx, para_text_width, hanging, para.alignment);
+        let layout = layout_paragraph(
+            &para.runs,
+            ls,
+            ctx,
+            para_text_width,
+            hanging,
+            para.alignment,
+        );
         if layout.is_none() && para.paragraph_mark_vanish {
             continue;
         }
@@ -240,8 +257,7 @@ fn render_notes_downward(
             let ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
 
             let para_text_x = margin_left + para.indent_left;
-            let para_text_width =
-                (text_width - para.indent_left - para.indent_right).max(1.0);
+            let para_text_width = (text_width - para.indent_left - para.indent_right).max(1.0);
 
             let hanging = super::compute_text_hanging(para, 0.0);
             let layout = layout_paragraph(&runs, ls, ctx, para_text_width, hanging, para.alignment);

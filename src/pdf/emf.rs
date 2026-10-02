@@ -83,7 +83,9 @@ pub(super) fn emf_to_form_xobject(
     if bounds_size.0 == 0 || bounds_size.1 == 0 {
         return None;
     }
-    let mapper = Mapper { bounds: header.bounds };
+    let mapper = Mapper {
+        bounds: header.bounds,
+    };
 
     let mut state = EmfState::new(bounds_size);
     let mut state_stack: Vec<EmfState> = Vec::new();
@@ -91,7 +93,14 @@ pub(super) fn emf_to_form_xobject(
     let mut content = Content::new();
 
     for_each_record(emf, |rec| {
-        translate_record(rec, &mut state, &mut state_stack, &mut objects, &mapper, &mut content);
+        translate_record(
+            rec,
+            &mut state,
+            &mut state_stack,
+            &mut objects,
+            &mapper,
+            &mut content,
+        );
         true
     });
 
@@ -133,8 +142,18 @@ fn translate_record(
         CreateBrushIndirect { handle, color } => {
             objects.insert(*handle, EmfObject::Brush { color: *color });
         }
-        ExtCreatePen { handle, color, width } => {
-            objects.insert(*handle, EmfObject::Pen { color: *color, width: *width });
+        ExtCreatePen {
+            handle,
+            color,
+            width,
+        } => {
+            objects.insert(
+                *handle,
+                EmfObject::Pen {
+                    color: *color,
+                    width: *width,
+                },
+            );
         }
         DeleteObject(handle) => {
             objects.remove(handle);

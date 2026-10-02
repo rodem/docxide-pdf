@@ -2,11 +2,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use pdf_writer::types::{CidFontType, FontFlags, SystemInfo, UnicodeCmap};
 use pdf_writer::{Filter, Name, Pdf, Rect, Ref, Str};
-use ttf_parser::gpos::{PairAdjustment, PositioningSubtable};
 use ttf_parser::Face;
+use ttf_parser::gpos::{PairAdjustment, PositioningSubtable};
 
-use super::encoding::winansi_to_char;
 use super::FontMetrics;
+use super::encoding::winansi_to_char;
 
 pub(super) fn embed_truetype(
     pdf: &mut Pdf,
@@ -161,7 +161,10 @@ pub(super) fn embed_truetype(
     let mut cid_unicode: BTreeMap<u16, char> = BTreeMap::new();
     for (&ch, &new_gid) in &char_to_gid {
         let uni = pua_unicode(ch).unwrap_or(ch);
-        cid_unicode.entry(new_gid).and_modify(|c| *c = (*c).min(uni)).or_insert(uni);
+        cid_unicode
+            .entry(new_gid)
+            .and_modify(|c| *c = (*c).min(uni))
+            .or_insert(uni);
     }
     for (cid, uni) in cid_unicode {
         cmap.pair(cid, uni);
@@ -401,7 +404,9 @@ pub(super) struct LineMetrics {
 
 /// Has glyphs for CJK ideographs, Hangul or kana — what Word treats as an East Asian font.
 fn is_east_asian_font(face: &Face) -> bool {
-    ['一', '가', 'あ'].iter().any(|&c| face.glyph_index(c).is_some())
+    ['一', '가', 'あ']
+        .iter()
+        .any(|&c| face.glyph_index(c).is_some())
 }
 
 /// Word lays out an East Asian font 1.3× taller than its Windows metrics
@@ -431,7 +436,11 @@ fn compute_line_metrics(face: &Face, units: f32) -> LineMetrics {
             } else {
                 (os2.windows_ascender(), os2.windows_descender())
             };
-            let gap = if typo || east_asian.is_some() { 0 } else { face.line_gap() };
+            let gap = if typo || east_asian.is_some() {
+                0
+            } else {
+                face.line_gap()
+            };
             ((asc + desc) as f32 / 2.0 + gap as f32) / units
         }
         None => (face.ascender() + face.descender()) as f32 / 2.0 / units,

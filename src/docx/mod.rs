@@ -3,6 +3,7 @@ mod charts;
 mod color;
 mod comments;
 mod embedded_fonts;
+pub(crate) mod emf;
 mod group;
 mod headers_footers;
 mod images;
@@ -14,7 +15,6 @@ mod settings;
 pub(crate) mod smartart;
 mod styles;
 mod tables;
-pub(crate) mod emf;
 mod textbox;
 mod wmf;
 mod wordart;
@@ -24,9 +24,9 @@ use std::io::Read;
 
 use crate::error::Error;
 use crate::model::{
-    Block, BorderStyle, CellBorder, DocGridType, Document, FrameProperties,
-    HRelativeFrom, HorizontalPosition, LineSpacing, ParagraphBorder, ParagraphBorders,
-    Section, SectionBreakType, SectionProperties, TabAlignment, TabStop, VRelativeFrom,
+    Block, BorderStyle, CellBorder, DocGridType, Document, FrameProperties, HRelativeFrom,
+    HorizontalPosition, LineSpacing, ParagraphBorder, ParagraphBorders, Section, SectionBreakType,
+    SectionProperties, TabAlignment, TabStop, VRelativeFrom,
 };
 
 use styles::{ParagraphStyle, parse_line_spacing, parse_styles, parse_theme};
@@ -41,9 +41,11 @@ use tables::parse_table_node;
 
 pub(super) const WML_NS: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 pub(super) const DML_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/main";
-pub(super) const WPD_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+pub(super) const WPD_NS: &str =
+    "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
 pub(super) const WPS_NS: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
-pub(super) const REL_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+pub(super) const REL_NS: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 pub(super) const MC_NS_TOP: &str = "http://schemas.openxmlformats.org/markup-compatibility/2006";
 pub(super) const CHART_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/chart";
 pub(super) const DSP_NS: &str = "http://schemas.microsoft.com/office/drawing/2008/diagram";
@@ -393,9 +395,7 @@ pub(super) fn parse_frame_props(ppr: roxmltree::Node) -> Option<FrameProperties>
             _ => HorizontalPosition::AlignLeft,
         }
     } else {
-        let x_twips: f32 = attr("x")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0.0);
+        let x_twips: f32 = attr("x").and_then(|v| v.parse().ok()).unwrap_or(0.0);
         HorizontalPosition::Offset(twips_to_pts(x_twips))
     };
     let v_anchor = match attr("vAnchor").unwrap_or("text") {
@@ -501,8 +501,14 @@ pub(in crate::docx) fn autospacing(
             .unwrap_or(false)
     };
     (
-        side("beforeAutospacing", para_style.and_then(|s| s.space_before_autospacing)),
-        side("afterAutospacing", para_style.and_then(|s| s.space_after_autospacing)),
+        side(
+            "beforeAutospacing",
+            para_style.and_then(|s| s.space_before_autospacing),
+        ),
+        side(
+            "afterAutospacing",
+            para_style.and_then(|s| s.space_after_autospacing),
+        ),
     )
 }
 
@@ -564,11 +570,21 @@ pub(super) fn extract_indents(
             .or_else(|| has_cw.then(|| chars_to_pts(ind, "leftChars", cw)).flatten()),
         twips_attr(ind, "end")
             .or_else(|| twips_attr(ind, "right"))
-            .or_else(|| has_cw.then(|| chars_to_pts(ind, "rightChars", cw)).flatten()),
-        twips_attr(ind, "hanging")
-            .or_else(|| has_cw.then(|| chars_to_pts(ind, "hangingChars", cw)).flatten()),
-        twips_attr(ind, "firstLine")
-            .or_else(|| has_cw.then(|| chars_to_pts(ind, "firstLineChars", cw)).flatten()),
+            .or_else(|| {
+                has_cw
+                    .then(|| chars_to_pts(ind, "rightChars", cw))
+                    .flatten()
+            }),
+        twips_attr(ind, "hanging").or_else(|| {
+            has_cw
+                .then(|| chars_to_pts(ind, "hangingChars", cw))
+                .flatten()
+        }),
+        twips_attr(ind, "firstLine").or_else(|| {
+            has_cw
+                .then(|| chars_to_pts(ind, "firstLineChars", cw))
+                .flatten()
+        }),
     )
 }
 
@@ -593,8 +609,7 @@ pub(super) fn collect_block_nodes<'a>(
             // mc:AlternateContent wraps block-level content in mc:Choice/mc:Fallback.
             // Use mc:Fallback for compatibility (it avoids newer namespace requirements).
             let fallback = child.children().find(|n| {
-                n.tag_name().namespace() == Some(MC_NS_TOP)
-                    && n.tag_name().name() == "Fallback"
+                n.tag_name().namespace() == Some(MC_NS_TOP) && n.tag_name().name() == "Fallback"
             });
             if let Some(fb) = fallback {
                 nodes.extend(collect_block_nodes(fb));
@@ -690,7 +705,12 @@ pub fn parse_bytes(bytes: &[u8]) -> Result<Document, Error> {
 
 fn parse_core_props<R: Read + std::io::Seek>(
     zip: &mut zip::ZipArchive<R>,
-) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
     let Some(xml_content) = read_zip_text(zip, "docProps/core.xml") else {
         return (None, None, None, None);
     };
@@ -706,19 +726,28 @@ fn parse_core_props<R: Read + std::io::Seek>(
     let mut keywords = None;
 
     for child in root.children() {
-        if child.tag_name().name() == "title" && child.tag_name().namespace() == Some("http://purl.org/dc/elements/1.1/") {
+        if child.tag_name().name() == "title"
+            && child.tag_name().namespace() == Some("http://purl.org/dc/elements/1.1/")
+        {
             if let Some(text) = child.text() {
                 title = Some(text.to_string());
             }
-        } else if child.tag_name().name() == "creator" && child.tag_name().namespace() == Some("http://purl.org/dc/elements/1.1/") {
+        } else if child.tag_name().name() == "creator"
+            && child.tag_name().namespace() == Some("http://purl.org/dc/elements/1.1/")
+        {
             if let Some(text) = child.text() {
                 author = Some(text.to_string());
             }
-        } else if child.tag_name().name() == "subject" && child.tag_name().namespace() == Some("http://purl.org/dc/elements/1.1/") {
+        } else if child.tag_name().name() == "subject"
+            && child.tag_name().namespace() == Some("http://purl.org/dc/elements/1.1/")
+        {
             if let Some(text) = child.text() {
                 subject = Some(text.to_string());
             }
-        } else if child.tag_name().name() == "keywords" && child.tag_name().namespace() == Some("http://schemas.openxmlformats.org/package/2006/metadata/core-properties") {
+        } else if child.tag_name().name() == "keywords"
+            && child.tag_name().namespace()
+                == Some("http://schemas.openxmlformats.org/package/2006/metadata/core-properties")
+        {
             if let Some(text) = child.text() {
                 keywords = Some(text.to_string());
             }
@@ -730,7 +759,11 @@ fn parse_core_props<R: Read + std::io::Seek>(
 
 fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Document, Error> {
     let settings = parse_settings(zip);
-    let theme = parse_theme(zip, settings.east_asia_lang.as_deref(), settings.bidi_lang.as_deref());
+    let theme = parse_theme(
+        zip,
+        settings.east_asia_lang.as_deref(),
+        settings.bidi_lang.as_deref(),
+    );
     let styles = parse_styles(zip, &theme, settings.styles_from_normal_template);
     let numbering = parse_numbering(zip);
     let rels = parse_relationships(zip);
@@ -801,7 +834,12 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
                     style_num_ilvl: para_style.and_then(|s| s.num_ilvl),
                 };
                 let mut para = paragraph::build_paragraph(
-                    node, &mut ctx, &mut counters, &mut last_seen_level, &mut applied_overrides, &opts,
+                    node,
+                    &mut ctx,
+                    &mut counters,
+                    &mut last_seen_level,
+                    &mut applied_overrides,
+                    &opts,
                 );
 
                 // HTML auto spacing never opens the document, and it drops
@@ -866,7 +904,12 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
 
     // Final section: body-level sectPr
     let final_props = if let Some(sect_node) = wml(body, "sectPr") {
-        parse_section_properties(sect_node, &mut ctx, default_line_pitch, settings.gutter_at_top)
+        parse_section_properties(
+            sect_node,
+            &mut ctx,
+            default_line_pitch,
+            settings.gutter_at_top,
+        )
     } else {
         SectionProperties {
             page_width: 612.0,

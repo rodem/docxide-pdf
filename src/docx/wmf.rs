@@ -77,9 +77,8 @@ fn collect_dib_blits(data: &[u8]) -> Option<Vec<DibBlit<'_>>> {
         }
         let params = &data[i + 6..dib_start];
         // INT16 dest rect offsets within the param block differ per record.
-        let i16_at = |off: usize| -> i32 {
-            i16::from_le_bytes([params[off], params[off + 1]]) as i32
-        };
+        let i16_at =
+            |off: usize| -> i32 { i16::from_le_bytes([params[off], params[off + 1]]) as i32 };
         let (h, w, y, x) = match func {
             // DIBBITBLT: RasterOp(4), YSrc, XSrc, Height, Width, YDest, XDest
             META_DIBBITBLT => (i16_at(8), i16_at(10), i16_at(12), i16_at(14)),
@@ -149,7 +148,8 @@ fn composite_blits(blits: &[DibBlit]) -> Option<Vec<u8>> {
 
     let canvas_w = ((span_w * scale).round() as u32).clamp(1, 5000);
     let canvas_h = ((span_h * scale).round() as u32).clamp(1, 5000);
-    let mut canvas = image::RgbaImage::from_pixel(canvas_w, canvas_h, image::Rgba([255, 255, 255, 255]));
+    let mut canvas =
+        image::RgbaImage::from_pixel(canvas_w, canvas_h, image::Rgba([255, 255, 255, 255]));
 
     for (img, b) in &decoded {
         let dw = ((b.w as f32 * scale).round() as u32).max(1);

@@ -735,8 +735,7 @@ pub(super) fn render_chart(
             .map(|s| text_width(&s.label, 10.0, label_font))
             .fold(0.0f32, f32::max);
         // Line/Area use wider line+marker legend swatches; Scatter/Bubble use small marker dots
-        let has_line_swatch =
-            matches!(c.chart_type, ChartType::Line | ChartType::Area);
+        let has_line_swatch = matches!(c.chart_type, ChartType::Line | ChartType::Area);
         let swatch_w = if has_line_swatch { 20.0 } else { legend_swatch };
         let computed = legend_gap + swatch_w + 6.0 + max_label_w + 12.0;
         computed.max(w * 0.15)
@@ -922,11 +921,27 @@ pub(super) fn render_chart(
             if !horizontal {
                 let ly = plot_y + frac * plot_h - font_size * 0.3;
                 let lx = plot_x - tw - 9.0;
-                show_text(content, label_font_key, font_size, lx, ly, &label, label_font);
+                show_text(
+                    content,
+                    label_font_key,
+                    font_size,
+                    lx,
+                    ly,
+                    &label,
+                    label_font,
+                );
             } else {
                 let lx = plot_x + frac * plot_w - tw / 2.0;
                 let ly = plot_y - font_size - 8.0;
-                show_text(content, label_font_key, font_size, lx, ly, &label, label_font);
+                show_text(
+                    content,
+                    label_font_key,
+                    font_size,
+                    lx,
+                    ly,
+                    &label,
+                    label_font,
+                );
             }
         }
 
@@ -940,7 +955,15 @@ pub(super) fn render_chart(
                 let frac = val / x_axis_max;
                 let lx = plot_x + frac * plot_w - tw / 2.0;
                 let ly = plot_y - font_size - 8.0;
-                show_text(content, label_font_key, font_size, lx, ly, &label, label_font);
+                show_text(
+                    content,
+                    label_font_key,
+                    font_size,
+                    lx,
+                    ly,
+                    &label,
+                    label_font,
+                );
             }
         }
 
@@ -988,7 +1011,15 @@ pub(super) fn render_chart(
                     let group_h = plot_h / num_categories as f32;
                     let cy = plot_y + ci as f32 * group_h + group_h / 2.0 - font_size * 0.3;
                     let cx = plot_x - tw - 9.0;
-                    show_text(content, label_font_key, font_size, cx, cy, label, label_font);
+                    show_text(
+                        content,
+                        label_font_key,
+                        font_size,
+                        cx,
+                        cy,
+                        label,
+                        label_font,
+                    );
                 }
             }
         }
@@ -1217,7 +1248,15 @@ fn render_radar(
                 } else {
                     ly - font_size * 0.3
                 };
-                show_text(content, label_font_key, font_size, tx, ty, label, label_font);
+                show_text(
+                    content,
+                    label_font_key,
+                    font_size,
+                    tx,
+                    ty,
+                    label,
+                    label_font,
+                );
             }
         }
 

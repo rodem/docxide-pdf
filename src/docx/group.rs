@@ -214,9 +214,9 @@ pub(super) fn parse_canvas_or_group<R: Read + Seek>(
 }
 
 fn find_group_xfrm(group: roxmltree::Node) -> Option<Xfrm> {
-    let grp_sp_pr = group.children().find(|n| {
-        n.tag_name().name() == "grpSpPr" && n.tag_name().namespace() == Some(WPG_NS)
-    })?;
+    let grp_sp_pr = group
+        .children()
+        .find(|n| n.tag_name().name() == "grpSpPr" && n.tag_name().namespace() == Some(WPG_NS))?;
     read_xfrm(grp_sp_pr)
 }
 
@@ -236,9 +236,7 @@ fn walk_group<R: Read + Seek>(
             // (e.g. the roundRect border + divider lines in a 4-quadrant
             // canvas — annotation #165).
             (Some(WPG_NS), "grpSp" | "wgp") => {
-                let t2 = find_group_xfrm(child)
-                    .map(|x| compose(t, &x))
-                    .unwrap_or(t);
+                let t2 = find_group_xfrm(child).map(|x| compose(t, &x)).unwrap_or(t);
                 walk_group(child, t2, base, ctx, out);
             }
             (Some(WPS_NS), "wsp") => emit_wsp(child, t, base, ctx, out),
@@ -319,9 +317,10 @@ fn emit_pic<R: Read + Seek>(
     ctx: &mut ParseContext<'_, R>,
     out: &mut Vec<RunDrawingResult>,
 ) {
-    let Some(sp_pr) = pic.children().find(|n| {
-        n.tag_name().name() == "spPr" && n.tag_name().namespace() == Some(PIC_NS)
-    }) else {
+    let Some(sp_pr) = pic
+        .children()
+        .find(|n| n.tag_name().name() == "spPr" && n.tag_name().namespace() == Some(PIC_NS))
+    else {
         return;
     };
     let Some(xfrm) = read_xfrm(sp_pr) else { return };

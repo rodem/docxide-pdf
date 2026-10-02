@@ -3,8 +3,7 @@ use std::sync::LazyLock;
 
 use crate::fonts::{FontEntry, font_key_buf};
 
-static EMPTY_INLINE_IMAGE_MAP: LazyLock<HashMap<usize, String>> =
-    LazyLock::new(HashMap::new);
+static EMPTY_INLINE_IMAGE_MAP: LazyLock<HashMap<usize, String>> = LazyLock::new(HashMap::new);
 static EMPTY_EFFECT_MAP: LazyLock<HashMap<usize, super::images::EffectXObjs>> =
     LazyLock::new(HashMap::new);
 use crate::model::{
@@ -15,7 +14,8 @@ use crate::model::{
 use super::RenderContext;
 use super::header_footer::substitute_hf_runs;
 use super::layout::{
-    TextLine, build_paragraph_lines, build_tabbed_line, east_asian_leading, is_text_empty, run_line_metrics,
+    TextLine, build_paragraph_lines, build_tabbed_line, east_asian_leading, is_text_empty,
+    run_line_metrics,
 };
 use super::resolve_line_h;
 
@@ -84,7 +84,11 @@ pub(super) fn para_block_height(p: &CellParagraphLayout) -> f32 {
 /// gridCol preferred widths.
 /// Per-column natural (unwrapped, single-line) content width including cell
 /// horizontal padding. This is the "max" width input to Word's AutoFit.
-fn natural_widths(table: &Table, fonts: &HashMap<String, FontEntry>, cm: &crate::model::CellMargins) -> Vec<f32> {
+fn natural_widths(
+    table: &Table,
+    fonts: &HashMap<String, FontEntry>,
+    cm: &crate::model::CellMargins,
+) -> Vec<f32> {
     let ncols = table.col_widths.len();
     let mut natural = vec![0.0f32; ncols];
     for row in &table.rows {
@@ -99,7 +103,9 @@ fn natural_widths(table: &Table, fonts: &HashMap<String, FontEntry>, cm: &crate:
                 let mut para_w = 0.0f32;
                 for run in &para.runs {
                     let key = font_key_buf(run, &mut key_buf);
-                    let Some(entry) = fonts.get(key) else { continue };
+                    let Some(entry) = fonts.get(key) else {
+                        continue;
+                    };
                     let fs = run.font_size;
                     let text = if run.caps {
                         std::borrow::Cow::Owned(run.text.to_uppercase())
@@ -107,10 +113,13 @@ fn natural_widths(table: &Table, fonts: &HashMap<String, FontEntry>, cm: &crate:
                         std::borrow::Cow::Borrowed(&run.text)
                     };
                     if run.small_caps {
-                        para_w += super::layout::smallcaps_segments(&text, fs).iter().map(|(seg, seg_fs, _)| {
-                            let kern = run.kerns_at(*seg_fs);
-                            entry.word_width(seg, *seg_fs, kern)
-                        }).sum::<f32>();
+                        para_w += super::layout::smallcaps_segments(&text, fs)
+                            .iter()
+                            .map(|(seg, seg_fs, _)| {
+                                let kern = run.kerns_at(*seg_fs);
+                                entry.word_width(seg, *seg_fs, kern)
+                            })
+                            .sum::<f32>();
                     } else {
                         let kern = run.kerns_at(fs);
                         para_w += entry.word_width(&text, fs, kern);
@@ -165,7 +174,11 @@ fn distribute_autofit(minw: &[f32], maxw: &[f32], avail: f32) -> Vec<f32> {
     let mut widths = vec![0.0f32; n];
     let mut pinned = vec![false; n];
     loop {
-        let rem_avail: f32 = avail - (0..n).filter(|&i| pinned[i]).map(|i| widths[i]).sum::<f32>();
+        let rem_avail: f32 = avail
+            - (0..n)
+                .filter(|&i| pinned[i])
+                .map(|i| widths[i])
+                .sum::<f32>();
         let active_max: f32 = (0..n).filter(|&i| !pinned[i]).map(|i| maxw[i]).sum();
         if active_max <= 0.0 {
             break;
@@ -205,7 +218,12 @@ fn distribute_autofit(minw: &[f32], maxw: &[f32], avail: f32) -> Vec<f32> {
 /// table should fill. It is kept separate from `available_width` (which drives
 /// the nested-table shrink path) so passing a fill target does not accidentally
 /// push a top-level table onto the shrink path.
-pub(super) fn auto_fit_columns(table: &Table, fonts: &HashMap<String, FontEntry>, available_width: Option<f32>, fill_width: Option<f32>) -> Vec<f32> {
+pub(super) fn auto_fit_columns(
+    table: &Table,
+    fonts: &HashMap<String, FontEntry>,
+    available_width: Option<f32>,
+    fill_width: Option<f32>,
+) -> Vec<f32> {
     let ncols = table.col_widths.len();
     if ncols == 0 {
         return table.col_widths.clone();
@@ -239,10 +257,14 @@ pub(super) fn auto_fit_columns(table: &Table, fonts: &HashMap<String, FontEntry>
                     let fs = run.font_size;
                     for word in text.split_whitespace() {
                         let ww = if run.small_caps {
-                            super::layout::smallcaps_segments(word, fs).iter().map(|(seg, seg_fs, _)| {
-                                let kern = run.kerns_at(*seg_fs);
-                                entry.word_width(seg, *seg_fs, kern)
-                            }).sum::<f32>() + h_pad
+                            super::layout::smallcaps_segments(word, fs)
+                                .iter()
+                                .map(|(seg, seg_fs, _)| {
+                                    let kern = run.kerns_at(*seg_fs);
+                                    entry.word_width(seg, *seg_fs, kern)
+                                })
+                                .sum::<f32>()
+                                + h_pad
                         } else {
                             let kern = run.kerns_at(fs);
                             entry.word_width(word, fs, kern) + h_pad
@@ -270,12 +292,13 @@ pub(super) fn auto_fit_columns(table: &Table, fonts: &HashMap<String, FontEntry>
     // Word sizes purely to content. Gating on a directly-nested table keeps
     // ordinary text tables (which legitimately keep ~equal columns) on the
     // gridCol path and avoids the corpus-wide redistribution regressions.
-    let grid_uniform = ncols >= 2
-        && table.col_widths.iter().all(|&w| w > 0.0)
-        && {
-            let first = table.col_widths[0];
-            table.col_widths.iter().all(|&w| (w - first).abs() <= first * 0.02 + 0.5)
-        };
+    let grid_uniform = ncols >= 2 && table.col_widths.iter().all(|&w| w > 0.0) && {
+        let first = table.col_widths[0];
+        table
+            .col_widths
+            .iter()
+            .all(|&w| (w - first).abs() <= first * 0.02 + 0.5)
+    };
     let has_nested_table = table.rows.iter().any(|r| {
         r.cells
             .iter()
@@ -317,39 +340,37 @@ pub(super) fn auto_fit_columns(table: &Table, fonts: &HashMap<String, FontEntry>
         // preferred widths rather than shrinking to content. An explicit
         // tblInd signals the author deliberately sized and positioned the
         // nested table, so its column hints should be honored.
-        let mut widths: Vec<f32> = if table.table_indent_explicit
-            && preferred_total > 0.0
-            && preferred_total <= avail
-        {
-            (0..ncols)
-                .map(|i| {
-                    let pref = table.col_widths.get(i).copied().unwrap_or(0.0);
-                    let mw = min_widths[i].max(min_cell);
-                    pref.max(mw)
-                })
-                .collect()
-        } else {
-            // At full natural width the table fits the parent cell → Word
-            // keeps the content-fitted widths (AutoFit to Contents), ignoring
-            // the stored gridCol hints (§17.18.87 derives purely from cell
-            // content). Only when it overflows does Word squeeze below
-            // natural width; the 0.9 factor approximates that squeeze.
-            let full: Vec<f32> = (0..ncols)
-                .map(|i| natural_widths[i].max(min_widths[i].max(min_cell)))
-                .collect();
-            if full.iter().sum::<f32>() <= avail {
-                full
-            } else {
+        let mut widths: Vec<f32> =
+            if table.table_indent_explicit && preferred_total > 0.0 && preferred_total <= avail {
                 (0..ncols)
                     .map(|i| {
+                        let pref = table.col_widths.get(i).copied().unwrap_or(0.0);
                         let mw = min_widths[i].max(min_cell);
-                        let nw = natural_widths[i].max(mw);
-                        let fitted = (nw * 0.9).max(mw);
-                        fitted.min(table.col_widths.get(i).copied().unwrap_or(f32::MAX))
+                        pref.max(mw)
                     })
                     .collect()
-            }
-        };
+            } else {
+                // At full natural width the table fits the parent cell → Word
+                // keeps the content-fitted widths (AutoFit to Contents), ignoring
+                // the stored gridCol hints (§17.18.87 derives purely from cell
+                // content). Only when it overflows does Word squeeze below
+                // natural width; the 0.9 factor approximates that squeeze.
+                let full: Vec<f32> = (0..ncols)
+                    .map(|i| natural_widths[i].max(min_widths[i].max(min_cell)))
+                    .collect();
+                if full.iter().sum::<f32>() <= avail {
+                    full
+                } else {
+                    (0..ncols)
+                        .map(|i| {
+                            let mw = min_widths[i].max(min_cell);
+                            let nw = natural_widths[i].max(mw);
+                            let fitted = (nw * 0.9).max(mw);
+                            fitted.min(table.col_widths.get(i).copied().unwrap_or(f32::MAX))
+                        })
+                        .collect()
+                }
+            };
         let total: f32 = widths.iter().sum();
         if total > avail && avail > 0.0 {
             let scale = avail / total;
@@ -972,11 +993,23 @@ pub(super) fn compute_row_layouts(
 
 /// Pre-compute how much extra height each vMerge Restart cell spans beyond its own row.
 /// Returns a map from (row_idx, grid_col) to the sum of Continue row heights below.
-pub(super) fn compute_merge_spans(table: &Table, row_layouts: &[RowLayout]) -> HashMap<(usize, usize), f32> {
+pub(super) fn compute_merge_spans(
+    table: &Table,
+    row_layouts: &[RowLayout],
+) -> HashMap<(usize, usize), f32> {
     // Build a grid index: vmerge_grid[row][grid_col] = VMerge value
-    let max_cols = table.rows.iter().map(|r| {
-        r.grid_before + r.cells.iter().map(|c| c.grid_span.max(1) as usize).sum::<usize>()
-    }).max().unwrap_or(0);
+    let max_cols = table
+        .rows
+        .iter()
+        .map(|r| {
+            r.grid_before
+                + r.cells
+                    .iter()
+                    .map(|c| c.grid_span.max(1) as usize)
+                    .sum::<usize>()
+        })
+        .max()
+        .unwrap_or(0);
     let mut vmerge_grid: Vec<Vec<VMerge>> = Vec::with_capacity(table.rows.len());
     for row in &table.rows {
         let mut row_vmerge = vec![VMerge::None; max_cols];
@@ -1026,7 +1059,11 @@ pub(super) fn cursor_chunks(
     let last = if end.line > 0 { end.item + 1 } else { end.item };
     (start.item..last.min(items.len())).map(move |pi| {
         let l0 = if pi == start.item { start.line } else { 0 };
-        let l1 = if pi == end.item && end.line > 0 { Some(end.line) } else { None };
+        let l1 = if pi == end.item && end.line > 0 {
+            Some(end.line)
+        } else {
+            None
+        };
         (pi, l0, l1)
     })
 }
@@ -1064,7 +1101,10 @@ pub(super) fn find_cell_split(
     available_h: f32,
     cm: &CellMargins,
 ) -> CellCursor {
-    let done = CellCursor { item: cell.items.len(), line: 0 };
+    let done = CellCursor {
+        item: cell.items.len(),
+        line: 0,
+    };
     if start.item >= cell.items.len() {
         return done;
     }
@@ -1084,7 +1124,10 @@ pub(super) fn find_cell_split(
             let room = ((available_h - h - sb) / p.line_h).floor().max(0.0) as usize;
             let fit = room.min(remaining.saturating_sub(2));
             if fit >= 2 {
-                return CellCursor { item: pi, line: l0 + fit };
+                return CellCursor {
+                    item: pi,
+                    line: l0 + fit,
+                };
             }
         }
         if !first {
@@ -1117,7 +1160,12 @@ mod tests {
             total_height: 0.0,
             text_direction: TextDirection::default(),
         };
-        let cm = CellMargins { top: 0.0, left: 0.0, bottom: 0.0, right: 0.0 };
+        let cm = CellMargins {
+            top: 0.0,
+            left: 0.0,
+            bottom: 0.0,
+            right: 0.0,
+        };
         let split = |start, avail| find_cell_split(&cell, start, avail, &cm);
         let at = |item, line| CellCursor { item, line };
 

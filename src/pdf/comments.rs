@@ -90,7 +90,8 @@ pub(super) fn render_comment_pane(
         let mut first_body = String::new();
         let mut remainder = comment.text.as_str();
         if first_line_space > 0.0 {
-            let (head, tail) = take_words_for_width(remainder, first_line_space, body_entry, CALLOUT_FONT_SIZE);
+            let (head, tail) =
+                take_words_for_width(remainder, first_line_space, body_entry, CALLOUT_FONT_SIZE);
             first_body = head;
             remainder = tail;
         }
@@ -138,13 +139,18 @@ pub(super) fn render_comment_pane(
                 content.show(Str(&label_bytes));
                 content.end_text();
                 if !body_part.is_empty() {
-                    let label_w = label_entry.1.word_width(label_only, CALLOUT_FONT_SIZE, false);
+                    let label_w = label_entry
+                        .1
+                        .word_width(label_only, CALLOUT_FONT_SIZE, false);
                     let body_bytes = body_entry.encode(body_part);
                     content.begin_text();
                     fill_rgb(content, BODY_RGB);
                     content.set_font(Name(body_entry.pdf_name.as_bytes()), CALLOUT_FONT_SIZE);
                     content.set_text_matrix([
-                        1.0, 0.0, 0.0, 1.0,
+                        1.0,
+                        0.0,
+                        0.0,
+                        1.0,
                         inner_x + CALLOUT_PAD_X + label_w,
                         text_y,
                     ]);
