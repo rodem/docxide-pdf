@@ -71,7 +71,6 @@ end run
 
 PING = 'tell application "Microsoft Word" to get name'
 QUIT = 'tell application "Microsoft Word" to quit saving no'
-IS_RUNNING = 'tell application "System Events" to (name of processes) contains "Microsoft Word"'
 
 # Buttons in the order they are tried. "No" first: that is the repair prompt
 # ("Word found unreadable content… Do you want to recover?"), and recovering
@@ -111,8 +110,9 @@ def osa(script: str, *args: str, timeout: float = 30) -> subprocess.CompletedPro
 
 
 def word_running() -> bool:
-    r = osa(IS_RUNNING)
-    return r.returncode == 0 and r.stdout.strip() == "true"
+    # pgrep, not System Events: a hung System Events (AppleEvent timeout -1712)
+    # must not stop the export, it only costs the dialog watchdog.
+    return subprocess.run(["pgrep", "-xq", "Microsoft Word"]).returncode == 0
 
 
 def preflight() -> list[str]:
