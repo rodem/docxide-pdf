@@ -24,6 +24,9 @@ pub(super) struct DocumentSettings {
     /// `w:compat/w:doNotExpandShiftReturn`: a justified line ending in a
     /// manual break keeps its natural width.
     pub do_not_expand_shift_return: bool,
+    /// `w:compat/w:adjustLineHeightInTable`: table cell lines snap to the
+    /// document grid too (§17.15.3.1).
+    pub adjust_line_height_in_table: bool,
 }
 
 impl Default for DocumentSettings {
@@ -39,6 +42,7 @@ impl Default for DocumentSettings {
             compat_mode: 0,
             styles_from_normal_template: false,
             do_not_expand_shift_return: false,
+            adjust_line_height_in_table: false,
         }
     }
 }
@@ -86,6 +90,9 @@ pub(super) fn parse_settings<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> Do
             && wml(root, "attachedTemplate").is_none(),
         do_not_expand_shift_return: wml(root, "compat")
             .and_then(|c| wml_bool(c, "doNotExpandShiftReturn"))
+            .unwrap_or(false),
+        adjust_line_height_in_table: wml(root, "compat")
+            .and_then(|c| wml_bool(c, "adjustLineHeightInTable"))
             .unwrap_or(false),
     }
 }

@@ -659,6 +659,26 @@ pub(super) fn compute_row_layouts(
                                     para.line_spacing.unwrap_or(ctx.doc_line_spacing);
                                 let line_h =
                                     resolve_line_h(effective_ls, font_size, tallest_lhr);
+                                // Auto-spaced cell lines snap to the section's line grid
+                                // like body lines: japanese_medical's ten empty cell
+                                // paragraphs step 18pt (the grid), not their 15pt
+                                // natural height; chinese_student's at-least-0 cell
+                                // lines keep their own height.
+                                let grid_pitch = ctx.cell_grid_pitch.get();
+                                let grid_snapped = para.snap_to_grid
+                                    && grid_pitch > 0.0
+                                    && matches!(effective_ls, crate::model::LineSpacing::Auto(_));
+                                let line_h = if grid_snapped {
+                                    super::layout::grid_snapped_line_h(
+                                        runs,
+                                        ctx.fonts,
+                                        effective_ls,
+                                        line_h,
+                                        grid_pitch,
+                                    )
+                                } else {
+                                    line_h
+                                };
 
                                 // A numbering label taller than the text raises the
                                 // first line (see `label_boosted_line_h`); CV's 9pt
@@ -798,7 +818,7 @@ pub(super) fn compute_row_layouts(
                                     // Each line is as tall as its own runs, as in body
                                     // text: nabl's "(Mark √ in the" header line, √ a
                                     // w:sym Symbol run, steps 12.24 where Arial gives 11.50.
-                                    if !east_asian && !matches!(effective_ls, crate::model::LineSpacing::Exact(_)) {
+                                    if !east_asian && !grid_snapped && !matches!(effective_ls, crate::model::LineSpacing::Exact(_)) {
                                         super::layout::size_lines_by_own_runs(
                                             &mut lines,
                                             ctx.fonts,

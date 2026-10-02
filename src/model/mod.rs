@@ -253,6 +253,8 @@ pub struct Document {
     pub compat_mode: u32,
     /// Word's `doNotExpandShiftReturn` (see `docx::settings`).
     pub do_not_expand_shift_return: bool,
+    /// Word's `adjustLineHeightInTable` (see `docx::settings`).
+    pub adjust_line_height_in_table: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

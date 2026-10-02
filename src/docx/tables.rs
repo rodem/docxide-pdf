@@ -794,7 +794,10 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         space_after,
                         image: para_image,
                         content_height,
-                        snap_to_grid: true,
+                        snap_to_grid: ppr
+                            .and_then(|ppr| wml_bool(ppr, "snapToGrid"))
+                            .or_else(|| para_style.and_then(|s| s.snap_to_grid))
+                            .unwrap_or(true),
                         floating_images: parsed.floating_images,
                         textboxes: parsed.textboxes,
                         connectors: parsed.connectors,

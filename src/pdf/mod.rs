@@ -94,6 +94,11 @@ pub(super) struct RenderContext<'a> {
     pub(super) compat_mode: u32,
     /// Word's `doNotExpandShiftReturn` (see `docx::settings`).
     pub(super) do_not_expand_shift_return: bool,
+    /// The current section's docGrid line pitch when its grid snaps lines
+    /// and `adjustLineHeightInTable` is set (0 otherwise): table cells then
+    /// snap to it like body text; physical_therapy (no flag) keeps natural
+    /// cell lines on its 18pt grid.
+    pub(super) cell_grid_pitch: std::cell::Cell<f32>,
 }
 
 impl RenderContext<'_> {
@@ -3054,6 +3059,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         endnote_marks: &endnote_display_order,
         compat_mode: doc.compat_mode,
         do_not_expand_shift_return: doc.do_not_expand_shift_return,
+        cell_grid_pitch: std::cell::Cell::new(0.0),
     };
 
     let bookmark_positions = compute_bookmark_positions(doc, &ctx);
@@ -3076,6 +3082,18 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
     for (sect_idx, section) in doc.sections.iter().enumerate() {
         let sp = &section.properties;
+        ctx.cell_grid_pitch.set(
+            if doc.adjust_line_height_in_table
+                && matches!(
+                    sp.grid_type,
+                    DocGridType::Lines | DocGridType::LinesAndChars | DocGridType::SnapToChars
+                )
+            {
+                sp.line_pitch
+            } else {
+                0.0
+            },
+        );
 
         // Section break handling (not for the first section)
         if sect_idx > 0 {
