@@ -26,6 +26,15 @@ MiniPdf: the Rust crate's CLI, `minipdf` on PATH (cargo install minipdf-cli) or 
 The .NET engine is a different implementation and is deliberately not what we compare against.
 office2pdf: `office2pdf` on PATH (cargo install office2pdf-cli) or OFFICE2PDF_BIN.
 Accessibility scores need verapdf and pdfinfo on PATH (brew install verapdf poppler); without them the column is empty.
+
+Fonts, so every engine sees the same Word fonts: ours reads DOCXSIDE_FONTS=fonts/; minipdf, rdocx and
+office2pdf get comparison/work/fonts_flat/, one directory of links to every file under fonts/ (rdocx takes a
+single directory and does not descend into fonts/CloudFonts/*). LibreOffice has no font flag and reads
+fontconfig / the OS: CI links fonts/ into ~/.local/share/fonts, which is the same files our discovery
+already ranks first there, so nothing shifts. Do NOT do the same on macOS: a copy of fonts/ under
+~/Library/Fonts outranks the macOS system faces our references were made with (Times New Roman,
+Arial, Symbol) and collapses dozens of our fixtures. Locally, LibreOffice therefore only sees the fonts
+the OS has; its CI column is the fair one.
 """
 from __future__ import annotations
 
@@ -236,13 +245,32 @@ def convert_libreoffice(soffice: Path, docx: Path, pdf: Path) -> bool:
     return converted(r, pdf)
 
 
+@functools.lru_cache(maxsize=None)
+def flat_font_dir() -> Path | None:
+    """One directory of links to every font file under fonts/, for engines that take a single font
+    directory and do not descend into fonts/CloudFonts/<family>/ (rdocx). Rebuilt per run; a name
+    that repeats across subfolders is prefixed with its folder."""
+    src = ROOT / "fonts"
+    if not src.is_dir():
+        return None
+    flat = WORK / "fonts_flat"
+    shutil.rmtree(flat, ignore_errors=True)
+    flat.mkdir(parents=True)
+    for f in sorted(p for p in src.rglob("*") if p.suffix.lower() in (".ttf", ".ttc", ".otf")):
+        dst = flat / f.name
+        if dst.exists() or dst.is_symlink():
+            dst = flat / f"{f.parent.name}__{f.name}"
+        dst.symlink_to(f.resolve())
+    return flat
+
+
 def convert_minipdf(minipdf: Path, docx: Path, pdf: Path) -> bool:
     if is_fresh(pdf, docx) and is_fresh(pdf, minipdf):
         return True
     pdf.parent.mkdir(parents=True, exist_ok=True)
     # Same Word fonts as the other engines. Without --fonts, minipdf 0.6 registers a hard-coded list of
     # Linux system fonts and panics ("UnknownKind") on most documents.
-    fonts = ["--fonts", str(ROOT / "fonts")] if (ROOT / "fonts").is_dir() else []
+    fonts = ["--fonts", str(flat_font_dir())] if flat_font_dir() else []
     r = subprocess.run([str(minipdf), "convert", str(docx), "-o", str(pdf), *fonts],
                        capture_output=True, text=True, timeout=TIMEOUT, check=False)
     return converted(r, pdf)
@@ -252,7 +280,9 @@ def convert_rdocx(rdocx: Path, docx: Path, pdf: Path) -> bool:
     if is_fresh(pdf, docx) and is_fresh(pdf, rdocx):
         return True
     pdf.parent.mkdir(parents=True, exist_ok=True)
-    r = subprocess.run([str(rdocx), "convert", "--to", "pdf", "--output", str(pdf), str(docx)],
+    # Same Word fonts as the other engines; without --font-dir it draws Calibri documents in its bundled Carlito.
+    fonts = ["--font-dir", str(flat_font_dir())] if flat_font_dir() else []
+    r = subprocess.run([str(rdocx), "convert", "--to", "pdf", "--output", str(pdf), *fonts, str(docx)],
                        capture_output=True, text=True, timeout=TIMEOUT, check=False)
     return converted(r, pdf)
 
@@ -262,7 +292,7 @@ def convert_office2pdf(office2pdf: Path, docx: Path, pdf: Path) -> bool:
         return True
     pdf.parent.mkdir(parents=True, exist_ok=True)
     # Same Word fonts as the other engines; otherwise it uses whatever the host happens to have installed.
-    fonts = ["--font-path", str(ROOT / "fonts")] if (ROOT / "fonts").is_dir() else []
+    fonts = ["--font-path", str(flat_font_dir())] if flat_font_dir() else []
     r = subprocess.run([str(office2pdf), str(docx), "-o", str(pdf), *fonts],
                        capture_output=True, text=True, timeout=TIMEOUT, check=False)
     return converted(r, pdf)

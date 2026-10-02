@@ -62,6 +62,15 @@ jobs:
           for g in scraped samples; do [ ! -d "assets/fixtures/$g" ] || ln -s "$PWD/assets/fixtures/$g" "tests/fixtures/$g"; done
           mkdir -p ~/.local/share && ln -s "$PWD/assets/fonts" ~/.local/share/fonts && fc-cache -f   # LibreOffice sees them via fontconfig
           python3 tools/restore_mtime.py . && python3 tools/restore_mtime.py assets
+      - name: Font families the runner's own packages share with the Word fonts
+        # Our discovery ranks /usr/share/fonts above DOCXSIDE_FONTS (fonts/) and ~/.local/share/fonts is the
+        # same files as fonts/, so the only way a system font can shadow a Word font here is a distro package
+        # shipping the same family name. Anything listed below is drawn from the distro's file, not Word's.
+        run: |
+          fc-list --format '%{file}|%{family[0]}\n' | awk -F'|' '
+            /^\/usr\/share\/fonts/ {sys[tolower($2)]=$1}
+            /\.local\/share\/fonts/ {ours[tolower($2)]=1}
+            END {n=0; for (f in ours) if (f in sys) {print "  SHADOWED: " f " <- " sys[f]; n++}; print n " shared family names"}'
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -79,7 +88,9 @@ jobs:
           tool: office2pdf-cli   # installs `office2pdf`
       - name: Competitor versions for the cache key
         id: ver
-        run: echo "key=lo$(soffice --version | awk '{print $2}')-minipdf$(minipdf --version | awk '{print $NF}')-rdocx$(rdocx --version | awk '{print $NF}')-o2p$(office2pdf --version | awk '{print $NF}')-verapdf${VERAPDF}-fonts${{ hashFiles('assets/fonts/**') }}" >> "$GITHUB_OUTPUT"
+        # "fontdir2": competitors now get the fonts through comparison/work/fonts_flat (rdocx had none before);
+        # cached PDFs from earlier keys were rendered without them and must not be reused.
+        run: echo "key=lo$(soffice --version | awk '{print $2}')-minipdf$(minipdf --version | awk '{print $NF}')-rdocx$(rdocx --version | awk '{print $NF}')-o2p$(office2pdf --version | awk '{print $NF}')-verapdf${VERAPDF}-fonts${{ hashFiles('assets/fonts/**') }}-fontdir2" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v6
         with:
           path: comparison
