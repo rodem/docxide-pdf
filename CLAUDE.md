@@ -174,7 +174,7 @@ tests/
   speed.rs             — conversion timing (#[ignore])
   common/              — shared harness: mod.rs (fixtures, rasterization, metrics), a11y.rs, text_boundary.rs
   baselines.json, visual_hashes.json — accepted scores and page hashes
-  fixtures/<group>/<case>/ — input.docx + reference.pdf; groups: cases/ (79 handcrafted), fonts/ (8), hyphenation/ (10), samples/ (5), scraped/ (128); SKIPLIST
+  fixtures/<group>/<case>/ — input.docx + reference.pdf; groups: cases/ (79 handcrafted), fonts/ (7), hyphenation/ (8), samples/ (5), scraped/ (138); SKIPLIST
   output/<group>/<case>/ — generated.pdf, reference/, generated/, diff/ screenshots (gitignored)
 ```
 
