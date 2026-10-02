@@ -578,11 +578,16 @@ fn collect_run_nodes<'a>(
                     .and_then(|rid| rels.get(rid))
                     .cloned()
             };
-            for n in child.children().filter(|n| n.has_tag_name((WML_NS, "r"))) {
-                if is_comment_reference_run(n) {
-                    continue;
+            // Everything inside the link takes it, nested links and wrappers
+            // included: croatian_grant's portal URL sits in a hyperlink
+            // inside a hyperlink, and the inner one wins.
+            let first = out.len();
+            collect_run_nodes(child, rels, out, active_comments);
+            for (_, run_url, anchor_only, _) in &mut out[first..] {
+                if run_url.is_none() {
+                    *run_url = url.clone();
+                    *anchor_only = is_anchor_only;
                 }
-                out.push((n, url.clone(), is_anchor_only, active_comments.clone()));
             }
         } else if is_wml && matches!(name, "ins" | "moveTo" | "smartTag" | "customXml") {
             // w:customXml inline-wraps runs transparently, like w:smartTag.
@@ -1389,6 +1394,22 @@ mod tests {
             .find(|n| n.has_tag_name((WML_NS, "t")))
             .and_then(|n| n.text());
         assert_eq!(t_text, Some("OFFICIAL"));
+    }
+
+    #[test]
+    fn collect_run_nodes_keeps_text_of_nested_hyperlinks() {
+        let ns = WML_NS;
+        let xml = format!(
+            r#"<w:p xmlns:w="{ns}" xmlns:r="{REL_NS}">
+              <w:hyperlink r:id="a"><w:hyperlink r:id="b"><w:r><w:t>inner</w:t></w:r></w:hyperlink></w:hyperlink>
+            </w:p>"#
+        );
+        let doc = roxmltree::Document::parse(&xml).unwrap();
+        let rels = HashMap::from([("a".into(), "outer".into()), ("b".into(), "inner".into())]);
+        let mut out = Vec::new();
+        collect_run_nodes(doc.root_element(), &rels, &mut out, &mut Vec::new());
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].1.as_deref(), Some("inner"));
     }
 
     #[test]
