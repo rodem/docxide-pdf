@@ -10,8 +10,8 @@
     "a11y_text": 1.0
   },
   "cases/case10": {
-    "jaccard": 0.6942,
-    "ssim": 0.8315,
+    "jaccard": 0.6946,
+    "ssim": 0.8319,
     "text_boundary": 0.9063,
     "convert_ms": 10.2,
     "ua_fail": 2,
@@ -158,8 +158,8 @@
     "a11y_text": 1.0
   },
   "cases/case26": {
-    "jaccard": 0.7448,
-    "ssim": 0.8848,
+    "jaccard": 0.7449,
+    "ssim": 0.8849,
     "text_boundary": 0.9048,
     "convert_ms": 8.8,
     "ua_fail": 2,
@@ -239,7 +239,7 @@
   },
   "cases/case33": {
     "jaccard": 0.785,
-    "ssim": 0.9549,
+    "ssim": 0.955,
     "text_boundary": 0.7273,
     "convert_ms": 7.2,
     "ua_fail": 2,
@@ -249,7 +249,7 @@
   },
   "cases/case34": {
     "jaccard": 0.9903,
-    "ssim": 0.9855,
+    "ssim": 0.9878,
     "text_boundary": 0.75,
     "convert_ms": 6.4,
     "ua_fail": 2,
@@ -415,8 +415,8 @@
     "a11y_text": 1.0
   },
   "cases/case50": {
-    "jaccard": 0.5832,
-    "ssim": 0.8054,
+    "jaccard": 0.5437,
+    "ssim": 0.8073,
     "text_boundary": 0.8919,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -554,8 +554,8 @@
     "a11y_text": 0.2891
   },
   "cases/case67": {
-    "jaccard": 0.7175,
-    "ssim": 0.9131,
+    "jaccard": 0.6986,
+    "ssim": 0.9275,
     "text_boundary": 1.0,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -671,7 +671,11 @@
   },
   "cases/case79": {
     "jaccard": 0.7205,
-    "ssim": 0.9158
+    "ssim": 0.9158,
+    "ua_fail": 2,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
   },
   "cases/case8": {
     "jaccard": 0.8466,
@@ -784,8 +788,8 @@
     "a11y_text": 1.0
   },
   "hyphenation/italian": {
-    "jaccard": 0.6251,
-    "ssim": 0.8351,
+    "jaccard": 0.6338,
+    "ssim": 0.8461,
     "text_boundary": 0.9398,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -820,8 +824,8 @@
     "a11y_text": 0.5636
   },
   "new/alfies_arc_adult..": {
-    "jaccard": 0.6227,
-    "ssim": 0.7504,
+    "jaccard": 0.6533,
+    "ssim": 0.8504,
     "text_boundary": 0.9405,
     "ua_fail": 3
   },
@@ -838,8 +842,8 @@
     "ua_fail": 2
   },
   "new/arizona_physical..": {
-    "jaccard": 0.7195,
-    "ssim": 0.8889,
+    "jaccard": 0.7114,
+    "ssim": 0.9142,
     "text_boundary": 0.9064,
     "ua_fail": 3
   },
@@ -880,7 +884,7 @@
     "a11y_text": 1.0
   },
   "new/bosch_software_a..": {
-    "jaccard": 0.0846,
+    "jaccard": 0.0847,
     "ssim": 0.3924,
     "text_boundary": 0.0201,
     "ua_fail": 0
@@ -895,8 +899,8 @@
     "a11y_text": 1.0
   },
   "new/carbon_farming_i..": {
-    "jaccard": 0.2786,
-    "ssim": 0.5333,
+    "jaccard": 0.3082,
+    "ssim": 0.5297,
     "text_boundary": 0.4458,
     "ua_fail": 3,
     "ua_deficit": 0,
@@ -913,8 +917,8 @@
     "a11y_text": 1.0
   },
   "new/construction_bat..": {
-    "jaccard": 0.6607,
-    "ssim": 0.8625,
+    "jaccard": 0.6578,
+    "ssim": 0.8624,
     "text_boundary": 0.9355,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -922,8 +926,8 @@
     "a11y_text": 0.072
   },
   "new/covid_insomnia_m..": {
-    "jaccard": 0.2529,
-    "ssim": 0.4488,
+    "jaccard": 0.2649,
+    "ssim": 0.4534,
     "text_boundary": 0.1331,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -932,7 +936,7 @@
   },
   "new/croatian_militar..": {
     "jaccard": 0.4329,
-    "ssim": 0.8827,
+    "ssim": 0.8828,
     "text_boundary": 0.9492,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -973,8 +977,8 @@
     "a11y_text": 0.9083
   },
   "new/dental_amalgam_r..": {
-    "jaccard": 0.7576,
-    "ssim": 0.8964,
+    "jaccard": 0.7762,
+    "ssim": 0.9098,
     "text_boundary": 0.8056,
     "ua_fail": 3,
     "ua_deficit": 0,
@@ -997,7 +1001,7 @@
     "ua_fail": 2
   },
   "new/dutch_government..": {
-    "jaccard": 0.1945,
+    "jaccard": 0.1761,
     "ssim": 0.9269,
     "text_boundary": 0.9091,
     "ua_fail": 2,
@@ -1033,8 +1037,8 @@
     "a11y_text": 0.9905
   },
   "new/erasmus_plus_sta..": {
-    "jaccard": 0.3184,
-    "ssim": 0.5592,
+    "jaccard": 0.3059,
+    "ssim": 0.5242,
     "text_boundary": 0.3043,
     "ua_fail": 3,
     "ua_deficit": 0,
@@ -1042,8 +1046,8 @@
     "a11y_text": 0.8062
   },
   "new/family_kinship_l..": {
-    "jaccard": 0.8895,
-    "ssim": 0.9367,
+    "jaccard": 0.9086,
+    "ssim": 0.9621,
     "text_boundary": 0.3188,
     "ua_fail": 2
   },
@@ -1057,8 +1061,8 @@
     "a11y_text": 1.0
   },
   "new/french_sexual_he..": {
-    "jaccard": 0.2218,
-    "ssim": 0.2932,
+    "jaccard": 0.2222,
+    "ssim": 0.2972,
     "text_boundary": 0.8269,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -1066,8 +1070,8 @@
     "a11y_text": 1.0
   },
   "new/handels_messiah_..": {
-    "jaccard": 0.7427,
-    "ssim": 0.9013,
+    "jaccard": 0.7426,
+    "ssim": 0.9011,
     "text_boundary": 1.0,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -1084,8 +1088,8 @@
     "a11y_text": 0.8848
   },
   "new/international_te..": {
-    "jaccard": 0.5462,
-    "ssim": 0.7866,
+    "jaccard": 0.6151,
+    "ssim": 0.8755,
     "text_boundary": 0.1661,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -1099,7 +1103,7 @@
     "ua_fail": 2,
     "ua_deficit": 0,
     "a11y_struct": 0.925,
-    "a11y_text": 0.9615
+    "a11y_text": 0.9811
   },
   "new/isla_language_le..": {
     "jaccard": 0.5365,
@@ -1111,8 +1115,8 @@
     "a11y_text": 0.8412
   },
   "new/japanese_land_de..": {
-    "jaccard": 0.128,
-    "ssim": 0.4674,
+    "jaccard": 0.089,
+    "ssim": 0.2677,
     "text_boundary": 0.1111,
     "ua_fail": 3
   },
@@ -1168,17 +1172,17 @@
     "ua_fail": 2
   },
   "new/master_thesis_le..": {
-    "jaccard": 0.229,
-    "ssim": 0.4274,
+    "jaccard": 0.2302,
+    "ssim": 0.4248,
     "text_boundary": 0.8343,
     "ua_fail": 2,
     "ua_deficit": 0,
-    "a11y_struct": 0.6215,
+    "a11y_struct": 0.6208,
     "a11y_text": 0.9253
   },
   "new/old_blue_truck_g..": {
-    "jaccard": 0.826,
-    "ssim": 0.9379,
+    "jaccard": 0.8309,
+    "ssim": 0.9411,
     "text_boundary": 1.0,
     "ua_fail": 3,
     "ua_deficit": 0,
@@ -1195,8 +1199,8 @@
     "a11y_text": 0.7236
   },
   "new/physical_therapy..": {
-    "jaccard": 0.6257,
-    "ssim": 0.831,
+    "jaccard": 0.6877,
+    "ssim": 0.8902,
     "text_boundary": 0.9167,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -1204,8 +1208,8 @@
     "a11y_text": 1.0
   },
   "new/polish_municipal..": {
-    "jaccard": 0.6704,
-    "ssim": 0.8525,
+    "jaccard": 0.6506,
+    "ssim": 0.8296,
     "text_boundary": 0.9412,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -1276,8 +1280,8 @@
     "a11y_text": 1.0
   },
   "new/scottish_fundrai..": {
-    "jaccard": 0.3379,
-    "ssim": 0.8457,
+    "jaccard": 0.3369,
+    "ssim": 0.8436,
     "text_boundary": 0.7612,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -1330,8 +1334,8 @@
     "a11y_text": 1.0
   },
   "new/stiavnicke_bane_..": {
-    "jaccard": 0.7627,
-    "ssim": 0.9303,
+    "jaccard": 0.7624,
+    "ssim": 0.9296,
     "text_boundary": 1.0,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -1381,8 +1385,8 @@
     "a11y_text": 0.9825
   },
   "new/ut_koer_annual_m..": {
-    "jaccard": 0.4191,
-    "ssim": 0.7706,
+    "jaccard": 0.6284,
+    "ssim": 0.853,
     "text_boundary": 0.3448,
     "ua_fail": 3,
     "ua_deficit": 0,
@@ -1491,8 +1495,8 @@
     "a11y_text": 0.5821
   },
   "scraped/brazilian_logist..": {
-    "jaccard": 0.4354,
-    "ssim": 0.5946,
+    "jaccard": 0.6468,
+    "ssim": 0.7985,
     "text_boundary": 0.1624,
     "convert_ms": 744.0,
     "ua_fail": 3,
@@ -1501,8 +1505,8 @@
     "a11y_text": 0.9928
   },
   "scraped/bush_fires_act_c..": {
-    "jaccard": 0.6412,
-    "ssim": 0.8334,
+    "jaccard": 0.6779,
+    "ssim": 0.8782,
     "text_boundary": 0.8734,
     "convert_ms": 248.6,
     "ua_fail": 2,
@@ -1528,8 +1532,8 @@
     "ua_fail": 3
   },
   "scraped/croatian_grant_g..": {
-    "jaccard": 0.1344,
-    "ssim": 0.2663,
+    "jaccard": 0.1416,
+    "ssim": 0.2712,
     "text_boundary": 0.0129,
     "convert_ms": 270.5,
     "ua_fail": 2,
@@ -1538,8 +1542,8 @@
     "a11y_text": 0.9044
   },
   "scraped/croatian_regulat..": {
-    "jaccard": 0.0778,
-    "ssim": 0.2643,
+    "jaccard": 0.0761,
+    "ssim": 0.2592,
     "text_boundary": 0.4737,
     "convert_ms": 22.0,
     "ua_fail": 2
@@ -1609,15 +1613,15 @@
     "a11y_text": 1.0
   },
   "scraped/east_asia_confer..": {
-    "jaccard": 0.2118,
-    "ssim": 0.6307,
+    "jaccard": 0.2235,
+    "ssim": 0.6175,
     "text_boundary": 0.619,
     "convert_ms": 22.0,
     "ua_fail": 2
   },
   "scraped/education_consul..": {
-    "jaccard": 0.1611,
-    "ssim": 0.3713,
+    "jaccard": 0.2717,
+    "ssim": 0.5855,
     "text_boundary": 0.2899,
     "convert_ms": 47.1,
     "ua_fail": 2
@@ -1630,15 +1634,15 @@
     "ua_fail": 3
   },
   "scraped/feminist_voice_d..": {
-    "jaccard": 0.6896,
-    "ssim": 0.8796,
+    "jaccard": 0.6903,
+    "ssim": 0.8802,
     "text_boundary": 0.8571,
     "convert_ms": 305.8,
     "ua_fail": 2
   },
   "scraped/german_mezzo_sop..": {
-    "jaccard": 0.555,
-    "ssim": 0.7824,
+    "jaccard": 0.5029,
+    "ssim": 0.5223,
     "text_boundary": 0.8276,
     "convert_ms": 33.4,
     "ua_fail": 3,
@@ -1647,8 +1651,8 @@
     "a11y_text": 1.0
   },
   "scraped/go_math_grade4_g..": {
-    "jaccard": 0.4409,
-    "ssim": 0.6586,
+    "jaccard": 0.4431,
+    "ssim": 0.6631,
     "text_boundary": 0.6491,
     "convert_ms": 70.6,
     "ua_fail": 2
@@ -1685,8 +1689,8 @@
     "a11y_text": 0.9534
   },
   "scraped/korean_japanese_..": {
-    "jaccard": 0.1944,
-    "ssim": 0.5055,
+    "jaccard": 0.2049,
+    "ssim": 0.4839,
     "text_boundary": 0.8571,
     "convert_ms": 18.4,
     "ua_fail": 2,
@@ -1695,8 +1699,8 @@
     "a11y_text": 1.0
   },
   "scraped/learning_culture..": {
-    "jaccard": 0.6116,
-    "ssim": 0.757,
+    "jaccard": 0.6122,
+    "ssim": 0.7575,
     "text_boundary": 0.4073,
     "convert_ms": 1027.5,
     "ua_fail": 3
@@ -1750,8 +1754,8 @@
     "ua_fail": 0
   },
   "scraped/polish_building_..": {
-    "jaccard": 0.1616,
-    "ssim": 0.3073,
+    "jaccard": 0.1605,
+    "ssim": 0.3055,
     "text_boundary": 0.215,
     "convert_ms": 56.9,
     "ua_fail": 2,
@@ -1760,8 +1764,8 @@
     "a11y_text": 0.9569
   },
   "scraped/polish_council_r..": {
-    "jaccard": 0.4941,
-    "ssim": 0.6765,
+    "jaccard": 0.6175,
+    "ssim": 0.805,
     "text_boundary": 0.3902,
     "convert_ms": 10.4,
     "ua_fail": 0,
@@ -1787,7 +1791,7 @@
     "ua_fail": 2,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
-    "a11y_text": 0.8672
+    "a11y_text": 1.0
   },
   "scraped/rehab_centre_phy..": {
     "jaccard": 0.8086,
@@ -1872,8 +1876,8 @@
     "a11y_text": 1.0
   },
   "scraped/transition_to_wo..": {
-    "jaccard": 0.4123,
-    "ssim": 0.5235,
+    "jaccard": 0.4137,
+    "ssim": 0.5242,
     "text_boundary": 0.3971,
     "convert_ms": 493.0,
     "ua_fail": 2
@@ -1926,8 +1930,8 @@
     "ua_fail": 3
   },
   "scraped/vaccines_history..": {
-    "jaccard": 0.4607,
-    "ssim": 0.5465,
+    "jaccard": 0.4606,
+    "ssim": 0.5466,
     "text_boundary": 0.1379,
     "convert_ms": 23.3,
     "ua_fail": 2
