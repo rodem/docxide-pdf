@@ -11,14 +11,14 @@ use super::images::{
 };
 use super::is_east_asian_char;
 use super::styles::{
-    CharacterStyle, ParagraphStyle, StyleDefaults, ThemeFonts, parse_char_spacing, parse_font_size, parse_lang,
-    resolve_east_asia_font_from_node, resolve_font_from_node_opt,
+    CharacterStyle, ParagraphStyle, StyleDefaults, ThemeFonts, parse_char_spacing, parse_font_size,
+    parse_lang, resolve_east_asia_font_from_node, resolve_font_from_node_opt,
 };
 use super::textbox::parse_textbox_from_vml;
 use super::wordart::{parse_text_fill, parse_text_glow, parse_text_outline, parse_text_shadow};
 use super::{
-    MC_NS_TOP, ParseContext, REL_NS, VML_NS, WML_NS, highlight_color, parse_hex_color, parse_pt,
-    parse_one_border, parse_run_shd, parse_text_color, wml, wml_attr, wml_bool,
+    MC_NS_TOP, ParseContext, REL_NS, VML_NS, WML_NS, highlight_color, parse_hex_color,
+    parse_one_border, parse_pt, parse_run_shd, parse_text_color, wml, wml_attr, wml_bool,
 };
 
 fn is_dynamic_field(instr: &str) -> bool {
@@ -270,21 +270,13 @@ impl ParagraphRunDefaults {
             font_name: para_font_name.unwrap_or(&defaults.font_name).to_string(),
             font_size_is_doc_default: para_font_size.is_none(),
             font_name_is_doc_default: para_font_name.is_none(),
-            bold: para_style
-                .and_then(|s| s.bold)
-                .unwrap_or(defaults.bold),
-            italic: para_style
-                .and_then(|s| s.italic)
-                .unwrap_or(defaults.italic),
-            caps: para_style
-                .and_then(|s| s.caps)
-                .unwrap_or(defaults.caps),
+            bold: para_style.and_then(|s| s.bold).unwrap_or(defaults.bold),
+            italic: para_style.and_then(|s| s.italic).unwrap_or(defaults.italic),
+            caps: para_style.and_then(|s| s.caps).unwrap_or(defaults.caps),
             small_caps: para_style
                 .and_then(|s| s.small_caps)
                 .unwrap_or(defaults.small_caps),
-            vanish: para_style
-                .and_then(|s| s.vanish)
-                .unwrap_or(defaults.vanish),
+            vanish: para_style.and_then(|s| s.vanish).unwrap_or(defaults.vanish),
             underline: para_style
                 .and_then(|s| s.underline)
                 .unwrap_or(defaults.underline),
@@ -301,7 +293,9 @@ impl ParagraphRunDefaults {
             char_spacing: para_style
                 .and_then(|s| s.char_spacing)
                 .unwrap_or(defaults.char_spacing),
-            lang: para_style.and_then(|s| s.lang.clone()).or_else(|| defaults.lang.clone()),
+            lang: para_style
+                .and_then(|s| s.lang.clone())
+                .or_else(|| defaults.lang.clone()),
             lang_east_asia: para_style
                 .and_then(|s| s.lang_east_asia.clone())
                 .or_else(|| defaults.lang_east_asia.clone()),
@@ -518,7 +512,12 @@ fn legacy_text_shadow(
     let d = (font_size * 0.035).max(0.4);
     if shadow {
         // Drop shadow: cast down-right.
-        Some(TextShadow { color: [128, 128, 128], offset_x: d, offset_y: -d, alpha: 1.0 })
+        Some(TextShadow {
+            color: [128, 128, 128],
+            offset_x: d,
+            offset_y: -d,
+            alpha: 1.0,
+        })
     } else if emboss || imprint {
         // Word renders both emboss (raised) and imprint (engraved) on a white
         // page as a prominent down-right gray drop shadow behind the glyph face,
@@ -527,7 +526,12 @@ fn legacy_text_shadow(
         // Word's PDF export, so use the same offset (not a reduced one).
         // ponytail: a single offset gray copy — Word's exact multi-pass face/
         // highlight/shadow antialiasing isn't replicated (a rare legacy effect).
-        Some(TextShadow { color: [128, 128, 128], offset_x: d, offset_y: -d, alpha: 1.0 })
+        Some(TextShadow {
+            color: [128, 128, 128],
+            offset_x: d,
+            offset_y: -d,
+            alpha: 1.0,
+        })
     } else {
         None
     }
@@ -561,8 +565,12 @@ fn ensure_nonempty_paragraph(
         font_name: mark_font.unwrap_or_else(|| defaults.font_name.clone()),
         // The mark's w:b picks the bold face's metrics: nabl's 39 empty Arial
         // Narrow Bold marks are 0.14pt taller each than regular ones.
-        bold: mark_rpr.and_then(|r| wml_bool(r, "b")).unwrap_or(defaults.bold),
-        italic: mark_rpr.and_then(|r| wml_bool(r, "i")).unwrap_or(defaults.italic),
+        bold: mark_rpr
+            .and_then(|r| wml_bool(r, "b"))
+            .unwrap_or(defaults.bold),
+        italic: mark_rpr
+            .and_then(|r| wml_bool(r, "i"))
+            .unwrap_or(defaults.italic),
         ..Run::default()
     });
 }
@@ -751,8 +759,12 @@ macro_rules! handle_drawing_result {
                     ..$fmt.minimal_run()
                 });
             }
-            Some(RunDrawingResult::Floating(fi)) => push_floating(&mut $floating_images, &$textboxes, fi),
-            Some(RunDrawingResult::TextBox(tb)) => push_textbox(&$floating_images, &mut $textboxes, tb),
+            Some(RunDrawingResult::Floating(fi)) => {
+                push_floating(&mut $floating_images, &$textboxes, fi)
+            }
+            Some(RunDrawingResult::TextBox(tb)) => {
+                push_textbox(&$floating_images, &mut $textboxes, tb)
+            }
             Some(RunDrawingResult::Chart(ic)) => $inline_chart = Some(ic),
             Some(RunDrawingResult::SmartArt(diagram)) => $smartart.push(diagram),
             Some(RunDrawingResult::Connector(c)) => $connectors.push(c),
@@ -766,8 +778,12 @@ macro_rules! handle_drawing_result {
                                 ..$fmt.minimal_run()
                             });
                         }
-                        RunDrawingResult::Floating(fi) => push_floating(&mut $floating_images, &$textboxes, fi),
-                        RunDrawingResult::TextBox(tb) => push_textbox(&$floating_images, &mut $textboxes, tb),
+                        RunDrawingResult::Floating(fi) => {
+                            push_floating(&mut $floating_images, &$textboxes, fi)
+                        }
+                        RunDrawingResult::TextBox(tb) => {
+                            push_textbox(&$floating_images, &mut $textboxes, tb)
+                        }
                         RunDrawingResult::Chart(ic) => $inline_chart = Some(ic),
                         RunDrawingResult::SmartArt(diagram) => $smartart.push(diagram),
                         RunDrawingResult::Connector(c) => $connectors.push(c),
@@ -861,9 +877,9 @@ fn math_child<'a>(parent: roxmltree::Node<'a, 'a>, name: &str) -> Option<roxmltr
 /// treated as display math).
 pub(super) fn display_math_alignment(para: roxmltree::Node) -> Option<crate::model::Alignment> {
     use crate::model::Alignment;
-    let omp = para
-        .children()
-        .find(|n| n.tag_name().namespace() == Some(MATH_NS) && n.tag_name().name() == "oMathPara")?;
+    let omp = para.children().find(|n| {
+        n.tag_name().namespace() == Some(MATH_NS) && n.tag_name().name() == "oMathPara"
+    })?;
     let jc = math_child(omp, "oMathParaPr")
         .and_then(|pr| math_child(pr, "jc"))
         .and_then(|j| j.attribute((MATH_NS, "val")));
@@ -1029,10 +1045,15 @@ pub(super) fn parse_runs<R: Read + Seek>(
     let mut field_stack: Vec<FieldFrame> = Vec::new();
 
     for (run_node, hyperlink_url, is_anchor_hyperlink, comment_ids) in run_nodes {
-        if run_node.tag_name().namespace() == Some(MATH_NS)
-            && run_node.tag_name().name() == "oMath"
+        if run_node.tag_name().namespace() == Some(MATH_NS) && run_node.tag_name().name() == "oMath"
         {
-            omath_to_runs(run_node, &defaults, ctx.theme, VertAlign::Baseline, &mut runs);
+            omath_to_runs(
+                run_node,
+                &defaults,
+                ctx.theme,
+                VertAlign::Baseline,
+                &mut runs,
+            );
             continue;
         }
         let runs_before = runs.len();
@@ -1066,8 +1087,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
                     for drawing in branch.children().filter(|n| {
                         n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "drawing"
                     }) {
-                        let result =
-                            parse_run_drawing(drawing, ctx);
+                        let result = parse_run_drawing(drawing, ctx);
                         handle_drawing_result!(
                             result,
                             fmt,
@@ -1085,9 +1105,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
                     for pict in branch.descendants().filter(|n| {
                         n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "pict"
                     }) {
-                        if let Some(tb) =
-                            parse_textbox_from_vml(pict, ctx)
-                        {
+                        if let Some(tb) = parse_textbox_from_vml(pict, ctx) {
                             push_textbox(&floating_images, &mut textboxes, tb);
                         }
                     }
@@ -1103,8 +1121,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
                         // A field is visible content unless the innermost open
                         // field is still in its instruction region — in which
                         // case this is a field argument and never displays.
-                        let parent_visible =
-                            field_stack.last().map_or(true, |f| f.seen_sep);
+                        let parent_visible = field_stack.last().map_or(true, |f| f.seen_sep);
                         if field_stack.is_empty() {
                             flush_pending(&mut pending_text, &mut runs);
                         }
@@ -1123,8 +1140,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
                     Some("end") => {
                         if let Some(f) = field_stack.pop() {
                             if f.visible {
-                                let keyword =
-                                    f.instr.split_whitespace().next().unwrap_or("");
+                                let keyword = f.instr.split_whitespace().next().unwrap_or("");
                                 let fc = if keyword.eq_ignore_ascii_case("PAGE") {
                                     Some(FieldCode::Page)
                                 } else if keyword.eq_ignore_ascii_case("NUMPAGES") {
@@ -1132,7 +1148,9 @@ pub(super) fn parse_runs<R: Read + Seek>(
                                 } else if keyword.eq_ignore_ascii_case("STYLEREF") {
                                     parse_styleref_arg(&f.instr).map(FieldCode::StyleRef)
                                 } else if keyword.eq_ignore_ascii_case("PAGEREF") {
-                                    f.instr.split_whitespace().nth(1)
+                                    f.instr
+                                        .split_whitespace()
+                                        .nth(1)
                                         .map(|s| FieldCode::PageRef(s.to_string()))
                                 } else {
                                     None
@@ -1143,7 +1161,9 @@ pub(super) fn parse_runs<R: Read + Seek>(
                                     let url = match &code {
                                         FieldCode::PageRef(bookmark)
                                             if hyperlink_url.is_none()
-                                                && f.instr.split_whitespace().any(|s| s.eq_ignore_ascii_case("\\h")) =>
+                                                && f.instr
+                                                    .split_whitespace()
+                                                    .any(|s| s.eq_ignore_ascii_case("\\h")) =>
                                         {
                                             Some(format!("#{bookmark}"))
                                         }
@@ -1265,9 +1285,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
                 "pict" if field_stack.is_empty() => {
                     if let Some(hr) = parse_vml_horizontal_rule(child) {
                         horizontal_rule = Some(hr);
-                    } else if let Some(tb) =
-                        parse_textbox_from_vml(child, ctx)
-                    {
+                    } else if let Some(tb) = parse_textbox_from_vml(child, ctx) {
                         push_textbox(&floating_images, &mut textboxes, tb);
                     }
                 }
@@ -1385,8 +1403,7 @@ const OFFICE_NS: &str = "urn:schemas-microsoft-com:office:office";
 
 fn parse_vml_horizontal_rule(pict_node: roxmltree::Node) -> Option<HorizontalRule> {
     let shape = pict_node.children().find(|n| {
-        n.tag_name().namespace() == Some(VML_NS)
-            && matches!(n.tag_name().name(), "rect" | "shape")
+        n.tag_name().namespace() == Some(VML_NS) && matches!(n.tag_name().name(), "rect" | "shape")
     })?;
 
     let is_hr = shape
@@ -1493,10 +1510,7 @@ mod tests {
         // of a single shaded word split across multiple w:r by revision
         // tracking).
         let c = Some([200, 250, 204]);
-        let runs = vec![
-            run("green ", c, None),
-            run("continues", c, None),
-        ];
+        let runs = vec![run("green ", c, None), run("continues", c, None)];
         let merged = merge_compatible_runs(runs);
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].text, "green continues");

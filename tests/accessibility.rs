@@ -19,7 +19,12 @@ fn gen_pdf_name() -> String {
     std::env::var("DOCXSIDE_A11Y_GEN").unwrap_or_else(|_| "generated.pdf".into())
 }
 
-fn detail_json(reference: &Analysis, generated: &Analysis, v: &VsWord, failing: &BTreeMap<&str, u64>) -> serde_json::Value {
+fn detail_json(
+    reference: &Analysis,
+    generated: &Analysis,
+    v: &VsWord,
+    failing: &BTreeMap<&str, u64>,
+) -> serde_json::Value {
     let rules: Vec<_> = v
         .deficit
         .iter()
@@ -72,14 +77,22 @@ fn analyze_fixture(fixture: &Path, gen_name: &str) -> Option<Result<Scored, Stri
         Ok(a) => a,
         Err(e) => return fail(e),
     };
-    let failing: BTreeMap<&str, u64> =
-        gen_a.rules.iter().filter(|(_, r)| r.failed > 0).map(|(id, r)| (id.as_str(), r.failed)).collect();
+    let failing: BTreeMap<&str, u64> = gen_a
+        .rules
+        .iter()
+        .filter(|(_, r)| r.failed > 0)
+        .map(|(id, r)| (id.as_str(), r.failed))
+        .collect();
     let scores = a11y::scores(&ref_a, &gen_a);
     let detail = match &scores.vs_word {
         Some(v) => detail_json(&ref_a, &gen_a, v, &failing),
         None => serde_json::json!({ "ua_fail": failing }),
     };
-    fs::write(out.join(format!("{stem}.deficit.json")), serde_json::to_string_pretty(&detail).unwrap()).ok();
+    fs::write(
+        out.join(format!("{stem}.deficit.json")),
+        serde_json::to_string_pretty(&detail).unwrap(),
+    )
+    .ok();
     Some(Ok(Scored { name, scores }))
 }
 
@@ -105,11 +118,21 @@ fn accessibility_vs_reference() {
         }
     }
     results.sort_by(|a, b| a.name.cmp(&b.name));
-    let compared: Vec<(&Scored, &VsWord)> =
-        results.iter().filter_map(|r| Some((r, r.scores.vs_word.as_ref()?))).collect();
+    let compared: Vec<(&Scored, &VsWord)> = results
+        .iter()
+        .filter_map(|r| Some((r, r.scores.vs_word.as_ref()?)))
+        .collect();
 
-    let name_w = results.iter().map(|r| r.name.len()).max().unwrap_or(4).max(4);
-    println!("\n  {:<name_w$}  UaFail  UaDef  Struct    Text  Deficit rules ({gen_name})", "Case");
+    let name_w = results
+        .iter()
+        .map(|r| r.name.len())
+        .max()
+        .unwrap_or(4)
+        .max(4);
+    println!(
+        "\n  {:<name_w$}  UaFail  UaDef  Struct    Text  Deficit rules ({gen_name})",
+        "Case"
+    );
     for (r, v) in &compared {
         let shown: Vec<&str> = v.deficit.iter().take(6).map(String::as_str).collect();
         let more = v.deficit.len().saturating_sub(shown.len());
@@ -121,16 +144,26 @@ fn accessibility_vs_reference() {
             v.struct_score * 100.0,
             v.text_score * 100.0,
             shown.join(" "),
-            if more > 0 { format!(" +{more}") } else { String::new() }
+            if more > 0 {
+                format!(" +{more}")
+            } else {
+                String::new()
+            }
         );
     }
     for r in results.iter().filter(|r| r.scores.vs_word.is_none()) {
-        println!("  {:<name_w$}  {:>6}      -       -       -  (untagged reference)", r.name, r.scores.ua_fail);
+        println!(
+            "  {:<name_w$}  {:>6}      -       -       -  (untagged reference)",
+            r.name, r.scores.ua_fail
+        );
     }
     let n = compared.len().max(1) as f64;
     println!(
         "\n  a11y ≥ Word (no UA-1 deficit): {}/{} · struct {:.1}% · text {:.1}% (means) · N/A untagged reference: {}",
-        compared.iter().filter(|(_, v)| v.deficit.is_empty()).count(),
+        compared
+            .iter()
+            .filter(|(_, v)| v.deficit.is_empty())
+            .count(),
         compared.len(),
         compared.iter().map(|(_, v)| v.struct_score).sum::<f64>() / n * 100.0,
         compared.iter().map(|(_, v)| v.text_score).sum::<f64>() / n * 100.0,
@@ -147,7 +180,11 @@ fn accessibility_vs_reference() {
     for e in &errors {
         println!("  ERROR {e}");
     }
-    assert!(errors.is_empty(), "{} fixtures could not be analysed", errors.len());
+    assert!(
+        errors.is_empty(),
+        "{} fixtures could not be analysed",
+        errors.len()
+    );
 
     // Other PDFs are scored for comparison only; baselines track our own output.
     if gen_name != "generated.pdf" {
@@ -175,7 +212,11 @@ fn accessibility_vs_reference() {
         .filter(|r| r.scores.ua_fail > 0)
         .map(|r| format!("{} ({} rules)", r.name, r.scores.ua_fail))
         .collect();
-    assert!(false_claims.is_empty(), "PDF/UA claimed but failing: {}", false_claims.join(", "));
+    assert!(
+        false_claims.is_empty(),
+        "PDF/UA claimed but failing: {}",
+        false_claims.join(", ")
+    );
 
     let baselines = common::read_baselines();
     let mut regressions: Vec<&str> = updates
@@ -195,7 +236,11 @@ fn accessibility_vs_reference() {
         .map(|(name, _)| name.as_str())
         .collect();
     regressions.sort();
-    assert!(regressions.is_empty(), "a11y regression in: {}", regressions.join(", "));
+    assert!(
+        regressions.is_empty(),
+        "a11y regression in: {}",
+        regressions.join(", ")
+    );
 }
 
 const LIST_DUMP: &str = r#"Document
@@ -232,12 +277,23 @@ const LIST_DUMP: &str = r#"Document
 #[test]
 fn parses_struct_dump() {
     let elems = a11y::parse_struct_text(LIST_DUMP);
-    let kinds: Vec<&str> = elems.iter().filter(|e| e.kind != a11y::TEXT).map(|e| e.kind.as_str()).collect();
+    let kinds: Vec<&str> = elems
+        .iter()
+        .filter(|e| e.kind != a11y::TEXT)
+        .map(|e| e.kind.as_str())
+        .collect();
     assert_eq!(
         kinds,
-        ["Document", "H1", "Span", "L", "LI", "Lbl", "LBody", "Span", "P", "Link", "Span", "Note", "P", "Figure", "Figure"]
+        [
+            "Document", "H1", "Span", "L", "LI", "Lbl", "LBody", "Span", "P", "Link", "Span",
+            "Note", "P", "Figure", "Figure"
+        ]
     );
-    let figures: Vec<bool> = elems.iter().filter(|e| e.kind == "Figure").map(|e| e.alt).collect();
+    let figures: Vec<bool> = elems
+        .iter()
+        .filter(|e| e.kind == "Figure")
+        .map(|e| e.alt)
+        .collect();
     assert_eq!(figures, [true, false]);
     assert_eq!(
         a11y::block_texts(&elems),
@@ -264,14 +320,24 @@ fn text_score_penalises_merged_words_and_reordering() {
         a11y::parse_struct_text(&dump)
     };
     let reference = doc(&["Hello world", "Second"]);
-    assert_eq!(a11y::text_score(&reference, &doc(&["Helloworld", "Second"])), 6.0 / 17.0);
-    assert_eq!(a11y::text_score(&reference, &doc(&["Second", "Hello world"])), 11.0 / 17.0);
+    assert_eq!(
+        a11y::text_score(&reference, &doc(&["Helloworld", "Second"])),
+        6.0 / 17.0
+    );
+    assert_eq!(
+        a11y::text_score(&reference, &doc(&["Second", "Hello world"])),
+        11.0 / 17.0
+    );
 }
 
 #[test]
 fn text_score_ignores_which_symbol_a_glyph_maps_to() {
-    let doc = |text: &str| a11y::parse_struct_text(&format!("Document\n  P (block)\n    \"{text}\"\n"));
-    assert_eq!(a11y::text_score(&doc("Yes \u{F0A8} No \u{F0A8}"), &doc("Yes ◻ No ☐")), 1.0);
+    let doc =
+        |text: &str| a11y::parse_struct_text(&format!("Document\n  P (block)\n    \"{text}\"\n"));
+    assert_eq!(
+        a11y::text_score(&doc("Yes \u{F0A8} No \u{F0A8}"), &doc("Yes ◻ No ☐")),
+        1.0
+    );
     assert!(a11y::text_score(&doc("a ≤ b"), &doc("a ≥ b")) < 1.0);
 }
 

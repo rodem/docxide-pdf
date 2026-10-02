@@ -37,7 +37,16 @@ struct Node {
 
 impl Node {
     fn new(kind: &'static str, parent: usize) -> Self {
-        Self { kind, parent, kids: Vec::new(), cell: None, alt: None, id: None, actual: None, lang: None }
+        Self {
+            kind,
+            parent,
+            kids: Vec::new(),
+            cell: None,
+            alt: None,
+            id: None,
+            actual: None,
+            lang: None,
+        }
     }
 
     fn child_nodes(&self) -> impl DoubleEndedIterator<Item = usize> + '_ {
@@ -101,7 +110,11 @@ impl TableTags {
         let repeated = table.rows.iter().take_while(|r| r.is_header).count();
         Self {
             table: tags.add(parent, "Table"),
-            head_rows: if repeated > 0 { repeated } else { usize::from(table.header_first_row) },
+            head_rows: if repeated > 0 {
+                repeated
+            } else {
+                usize::from(table.header_first_row)
+            },
             first_col_header: table.header_first_col,
             head: None,
             body: None,
@@ -128,7 +141,11 @@ impl TableTags {
             Some(&tr) => tr,
             None => {
                 let table = self.table;
-                let (slot, kind) = if in_head { (&mut self.head, "THead") } else { (&mut self.body, "TBody") };
+                let (slot, kind) = if in_head {
+                    (&mut self.head, "THead")
+                } else {
+                    (&mut self.body, "TBody")
+                };
                 let section = *slot.get_or_insert_with(|| tags.add(table, kind));
                 let tr = tags.add(section, "TR");
                 self.rows.insert(row, tr);
@@ -214,14 +231,17 @@ impl CellTagger<'_> {
         if let Some(lists) = self.table.lists.get_mut(&(self.row, self.cell)) {
             lists.close();
         }
-        let cell = self.table.cell(self.tags, self.row, self.cell, self.col_span);
+        let cell = self
+            .table
+            .cell(self.tags, self.row, self.cell, self.col_span);
         TableTags::for_table(self.tags, cell, table)
     }
 
     /// The cell element alone: Word keeps a vertically merged cell's
     /// continuation as an empty cell so every row has all its columns.
     pub(super) fn empty_cell(&mut self) {
-        self.table.cell(self.tags, self.row, self.cell, self.col_span);
+        self.table
+            .cell(self.tags, self.row, self.cell, self.col_span);
     }
 
     /// A cell with nothing tagged inside still gets its element with an empty
@@ -326,7 +346,9 @@ impl Tags {
     /// textboxes); Word orders them like their anchors in the XML.
     pub(super) fn attach_hoisted(&mut self) {
         self.hoisted.sort_by_key(|&(seq, _)| seq);
-        self.nodes[ROOT].kids.extend(self.hoisted.drain(..).map(|(_, id)| Kid::Node(id)));
+        self.nodes[ROOT]
+            .kids
+            .extend(self.hoisted.drain(..).map(|(_, id)| Kid::Node(id)));
     }
 
     /// The Note for a footnote (or endnote), created under `parent` the first
@@ -352,7 +374,12 @@ impl Tags {
     /// A Span with `/Lang` for text in another language, and/or `/ActualText`
     /// replacing its glyphs for text extraction and screen readers;
     /// `push_actual` adds to the latter as the Span's content is drawn.
-    pub(super) fn add_span(&mut self, parent: usize, lang: Option<&str>, actual: Option<&str>) -> usize {
+    pub(super) fn add_span(
+        &mut self,
+        parent: usize,
+        lang: Option<&str>,
+        actual: Option<&str>,
+    ) -> usize {
         let span = self.add(parent, "Span");
         self.nodes[span].lang = lang.map(str::to_string);
         self.nodes[span].actual = actual.map(str::to_string);
@@ -360,7 +387,10 @@ impl Tags {
     }
 
     pub(super) fn push_actual(&mut self, node: usize, text: &str) {
-        self.nodes[node].actual.get_or_insert_with(String::new).push_str(text);
+        self.nodes[node]
+            .actual
+            .get_or_insert_with(String::new)
+            .push_str(text);
     }
 
     /// True when `lang` is the document's language, by primary subtag: en-GB
@@ -433,7 +463,11 @@ impl Tags {
             if node.kind == "Figure" && node.alt.is_none() {
                 return false;
             }
-            if let Some(l) = node.kind.strip_prefix('H').and_then(|d| d.parse::<u8>().ok()) {
+            if let Some(l) = node
+                .kind
+                .strip_prefix('H')
+                .and_then(|d| d.parse::<u8>().ok())
+            {
                 if l > level + 1 {
                     return false;
                 }
@@ -463,8 +497,11 @@ impl Tags {
         debug_assert!(self.hoisted.is_empty(), "hoisted elements never attached");
         let root = alloc();
         let refs: Vec<Ref> = self.nodes.iter().map(|_| alloc()).collect();
-        let mut owners: Vec<Vec<Option<Ref>>> =
-            self.next_mcid.iter().map(|&n| vec![None; n as usize]).collect();
+        let mut owners: Vec<Vec<Option<Ref>>> = self
+            .next_mcid
+            .iter()
+            .map(|&n| vec![None; n as usize])
+            .collect();
         let mut node_annots: Vec<Vec<(usize, Ref)>> = vec![Vec::new(); self.nodes.len()];
         for &(node, page, annot) in annots {
             node_annots[node].push((page, annot));
@@ -486,7 +523,8 @@ impl Tags {
             if let Some(id) = &node.id {
                 elem.id(Str(id.as_bytes()));
             }
-            if let Some((scope, col_span)) = node.cell.filter(|&(s, span)| s.is_some() || span > 1) {
+            if let Some((scope, col_span)) = node.cell.filter(|&(s, span)| s.is_some() || span > 1)
+            {
                 let mut attrs = elem.attributes();
                 let mut table = attrs.push().table();
                 if let Some(scope) = scope {
@@ -516,7 +554,9 @@ impl Tags {
                         if Some(page) == first_page {
                             kids.marked_content_id(mcid);
                         } else {
-                            kids.marked_content_ref().marked_content_id(mcid).page(page_ids[page]);
+                            kids.marked_content_ref()
+                                .marked_content_id(mcid)
+                                .page(page_ids[page]);
                         }
                     }
                 }
@@ -532,7 +572,9 @@ impl Tags {
             .filter(|(_, o)| !o.is_empty())
             .map(|(page, o)| {
                 let id = alloc();
-                pdf.indirect(id).array().items(o.iter().map(|r| r.expect("every MCID has an owner")));
+                pdf.indirect(id)
+                    .array()
+                    .items(o.iter().map(|r| r.expect("every MCID has an owner")));
                 (page as i32, id)
             })
             .collect();
@@ -570,7 +612,10 @@ mod tests {
         let out = String::from_utf8(finish_artifact_content(content)).unwrap();
         // The rectangle keeps its artifact; the empty ones around the tags go.
         assert_eq!(out.matches("/Artifact BMC").count(), 1);
-        assert_eq!(out.matches("BMC").count() + out.matches("BDC").count(), out.matches("EMC").count());
+        assert_eq!(
+            out.matches("BMC").count() + out.matches("BDC").count(),
+            out.matches("EMC").count()
+        );
         assert_eq!(tags.struct_parents(0), Some(0));
     }
 
@@ -602,7 +647,10 @@ mod tests {
         };
         assert!(doc(&["H1", "P", "H2", "H3", "H1", "H2"]).ua_structure_ok());
         assert!(doc(&["P"]).ua_structure_ok());
-        assert!(!doc(&["H2", "H3"]).ua_structure_ok(), "first heading must be H1");
+        assert!(
+            !doc(&["H2", "H3"]).ua_structure_ok(),
+            "first heading must be H1"
+        );
         assert!(!doc(&["H1", "H3"]).ua_structure_ok(), "skipped H2");
         let mut tags = doc(&["H1"]);
         let figure = tags.add_figure(ROOT, None);
@@ -619,7 +667,12 @@ mod tests {
         tags.list_item(&mut lists, ROOT, 7, 1, false);
         tags.list_item(&mut lists, ROOT, 7, 0, true);
         tags.list_item(&mut lists, ROOT, 8, 0, true);
-        let kids = |n: usize| -> Vec<&str> { tags.nodes[n].child_nodes().map(|c| tags.nodes[c].kind).collect() };
+        let kids = |n: usize| -> Vec<&str> {
+            tags.nodes[n]
+                .child_nodes()
+                .map(|c| tags.nodes[c].kind)
+                .collect()
+        };
         // A new list id starts a new L; the sub-list sits in the first item's body.
         assert_eq!(kids(ROOT), ["L", "L"]);
         assert_eq!(kids(tags.nodes[label.unwrap()].parent), ["Lbl", "LBody"]);

@@ -63,7 +63,10 @@ pub fn scores(reference: &Analysis, generated: &Analysis) -> Scores {
         ua_fail: generated.rules.values().filter(|r| r.failed > 0).count(),
         claims_ua: !generated.rules.get("5-1").is_some_and(|r| r.failed > 0),
         vs_word: (!reference.elems.is_empty()).then(|| VsWord {
-            deficit: ua_deficit(&reference.rules, &generated.rules).into_iter().map(String::from).collect(),
+            deficit: ua_deficit(&reference.rules, &generated.rules)
+                .into_iter()
+                .map(String::from)
+                .collect(),
             struct_score: struct_score(&reference.elems, &generated.elems),
             text_score: text_score(&reference.elems, &generated.elems),
         }),
@@ -89,7 +92,10 @@ pub fn analyze_cached(pdf: &Path, cache: &Path) -> Result<Analysis, String> {
     }
     // veraPDF first, so a machine without it fails before the pdfinfo work.
     let rules = ua_rules(pdf)?;
-    let analysis = Analysis { elems: struct_elems(pdf)?, rules };
+    let analysis = Analysis {
+        elems: struct_elems(pdf)?,
+        rules,
+    };
     if let Ok(json) = serde_json::to_string(&analysis) {
         fs::write(cache, json).ok();
     }
@@ -103,7 +109,10 @@ fn struct_elems(pdf: &Path) -> Result<Vec<Elem>, String> {
         .output()
         .map_err(|e| format!("pdfinfo: {e}"))?;
     if !out.status.success() {
-        return Err(format!("pdfinfo: {}", String::from_utf8_lossy(&out.stderr).trim()));
+        return Err(format!(
+            "pdfinfo: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
     }
     Ok(parse_struct_text(&String::from_utf8_lossy(&out.stdout)))
 }
@@ -152,7 +161,15 @@ fn ua_rules(pdf: &Path) -> Result<BTreeMap<String, Rule>, String> {
     // Forced to ua1: Word writes no pdfuaid, so auto-detection would validate
     // PDF/A-1b. --success lists passing rules too, with per-rule check counts.
     let out = Command::new("verapdf")
-        .args(["-f", "ua1", "--format", "json", "--success", "--maxfailuresdisplayed", "0"])
+        .args([
+            "-f",
+            "ua1",
+            "--format",
+            "json",
+            "--success",
+            "--maxfailuresdisplayed",
+            "0",
+        ])
         .arg(pdf)
         .output()
         .map_err(|e| format!("verapdf: {e}"))?;
@@ -164,14 +181,19 @@ fn ua_rules(pdf: &Path) -> Result<BTreeMap<String, Rule>, String> {
 }
 
 pub fn parse_verapdf_json(json: &str) -> Result<BTreeMap<String, Rule>, String> {
-    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("verapdf json: {e}"))?;
+    let v: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| format!("verapdf json: {e}"))?;
     let summaries = v["report"]["jobs"][0]["validationResult"][0]["details"]["ruleSummaries"]
         .as_array()
         .ok_or("verapdf json: no ruleSummaries")?;
     Ok(summaries
         .iter()
         .map(|r| {
-            let id = format!("{}-{}", r["clause"].as_str().unwrap_or("?"), r["testNumber"]);
+            let id = format!(
+                "{}-{}",
+                r["clause"].as_str().unwrap_or("?"),
+                r["testNumber"]
+            );
             let rule = Rule {
                 failed: r["failedChecks"].as_u64().unwrap_or(0),
                 passed: r["passedChecks"].as_u64().unwrap_or(0),
@@ -186,7 +208,10 @@ pub fn parse_verapdf_json(json: &str) -> Result<BTreeMap<String, Rule>, String> 
 /// larger share of the rule's checks than Word does. The share test matters for
 /// rules like 7.1-3 (untagged content) that Word fails on one stray item while
 /// an untagged PDF fails them everywhere.
-pub fn ua_deficit<'a>(reference: &BTreeMap<String, Rule>, generated: &'a BTreeMap<String, Rule>) -> Vec<&'a str> {
+pub fn ua_deficit<'a>(
+    reference: &BTreeMap<String, Rule>,
+    generated: &'a BTreeMap<String, Rule>,
+) -> Vec<&'a str> {
     let share = |r: &Rule| r.failed as f64 / (r.failed + r.passed).max(1) as f64;
     generated
         .iter()
@@ -206,7 +231,13 @@ fn struct_tokens(elems: &[Elem]) -> Vec<&str> {
     elems
         .iter()
         .filter(|e| e.kind != TEXT && e.kind != "Span")
-        .map(|e| if e.kind == "Figure" && e.alt { "Figure+alt" } else { e.kind.as_str() })
+        .map(|e| {
+            if e.kind == "Figure" && e.alt {
+                "Figure+alt"
+            } else {
+                e.kind.as_str()
+            }
+        })
         .collect()
 }
 
@@ -215,7 +246,11 @@ fn levenshtein<T: PartialEq>(a: &[T], b: &[T]) -> usize {
     for x in a {
         let mut cur = vec![prev[0] + 1];
         for (j, y) in b.iter().enumerate() {
-            cur.push((prev[j] + usize::from(x != y)).min(prev[j + 1] + 1).min(cur[j] + 1));
+            cur.push(
+                (prev[j] + usize::from(x != y))
+                    .min(prev[j + 1] + 1)
+                    .min(cur[j] + 1),
+            );
         }
         prev = cur;
     }
@@ -293,7 +328,11 @@ pub fn text_score(reference: &[Elem], generated: &[Elem]) -> f64 {
         let w = x.chars().count();
         let mut cur = vec![0usize; b.len() + 1];
         for (j, y) in b.iter().enumerate() {
-            cur[j + 1] = if x == y { prev[j] + w } else { prev[j + 1].max(cur[j]) };
+            cur[j + 1] = if x == y {
+                prev[j] + w
+            } else {
+                prev[j + 1].max(cur[j])
+            };
         }
         prev = cur;
     }

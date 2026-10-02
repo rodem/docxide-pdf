@@ -61,18 +61,16 @@ pub(super) fn wraps_in_column(
     text_width: f32,
 ) -> bool {
     use crate::model::WrapType;
-    matches!(fi.wrap_type, WrapType::Square | WrapType::Tight | WrapType::Through) && {
+    matches!(
+        fi.wrap_type,
+        WrapType::Square | WrapType::Tight | WrapType::Through
+    ) && {
         let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
-        fi_x + fi.image.display_width + fi.dist_right > col_x
-            && fi_x - fi.dist_left < col_x + col_w
+        fi_x + fi.image.display_width + fi.dist_right > col_x && fi_x - fi.dist_left < col_x + col_w
     }
 }
 
-pub(crate) fn resolve_fi_y_top(
-    fi: &FloatingImage,
-    sp: &SectionProperties,
-    slot_top: f32,
-) -> f32 {
+pub(crate) fn resolve_fi_y_top(fi: &FloatingImage, sp: &SectionProperties, slot_top: f32) -> f32 {
     let img = &fi.image;
     match fi.v_position {
         VerticalPosition::Offset(v_offset) => match fi.v_relative_from {
@@ -120,8 +118,19 @@ pub(super) fn render_floating_images(
             continue;
         }
         render_one_floating_image(
-            fi, fi_idx, global_block_idx, pdf_names, effect_pdf_names, sp, col_x, col_w,
-            text_width, slot_top, content, tags, page,
+            fi,
+            fi_idx,
+            global_block_idx,
+            pdf_names,
+            effect_pdf_names,
+            sp,
+            col_x,
+            col_w,
+            text_width,
+            slot_top,
+            content,
+            tags,
+            page,
         );
     }
 }
@@ -153,8 +162,19 @@ pub(super) fn render_foreground_floating_images_deferred(
         }
         let mut buf = super::tagging::artifact_content();
         if render_one_floating_image(
-            fi, fi_idx, global_block_idx, pdf_names, effect_pdf_names, sp, col_x, col_w,
-            text_width, slot_top, &mut buf, tags, page,
+            fi,
+            fi_idx,
+            global_block_idx,
+            pdf_names,
+            effect_pdf_names,
+            sp,
+            col_x,
+            col_w,
+            text_width,
+            slot_top,
+            &mut buf,
+            tags,
+            page,
         ) {
             deferred.push((fi.z_index, buf));
         }
@@ -197,22 +217,35 @@ fn render_one_floating_image(
     if rotated {
         content.save_state();
         push_center_rotation(
-            content, fi_x, fi_y_bottom, img.display_width, img.display_height, img.rotation_deg,
+            content,
+            fi_x,
+            fi_y_bottom,
+            img.display_width,
+            img.display_height,
+            img.rotation_deg,
         );
     }
 
     let fi_fx = effect_pdf_names.get(&(global_block_idx, fi_idx));
     if let Some(ref shadow) = img.shadow {
         super::color::draw_image_shadow(
-            content, shadow, fi_x, fi_y_bottom,
-            img.display_width, img.display_height,
+            content,
+            shadow,
+            fi_x,
+            fi_y_bottom,
+            img.display_width,
+            img.display_height,
             fi_fx.and_then(|fx| fx.shadow.as_deref()),
         );
     }
     if let Some(ref glow) = img.glow {
         super::color::draw_image_glow(
-            content, glow, fi_x, fi_y_bottom,
-            img.display_width, img.display_height,
+            content,
+            glow,
+            fi_x,
+            fi_y_bottom,
+            img.display_width,
+            img.display_height,
             fi_fx.and_then(|fx| fx.glow.as_deref()),
         );
     }
@@ -223,8 +256,12 @@ fn render_one_floating_image(
         tags.begin(content, page, figure);
     }
     super::smartart::render_image_with_clip(
-        content, pdf_name, fi_x, fi_y_bottom,
-        img.display_width, img.display_height,
+        content,
+        pdf_name,
+        fi_x,
+        fi_y_bottom,
+        img.display_width,
+        img.display_height,
         img.clip_geometry.as_ref(),
     );
     if !img.decorative {
@@ -233,24 +270,36 @@ fn render_one_floating_image(
 
     if let Some(ref inner) = img.inner_shadow {
         super::color::draw_inner_shadow(
-            content, inner, fi_x, fi_y_bottom,
-            img.display_width, img.display_height,
+            content,
+            inner,
+            fi_x,
+            fi_y_bottom,
+            img.display_width,
+            img.display_height,
             fi_fx.and_then(|fx| fx.inner_shadow.as_deref()),
         );
     }
     if let Some(ref refl) = img.reflection {
         super::color::draw_reflection(
-            content, refl, fi_x, fi_y_bottom,
-            img.display_width, img.display_height,
+            content,
+            refl,
+            fi_x,
+            fi_y_bottom,
+            img.display_width,
+            img.display_height,
             fi_fx.and_then(|fx| fx.reflection.as_deref()),
         );
     }
 
     if let Some(sc) = img.stroke_color {
         super::smartart::stroke_image_border(
-            content, fi_x, fi_y_bottom,
-            img.display_width, img.display_height,
-            sc, img.stroke_width,
+            content,
+            fi_x,
+            fi_y_bottom,
+            img.display_width,
+            img.display_height,
+            sc,
+            img.stroke_width,
             img.clip_geometry.as_ref(),
         );
     }
@@ -264,7 +313,14 @@ fn render_one_floating_image(
 /// the box at (`x`, `y_bottom`) with size `w`×`h`. PDF rotates counterclockwise,
 /// hence the negation. Push before the box's own transform; the caller brackets
 /// it with save/restore. No-op for an unrotated box.
-pub(super) fn push_center_rotation(content: &mut Content, x: f32, y_bottom: f32, w: f32, h: f32, deg: f32) {
+pub(super) fn push_center_rotation(
+    content: &mut Content,
+    x: f32,
+    y_bottom: f32,
+    w: f32,
+    h: f32,
+    deg: f32,
+) {
     if deg.abs() <= 0.01 {
         return;
     }
@@ -272,7 +328,10 @@ pub(super) fn push_center_rotation(content: &mut Content, x: f32, y_bottom: f32,
     let cy = y_bottom + h / 2.0;
     let (sin, cos) = (-deg.to_radians()).sin_cos();
     content.transform([
-        cos, sin, -sin, cos,
+        cos,
+        sin,
+        -sin,
+        cos,
         cx - cos * cx + sin * cy,
         cy - sin * cx - cos * cy,
     ]);
@@ -303,10 +362,28 @@ pub(super) fn render_connector(
             content.line_to(x1, y1);
             content.stroke();
             if conn.head_end != ArrowEnd::None {
-                draw_arrow_head(content, x0, y0, x1, y1, conn.head_end, conn.stroke_color, conn.stroke_width);
+                draw_arrow_head(
+                    content,
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    conn.head_end,
+                    conn.stroke_color,
+                    conn.stroke_width,
+                );
             }
             if conn.tail_end != ArrowEnd::None {
-                draw_arrow_head(content, x1, y1, x0, y0, conn.tail_end, conn.stroke_color, conn.stroke_width);
+                draw_arrow_head(
+                    content,
+                    x1,
+                    y1,
+                    x0,
+                    y0,
+                    conn.tail_end,
+                    conn.stroke_color,
+                    conn.stroke_width,
+                );
             }
         }
         ConnectorType::Arc {

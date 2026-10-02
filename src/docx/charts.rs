@@ -6,7 +6,10 @@ use crate::model::{
     LegendPosition, MarkerSymbol,
 };
 
-use super::{chart_ns as chart_child, chart_ns_attr as chart_attr, chart_ns_children as chart_children, dml as dml_child, parse_hex_color, read_zip_text};
+use super::{
+    chart_ns as chart_child, chart_ns_attr as chart_attr, chart_ns_children as chart_children,
+    dml as dml_child, parse_hex_color, read_zip_text,
+};
 
 fn find_srgb_clr<'a>(sp_pr: roxmltree::Node<'a, 'a>) -> Option<roxmltree::Node<'a, 'a>> {
     dml_child(dml_child(sp_pr, "solidFill")?, "srgbClr")
@@ -234,9 +237,7 @@ fn parse_chart_space(xml_content: &str, accent_colors: Vec<[u8; 3]>) -> Option<C
 
     // Scatter/bubble have two valAx; use first as cat_axis, second as val_axis
     let (mut cat_axis, val_axis) = if matches!(chart_type, ChartType::Scatter | ChartType::Bubble) {
-        let val_axes: Vec<_> = chart_children(plot_area, "valAx")
-            .map(parse_axis)
-            .collect();
+        let val_axes: Vec<_> = chart_children(plot_area, "valAx").map(parse_axis).collect();
         (val_axes.first().cloned(), val_axes.get(1).cloned())
     } else {
         (

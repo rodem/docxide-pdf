@@ -309,7 +309,11 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(line_pts.len(), 4, "Expected 4 LineTo commands for arrowhead");
+        assert_eq!(
+            line_pts.len(),
+            4,
+            "Expected 4 LineTo commands for arrowhead"
+        );
 
         // The 4 arrowhead points should span a small region (< 30% of shape size)
         let (mut x_min, mut x_max) = (f64::INFINITY, f64::NEG_INFINITY);

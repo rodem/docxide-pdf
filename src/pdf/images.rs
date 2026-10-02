@@ -19,8 +19,10 @@ pub(crate) struct EffectXObjs {
 
 impl EffectXObjs {
     fn has_any(&self) -> bool {
-        self.shadow.is_some() || self.glow.is_some()
-            || self.inner_shadow.is_some() || self.reflection.is_some()
+        self.shadow.is_some()
+            || self.glow.is_some()
+            || self.inner_shadow.is_some()
+            || self.reflection.is_some()
     }
 }
 
@@ -89,10 +91,16 @@ fn downscale_target(
 /// italian_evaluation_minutes p7 (annotation #229).
 fn apply_lum(samples: &mut [u8], bright: f32, contrast: f32) {
     let c = contrast.clamp(-1.0, 1.0) * 127.0;
-    let scale = if c >= 0.0 { 128.0 / (128.0 - c) } else { (128.0 + c) / 128.0 };
+    let scale = if c >= 0.0 {
+        128.0 / (128.0 - c)
+    } else {
+        (128.0 + c) / 128.0
+    };
     let offset = bright.clamp(-1.0, 1.0) * 255.0;
     let lut: [u8; 256] = std::array::from_fn(|v| {
-        ((v as f32 - 128.0) * scale + 128.0 + offset).round().clamp(0.0, 255.0) as u8
+        ((v as f32 - 128.0) * scale + 128.0 + offset)
+            .round()
+            .clamp(0.0, 255.0) as u8
     });
     for s in samples {
         *s = lut[*s as usize];
@@ -119,7 +127,9 @@ fn decode_png_raw(data: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     let mut decoder = png::Decoder::new(std::io::Cursor::new(data));
     decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::ALPHA);
     let mut reader = decoder.read_info().ok()?;
-    let buf_size = reader.output_buffer_size().unwrap_or(reader.info().raw_bytes() as usize);
+    let buf_size = reader
+        .output_buffer_size()
+        .unwrap_or(reader.info().raw_bytes() as usize);
     let mut buf = vec![0u8; buf_size];
     let info = reader.next_frame(&mut buf).ok()?;
     let (w, h) = (info.width, info.height);
@@ -314,15 +324,16 @@ fn embed_image_xobject(
     );
 
     // Helper: create soft-edge SMask for a given pixel size
-    let make_soft_edge_smask = |w: u32, h: u32, pdf: &mut Pdf, alloc: &mut dyn FnMut() -> Ref| -> Option<Ref> {
-        let se = img.soft_edge.as_ref()?;
-        let radius_px = se.radius * w as f32 / display_width;
-        let mask_data = super::color::generate_soft_edge_mask(w, h, radius_px);
-        let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&mask_data, 6);
-        let mask_ref = alloc();
-        write_gray_mask_xobject(pdf, mask_ref, &compressed, w, h, true);
-        Some(mask_ref)
-    };
+    let make_soft_edge_smask =
+        |w: u32, h: u32, pdf: &mut Pdf, alloc: &mut dyn FnMut() -> Ref| -> Option<Ref> {
+            let se = img.soft_edge.as_ref()?;
+            let radius_px = se.radius * w as f32 / display_width;
+            let mask_data = super::color::generate_soft_edge_mask(w, h, radius_px);
+            let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&mask_data, 6);
+            let mask_ref = alloc();
+            write_gray_mask_xobject(pdf, mask_ref, &compressed, w, h, true);
+            Some(mask_ref)
+        };
 
     match img.format {
         ImageFormat::Jpeg => {
@@ -358,7 +369,13 @@ fn embed_image_xobject(
                         );
                         let se_mask = make_soft_edge_smask(tw, th, pdf, alloc);
                         write_image_xobject(
-                            pdf, xobj_ref, &jpeg_buf, Filter::DctDecode, tw, th, se_mask,
+                            pdf,
+                            xobj_ref,
+                            &jpeg_buf,
+                            Filter::DctDecode,
+                            tw,
+                            th,
+                            se_mask,
                         );
                         return xobj_ref;
                     }
@@ -383,20 +400,17 @@ fn embed_image_xobject(
                 _ => image::ImageFormat::Png,
             };
             let cursor = std::io::Cursor::new(img.data.as_slice());
-            let reader =
-                image::ImageReader::with_format(std::io::BufReader::new(cursor), img_fmt);
+            let reader = image::ImageReader::with_format(std::io::BufReader::new(cursor), img_fmt);
             let decoded = match reader.decode() {
                 Ok(d) => d,
                 Err(_) => {
                     // Fallback: use png crate directly for PNGs the image
                     // crate's format-pinned reader can't decode
                     match decode_png_raw(&img.data) {
-                        Some((w, h, rgba_data)) => {
-                            image::DynamicImage::ImageRgba8(
-                                image::RgbaImage::from_raw(w, h, rgba_data)
-                                    .expect("RGBA data size matches dimensions"),
-                            )
-                        }
+                        Some((w, h, rgba_data)) => image::DynamicImage::ImageRgba8(
+                            image::RgbaImage::from_raw(w, h, rgba_data)
+                                .expect("RGBA data size matches dimensions"),
+                        ),
                         None => {
                             log::warn!("PNG decode failed — writing 1x1 placeholder");
                             let mut xobj = pdf.image_xobject(xobj_ref, &[255, 255, 255]);
@@ -491,9 +505,7 @@ fn embed_image_xobject(
             // Translate EMF records into a PDF Form XObject. The xobj_ref we
             // already allocated is unused — emf_to_form_xobject allocates its
             // own — so map the slot to the Form XObject ref instead.
-            if let Some(form_ref) =
-                super::emf::emf_to_form_xobject(&img.data, pdf, alloc)
-            {
+            if let Some(form_ref) = super::emf::emf_to_form_xobject(&img.data, pdf, alloc) {
                 return form_ref;
             }
             // Conversion failed — register the wasted ref so it still maps to
@@ -519,8 +531,12 @@ fn embed_shadow(
     pdf: &mut Pdf,
     alloc: &mut impl FnMut() -> Ref,
 ) -> String {
-    let (mask_pixels, mask_w, mask_h) =
-        super::color::generate_shadow_mask(display_width, display_height, shadow.blur_radius, shadow.alpha);
+    let (mask_pixels, mask_w, mask_h) = super::color::generate_shadow_mask(
+        display_width,
+        display_height,
+        shadow.blur_radius,
+        shadow.alpha,
+    );
 
     // Compress the grayscale mask
     let compressed_mask = miniz_oxide::deflate::compress_to_vec_zlib(&mask_pixels, 6);
@@ -529,7 +545,13 @@ fn embed_shadow(
     let mask_ref = alloc();
     let color_ref = alloc();
     write_solid_color_with_gray_mask(
-        pdf, color_ref, mask_ref, shadow.color, &compressed_mask, mask_w, mask_h,
+        pdf,
+        color_ref,
+        mask_ref,
+        shadow.color,
+        &compressed_mask,
+        mask_w,
+        mask_h,
     );
 
     *shadow_counter += 1;
@@ -606,13 +628,20 @@ fn embed_reflection(
             let rgb_data: Vec<u8> = rgb.into_raw();
 
             if let Some(jpeg_buf) = encode_jpeg(
-                &image::RgbImage::from_raw(w, h, rgb_data.clone())
-                    .expect("RGB data size matches"),
+                &image::RgbImage::from_raw(w, h, rgb_data.clone()).expect("RGB data size matches"),
             ) {
                 write_jpeg_xobject(pdf, refl_ref, &jpeg_buf, w, h, 3, Some(grad_ref));
             } else {
                 let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&rgb_data, 6);
-                write_image_xobject(pdf, refl_ref, &compressed, Filter::FlateDecode, w, h, Some(grad_ref));
+                write_image_xobject(
+                    pdf,
+                    refl_ref,
+                    &compressed,
+                    Filter::FlateDecode,
+                    w,
+                    h,
+                    Some(grad_ref),
+                );
             }
         }
     }
@@ -635,8 +664,13 @@ fn embed_image_effects(
     if let Some(shadow) = img.shadow.as_ref() {
         if shadow.blur_radius > 0.0 {
             fx.shadow = Some(embed_shadow(
-                shadow, img.display_width, img.display_height,
-                image_xobjects, effect_counter, pdf, alloc,
+                shadow,
+                img.display_width,
+                img.display_height,
+                image_xobjects,
+                effect_counter,
+                pdf,
+                alloc,
             ));
         }
     }
@@ -650,19 +684,33 @@ fn embed_image_effects(
             alpha: glow.alpha,
         };
         fx.glow = Some(embed_shadow(
-            &shadow_equiv, img.display_width, img.display_height,
-            image_xobjects, effect_counter, pdf, alloc,
+            &shadow_equiv,
+            img.display_width,
+            img.display_height,
+            image_xobjects,
+            effect_counter,
+            pdf,
+            alloc,
         ));
     }
     if let Some(inner) = img.inner_shadow.as_ref() {
         let (mask_pixels, mask_w, mask_h) = super::color::generate_inner_shadow_mask(
-            img.display_width, img.display_height, inner.blur_radius, inner.alpha,
+            img.display_width,
+            img.display_height,
+            inner.blur_radius,
+            inner.alpha,
         );
         let compressed_mask = miniz_oxide::deflate::compress_to_vec_zlib(&mask_pixels, 6);
         let mask_ref = alloc();
         let color_ref = alloc();
         write_solid_color_with_gray_mask(
-            pdf, color_ref, mask_ref, inner.color, &compressed_mask, mask_w, mask_h,
+            pdf,
+            color_ref,
+            mask_ref,
+            inner.color,
+            &compressed_mask,
+            mask_w,
+            mask_h,
         );
 
         *effect_counter += 1;
@@ -698,22 +746,46 @@ pub(super) fn embed_all_images(
                     if let Some(img) = &para.image {
                         let name = embed_single_image(img, &mut image_xobjects, pdf, alloc);
                         image_pdf_names.insert(global_block_idx, name);
-                        let fx = embed_image_effects(img, &mut image_xobjects, &mut effect_counter, pdf, alloc);
-                        if fx.has_any() { effect_names.insert(global_block_idx, fx); }
+                        let fx = embed_image_effects(
+                            img,
+                            &mut image_xobjects,
+                            &mut effect_counter,
+                            pdf,
+                            alloc,
+                        );
+                        if fx.has_any() {
+                            effect_names.insert(global_block_idx, fx);
+                        }
                     }
                     for (run_idx, run) in para.runs.iter().enumerate() {
                         if let Some(img) = &run.inline_image {
                             let name = embed_single_image(img, &mut image_xobjects, pdf, alloc);
                             inline_image_pdf_names.insert((global_block_idx, run_idx), name);
-                            let fx = embed_image_effects(img, &mut image_xobjects, &mut effect_counter, pdf, alloc);
-                            if fx.has_any() { effect_inline_names.insert((global_block_idx, run_idx), fx); }
+                            let fx = embed_image_effects(
+                                img,
+                                &mut image_xobjects,
+                                &mut effect_counter,
+                                pdf,
+                                alloc,
+                            );
+                            if fx.has_any() {
+                                effect_inline_names.insert((global_block_idx, run_idx), fx);
+                            }
                         }
                     }
                     for (fi_idx, fi) in para.floating_images.iter().enumerate() {
                         let name = embed_single_image(&fi.image, &mut image_xobjects, pdf, alloc);
                         floating_image_pdf_names.insert((global_block_idx, fi_idx), name);
-                        let fx = embed_image_effects(&fi.image, &mut image_xobjects, &mut effect_counter, pdf, alloc);
-                        if fx.has_any() { effect_floating_names.insert((global_block_idx, fi_idx), fx); }
+                        let fx = embed_image_effects(
+                            &fi.image,
+                            &mut image_xobjects,
+                            &mut effect_counter,
+                            pdf,
+                            alloc,
+                        );
+                        if fx.has_any() {
+                            effect_floating_names.insert((global_block_idx, fi_idx), fx);
+                        }
                     }
                 }
                 global_block_idx += 1;
@@ -725,8 +797,10 @@ pub(super) fn embed_all_images(
     let mut hf_inline_image_names: HashMap<(usize, u8, usize, usize), String> = HashMap::new();
     let mut hf_floating_image_names: HashMap<(usize, u8, usize, usize), String> = HashMap::new();
     let mut effect_hf_names: HashMap<(usize, u8, usize), EffectXObjs> = HashMap::new();
-    let mut effect_hf_inline_names: HashMap<(usize, u8, usize, usize), EffectXObjs> = HashMap::new();
-    let mut effect_hf_floating_names: HashMap<(usize, u8, usize, usize), EffectXObjs> = HashMap::new();
+    let mut effect_hf_inline_names: HashMap<(usize, u8, usize, usize), EffectXObjs> =
+        HashMap::new();
+    let mut effect_hf_floating_names: HashMap<(usize, u8, usize, usize), EffectXObjs> =
+        HashMap::new();
     {
         let hf_variants: [(u8, fn(&SectionProperties) -> Option<&HeaderFooter>); 6] = [
             (0, |sp| sp.header_default.as_ref()),
@@ -745,16 +819,32 @@ pub(super) fn embed_all_images(
                             if let Some(img) = &para.image {
                                 let name = embed_single_image(img, &mut image_xobjects, pdf, alloc);
                                 hf_image_names.insert((si, hf_type, pi), name);
-                                let fx = embed_image_effects(img, &mut image_xobjects, &mut effect_counter, pdf, alloc);
-                                if fx.has_any() { effect_hf_names.insert((si, hf_type, pi), fx); }
+                                let fx = embed_image_effects(
+                                    img,
+                                    &mut image_xobjects,
+                                    &mut effect_counter,
+                                    pdf,
+                                    alloc,
+                                );
+                                if fx.has_any() {
+                                    effect_hf_names.insert((si, hf_type, pi), fx);
+                                }
                             }
                             for (ri, run) in para.runs.iter().enumerate() {
                                 if let Some(img) = &run.inline_image {
                                     let name =
                                         embed_single_image(img, &mut image_xobjects, pdf, alloc);
                                     hf_inline_image_names.insert((si, hf_type, pi, ri), name);
-                                    let fx = embed_image_effects(img, &mut image_xobjects, &mut effect_counter, pdf, alloc);
-                                    if fx.has_any() { effect_hf_inline_names.insert((si, hf_type, pi, ri), fx); }
+                                    let fx = embed_image_effects(
+                                        img,
+                                        &mut image_xobjects,
+                                        &mut effect_counter,
+                                        pdf,
+                                        alloc,
+                                    );
+                                    if fx.has_any() {
+                                        effect_hf_inline_names.insert((si, hf_type, pi, ri), fx);
+                                    }
                                 }
                             }
                             for (fi, floating) in para.floating_images.iter().enumerate() {
@@ -765,8 +855,16 @@ pub(super) fn embed_all_images(
                                     alloc,
                                 );
                                 hf_floating_image_names.insert((si, hf_type, pi, fi), name);
-                                let fx = embed_image_effects(&floating.image, &mut image_xobjects, &mut effect_counter, pdf, alloc);
-                                if fx.has_any() { effect_hf_floating_names.insert((si, hf_type, pi, fi), fx); }
+                                let fx = embed_image_effects(
+                                    &floating.image,
+                                    &mut image_xobjects,
+                                    &mut effect_counter,
+                                    pdf,
+                                    alloc,
+                                );
+                                if fx.has_any() {
+                                    effect_hf_floating_names.insert((si, hf_type, pi, fi), fx);
+                                }
                             }
                             pi += 1;
                         }
@@ -811,11 +909,18 @@ pub(super) fn embed_all_images(
                         if let Some(img) = &para.image {
                             let key = std::sync::Arc::as_ptr(&img.data) as usize;
                             if !table_cell_image_names.contains_key(&key) {
-                                let name =
-                                    embed_single_image(img, &mut image_xobjects, pdf, alloc);
+                                let name = embed_single_image(img, &mut image_xobjects, pdf, alloc);
                                 table_cell_image_names.insert(key, name.clone());
-                                let fx = embed_image_effects(img, &mut image_xobjects, &mut effect_counter, pdf, alloc);
-                                if fx.has_any() { effect_table_names.insert(key, fx); }
+                                let fx = embed_image_effects(
+                                    img,
+                                    &mut image_xobjects,
+                                    &mut effect_counter,
+                                    pdf,
+                                    alloc,
+                                );
+                                if fx.has_any() {
+                                    effect_table_names.insert(key, fx);
+                                }
                             }
                         }
                         for fi in &para.floating_images {
@@ -824,8 +929,16 @@ pub(super) fn embed_all_images(
                                 let name =
                                     embed_single_image(&fi.image, &mut image_xobjects, pdf, alloc);
                                 table_cell_image_names.insert(key, name.clone());
-                                let fx = embed_image_effects(&fi.image, &mut image_xobjects, &mut effect_counter, pdf, alloc);
-                                if fx.has_any() { effect_table_names.insert(key, fx); }
+                                let fx = embed_image_effects(
+                                    &fi.image,
+                                    &mut image_xobjects,
+                                    &mut effect_counter,
+                                    pdf,
+                                    alloc,
+                                );
+                                if fx.has_any() {
+                                    effect_table_names.insert(key, fx);
+                                }
                             }
                         }
                     }
@@ -861,7 +974,13 @@ pub(super) fn embed_all_images(
         }
 
         for tb in all_textboxes {
-            embed_textbox_images(tb, &mut textbox_image_names, &mut image_xobjects, pdf, alloc);
+            embed_textbox_images(
+                tb,
+                &mut textbox_image_names,
+                &mut image_xobjects,
+                pdf,
+                alloc,
+            );
         }
     }
 
@@ -1004,7 +1123,10 @@ mod tests {
             ([0.25, 0.0, 0.25, 0.0], [2.0, 0.0, 0.0, 1.0, -0.5, 0.0]),
             ([0.0, 0.5, 0.0, 0.0], [1.0, 0.0, 0.0, 2.0, 0.0, 0.0]),
             ([0.0, 0.0, 0.0, 0.5], [1.0, 0.0, 0.0, 2.0, 0.0, -1.0]),
-            ([-0.2, 0.0, 0.0, 0.0], [1.0 / 1.2, 0.0, 0.0, 1.0, 0.2 / 1.2, 0.0]),
+            (
+                [-0.2, 0.0, 0.0, 0.0],
+                [1.0 / 1.2, 0.0, 0.0, 1.0, 0.2 / 1.2, 0.0],
+            ),
         ];
         for (rect, want) in cases {
             let got = crop_matrix(rect);

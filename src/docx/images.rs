@@ -4,14 +4,16 @@ use std::io::{Read, Seek};
 use crate::model::{
     ConnectorShape, EmbeddedImage, FloatingImage, HRelativeFrom, HorizontalPosition, ImageFormat,
     ImageGlow, ImageReflection, ImageShadow, InlineChart, InnerShadow, SmartArtDiagram, SoftEdge,
-    Textbox, VRelativeFrom, VerticalPosition, WrapText,
-    WrapType,
+    Textbox, VRelativeFrom, VerticalPosition, WrapText, WrapType,
 };
 
 use super::charts::parse_chart_from_zip;
 use super::smartart::{has_diagram_ref, parse_smartart_drawing};
 use super::textbox::{parse_connector_from_wsp, parse_textbox_from_wsp};
-use super::{DML_NS, ParseContext, REL_NS, WML_NS, WPD_NS, dml, emu_attr, emu_to_pts, parse_hex_color, parse_on_off, parse_pt, twips_attr, wml, wpd};
+use super::{
+    DML_NS, ParseContext, REL_NS, WML_NS, WPD_NS, dml, emu_attr, emu_to_pts, parse_hex_color,
+    parse_on_off, parse_pt, twips_attr, wml, wpd,
+};
 
 const CHART_URI: &str = "http://schemas.openxmlformats.org/drawingml/2006/chart";
 const PIC_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/picture";
@@ -46,7 +48,10 @@ pub(super) fn wrap_dist_top_bottom(container: roxmltree::Node) -> (f32, f32) {
     let ee = wpd(container, "effectExtent");
     let ee_t = ee.map(|n| emu_attr(n, "t")).unwrap_or(0.0);
     let ee_b = ee.map(|n| emu_attr(n, "b")).unwrap_or(0.0);
-    (emu_attr(container, "distT") + ee_t, emu_attr(container, "distB") + ee_b)
+    (
+        emu_attr(container, "distT") + ee_t,
+        emu_attr(container, "distB") + ee_b,
+    )
 }
 
 pub(super) fn extent_dimensions(container: roxmltree::Node) -> (f32, f32) {
@@ -70,7 +75,8 @@ fn gif_or_tiff_to_png(data: &[u8]) -> Option<Vec<u8>> {
     };
     let img = image::load_from_memory_with_format(data, fmt).ok()?;
     let mut png = Vec::new();
-    img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).ok()?;
+    img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .ok()?;
     Some(png)
 }
 
@@ -157,11 +163,14 @@ fn parse_src_rect(container: roxmltree::Node) -> Option<[f32; 4]> {
 /// outline, effects, non-rectangular clip and `a:srcRect` crop.
 fn apply_pic_props(img: &mut EmbeddedImage, container: roxmltree::Node) {
     if let Some(doc_pr) = wpd(container, "docPr") {
-        img.alt = doc_pr.attribute("descr").filter(|d| !d.trim().is_empty()).map(str::to_string);
+        img.alt = doc_pr
+            .attribute("descr")
+            .filter(|d| !d.trim().is_empty())
+            .map(str::to_string);
         // Office 2019 "Mark as decorative": <adec:decorative val="1"/> in docPr's extLst.
-        img.decorative = doc_pr
-            .descendants()
-            .any(|n| n.tag_name().name() == "decorative" && n.attribute("val").is_some_and(parse_on_off));
+        img.decorative = doc_pr.descendants().any(|n| {
+            n.tag_name().name() == "decorative" && n.attribute("val").is_some_and(parse_on_off)
+        });
     }
     let sp_pr = find_pic_sp_pr(container);
     img.rotation_deg = parse_image_rotation(sp_pr);
@@ -254,10 +263,10 @@ fn parse_pic_outline(sp_pr: Option<roxmltree::Node>) -> (Option<[u8; 3]>, f32) {
 /// with optional `a:alpha` child.
 fn parse_dml_color_alpha(node: roxmltree::Node) -> ([u8; 3], f32) {
     // Try srgbClr first, fall back to schemeClr (theme color — use black as fallback)
-    let color_node = node
-        .descendants()
-        .find(|n| n.tag_name().namespace() == Some(DML_NS)
-            && (n.tag_name().name() == "srgbClr" || n.tag_name().name() == "schemeClr"));
+    let color_node = node.descendants().find(|n| {
+        n.tag_name().namespace() == Some(DML_NS)
+            && (n.tag_name().name() == "srgbClr" || n.tag_name().name() == "schemeClr")
+    });
     let rgb = color_node
         .filter(|n| n.tag_name().name() == "srgbClr")
         .and_then(|n| n.attribute("val"))
@@ -265,8 +274,9 @@ fn parse_dml_color_alpha(node: roxmltree::Node) -> ([u8; 3], f32) {
         .unwrap_or([0, 0, 0]);
     let alpha = color_node
         .and_then(|n| {
-            n.children()
-                .find(|c| c.tag_name().name() == "alpha" && c.tag_name().namespace() == Some(DML_NS))
+            n.children().find(|c| {
+                c.tag_name().name() == "alpha" && c.tag_name().namespace() == Some(DML_NS)
+            })
         })
         .and_then(|a| a.attribute("val"))
         .and_then(|v| v.parse::<f32>().ok())
@@ -277,11 +287,13 @@ fn parse_dml_color_alpha(node: roxmltree::Node) -> ([u8; 3], f32) {
 
 /// Parse dist+dir attributes (common to outerShdw, innerShdw) into (offset_x, offset_y).
 fn parse_dist_dir(node: roxmltree::Node) -> (f32, f32) {
-    let dist = node.attribute("dist")
+    let dist = node
+        .attribute("dist")
         .and_then(|v| v.parse::<f32>().ok())
         .map(emu_to_pts)
         .unwrap_or(0.0);
-    let dir_deg = node.attribute("dir")
+    let dir_deg = node
+        .attribute("dir")
         .and_then(|v| v.parse::<f32>().ok())
         .unwrap_or(0.0)
         / 60000.0;
@@ -299,55 +311,118 @@ struct PicEffects {
 
 /// Parse all picture effects from `pic:spPr/a:effectLst`.
 fn parse_pic_effects(sp_pr: Option<roxmltree::Node>) -> PicEffects {
-    let mut fx = PicEffects { shadow: None, soft_edge: None, glow: None, inner_shadow: None, reflection: None };
-    let Some(sp) = sp_pr else { return fx; };
-    let Some(effect_lst) = sp.children()
+    let mut fx = PicEffects {
+        shadow: None,
+        soft_edge: None,
+        glow: None,
+        inner_shadow: None,
+        reflection: None,
+    };
+    let Some(sp) = sp_pr else {
+        return fx;
+    };
+    let Some(effect_lst) = sp
+        .children()
         .find(|c| c.tag_name().name() == "effectLst" && c.tag_name().namespace() == Some(DML_NS))
-    else { return fx; };
+    else {
+        return fx;
+    };
 
-    for child in effect_lst.children().filter(|c| c.tag_name().namespace() == Some(DML_NS)) {
+    for child in effect_lst
+        .children()
+        .filter(|c| c.tag_name().namespace() == Some(DML_NS))
+    {
         match child.tag_name().name() {
             "outerShdw" => {
-                let blur_radius = child.attribute("blurRad")
-                    .and_then(|v| v.parse::<f32>().ok()).map(emu_to_pts).unwrap_or(0.0);
+                let blur_radius = child
+                    .attribute("blurRad")
+                    .and_then(|v| v.parse::<f32>().ok())
+                    .map(emu_to_pts)
+                    .unwrap_or(0.0);
                 let (offset_x, offset_y) = parse_dist_dir(child);
                 let (color, alpha) = parse_dml_color_alpha(child);
-                fx.shadow = Some(ImageShadow { offset_x, offset_y, blur_radius, color, alpha });
+                fx.shadow = Some(ImageShadow {
+                    offset_x,
+                    offset_y,
+                    blur_radius,
+                    color,
+                    alpha,
+                });
             }
             "softEdge" => {
-                let radius = child.attribute("rad")
-                    .and_then(|v| v.parse::<f32>().ok()).map(emu_to_pts).unwrap_or(0.0);
+                let radius = child
+                    .attribute("rad")
+                    .and_then(|v| v.parse::<f32>().ok())
+                    .map(emu_to_pts)
+                    .unwrap_or(0.0);
                 if radius > 0.0 {
                     fx.soft_edge = Some(SoftEdge { radius });
                 }
             }
             "glow" => {
-                let radius = child.attribute("rad")
-                    .and_then(|v| v.parse::<f32>().ok()).map(emu_to_pts).unwrap_or(0.0);
+                let radius = child
+                    .attribute("rad")
+                    .and_then(|v| v.parse::<f32>().ok())
+                    .map(emu_to_pts)
+                    .unwrap_or(0.0);
                 let (color, alpha) = parse_dml_color_alpha(child);
                 if radius > 0.0 {
-                    fx.glow = Some(ImageGlow { radius, color, alpha });
+                    fx.glow = Some(ImageGlow {
+                        radius,
+                        color,
+                        alpha,
+                    });
                 }
             }
             "innerShdw" => {
-                let blur_radius = child.attribute("blurRad")
-                    .and_then(|v| v.parse::<f32>().ok()).map(emu_to_pts).unwrap_or(0.0);
+                let blur_radius = child
+                    .attribute("blurRad")
+                    .and_then(|v| v.parse::<f32>().ok())
+                    .map(emu_to_pts)
+                    .unwrap_or(0.0);
                 let (offset_x, offset_y) = parse_dist_dir(child);
                 let (color, alpha) = parse_dml_color_alpha(child);
-                fx.inner_shadow = Some(InnerShadow { offset_x, offset_y, blur_radius, color, alpha });
+                fx.inner_shadow = Some(InnerShadow {
+                    offset_x,
+                    offset_y,
+                    blur_radius,
+                    color,
+                    alpha,
+                });
             }
             "reflection" => {
-                let start_alpha = child.attribute("stA")
-                    .and_then(|v| v.parse::<f32>().ok()).map(|v| v / 100000.0).unwrap_or(0.5);
-                let end_alpha = child.attribute("endA")
-                    .and_then(|v| v.parse::<f32>().ok()).map(|v| v / 100000.0).unwrap_or(0.0);
-                let distance = child.attribute("dist")
-                    .and_then(|v| v.parse::<f32>().ok()).map(emu_to_pts).unwrap_or(0.0);
-                let blur_radius = child.attribute("blurRad")
-                    .and_then(|v| v.parse::<f32>().ok()).map(emu_to_pts).unwrap_or(0.0);
-                let end_pos = child.attribute("endPos")
-                    .and_then(|v| v.parse::<f32>().ok()).map(|v| v / 100000.0).unwrap_or(1.0);
-                fx.reflection = Some(ImageReflection { start_alpha, end_alpha, distance, blur_radius, end_pos });
+                let start_alpha = child
+                    .attribute("stA")
+                    .and_then(|v| v.parse::<f32>().ok())
+                    .map(|v| v / 100000.0)
+                    .unwrap_or(0.5);
+                let end_alpha = child
+                    .attribute("endA")
+                    .and_then(|v| v.parse::<f32>().ok())
+                    .map(|v| v / 100000.0)
+                    .unwrap_or(0.0);
+                let distance = child
+                    .attribute("dist")
+                    .and_then(|v| v.parse::<f32>().ok())
+                    .map(emu_to_pts)
+                    .unwrap_or(0.0);
+                let blur_radius = child
+                    .attribute("blurRad")
+                    .and_then(|v| v.parse::<f32>().ok())
+                    .map(emu_to_pts)
+                    .unwrap_or(0.0);
+                let end_pos = child
+                    .attribute("endPos")
+                    .and_then(|v| v.parse::<f32>().ok())
+                    .map(|v| v / 100000.0)
+                    .unwrap_or(1.0);
+                fx.reflection = Some(ImageReflection {
+                    start_alpha,
+                    end_alpha,
+                    distance,
+                    blur_radius,
+                    end_pos,
+                });
             }
             _ => {}
         }
@@ -504,9 +579,7 @@ pub(super) fn parse_wrap_type(
                 };
                 return (wt, wrap_text, polygon);
             }
-            "wrapTopAndBottom" => {
-                return (WrapType::TopAndBottom, WrapText::BothSides, None)
-            }
+            "wrapTopAndBottom" => return (WrapType::TopAndBottom, WrapText::BothSides, None),
             "wrapNone" => return (WrapType::None, WrapText::BothSides, None),
             _ => {}
         }
@@ -515,9 +588,9 @@ pub(super) fn parse_wrap_type(
 }
 
 fn parse_wrap_polygon(wrap_elem: roxmltree::Node) -> Option<Vec<(i32, i32)>> {
-    let poly = wrap_elem
-        .children()
-        .find(|c| c.tag_name().name() == "wrapPolygon" && c.tag_name().namespace() == Some(WPD_NS))?;
+    let poly = wrap_elem.children().find(|c| {
+        c.tag_name().name() == "wrapPolygon" && c.tag_name().namespace() == Some(WPD_NS)
+    })?;
     let mut vertices = Vec::new();
     for child in poly.children() {
         if child.tag_name().namespace() != Some(WPD_NS) {
@@ -589,9 +662,7 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
         }
 
         if is_anchor {
-            if let Some(wsp) =
-                parse_textbox_from_wsp(container, ctx)
-            {
+            if let Some(wsp) = parse_textbox_from_wsp(container, ctx) {
                 let (h_position, h_relative, v_pos, v_relative) = parse_anchor_position(container);
                 let v_offset = match v_pos {
                     VerticalPosition::Offset(o) => o,
@@ -638,7 +709,9 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
                 return Some(RunDrawingResult::Connector(conn));
             }
             if let Some(embed_id) = find_blip_embed(container) {
-                if let Some(mut img) = read_image_from_zip(embed_id, ctx.rels, ctx.zip, display_w, display_h) {
+                if let Some(mut img) =
+                    read_image_from_zip(embed_id, ctx.rels, ctx.zip, display_w, display_h)
+                {
                     apply_pic_props(&mut img, container);
                     let (h_position, h_relative, v_position, v_relative) =
                         parse_anchor_position(container);
@@ -670,16 +743,16 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
             // SmartArt diagrams lack floating layout support; treat anchored
             // diagrams the same as inline to avoid dropping them entirely
             if display_h > 0.0 && has_diagram_ref(container) {
-                let diagram = parse_smartart_drawing(container, ctx.rels, ctx.zip, ctx.theme, display_w, display_h);
+                let diagram = parse_smartart_drawing(
+                    container, ctx.rels, ctx.zip, ctx.theme, display_w, display_h,
+                );
                 return Some(RunDrawingResult::SmartArt(diagram));
             }
             continue;
         }
 
         // Inline textbox: wp:inline containing wps:wsp with text content
-        if let Some(wsp) =
-            parse_textbox_from_wsp(container, ctx)
-        {
+        if let Some(wsp) = parse_textbox_from_wsp(container, ctx) {
             // Treat inline textbox as a floating textbox at paragraph position
             // with TopAndBottom wrap so it acts as a block element
             return Some(RunDrawingResult::TextBox(Textbox {
@@ -716,9 +789,9 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
 
         if let Some(embed_id) = find_blip_embed(container) {
             let (extra_h, extra_top) = inline_extra_height(container);
-            if let Some(mut img) =
-                read_image_from_zip_extra(embed_id, ctx.rels, ctx.zip, display_w, display_h, extra_h, extra_top)
-            {
+            if let Some(mut img) = read_image_from_zip_extra(
+                embed_id, ctx.rels, ctx.zip, display_w, display_h, extra_h, extra_top,
+            ) {
                 apply_pic_props(&mut img, container);
                 return Some(RunDrawingResult::Inline(img));
             }
@@ -728,15 +801,22 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
             let accent_colors: Vec<[u8; 3]> = (1..=6)
                 .filter_map(|i| ctx.theme.colors.get(&format!("accent{i}")).copied())
                 .collect();
-            if let Some(ic) =
-                parse_chart_from_zip(chart_rid, ctx.rels, ctx.zip, display_w, display_h, accent_colors)
-            {
+            if let Some(ic) = parse_chart_from_zip(
+                chart_rid,
+                ctx.rels,
+                ctx.zip,
+                display_w,
+                display_h,
+                accent_colors,
+            ) {
                 return Some(RunDrawingResult::Chart(ic));
             }
         }
 
         if display_h > 0.0 && has_diagram_ref(container) {
-            let diagram = parse_smartart_drawing(container, ctx.rels, ctx.zip, ctx.theme, display_w, display_h);
+            let diagram = parse_smartart_drawing(
+                container, ctx.rels, ctx.zip, ctx.theme, display_w, display_h,
+            );
             return Some(RunDrawingResult::SmartArt(diagram));
         }
     }
@@ -788,8 +868,9 @@ pub(super) fn compute_drawing_info<R: Read + Seek>(
 
             if image.is_none() {
                 if let Some(embed_id) = find_blip_embed(container) {
-                    image =
-                        read_image_from_zip_extra(embed_id, rels, zip, display_w, display_h, extra_h, extra_top);
+                    image = read_image_from_zip_extra(
+                        embed_id, rels, zip, display_w, display_h, extra_h, extra_top,
+                    );
                     if let Some(ref mut img) = image {
                         apply_pic_props(img, container);
                     }
@@ -918,12 +999,14 @@ pub(super) fn parse_object_floating_image<R: Read + Seek>(
 /// content, but the following paragraphs need to land at the right position).
 pub(super) fn compute_object_height(para_node: roxmltree::Node) -> f32 {
     let mut max_height: f32 = 0.0;
-    for r in para_node.children().filter(|n| {
-        n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "r"
-    }) {
-        for obj in r.children().filter(|n| {
-            n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "object"
-        }) {
+    for r in para_node
+        .children()
+        .filter(|n| n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "r")
+    {
+        for obj in r
+            .children()
+            .filter(|n| n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "object")
+        {
             // Absolutely-positioned objects float (see parse_object_floating_image)
             // and must not reserve inline line height.
             if object_is_absolute(obj) {
@@ -1040,7 +1123,10 @@ mod tests {
 
     #[test]
     fn src_rect_negative_outward_crop_is_kept() {
-        assert_close(src_rect_of(r#"<a:srcRect l="-20000"/>"#).unwrap(), [-0.2, 0.0, 0.0, 0.0]);
+        assert_close(
+            src_rect_of(r#"<a:srcRect l="-20000"/>"#).unwrap(),
+            [-0.2, 0.0, 0.0, 0.0],
+        );
     }
 
     #[test]

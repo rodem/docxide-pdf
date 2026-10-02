@@ -67,9 +67,10 @@ fn parse_level_def(lvl: roxmltree::Node) -> Option<(u8, LevelDef)> {
     let num_fmt = wml_attr(lvl, "numFmt")
         .map(|s| s.to_string())
         .unwrap_or_else(|| {
-            let has_placeholder = lvl_text.as_bytes().windows(2).any(|w| {
-                w[0] == b'%' && w[1].is_ascii_digit()
-            });
+            let has_placeholder = lvl_text
+                .as_bytes()
+                .windows(2)
+                .any(|w| w[0] == b'%' && w[1].is_ascii_digit());
             if has_placeholder { "decimal" } else { "bullet" }.to_string()
         });
     let start = wml_attr(lvl, "start")
@@ -127,9 +128,7 @@ fn parse_level_def(lvl: roxmltree::Node) -> Option<(u8, LevelDef)> {
     ))
 }
 
-pub(super) fn parse_numbering<R: Read + Seek>(
-    zip: &mut zip::ZipArchive<R>,
-) -> NumberingInfo {
+pub(super) fn parse_numbering<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> NumberingInfo {
     let Some(xml_content) = super::read_zip_text(zip, "word/numbering.xml") else {
         return NumberingInfo::default();
     };
@@ -193,9 +192,7 @@ pub(super) fn parse_numbering<R: Read + Seek>(
                     }
                     // Full level redefinition (§17.9.5) — replaces the
                     // abstract level entirely.
-                    if let Some((ilvl, def)) =
-                        wml(ovr, "lvl").and_then(parse_level_def)
-                    {
+                    if let Some((ilvl, def)) = wml(ovr, "lvl").and_then(parse_level_def) {
                         lvl_defs.insert(ilvl, def);
                     }
                 }
@@ -299,10 +296,10 @@ pub(crate) fn format_number(value: u32, num_fmt: &str) -> String {
             .collect(),
         "aiueoFullWidth" => {
             const AIUEO: [char; 46] = [
-                'ア', 'イ', 'ウ', 'エ', 'オ', 'カ', 'キ', 'ク', 'ケ', 'コ', 'サ', 'シ', 'ス',
-                'セ', 'ソ', 'タ', 'チ', 'ツ', 'テ', 'ト', 'ナ', 'ニ', 'ヌ', 'ネ', 'ノ', 'ハ',
-                'ヒ', 'フ', 'ヘ', 'ホ', 'マ', 'ミ', 'ム', 'メ', 'モ', 'ヤ', 'ユ', 'ヨ', 'ラ',
-                'リ', 'ル', 'レ', 'ロ', 'ワ', 'ヲ', 'ン',
+                'ア', 'イ', 'ウ', 'エ', 'オ', 'カ', 'キ', 'ク', 'ケ', 'コ', 'サ', 'シ', 'ス', 'セ',
+                'ソ', 'タ', 'チ', 'ツ', 'テ', 'ト', 'ナ', 'ニ', 'ヌ', 'ネ', 'ノ', 'ハ', 'ヒ', 'フ',
+                'ヘ', 'ホ', 'マ', 'ミ', 'ム', 'メ', 'モ', 'ヤ', 'ユ', 'ヨ', 'ラ', 'リ', 'ル', 'レ',
+                'ロ', 'ワ', 'ヲ', 'ン',
             ];
             match value {
                 1..=46 => AIUEO[value as usize - 1].to_string(),
@@ -737,13 +734,27 @@ mod tests {
         let mut last_seen = HashMap::new();
         let mut applied = HashSet::new();
         let lvl0_info = parse_list_info(
-            None, Some("100"), Some(0), None, &HashMap::new(),
-            &numbering, &mut counters, &mut last_seen, &mut applied,
+            None,
+            Some("100"),
+            Some(0),
+            None,
+            &HashMap::new(),
+            &numbering,
+            &mut counters,
+            &mut last_seen,
+            &mut applied,
         );
         assert_eq!(lvl0_info.label, "I.");
         let lvl1_info = parse_list_info(
-            None, Some("100"), Some(1), None, &HashMap::new(),
-            &numbering, &mut counters, &mut last_seen, &mut applied,
+            None,
+            Some("100"),
+            Some(1),
+            None,
+            &HashMap::new(),
+            &numbering,
+            &mut counters,
+            &mut last_seen,
+            &mut applied,
         );
         // Without isLgl this would be "I.1."; isLgl forces %1 to decimal.
         assert_eq!(lvl1_info.label, "1.1.");
@@ -773,8 +784,15 @@ mod tests {
         let mut applied = HashSet::new();
         let mut label = |ilvl: u8| {
             parse_list_info(
-                None, Some("100"), Some(ilvl), None, &HashMap::new(),
-                &numbering, &mut counters, &mut last_seen, &mut applied,
+                None,
+                Some("100"),
+                Some(ilvl),
+                None,
+                &HashMap::new(),
+                &numbering,
+                &mut counters,
+                &mut last_seen,
+                &mut applied,
             )
             .label
         };
@@ -797,10 +815,9 @@ mod tests {
             r#"<w:lvl xmlns:w="{ns}" w:ilvl="0"><w:numFmt w:val="upperRoman"/><w:pStyle w:val="PHeadingA"/><w:lvlText w:val="%1."/><w:pPr><w:ind w:left="720" w:hanging="432"/></w:pPr></w:lvl>"#
         );
         let mut numbering = NumberingInfo::default();
-        numbering.abstract_nums.insert(
-            "100".into(),
-            HashMap::from([(0u8, parse_lvl(&lvl0_xml).1)]),
-        );
+        numbering
+            .abstract_nums
+            .insert("100".into(), HashMap::from([(0u8, parse_lvl(&lvl0_xml).1)]));
         numbering.num_to_abstract.insert("100".into(), "100".into());
 
         let mut counters = HashMap::new();
@@ -808,8 +825,15 @@ mod tests {
         let mut applied = HashSet::new();
         let mut label = |style: &str| {
             parse_list_info(
-                None, Some("100"), None, Some(style), &HashMap::new(),
-                &numbering, &mut counters, &mut last_seen, &mut applied,
+                None,
+                Some("100"),
+                None,
+                Some(style),
+                &HashMap::new(),
+                &numbering,
+                &mut counters,
+                &mut last_seen,
+                &mut applied,
             )
         };
         // Owning style numbers.
@@ -848,13 +872,27 @@ mod tests {
         let mut applied = HashSet::new();
         // Derived style numbers like its base, advancing the shared counter.
         let d1 = parse_list_info(
-            None, Some("1"), Some(0), Some("HeadDerived"), &styles,
-            &numbering, &mut counters, &mut last_seen, &mut applied,
+            None,
+            Some("1"),
+            Some(0),
+            Some("HeadDerived"),
+            &styles,
+            &numbering,
+            &mut counters,
+            &mut last_seen,
+            &mut applied,
         );
         assert_eq!(d1.label, "1.");
         let b2 = parse_list_info(
-            None, Some("1"), Some(0), Some("HeadBase"), &styles,
-            &numbering, &mut counters, &mut last_seen, &mut applied,
+            None,
+            Some("1"),
+            Some(0),
+            Some("HeadBase"),
+            &styles,
+            &numbering,
+            &mut counters,
+            &mut last_seen,
+            &mut applied,
         );
         assert_eq!(b2.label, "2.");
     }

@@ -37,7 +37,9 @@ fn try_pack(pdf: &[u8]) -> Option<Vec<u8>> {
     let size = leading_int(xref)?;
     let entries_at = find(xref, b"\n")? + 1;
     let entries = xref.get(entries_at..entries_at + size * 20)?;
-    let trailer = xref.get(entries_at + size * 20..)?.strip_prefix(b"trailer\n")?;
+    let trailer = xref
+        .get(entries_at + size * 20..)?
+        .strip_prefix(b"trailer\n")?;
 
     // (id, offset) of in-use objects, in file order.
     let mut objects: Vec<(usize, usize)> = Vec::new();
@@ -151,8 +153,14 @@ mod tests {
         pdf.struct_element(Ref::new(6)).custom_kind(Name(b"P"));
         let packed = pack(pdf.finish());
         let text = String::from_utf8_lossy(&packed);
-        assert!(text.contains("/Type /ObjStm /N 4"), "catalog, pages, page, struct elem");
-        assert!(text.contains("4 0 obj"), "the content stream stays a plain object");
+        assert!(
+            text.contains("/Type /ObjStm /N 4"),
+            "catalog, pages, page, struct elem"
+        );
+        assert!(
+            text.contains("4 0 obj"),
+            "the content stream stays a plain object"
+        );
         assert!(text.contains("/Type /XRef /Size 9 /W [1 4 2] /Root 1 0 R"));
         let startxref = rfind(&packed, b"startxref\n").unwrap();
         let at = leading_int(&packed[startxref + 10..]).unwrap();

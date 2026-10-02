@@ -111,7 +111,11 @@ impl GuideEnv {
         Self { values }
     }
 
-    pub fn set_adjustments(&mut self, defaults: &[(&'static str, i64)], overrides: &[(String, i64)]) {
+    pub fn set_adjustments(
+        &mut self,
+        defaults: &[(&'static str, i64)],
+        overrides: &[(String, i64)],
+    ) {
         for &(name, val) in defaults {
             self.values.insert(Cow::Borrowed(name), val as i128);
         }
@@ -156,11 +160,7 @@ impl GuideEnv {
             FormulaOp::Val => x(),
             FormulaOp::MulDiv => {
                 let denom = z();
-                if denom == 0 {
-                    0
-                } else {
-                    x() * y() / denom
-                }
+                if denom == 0 { 0 } else { x() * y() / denom }
             }
             FormulaOp::AddSub => x() + y() - z(),
             FormulaOp::AddDiv => {
@@ -635,9 +635,27 @@ mod tests {
     fn test_muldiv_large_values_no_overflow() {
         let mut env = GuideEnv::new(2_250_000, 2_250_000);
         env.evaluate_guides(&[
-            GuideDef { name: "a", op: FormulaOp::MulDiv, x: "1000000", y: "1000000", z: "1" },
-            GuideDef { name: "b", op: FormulaOp::MulDiv, x: "150000", y: "150000", z: "1" },
-            GuideDef { name: "prod", op: FormulaOp::MulDiv, x: "a", y: "b", z: "1" },
+            GuideDef {
+                name: "a",
+                op: FormulaOp::MulDiv,
+                x: "1000000",
+                y: "1000000",
+                z: "1",
+            },
+            GuideDef {
+                name: "b",
+                op: FormulaOp::MulDiv,
+                x: "150000",
+                y: "150000",
+                z: "1",
+            },
+            GuideDef {
+                name: "prod",
+                op: FormulaOp::MulDiv,
+                x: "a",
+                y: "b",
+                z: "1",
+            },
         ]);
         assert_eq!(env.resolve("a"), 1_000_000_000_000);
         assert_eq!(env.resolve("b"), 22_500_000_000);

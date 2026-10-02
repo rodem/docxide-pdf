@@ -186,7 +186,8 @@ pub fn analyze(reference_pdf: &Path, generated_pdf: &Path) -> TextBoundary {
     let mut total_lines = 0;
     let mut matching_lines = 0;
     for p in 0..common_pages {
-        let (Some(ref_lines), Some(gen_lines)) = (ref_line_pages.get(p), gen_line_pages.get(p)) else {
+        let (Some(ref_lines), Some(gen_lines)) = (ref_line_pages.get(p), gen_line_pages.get(p))
+        else {
             break;
         };
 

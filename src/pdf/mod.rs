@@ -2,16 +2,16 @@ mod assembly;
 mod chart_legend;
 mod charts;
 mod charts_radial;
+pub(crate) mod color;
 mod comments;
 mod emf;
-pub(crate) mod color;
 mod fonts;
 mod footnotes;
 mod header_footer;
 mod helpers;
 mod images;
-mod list_label;
 mod layout;
+mod list_label;
 mod objstm;
 mod positioning;
 mod smartart;
@@ -28,13 +28,14 @@ use pdf_writer::{Content, Name, Pdf, Ref};
 use crate::error::Error;
 use crate::fonts::FontEntry;
 use crate::model::{
-    Alignment, Block, DocGridType, Document, FieldCode,
-    HorizontalPosition, LineSpacing, PageVerticalAlign, Paragraph, ParagraphBorder,
-    Run, SectionBreakType, SectionProperties, ShapeFill, ShapeGeometry,
-    VRelativeFrom, VerticalPosition, WrapText, WrapType,
+    Alignment, Block, DocGridType, Document, FieldCode, HorizontalPosition, LineSpacing,
+    PageVerticalAlign, Paragraph, ParagraphBorder, Run, SectionBreakType, SectionProperties,
+    ShapeFill, ShapeGeometry, VRelativeFrom, VerticalPosition, WrapText, WrapType,
 };
 
+use crate::fonts::font_key;
 use assembly::{HeadingEntry, assemble_pdf_pages};
+use color::{fill_rgb, stroke_rgb};
 use fonts::collect_and_register_fonts;
 use footnotes::{compute_footnote_height, render_endnotes_inline, render_page_footnotes};
 use header_footer::{
@@ -43,30 +44,29 @@ use header_footer::{
 };
 pub(super) use helpers::resolve_line_h;
 use helpers::{drops_contextual_spacing, joins_border_group};
+use images::{EffectXObjs, EmbeddedImages, embed_all_images};
+use layout::{
+    CjkLayout, DualRegion, LineNumberArg, LinkAnnotation, LinkTagger, TextLine,
+    build_paragraph_lines, build_tabbed_line, descender_ratio, grid_baseline_offset,
+    grid_snapped_line_h, inline_image_line_extra, is_text_empty, line_max_image_h, lines_height,
+    picture_line_bottom, render_paragraph_lines, run_line_metrics, size_lines_by_own_runs,
+    tallest_glyph_run_metrics, tallest_run_metrics,
+};
+use list_label::{collect_paras, label_font_key, para_runs_with_textboxes, render_list_label};
 use positioning::{
     render_connector, render_floating_images, render_foreground_floating_images_deferred,
     resolve_fi_x, wraps_in_column,
 };
-pub(super) use positioning::{resolve_h_position, resolve_fi_y_top};
-use images::{EffectXObjs, EmbeddedImages, embed_all_images};
-use layout::{
-    tallest_glyph_run_metrics,
-    CjkLayout, DualRegion, LineNumberArg, LinkAnnotation, LinkTagger, TextLine, build_paragraph_lines,
-    build_tabbed_line, descender_ratio,
-    grid_baseline_offset, grid_snapped_line_h, inline_image_line_extra, is_text_empty, line_max_image_h,
-    lines_height, picture_line_bottom, render_paragraph_lines, run_line_metrics,
-    size_lines_by_own_runs, tallest_run_metrics,
-};
-use crate::fonts::font_key;
-use color::{fill_rgb, stroke_rgb};
-use list_label::{collect_paras, label_font_key, para_runs_with_textboxes, render_list_label};
+pub(super) use positioning::{resolve_fi_y_top, resolve_h_position};
 use smartart::draw_shape_path;
 use table::render_table;
 use textbox_render::render_single_textbox;
 
 /// Word stacks overlapping anchored shapes by wp:anchor relativeHeight, not
 /// document order. Stable sort keeps document order for equal values.
-fn sorted_by_z<'a>(iter: impl Iterator<Item = &'a crate::model::Textbox>) -> Vec<&'a crate::model::Textbox> {
+fn sorted_by_z<'a>(
+    iter: impl Iterator<Item = &'a crate::model::Textbox>,
+) -> Vec<&'a crate::model::Textbox> {
     let mut v: Vec<&crate::model::Textbox> = iter.collect();
     v.sort_by_key(|t| t.z_index);
     v
@@ -107,14 +107,16 @@ impl RenderContext<'_> {
 
     /// `runs` with every note reference mark showing its number, when any has one.
     pub(super) fn with_note_marks(&self, runs: &[Run]) -> Option<Vec<Run>> {
-        runs.iter().any(|r| r.footnote_id.is_some() || r.endnote_id.is_some()).then(|| {
-            runs.iter()
-                .map(|r| match self.note_mark_text(r) {
-                    Some(text) => Run { text, ..r.clone() },
-                    None => r.clone(),
-                })
-                .collect()
-        })
+        runs.iter()
+            .any(|r| r.footnote_id.is_some() || r.endnote_id.is_some())
+            .then(|| {
+                runs.iter()
+                    .map(|r| match self.note_mark_text(r) {
+                        Some(text) => Run { text, ..r.clone() },
+                        None => r.clone(),
+                    })
+                    .collect()
+            })
     }
     /// East Asian switches for `build_paragraph_lines`: the paragraph's autospace
     /// choice plus the document-wide punctuation compression.
@@ -251,7 +253,9 @@ fn unsized_line_metrics(
     fonts: &HashMap<String, FontEntry>,
 ) -> (f32, Option<f32>) {
     if let Some(br) = para.runs.iter().find(|r| r.is_line_break) {
-        let lhr = fonts.get(&font_key(br)).and_then(|e| run_line_metrics(e, "").0);
+        let lhr = fonts
+            .get(&font_key(br))
+            .and_then(|e| run_line_metrics(e, "").0);
         return (br.font_size, lhr);
     }
     let lhr = para
@@ -263,13 +267,10 @@ fn unsized_line_metrics(
 }
 
 /// Look up the line_h_ratio for a break run's font, matching by font_size.
-fn break_run_lhr(
-    runs: &[Run],
-    break_fs: f32,
-    fonts: &HashMap<String, FontEntry>,
-) -> Option<f32> {
+fn break_run_lhr(runs: &[Run], break_fs: f32, fonts: &HashMap<String, FontEntry>) -> Option<f32> {
     // Find the break run with the matching font size
-    let br_run = runs.iter()
+    let br_run = runs
+        .iter()
         .filter(|r| r.is_line_break && (r.font_size - break_fs).abs() < 0.01)
         .last();
     if let Some(run) = br_run {
@@ -707,15 +708,21 @@ impl PageBuilder {
     /// items become LI > Lbl + LBody; numbered headings stay headings.
     fn para_tags(&mut self, para: &Paragraph, doc: &Document) -> (Option<usize>, usize) {
         // Word tags a table of contents as one flat TOC holding a TOCI per entry.
-        let style_name = para.style_id.as_ref().and_then(|id| doc.style_id_to_name.get(id));
+        let style_name = para
+            .style_id
+            .as_ref()
+            .and_then(|id| doc.style_id_to_name.get(id));
         let is_toc_entry = style_name.is_some_and(|n| {
-            n.get(..4).is_some_and(|p| p.eq_ignore_ascii_case("toc ")) && n[4..].parse::<u8>().is_ok()
+            n.get(..4).is_some_and(|p| p.eq_ignore_ascii_case("toc "))
+                && n[4..].parse::<u8>().is_ok()
         });
         // Only inside a TOC field: its begin can sit in the entry or a heading above.
         self.toc_field |= para.starts_toc_field;
         if is_toc_entry && self.toc_field {
             self.lists.close();
-            let toc = *self.toc.get_or_insert_with(|| self.tags.add(tagging::ROOT, "TOC"));
+            let toc = *self
+                .toc
+                .get_or_insert_with(|| self.tags.add(tagging::ROOT, "TOC"));
             return (None, self.tags.add(toc, "TOCI"));
         }
         self.toc = None;
@@ -723,11 +730,16 @@ impl PageBuilder {
         match para.list_item {
             Some((level, id)) if para.outline_level.is_none() => {
                 let labelled = !para.list_label.is_empty();
-                self.tags.list_item(&mut self.lists, tagging::ROOT, id, level, labelled)
+                self.tags
+                    .list_item(&mut self.lists, tagging::ROOT, id, level, labelled)
             }
             _ => {
                 self.lists.close();
-                (None, self.tags.add(tagging::ROOT, para_tag_kind(para, style_name)))
+                (
+                    None,
+                    self.tags
+                        .add(tagging::ROOT, para_tag_kind(para, style_name)),
+                )
             }
         }
     }
@@ -758,7 +770,11 @@ impl PageBuilder {
 
     /// Draw the list label as its own Lbl (or inside the paragraph's element
     /// when it has none) and leave the paragraph text's tag open.
-    fn begin_para_tags(&mut self, (label, text): (Option<usize>, usize), draw_label: impl FnOnce(&mut Content)) {
+    fn begin_para_tags(
+        &mut self,
+        (label, text): (Option<usize>, usize),
+        draw_label: impl FnOnce(&mut Content),
+    ) {
         if let Some(label) = label {
             self.begin_tag(label);
             draw_label(&mut self.content);
@@ -771,8 +787,10 @@ impl PageBuilder {
     }
 
     pub(super) fn flush_page(&mut self, sect_idx: usize) {
-        self.all_contents
-            .push(std::mem::replace(&mut self.content, tagging::artifact_content()));
+        self.all_contents.push(std::mem::replace(
+            &mut self.content,
+            tagging::artifact_content(),
+        ));
         self.all_content_bottom.push(self.slot_top);
         // Stable sort: equal relativeHeight keeps document order
         self.deferred_shapes.sort_by_key(|(z, _)| *z);
@@ -885,7 +903,11 @@ fn track_page_footnote(
     state.pb.footnote_ids.push(id);
     if let Some(footnote) = doc.footnotes.get(&id) {
         let fn_height = compute_footnote_height(footnote, ctx, text_width);
-        let separator_h = if state.pb.footnote_ids.len() == 1 { 12.0 } else { 0.0 };
+        let separator_h = if state.pb.footnote_ids.len() == 1 {
+            12.0
+        } else {
+            0.0
+        };
         state.effective_margin_bottom += separator_h + fn_height;
     }
 }
@@ -998,9 +1020,7 @@ fn line_count(para: &Paragraph, ctx: &RenderContext, col_w: f32) -> usize {
 fn compute_text_hanging(para: &Paragraph, default_tab_stop: f32) -> f32 {
     if !para.list_label.is_empty() {
         if let Some(nts) = para.num_level_tab_stop {
-            if nts < para.indent_left
-                && (para.indent_left - para.indent_hanging).abs() < 0.5
-            {
+            if nts < para.indent_left && (para.indent_left - para.indent_hanging).abs() < 0.5 {
                 (para.indent_left - nts).max(0.0)
             } else if nts > para.indent_left
                 && para.indent_hanging == 0.0
@@ -1020,8 +1040,7 @@ fn compute_text_hanging(para: &Paragraph, default_tab_stop: f32) -> f32 {
             // tab advances text to the next default tab stop *position* (not by
             // that amount). Target the next multiple of default_tab_stop that
             // is strictly greater than indent_left.
-            let next_tab =
-                ((para.indent_left / default_tab_stop).floor() + 1.0) * default_tab_stop;
+            let next_tab = ((para.indent_left / default_tab_stop).floor() + 1.0) * default_tab_stop;
             -(next_tab - para.indent_left)
         } else if para.indent_first_line > 0.0 && para.indent_hanging == 0.0 {
             -para.indent_first_line
@@ -1037,18 +1056,20 @@ fn compute_text_hanging(para: &Paragraph, default_tab_stop: f32) -> f32 {
 
 /// Every run of the body: its paragraphs and table cells.
 fn body_runs<'a>(doc: &'a Document) -> impl Iterator<Item = &'a Run> + 'a {
-    doc.sections.iter().flat_map(|s| s.blocks.iter()).flat_map(|block| -> Box<dyn Iterator<Item = &'a Run> + 'a> {
-        match block {
-            Block::Paragraph(p) => Box::new(p.runs.iter()),
-            Block::Table(t) => Box::new(
-                t.rows
-                    .iter()
-                    .flat_map(|row| row.cells.iter())
-                    .flat_map(|cell| cell.all_paragraphs())
-                    .flat_map(|p| p.runs.iter()),
-            ),
-        }
-    })
+    doc.sections.iter().flat_map(|s| s.blocks.iter()).flat_map(
+        |block| -> Box<dyn Iterator<Item = &'a Run> + 'a> {
+            match block {
+                Block::Paragraph(p) => Box::new(p.runs.iter()),
+                Block::Table(t) => Box::new(
+                    t.rows
+                        .iter()
+                        .flat_map(|row| row.cells.iter())
+                        .flat_map(|cell| cell.all_paragraphs())
+                        .flat_map(|p| p.runs.iter()),
+                ),
+            }
+        },
+    )
 }
 
 /// The catalog `/Lang`: the language most of the body text is in (by letters,
@@ -1137,9 +1158,7 @@ fn compute_bookmark_positions(
         for (bi, block) in blocks.iter().enumerate() {
             match block {
                 Block::Paragraph(para) => {
-                    if para.page_break_before
-                        && slot_top < effective_slot_top(sp, false, ctx)
-                    {
+                    if para.page_break_before && slot_top < effective_slot_top(sp, false, ctx) {
                         page_idx += 1;
                         slot_top = effective_slot_top(sp, false, ctx);
                         margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
@@ -1168,12 +1187,17 @@ fn compute_bookmark_positions(
                         && !matches!(effective_ls, LineSpacing::Exact(_))
                         && sp.line_pitch > 0.0
                     {
-                        grid_snapped_line_h(&para.runs, ctx.fonts, effective_ls, line_h, sp.line_pitch)
+                        grid_snapped_line_h(
+                            &para.runs,
+                            ctx.fonts,
+                            effective_ls,
+                            line_h,
+                            sp.line_pitch,
+                        )
                     } else {
                         line_h
                     };
-                    let para_w =
-                        (text_width - para.indent_left - para.indent_right).max(1.0);
+                    let para_w = (text_width - para.indent_left - para.indent_right).max(1.0);
                     let hanging = compute_text_hanging(para, ctx.default_tab_stop);
                     let has_tabs = para.runs.iter().any(|r| r.is_tab);
                     let lines = if is_text_empty(&para.runs) {
@@ -1194,16 +1218,21 @@ fn compute_bookmark_positions(
                         )
                     } else {
                         build_paragraph_lines(
-                            &para.runs, ctx.fonts, para_w, hanging, &empty_imgs,
-                            &empty_fx, None, None, None,
+                            &para.runs,
+                            ctx.fonts,
+                            para_w,
+                            hanging,
+                            &empty_imgs,
+                            &empty_fx,
+                            None,
+                            None,
+                            None,
                             ctx.cjk(para.auto_space_de || para.auto_space_dn, para.alignment),
                         )
                     };
                     let num_lines = lines.len().max(1);
-                    let para_has_inline_img =
-                        para.runs.iter().any(|r| r.inline_image.is_some());
-                    let content_h = if para.image.is_some() || para.inline_chart.is_some()
-                    {
+                    let para_has_inline_img = para.runs.iter().any(|r| r.inline_image.is_some());
+                    let content_h = if para.image.is_some() || para.inline_chart.is_some() {
                         para.content_height
                     } else if para_has_inline_img && para.content_height > 0.0 {
                         para.content_height.max(num_lines as f32 * line_h)
@@ -1231,8 +1260,7 @@ fn compute_bookmark_positions(
                     {
                         page_idx += 1;
                         slot_top = effective_slot_top(sp, false, ctx);
-                        margin_bottom =
-                            compute_effective_margin_bottom(sp, false, ctx);
+                        margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
                         slot_top -= content_h;
                     } else {
                         slot_top -= inter_gap + content_h;
@@ -1253,8 +1281,7 @@ fn compute_bookmark_positions(
                     if slot_top - est_h < margin_bottom {
                         page_idx += 1;
                         slot_top = effective_slot_top(sp, false, ctx);
-                        margin_bottom =
-                            compute_effective_margin_bottom(sp, false, ctx);
+                        margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
                     }
                     slot_top -= est_h;
                     prev_space_after = 0.0;
@@ -1272,7 +1299,9 @@ fn para_tag_kind(para: &Paragraph, style_name: Option<&String>) -> &'static str 
     if style_name.is_some_and(|n| n.eq_ignore_ascii_case("title")) {
         return "H1";
     }
-    para.outline_level.map_or("P", |l| ["H1", "H2", "H3", "H4", "H5", "H6"][usize::from(l).min(5)])
+    para.outline_level.map_or("P", |l| {
+        ["H1", "H2", "H3", "H4", "H5", "H6"][usize::from(l).min(5)]
+    })
 }
 
 /// Render a single paragraph block. Returns `true` if the block was skipped
@@ -1303,8 +1332,7 @@ fn render_paragraph_block(
     // §17.6.8: per-section line-number config (None if disabled). Holds no borrow
     // of `state`, so each render call can freshly borrow the shared counter.
     let ln_cfg: Option<(i32, u32, u32, f32)> = sp.line_numbering.as_ref().map(|ln| {
-        let continuous_offset =
-            (ln.restart == crate::model::LineNumberRestart::Continuous) as u32;
+        let continuous_offset = (ln.restart == crate::model::LineNumberRestart::Continuous) as u32;
         (
             ln.start,
             ln.count_by,
@@ -1345,8 +1373,7 @@ fn render_paragraph_block(
             state.pb.slot_top = effective_slot_top(sp, false, &ctx);
             state.pb.column_top_y = state.pb.slot_top;
             state.pb.page_top_y = state.pb.slot_top;
-            state.effective_margin_bottom =
-                compute_effective_margin_bottom(sp, false, &ctx);
+            state.effective_margin_bottom = compute_effective_margin_bottom(sp, false, &ctx);
             state.pb.is_first_page_of_section = false;
             state.current_col = 0;
         }
@@ -1400,9 +1427,7 @@ fn render_paragraph_block(
     let grid_snapped = para.snap_to_grid
         && matches!(
             sp.grid_type,
-            DocGridType::Lines
-                | DocGridType::LinesAndChars
-                | DocGridType::SnapToChars
+            DocGridType::Lines | DocGridType::LinesAndChars | DocGridType::SnapToChars
         )
         && !matches!(effective_ls, LineSpacing::Exact(_))
         && sp.line_pitch > 0.0;
@@ -1431,8 +1456,7 @@ fn render_paragraph_block(
 
     let (col_x, col_w) = col_geometry[state.current_col];
     let mut para_text_x = col_x + para.indent_left;
-    let mut para_text_width =
-        (col_w - para.indent_left - para.indent_right).max(1.0);
+    let mut para_text_width = (col_w - para.indent_left - para.indent_right).max(1.0);
     let mut label_x = col_x + para.indent_left - para.indent_hanging;
 
     // When inside a floating object zone, narrow the paragraph to
@@ -1441,7 +1465,15 @@ fn render_paragraph_block(
     // a logo sits clear of it once the 8pt after-space is counted.
     let first_line_top = state.pb.slot_top - inter_gap;
     if let Some(ref fz) = state.pb.float_zone {
-        fz.narrow_paragraph(first_line_top, col_x, col_w, para, &mut para_text_x, &mut para_text_width, &mut label_x);
+        fz.narrow_paragraph(
+            first_line_top,
+            col_x,
+            col_w,
+            para,
+            &mut para_text_x,
+            &mut para_text_width,
+            &mut label_x,
+        );
     }
 
     let text_hanging = compute_text_hanging(para, ctx.default_tab_stop);
@@ -1449,29 +1481,36 @@ fn render_paragraph_block(
     // Substitute footnote/endnote refs and resolve PAGEREF fields
     let has_footnote_refs = para.runs.iter().any(|r| r.footnote_id.is_some());
     let has_endnote_refs = para.runs.iter().any(|r| r.endnote_id.is_some());
-    let has_pageref = para.runs.iter().any(|r| matches!(&r.field_code, Some(FieldCode::PageRef(_))));
-    let effective_runs: std::borrow::Cow<'_, Vec<Run>> = if has_footnote_refs || has_endnote_refs || has_pageref {
-        let substituted: Vec<Run> = para
-            .runs
-            .iter()
-            .map(|run| {
-                if let Some(text) = ctx.note_mark_text(run) {
-                    Run { text, ..run.clone() }
-                } else if let Some(FieldCode::PageRef(ref bookmark)) = run.field_code {
-                    let mut r = run.clone();
-                    if let Some(&(page_idx, _)) = state.bookmark_positions.get(bookmark) {
-                        r.text = (page_idx + 1).to_string();
+    let has_pageref = para
+        .runs
+        .iter()
+        .any(|r| matches!(&r.field_code, Some(FieldCode::PageRef(_))));
+    let effective_runs: std::borrow::Cow<'_, Vec<Run>> =
+        if has_footnote_refs || has_endnote_refs || has_pageref {
+            let substituted: Vec<Run> = para
+                .runs
+                .iter()
+                .map(|run| {
+                    if let Some(text) = ctx.note_mark_text(run) {
+                        Run {
+                            text,
+                            ..run.clone()
+                        }
+                    } else if let Some(FieldCode::PageRef(ref bookmark)) = run.field_code {
+                        let mut r = run.clone();
+                        if let Some(&(page_idx, _)) = state.bookmark_positions.get(bookmark) {
+                            r.text = (page_idx + 1).to_string();
+                        }
+                        r
+                    } else {
+                        run.clone()
                     }
-                    r
-                } else {
-                    run.clone()
-                }
-            })
-            .collect();
-        std::borrow::Cow::Owned(substituted)
-    } else {
-        std::borrow::Cow::Borrowed(&para.runs)
-    };
+                })
+                .collect();
+            std::borrow::Cow::Owned(substituted)
+        } else {
+            std::borrow::Cow::Borrowed(&para.runs)
+        };
 
     let text_empty = is_text_empty(&effective_runs);
     let has_tabs = effective_runs.iter().any(|r| r.is_tab);
@@ -1489,16 +1528,13 @@ fn render_paragraph_block(
     // and has text, set up the float zone NOW so width-narrowing
     // applies to this paragraph's own lines.  Always replace any
     // previous float zone — the paragraph's own image takes priority.
-    if !para.floating_images.is_empty()
-        && !text_empty
-    {
+    if !para.floating_images.is_empty() && !text_empty {
         if let Some(fi) = para
             .floating_images
             .iter()
             .find(|fi| wraps_in_column(fi, sp, col_x, col_w, text_width))
         {
-            let fi_x =
-                resolve_fi_x(fi, sp, col_x, col_w, text_width);
+            let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
             // The previous paragraph may have re-wrapped around this float and
             // grown; the float stays where that look-ahead anchored it
             // (peeked here, taken below).
@@ -1508,7 +1544,15 @@ fn render_paragraph_block(
             // Re-narrow para_text_x / para_text_width using the
             // new float zone (same logic as the block above).
             let fz = state.pb.float_zone.as_ref().unwrap();
-            fz.narrow_paragraph(first_line_top, col_x, col_w, para, &mut para_text_x, &mut para_text_width, &mut label_x);
+            fz.narrow_paragraph(
+                first_line_top,
+                col_x,
+                col_w,
+                para,
+                &mut para_text_x,
+                &mut para_text_width,
+                &mut label_x,
+            );
         }
     }
 
@@ -1560,12 +1604,19 @@ fn render_paragraph_block(
         });
         if let Some((fi, next_space_before)) = next {
             let full_lines = build_paragraph_lines(
-                &effective_runs, ctx.fonts, para_text_width, text_hanging,
-                &block_inline_images, &block_effect_inlines, None, None, None, cjk,
+                &effective_runs,
+                ctx.fonts,
+                para_text_width,
+                text_hanging,
+                &block_inline_images,
+                &block_effect_inlines,
+                None,
+                None,
+                None,
+                cjk,
             );
             let gap = para.space_after.max(next_space_before);
-            let anchor_top =
-                state.pb.slot_top - inter_gap - full_lines.len() as f32 * line_h - gap;
+            let anchor_top = state.pb.slot_top - inter_gap - full_lines.len() as f32 * line_h - gap;
             let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
             let fi_y_top = match fi.v_position {
                 VerticalPosition::Offset(o) => anchor_top - o,
@@ -1621,30 +1672,27 @@ fn render_paragraph_block(
                 // widest remaining gap (Word places the line between the
                 // floats). Dual regions only model a single float, so they
                 // are skipped here.
-                let zones: Vec<&FloatZone> =
-                    std::iter::once(fz).chain(extra_float_zones.iter()).collect();
+                let zones: Vec<&FloatZone> = std::iter::once(fz)
+                    .chain(extra_float_zones.iter())
+                    .collect();
                 if zones.iter().all(|z| eff_top <= z.bottom_y) {
                     (None, None)
                 } else {
-                    let full_w =
-                        (col_w - para.indent_left - para.indent_right).max(1.0);
+                    let full_w = (col_w - para.indent_left - para.indent_right).max(1.0);
                     let col_right = col_x + col_w;
                     let lowest_bottom = zones
                         .iter()
                         .map(|z| z.bottom_y)
                         .fold(f32::INFINITY, f32::min);
                     let max_lines =
-                        ((((eff_top - lowest_bottom) / line_h).ceil() as usize) + 5)
-                            .max(50);
+                        ((((eff_top - lowest_bottom) / line_h).ceil() as usize) + 5).max(50);
                     let mut geom = Vec::with_capacity(max_lines);
                     for i in 0..max_lines {
                         let line_top = eff_top - i as f32 * line_h;
                         let line_bottom = line_top - line_h;
-                        let mut intervals: Vec<(f32, f32)> =
-                            vec![(col_x, col_right)];
+                        let mut intervals: Vec<(f32, f32)> = vec![(col_x, col_right)];
                         for z in &zones {
-                            let partial_overlap =
-                                z.para_relative || z.polygon_pts.is_some();
+                            let partial_overlap = z.para_relative || z.polygon_pts.is_some();
                             // Require the line to dip >20% of its height below
                             // the zone top before counting as in-zone, matching
                             // the symmetric bottom_threshold. Without this, a
@@ -1682,14 +1730,10 @@ fn render_paragraph_block(
                             .into_iter()
                             .max_by(|x, y| (x.1 - x.0).total_cmp(&(y.1 - y.0)));
                         match best {
-                            Some((a, b))
-                                if b - a
-                                    > para.indent_left + para.indent_right + 1.0 =>
-                            {
+                            Some((a, b)) if b - a > para.indent_left + para.indent_right + 1.0 => {
                                 geom.push((
                                     a + para.indent_left,
-                                    (b - a - para.indent_left - para.indent_right)
-                                        .max(1.0),
+                                    (b - a - para.indent_left - para.indent_right).max(1.0),
                                 ));
                             }
                             _ => geom.push((col_x + para.indent_left, full_w)),
@@ -1700,17 +1744,10 @@ fn render_paragraph_block(
             } else if eff_top <= fz.bottom_y {
                 (None, None)
             } else {
-                let is_both_sides =
-                    fz.wrap_text == WrapText::BothSides;
-                let full_w = (col_w
-                    - para.indent_left
-                    - para.indent_right)
-                    .max(1.0);
+                let is_both_sides = fz.wrap_text == WrapText::BothSides;
+                let full_w = (col_w - para.indent_left - para.indent_right).max(1.0);
                 let col_right = col_x + col_w;
-                let max_lines = ((eff_top - fz.bottom_y)
-                    / line_h)
-                    .ceil() as usize
-                    + 5;
+                let max_lines = ((eff_top - fz.bottom_y) / line_h).ceil() as usize + 5;
                 let max_lines = max_lines.max(50);
                 let mut geom = Vec::with_capacity(max_lines);
                 let mut dual = if is_both_sides {
@@ -1728,8 +1765,7 @@ fn render_paragraph_block(
                 // zones use the simpler line-top check because
                 // their boundaries already include topFromText /
                 // bottomFromText clearance.
-                let partial_overlap =
-                    fz.para_relative || fz.polygon_pts.is_some();
+                let partial_overlap = fz.para_relative || fz.polygon_pts.is_some();
                 for i in 0..max_lines {
                     let line_top = eff_top - i as f32 * line_h;
                     let line_bottom = line_top - line_h;
@@ -1742,15 +1778,12 @@ fn render_paragraph_block(
                     } else {
                         line_top <= fz.top_y
                     };
-                    if in_zone && line_top > bottom_threshold
-                    {
+                    if in_zone && line_top > bottom_threshold {
                         let query_y = line_top.min(fz.top_y);
-                        let (ex_left, ex_right) =
-                            fz.exclusion_at_y(query_y);
+                        let (ex_left, ex_right) = fz.exclusion_at_y(query_y);
                         let float_right = ex_right + fz.right_from_text;
                         let sr = col_right - float_right;
-                        let sl =
-                            (ex_left - fz.left_from_text) - col_x;
+                        let sl = (ex_left - fz.left_from_text) - col_x;
                         // Word measures the paragraph's indents from the
                         // float's wrap edge as it does from the margin
                         // (french youth strategy: arrow list beside a logo).
@@ -1787,28 +1820,16 @@ fn render_paragraph_block(
                                 let (x, w) = right_of_float;
                                 geom.push((x, w.max(1.0)));
                             } else if use_left {
-                                let ar =
-                                    ex_left - fz.left_from_text;
-                                let w = (ar - col_x
-                                    - para.indent_left
-                                    - para.indent_right)
-                                    .max(1.0);
-                                geom.push((
-                                    col_x + para.indent_left,
-                                    w,
-                                ));
+                                let ar = ex_left - fz.left_from_text;
+                                let w =
+                                    (ar - col_x - para.indent_left - para.indent_right).max(1.0);
+                                geom.push((col_x + para.indent_left, w));
                             } else {
-                                geom.push((
-                                    col_x + para.indent_left,
-                                    full_w,
-                                ));
+                                geom.push((col_x + para.indent_left, full_w));
                             }
                         }
                     } else {
-                        geom.push((
-                            col_x + para.indent_left,
-                            full_w,
-                        ));
+                        geom.push((col_x + para.indent_left, full_w));
                         if let Some(ref mut d) = dual {
                             d.push((col_x + para.indent_left, full_w, 0.0, 0.0));
                         }
@@ -1820,10 +1841,9 @@ fn render_paragraph_block(
             (None, None)
         };
 
-    let poly_line_widths: Option<Vec<f32>> =
-        poly_line_geom.as_ref().map(|g| {
-            g.iter().map(|&(_, w)| w).collect()
-        });
+    let poly_line_widths: Option<Vec<f32>> = poly_line_geom
+        .as_ref()
+        .map(|g| g.iter().map(|&(_, w)| w).collect());
 
     let has_inline_image_runs = effective_runs.iter().any(|r| r.inline_image.is_some());
     // Word advances a left tab past any floating image whose body sits on the
@@ -1873,11 +1893,21 @@ fn render_paragraph_block(
     } else {
         // Per-line geometry handles narrow→wide transitions;
         // dual geometry takes priority over single-region widths.
-        let plw: Option<&[f32]> = if poly_dual_geom.is_some() { None } else { poly_line_widths.as_deref() };
+        let plw: Option<&[f32]> = if poly_dual_geom.is_some() {
+            None
+        } else {
+            poly_line_widths.as_deref()
+        };
         build_paragraph_lines(
-            &effective_runs, ctx.fonts, para_text_width,
-            text_hanging, &block_inline_images, &block_effect_inlines, None,
-            plw, poly_dual_geom.as_deref(),
+            &effective_runs,
+            ctx.fonts,
+            para_text_width,
+            text_hanging,
+            &block_inline_images,
+            &block_effect_inlines,
+            None,
+            plw,
+            poly_dual_geom.as_deref(),
             cjk,
         )
     };
@@ -1925,7 +1955,11 @@ fn render_paragraph_block(
         // 11pt line follows a 1014pt-wide OLE logo strip, annotation #186).
         // The paragraph's own indents do not count: learning_cultures keeps
         // the mark beside a column-wide picture in a right-indented paragraph.
-        if img.layout_size().0 > col_w { picture_h + line_h } else { picture_h }
+        if img.layout_size().0 > col_w {
+            picture_h + line_h
+        } else {
+            picture_h
+        }
     } else if max_inline_img_h > 0.0 {
         lines_height(&lines, line_h, para_metrics)
     } else if text_empty {
@@ -1941,8 +1975,17 @@ fn render_paragraph_block(
         // The numbering label is a run on the first line, so its font
         // metrics participate in that line's height.
         let first_line_h = label_boosted_line_h(
-            para, ctx.fonts, line_h, effective_ls, font_size, tallest_lhr, tallest_ar,
-        ) - lines.first().and_then(|l| l.pitch).map_or(0.0, |p| line_h - p);
+            para,
+            ctx.fonts,
+            line_h,
+            effective_ls,
+            font_size,
+            tallest_lhr,
+            tallest_ar,
+        ) - lines
+            .first()
+            .and_then(|l| l.pitch)
+            .map_or(0.0, |p| line_h - p);
         if num_lines <= 1 {
             // If the single line was created by a break, use its font size
             if let Some(bfs) = lines.first().and_then(|l| l.break_font_size) {
@@ -1974,8 +2017,7 @@ fn render_paragraph_block(
                             .or(tallest_lhr);
                         h += resolve_line_h(effective_ls, mfs, mlhr);
                     } else {
-                        let blhr =
-                            break_run_lhr(&effective_runs, bfs, ctx.fonts);
+                        let blhr = break_run_lhr(&effective_runs, bfs, ctx.fonts);
                         h += resolve_line_h(effective_ls, bfs, blhr);
                     }
                 } else {
@@ -2010,8 +2052,7 @@ fn render_paragraph_block(
             WrapType::Square | WrapType::Tight => {
                 let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
                 let left_gap = (fi_x - fi.dist_left) - col_x;
-                let right_gap =
-                    (col_x + col_w) - (fi_x + fi.image.display_width + fi.dist_right);
+                let right_gap = (col_x + col_w) - (fi_x + fi.image.display_width + fi.dist_right);
                 left_gap.max(right_gap) < MIN_EMPTY_STRIP
             }
             WrapType::Through => false,
@@ -2163,8 +2204,7 @@ fn render_paragraph_block(
             }
             let (nfs, nlhr, _) = tallest_run_metrics(&next.runs, ctx.fonts);
             let next_inter = f32::max(prev_sa, next.space_before);
-            let next_first_line_h =
-                nlhr.map(|ratio| nfs * ratio).unwrap_or(nfs * 1.2);
+            let next_first_line_h = nlhr.map(|ratio| nfs * ratio).unwrap_or(nfs * 1.2);
             if !next.keep_next {
                 // The chain needs as many of the next paragraph's lines as
                 // must stay together on this page: one without widow control;
@@ -2207,7 +2247,11 @@ fn render_paragraph_block(
         &line_refs,
         &run_refs,
         &state.pb.footnote_ids_set,
-        if state.pb.footnote_ids.is_empty() { 12.0 } else { 0.0 },
+        if state.pb.footnote_ids.is_empty() {
+            12.0
+        } else {
+            0.0
+        },
         |id| {
             doc.footnotes
                 .get(&id)
@@ -2244,9 +2288,7 @@ fn render_paragraph_block(
 
         if para.widow_control {
             // Ensure at least 2 lines remain on next page (orphan prevention)
-            if lines_that_fit > 0
-                && lines.len().saturating_sub(lines_that_fit) < 2
-            {
+            if lines_that_fit > 0 && lines.len().saturating_sub(lines_that_fit) < 2 {
                 lines_that_fit = lines.len().saturating_sub(2);
             }
         }
@@ -2272,7 +2314,14 @@ fn render_paragraph_block(
             let tags = state.pb.para_tags(para, doc);
             let tag = tags.1;
             state.pb.begin_para_tags(tags, |content| {
-                render_list_label(content, para, ctx.fonts, label_x, baseline_y - first_line_drop, font_size)
+                render_list_label(
+                    content,
+                    para,
+                    ctx.fonts,
+                    label_x,
+                    baseline_y - first_line_drop,
+                    font_size,
+                )
             });
 
             render_paragraph_lines(
@@ -2292,14 +2341,20 @@ fn render_paragraph_block(
                 poly_line_geom.as_deref(),
                 &mut state.pb.gradient_specs,
                 Some(&mut state.pb.comment_anchors),
-                ln_cfg.map(|(start, count_by, continuous_offset, right_x)| LineNumberArg {
-                    counter: &mut state.line_number_counter,
-                    start,
-                    count_by,
-                    continuous_offset,
-                    right_x,
-                }),
-                Some(LinkTagger::new(&mut state.pb.tags, state.pb.all_contents.len(), tag)),
+                ln_cfg.map(
+                    |(start, count_by, continuous_offset, right_x)| LineNumberArg {
+                        counter: &mut state.line_number_counter,
+                        start,
+                        count_by,
+                        continuous_offset,
+                        right_x,
+                    },
+                ),
+                Some(LinkTagger::new(
+                    &mut state.pb.tags,
+                    state.pb.all_contents.len(),
+                    tag,
+                )),
             );
             state.pb.end_tag();
 
@@ -2331,8 +2386,7 @@ fn render_paragraph_block(
 
             let (rest_col_x, rest_col_w) = col_geometry[state.current_col];
             let rest_text_x = rest_col_x + para.indent_left;
-            let rest_text_width =
-                (rest_col_w - para.indent_left - para.indent_right).max(1.0);
+            let rest_text_width = (rest_col_w - para.indent_left - para.indent_right).max(1.0);
 
             state.pb.begin_tag(tag);
             render_paragraph_lines(
@@ -2352,14 +2406,20 @@ fn render_paragraph_block(
                 None,
                 &mut state.pb.gradient_specs,
                 Some(&mut state.pb.comment_anchors),
-                ln_cfg.map(|(start, count_by, continuous_offset, right_x)| LineNumberArg {
-                    counter: &mut state.line_number_counter,
-                    start,
-                    count_by,
-                    continuous_offset,
-                    right_x,
-                }),
-                Some(LinkTagger::new(&mut state.pb.tags, state.pb.all_contents.len(), tag)),
+                ln_cfg.map(
+                    |(start, count_by, continuous_offset, right_x)| LineNumberArg {
+                        counter: &mut state.line_number_counter,
+                        start,
+                        count_by,
+                        continuous_offset,
+                        right_x,
+                    },
+                ),
+                Some(LinkTagger::new(
+                    &mut state.pb.tags,
+                    state.pb.all_contents.len(),
+                    tag,
+                )),
             );
             state.pb.end_tag();
 
@@ -2410,8 +2470,10 @@ fn render_paragraph_block(
     state.pb.slot_top -= inter_gap;
 
     for bookmark in &para.bookmarks {
-        state.bookmark_positions
-            .insert(bookmark.clone(), (state.pb.all_contents.len(), state.pb.slot_top));
+        state.bookmark_positions.insert(
+            bookmark.clone(),
+            (state.pb.all_contents.len(), state.pb.slot_top),
+        );
     }
 
     if let Some(level) = para.outline_level {
@@ -2435,7 +2497,15 @@ fn render_paragraph_block(
     // Re-apply float zone adjustment after potential column change
     let first_line_top = state.pb.slot_top - inter_gap;
     if let Some(ref fz) = state.pb.float_zone {
-        fz.narrow_paragraph(first_line_top, col_x, col_w, para, &mut para_text_x, &mut para_text_width, &mut label_x);
+        fz.narrow_paragraph(
+            first_line_top,
+            col_x,
+            col_w,
+            para,
+            &mut para_text_x,
+            &mut para_text_width,
+            &mut label_x,
+        );
     }
 
     // A floating table pushed onto a fresh page hands its anchor paragraph the
@@ -2506,9 +2576,12 @@ fn render_paragraph_block(
         let shd_left = col_x - shd_left_outset;
         let shd_right = col_x + col_w + shd_right_outset;
         let shd_top = state.pb.slot_top
-            + if prev_borders_match { applied_inter_gap } else { 0.0 };
-        let shd_bottom =
-            state.pb.slot_top - bdr_top_pad - content_h - bdr_bottom_pad;
+            + if prev_borders_match {
+                applied_inter_gap
+            } else {
+                0.0
+            };
+        let shd_bottom = state.pb.slot_top - bdr_top_pad - content_h - bdr_bottom_pad;
         state.pb.content.save_state();
         fill_rgb(&mut state.pb.content, shd_color);
         state.pb.content.rect(
@@ -2626,7 +2699,9 @@ fn render_paragraph_block(
             .filter(|t| !t.trim().is_empty())
             .collect();
         let alt = alt.join("\n");
-        state.pb.figure_without_content(para, doc, (!alt.is_empty()).then_some(alt.as_str()));
+        state
+            .pb
+            .figure_without_content(para, doc, (!alt.is_empty()).then_some(alt.as_str()));
         for (i, diagram) in para.smartart.iter().enumerate() {
             if i > 0 {
                 state.pb.slot_top -= diagram.display_height;
@@ -2652,12 +2727,10 @@ fn render_paragraph_block(
         // Standard HRs (o:hrstd) render as a thin 0.5pt line
         // centered in the specified height space
         let draw_h = if hr.is_standard { 0.5 } else { hr.height_pt };
-        let rule_y =
-            state.pb.slot_top - (content_h - draw_h) / 2.0 - draw_h;
+        let rule_y = state.pb.slot_top - (content_h - draw_h) / 2.0 - draw_h;
         state.pb.content.save_state();
         fill_rgb(&mut state.pb.content, hr.fill_color);
-        state.pb.content
-            .rect(rule_x, rule_y, rule_w, draw_h);
+        state.pb.content.rect(rule_x, rule_y, rule_w, draw_h);
         state.pb.content.fill_nonzero();
         state.pb.content.restore_state();
     } else if para.image.is_some() && para.content_height > 0.0 {
@@ -2677,43 +2750,67 @@ fn render_paragraph_block(
             let img_fx = effect_names.get(&state.global_block_idx);
             if let Some(ref shadow) = img.shadow {
                 color::draw_image_shadow(
-                    &mut state.pb.content, shadow, x, y_bottom,
-                    img.display_width, img.display_height,
+                    &mut state.pb.content,
+                    shadow,
+                    x,
+                    y_bottom,
+                    img.display_width,
+                    img.display_height,
                     img_fx.and_then(|fx| fx.shadow.as_deref()),
                 );
             }
             if let Some(ref glow) = img.glow {
                 color::draw_image_glow(
-                    &mut state.pb.content, glow, x, y_bottom,
-                    img.display_width, img.display_height,
+                    &mut state.pb.content,
+                    glow,
+                    x,
+                    y_bottom,
+                    img.display_width,
+                    img.display_height,
                     img_fx.and_then(|fx| fx.glow.as_deref()),
                 );
             }
             smartart::render_image_with_clip(
-                &mut state.pb.content, pdf_name, x, y_bottom,
-                img.display_width, img.display_height,
+                &mut state.pb.content,
+                pdf_name,
+                x,
+                y_bottom,
+                img.display_width,
+                img.display_height,
                 img.clip_geometry.as_ref(),
             );
             if let Some(sc) = img.stroke_color {
                 smartart::stroke_image_border(
-                    &mut state.pb.content, x, y_bottom,
-                    img.display_width, img.display_height,
-                    sc, img.stroke_width,
+                    &mut state.pb.content,
+                    x,
+                    y_bottom,
+                    img.display_width,
+                    img.display_height,
+                    sc,
+                    img.stroke_width,
                     img.clip_geometry.as_ref(),
                 );
             }
             // Post-image effects: inner shadow, reflection (drawn on top / below)
             if let Some(ref inner) = img.inner_shadow {
                 color::draw_inner_shadow(
-                    &mut state.pb.content, inner, x, y_bottom,
-                    img.display_width, img.display_height,
+                    &mut state.pb.content,
+                    inner,
+                    x,
+                    y_bottom,
+                    img.display_width,
+                    img.display_height,
                     img_fx.and_then(|fx| fx.inner_shadow.as_deref()),
                 );
             }
             if let Some(ref refl) = img.reflection {
                 color::draw_reflection(
-                    &mut state.pb.content, refl, x, y_bottom,
-                    img.display_width, img.display_height,
+                    &mut state.pb.content,
+                    refl,
+                    x,
+                    y_bottom,
+                    img.display_width,
+                    img.display_height,
                     img_fx.and_then(|fx| fx.reflection.as_deref()),
                 );
             }
@@ -2721,7 +2818,9 @@ fn render_paragraph_block(
                 state.pb.end_tag();
             }
         } else if para.image.is_some() {
-            state.pb.content
+            state
+                .pb
+                .content
                 .set_fill_gray(0.5)
                 .rect(col_x, state.pb.slot_top - content_h, col_w, content_h)
                 .fill_nonzero()
@@ -2740,7 +2839,14 @@ fn render_paragraph_block(
 
         let tags = state.pb.para_tags(para, doc);
         state.pb.begin_para_tags(tags, |content| {
-            render_list_label(content, para, ctx.fonts, label_x, baseline_y - first_line_drop, font_size)
+            render_list_label(
+                content,
+                para,
+                ctx.fonts,
+                label_x,
+                baseline_y - first_line_drop,
+                font_size,
+            )
         });
 
         render_paragraph_lines(
@@ -2760,14 +2866,20 @@ fn render_paragraph_block(
             poly_line_geom.as_deref(),
             &mut state.pb.gradient_specs,
             Some(&mut state.pb.comment_anchors),
-            ln_cfg.map(|(start, count_by, continuous_offset, right_x)| LineNumberArg {
-                counter: &mut state.line_number_counter,
-                start,
-                count_by,
-                continuous_offset,
-                right_x,
-            }),
-            Some(LinkTagger::new(&mut state.pb.tags, state.pb.all_contents.len(), tags.1)),
+            ln_cfg.map(
+                |(start, count_by, continuous_offset, right_x)| LineNumberArg {
+                    counter: &mut state.line_number_counter,
+                    start,
+                    count_by,
+                    continuous_offset,
+                    right_x,
+                },
+            ),
+            Some(LinkTagger::new(
+                &mut state.pb.tags,
+                state.pb.all_contents.len(),
+                tags.1,
+            )),
         );
         state.pb.end_tag();
     } else {
@@ -2780,8 +2892,7 @@ fn render_paragraph_block(
     {
         let bdr = &para.borders;
         let box_top = state.pb.slot_top - bdr_top_half_band;
-        let box_bottom =
-            state.pb.slot_top - bdr_top_pad - content_h - bdr_bottom_pad;
+        let box_bottom = state.pb.slot_top - bdr_top_pad - content_h - bdr_bottom_pad;
         let bdr_left_outset = bdr
             .left
             .as_ref()
@@ -2812,7 +2923,11 @@ fn render_paragraph_block(
         // borders upward through the inter-paragraph gap so there is no
         // visible break between consecutive paragraphs' left/right borders.
         let v_border_top = box_top
-            + if prev_borders_match { applied_inter_gap } else { 0.0 };
+            + if prev_borders_match {
+                applied_inter_gap
+            } else {
+                0.0
+            };
         let draw_v_border = |content: &mut Content, b: &ParagraphBorder, x: f32| {
             content.save_state();
             content.set_line_width(b.width_pt);
@@ -2847,7 +2962,9 @@ fn render_paragraph_block(
     if state.pb.slot_top < state.effective_margin_bottom - 1.0 {
         log::warn!(
             "Body overflow: slot_top={:.2} < eff_margin_bottom={:.2} after paragraph on page {}",
-            state.pb.slot_top, state.effective_margin_bottom, state.pb.all_contents.len(),
+            state.pb.slot_top,
+            state.effective_margin_bottom,
+            state.pb.all_contents.len(),
         );
     }
     if !(text_empty && para.paragraph_mark_vanish) {
@@ -2860,8 +2977,7 @@ fn render_paragraph_block(
             if state.pb.footnote_ids_set.insert(id) {
                 state.pb.footnote_ids.push(id);
                 if let Some(footnote) = doc.footnotes.get(&id) {
-                    let fn_height =
-                        compute_footnote_height(footnote, &ctx, text_width);
+                    let fn_height = compute_footnote_height(footnote, &ctx, text_width);
                     let separator_h = if state.pb.footnote_ids.len() == 1 {
                         12.0
                     } else {
@@ -2892,8 +3008,7 @@ fn render_paragraph_block(
         state.pb.slot_top = effective_slot_top(sp, false, &ctx);
         state.pb.column_top_y = state.pb.slot_top;
         state.pb.page_top_y = state.pb.slot_top;
-        state.effective_margin_bottom =
-            compute_effective_margin_bottom(sp, false, &ctx);
+        state.effective_margin_bottom = compute_effective_margin_bottom(sp, false, &ctx);
         state.pb.is_first_page_of_section = false;
         state.prev_space_after = 0.0;
         state.current_col = 0;
@@ -3149,8 +3264,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                         // splits the two observed cases.
                         // Include paragraphs with only line breaks (w:br)
                         // as "empty" — they have no visible text content.
-                        let has_side_strip =
-                            space_right.max(space_left) >= MIN_EMPTY_STRIP;
+                        let has_side_strip = space_right.max(space_left) >= MIN_EMPTY_STRIP;
                         let is_empty_para = matches!(block,
                             Block::Paragraph(p) if p.runs.iter().all(|r|
                                 r.vanish || r.is_line_break
@@ -3256,7 +3370,8 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                     } else {
                         None
                     };
-                    let table_tags = tagging::TableTags::for_table(&mut state.pb.tags, tagging::ROOT, table);
+                    let table_tags =
+                        tagging::TableTags::for_table(&mut state.pb.tags, tagging::ROOT, table);
                     state.pb.table_tags = Some(table_tags);
                     render_table(
                         table,
@@ -3300,12 +3415,9 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                             // The line following the break resumes below the
                             // float and still occupies its full line height
                             // there (the break paragraph's mark line).
-                            let (fs, lhr, _) =
-                                tallest_run_metrics(&p.runs, ctx.fonts);
-                            let ls =
-                                p.line_spacing.unwrap_or(ctx.doc_line_spacing);
-                            state.pb.slot_top =
-                                fz.bottom_y - resolve_line_h(ls, fs, lhr);
+                            let (fs, lhr, _) = tallest_run_metrics(&p.runs, ctx.fonts);
+                            let ls = p.line_spacing.unwrap_or(ctx.doc_line_spacing);
+                            state.pb.slot_top = fz.bottom_y - resolve_line_h(ls, fs, lhr);
                         }
                         state.pb.float_zone = None;
                     }
@@ -3382,10 +3494,16 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             bottom,
             text_width,
             &mut state.pb.all_gradient_specs[page_idx],
-            tagging::NoteTagger { tags: &mut state.pb.tags, page: page_idx, endnote: false },
+            tagging::NoteTagger {
+                tags: &mut state.pb.tags,
+                page: page_idx,
+                endnote: false,
+            },
         );
         for (id, y) in tops {
-            state.bookmark_positions.insert(footnotes::note_anchor(false, id), (page_idx, y));
+            state
+                .bookmark_positions
+                .insert(footnotes::note_anchor(false, id), (page_idx, y));
         }
         if page_idx == last_page_idx && !state.pb.endnote_ids.is_empty() {
             let tops = render_endnotes_inline(
@@ -3398,10 +3516,16 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 content_sp.margin_left,
                 text_width,
                 &mut state.pb.all_gradient_specs[page_idx],
-                tagging::NoteTagger { tags: &mut state.pb.tags, page: page_idx, endnote: true },
+                tagging::NoteTagger {
+                    tags: &mut state.pb.tags,
+                    page: page_idx,
+                    endnote: true,
+                },
             );
             for (id, y) in tops {
-                state.bookmark_positions.insert(footnotes::note_anchor(true, id), (page_idx, y));
+                state
+                    .bookmark_positions
+                    .insert(footnotes::note_anchor(true, id), (page_idx, y));
             }
         }
     }
@@ -3422,19 +3546,39 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
     );
     let mut hf_maps_index: HashMap<(usize, u8), HfMaps> = HashMap::new();
     for ((s, t, pi), name) in &hf_image_names {
-        hf_maps_index.entry((*s, *t)).or_default().0.insert(*pi, name.clone());
+        hf_maps_index
+            .entry((*s, *t))
+            .or_default()
+            .0
+            .insert(*pi, name.clone());
     }
     for ((s, t, pi, ri), name) in &hf_inline_image_names {
-        hf_maps_index.entry((*s, *t)).or_default().1.insert((*pi, *ri), name.clone());
+        hf_maps_index
+            .entry((*s, *t))
+            .or_default()
+            .1
+            .insert((*pi, *ri), name.clone());
     }
     for ((s, t, pi, fi), name) in &hf_floating_image_names {
-        hf_maps_index.entry((*s, *t)).or_default().2.insert((*pi, *fi), name.clone());
+        hf_maps_index
+            .entry((*s, *t))
+            .or_default()
+            .2
+            .insert((*pi, *fi), name.clone());
     }
     for ((s, t, pi), fx) in &effect_hf_names {
-        hf_maps_index.entry((*s, *t)).or_default().3.insert(*pi, fx.clone());
+        hf_maps_index
+            .entry((*s, *t))
+            .or_default()
+            .3
+            .insert(*pi, fx.clone());
     }
     for ((s, t, pi, fi), fx) in &effect_hf_floating_names {
-        hf_maps_index.entry((*s, *t)).or_default().4.insert((*pi, *fi), fx.clone());
+        hf_maps_index
+            .entry((*s, *t))
+            .or_default()
+            .4
+            .insert((*pi, *fi), fx.clone());
     }
     let empty_hf_maps: HfMaps = Default::default();
 
@@ -3487,12 +3631,17 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
         // Per spec §17.16.5.59: in headers/footers of a printed document, STYLEREF
         // searches the current page top-to-bottom first, then backward to doc start.
-        let page_first = state.pb
+        let page_first = state
+            .pb
             .all_first_styleref
             .get(page_idx)
             .unwrap_or(&empty_styleref);
         let prev_running = if page_idx > 0 {
-            state.pb.all_styleref.get(page_idx - 1).unwrap_or(&empty_styleref)
+            state
+                .pb
+                .all_styleref
+                .get(page_idx - 1)
+                .unwrap_or(&empty_styleref)
         } else {
             &empty_styleref
         };
@@ -3506,39 +3655,57 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         let mut hf = Content::new();
         let mut has_hf = false;
 
-        let (header, hdr_type, hdr_si) =
-            resolve_header_for_page(doc, si, is_first, page_num);
+        let (header, hdr_type, hdr_si) = resolve_header_for_page(doc, si, is_first, page_num);
         if let Some(header_data) = header {
-            let (pi_map, ii_map, fi_map, sh_para, sh_float) = hf_maps_index.get(&(hdr_si, hdr_type)).unwrap_or(&empty_hf_maps);
+            let (pi_map, ii_map, fi_map, sh_para, sh_float) = hf_maps_index
+                .get(&(hdr_si, hdr_type))
+                .unwrap_or(&empty_hf_maps);
             let pc = HfPageContext {
-                page_num, total_pages,
-                para_image_names: pi_map, inline_image_names: ii_map,
+                page_num,
+                total_pages,
+                para_image_names: pi_map,
+                inline_image_names: ii_map,
                 floating_image_names: fi_map,
-                effect_para_names: sh_para, effect_floating_names: sh_float,
+                effect_para_names: sh_para,
+                effect_floating_names: sh_float,
                 styleref_values: page_styleref,
                 page_num_format: effective_page_num_format,
             };
             render_header_footer(
-                &mut hf, header_data, &ctx, sp, true, &pc,
+                &mut hf,
+                header_data,
+                &ctx,
+                sp,
+                true,
+                &pc,
                 &mut state.pb.all_gradient_specs[page_idx],
             );
             has_hf = true;
         }
 
-        let (footer, ftr_type, ftr_si) =
-            resolve_footer_for_page(doc, si, is_first, page_num);
+        let (footer, ftr_type, ftr_si) = resolve_footer_for_page(doc, si, is_first, page_num);
         if let Some(footer_data) = footer {
-            let (pi_map, ii_map, fi_map, sh_para, sh_float) = hf_maps_index.get(&(ftr_si, ftr_type)).unwrap_or(&empty_hf_maps);
+            let (pi_map, ii_map, fi_map, sh_para, sh_float) = hf_maps_index
+                .get(&(ftr_si, ftr_type))
+                .unwrap_or(&empty_hf_maps);
             let pc = HfPageContext {
-                page_num, total_pages,
-                para_image_names: pi_map, inline_image_names: ii_map,
+                page_num,
+                total_pages,
+                para_image_names: pi_map,
+                inline_image_names: ii_map,
                 floating_image_names: fi_map,
-                effect_para_names: sh_para, effect_floating_names: sh_float,
+                effect_para_names: sh_para,
+                effect_floating_names: sh_float,
                 styleref_values: page_styleref,
                 page_num_format: effective_page_num_format,
             };
             render_header_footer(
-                &mut hf, footer_data, &ctx, sp, false, &pc,
+                &mut hf,
+                footer_data,
+                &ctx,
+                sp,
+                false,
+                &pc,
                 &mut state.pb.all_gradient_specs[page_idx],
             );
             has_hf = true;
@@ -3638,7 +3805,11 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(unsized_line_metrics(&para, 9.5, &HashMap::new()).0, 11.0);
-        para.runs.push(Run { font_size: 10.0, is_line_break: true, ..Default::default() });
+        para.runs.push(Run {
+            font_size: 10.0,
+            is_line_break: true,
+            ..Default::default()
+        });
         assert_eq!(unsized_line_metrics(&para, 9.5, &HashMap::new()).0, 10.0);
     }
 
@@ -3686,15 +3857,28 @@ mod tests {
             ("Courier New".to_string(), font(1.132813, 0.832520)),
         ]);
         let text_line_h = 11.0 * cal_lhr * 1.15;
-        let mut para = Paragraph { list_label: "\u{2022}".to_string(), ..Default::default() };
+        let mut para = Paragraph {
+            list_label: "\u{2022}".to_string(),
+            ..Default::default()
+        };
         let boosted = |para: &Paragraph| {
             label_boosted_line_h(
-                para, &fonts, text_line_h, LineSpacing::Auto(1.15), 11.0, Some(cal_lhr), Some(cal_ar),
+                para,
+                &fonts,
+                text_line_h,
+                LineSpacing::Auto(1.15),
+                11.0,
+                Some(cal_lhr),
+                Some(cal_ar),
             )
         };
 
         para.list_label_font = Some("Symbol".to_string());
-        assert!((boosted(&para) - 16.115).abs() < 0.01, "got {}", boosted(&para));
+        assert!(
+            (boosted(&para) - 16.115).abs() < 0.01,
+            "got {}",
+            boosted(&para)
+        );
         // Symbol reaches higher than Calibri, so the first baseline drops too.
         let off = label_boosted_baseline_offset(&para, &fonts, 11.0 * cal_ar, 11.0);
         assert!((off - 11.0 * 1.005371).abs() < 0.001);

@@ -120,7 +120,8 @@ fn score_fixture(fixture_dir: &std::path::Path, soffice: &std::path::Path) -> Op
     let lo_diff_dir = out_base.join("libreoffice_diff");
     let _ = fs::create_dir_all(&lo_diff_dir);
 
-    let page_scores: Vec<(Option<f64>, Option<f64>, Option<f64>, Option<f64>)> = (0..ref_pages.len())
+    let page_scores: Vec<(Option<f64>, Option<f64>, Option<f64>, Option<f64>)> = (0..ref_pages
+        .len())
         .collect::<Vec<_>>()
         .par_iter()
         .map(|&i| {
@@ -182,7 +183,12 @@ fn score_fixture(fixture_dir: &std::path::Path, soffice: &std::path::Path) -> Op
 }
 
 fn print_report(rows: &[Row], elapsed_s: f64) {
-    let name_w = rows.iter().map(|r| r.name.len()).max().unwrap_or(20).max(20);
+    let name_w = rows
+        .iter()
+        .map(|r| r.name.len())
+        .max()
+        .unwrap_or(20)
+        .max(20);
 
     println!(
         "\n  docxside-pdf vs LibreOffice — accuracy against MS Word reference ({} fixtures, {:.1}s)",
@@ -280,4 +286,3 @@ fn color_delta(pp: f64) -> String {
     };
     format!("\x1b[38;2;{r};{g};{b}m{text:>8}\x1b[0m")
 }
-

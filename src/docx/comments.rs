@@ -18,9 +18,7 @@ pub(super) fn parse_comments<R: Read + Seek>(
     let root = xml.root_element();
     let mut display_index: u32 = 0;
     for node in root.children() {
-        if node.tag_name().namespace() != Some(WML_NS)
-            || node.tag_name().name() != "comment"
-        {
+        if node.tag_name().namespace() != Some(WML_NS) || node.tag_name().name() != "comment" {
             continue;
         }
         let Some(id) = node

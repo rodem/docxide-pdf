@@ -3,9 +3,7 @@ use std::collections::{HashMap, HashSet};
 use pdf_writer::{Pdf, Ref};
 
 use crate::fonts::{FontEntry, font_key_buf, register_font};
-use crate::model::{
-    Block, Document, FieldCode, Paragraph, Run,
-};
+use crate::model::{Block, Document, FieldCode, Paragraph, Run};
 
 use super::header_footer::hf_paragraphs;
 use super::{collect_paras, label_font_key, para_runs_with_textboxes};
@@ -134,9 +132,7 @@ fn collect_used_chars(doc: &Document, all_runs: &[&Run]) -> HashMap<String, Hash
     for para in &all_paras {
         if !para.list_label.is_empty() {
             if let Some(key) = label_font_key(para) {
-                used.entry(key)
-                    .or_default()
-                    .extend(para.list_label.chars());
+                used.entry(key).or_default().extend(para.list_label.chars());
             }
             // The label may fall back to the surrounding body font when the
             // labeled font (e.g. Symbol) can't render a PUA bullet char. Make
@@ -419,8 +415,16 @@ pub(super) fn collect_and_register_fonts(
         };
         let pdf_name = format!("F{}", font_order.len() + 1);
         let entry = register_font(
-            pdf, base, bold, italic, pdf_name, alloc,
-            &doc.embedded_fonts, used, &doc.font_table, false,
+            pdf,
+            base,
+            bold,
+            italic,
+            pdf_name,
+            alloc,
+            &doc.embedded_fonts,
+            used,
+            &doc.font_table,
+            false,
         );
         seen_fonts.insert(key.clone(), entry);
         font_order.push(key.clone());

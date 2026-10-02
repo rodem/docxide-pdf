@@ -78,8 +78,15 @@ pub(crate) enum EmfRecord {
     SelectClipPath,
     /// Discard the current path (EMR_ABORTPATH).
     AbortPath,
-    CreateBrushIndirect { handle: u32, color: [u8; 3] },
-    ExtCreatePen { handle: u32, width: i32, color: [u8; 3] },
+    CreateBrushIndirect {
+        handle: u32,
+        color: [u8; 3],
+    },
+    ExtCreatePen {
+        handle: u32,
+        width: i32,
+        color: [u8; 3],
+    },
     SelectObject(u32),
     DeleteObject(u32),
     /// Any record we don't decode — `(record_type, payload_bytes)`.
@@ -185,8 +192,12 @@ fn decode(rec_type: u32, payload: &[u8]) -> EmfRecord {
             (Some(x), Some(y)) => LineTo(x, y),
             _ => Skip,
         },
-        88 => decode_polybezier16(payload).map(PolyBezierTo16).unwrap_or(Skip),
-        89 => decode_polybezier16(payload).map(PolyLineTo16).unwrap_or(Skip),
+        88 => decode_polybezier16(payload)
+            .map(PolyBezierTo16)
+            .unwrap_or(Skip),
+        89 => decode_polybezier16(payload)
+            .map(PolyLineTo16)
+            .unwrap_or(Skip),
         59 => BeginPath,
         60 => EndPath,
         61 => CloseFigure,
@@ -247,7 +258,11 @@ fn decode_polybezier16(payload: &[u8]) -> Option<Vec<(i16, i16)>> {
 
 /// EMF COLORREF packs color as 0x00BBGGRR.
 fn colorref(v: u32) -> [u8; 3] {
-    [(v & 0xFF) as u8, ((v >> 8) & 0xFF) as u8, ((v >> 16) & 0xFF) as u8]
+    [
+        (v & 0xFF) as u8,
+        ((v >> 8) & 0xFF) as u8,
+        ((v >> 16) & 0xFF) as u8,
+    ]
 }
 
 fn decode_brush(payload: &[u8]) -> Option<EmfRecord> {
@@ -270,7 +285,11 @@ fn decode_extcreatepen(payload: &[u8]) -> Option<EmfRecord> {
     let handle = u32::from_le_bytes(payload[0..4].try_into().unwrap());
     let width = u32::from_le_bytes(payload[24..28].try_into().unwrap()) as i32;
     let color = colorref(u32::from_le_bytes(payload[32..36].try_into().unwrap()));
-    Some(EmfRecord::ExtCreatePen { handle, width, color })
+    Some(EmfRecord::ExtCreatePen {
+        handle,
+        width,
+        color,
+    })
 }
 
 #[cfg(test)]
@@ -316,7 +335,10 @@ mod tests {
 
     #[test]
     fn decodes_clip_path_records() {
-        assert!(matches!(decode(67, &5u32.to_le_bytes()), EmfRecord::SelectClipPath));
+        assert!(matches!(
+            decode(67, &5u32.to_le_bytes()),
+            EmfRecord::SelectClipPath
+        ));
         assert!(matches!(decode(68, &[]), EmfRecord::AbortPath));
     }
 

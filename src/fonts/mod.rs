@@ -226,7 +226,13 @@ fn lookup_font_table<'a>(
 
 /// For a font that resolves nowhere else: Arial, then its metric clones, then
 /// what a bare Linux or macOS box has.
-const LAST_RESORT_FONTS: &[&str] = &["Arial", "Liberation Sans", "Arimo", "Helvetica", "DejaVu Sans"];
+const LAST_RESORT_FONTS: &[&str] = &[
+    "Arial",
+    "Liberation Sans",
+    "Arimo",
+    "Helvetica",
+    "DejaVu Sans",
+];
 
 /// Word's face for a missing font with no usable altName: Cambria for a roman
 /// family or no fontTable entry at all, Calibri for every other family. Panose,
@@ -332,26 +338,70 @@ pub(crate) fn classify_cjk_script(
     }
     // Simplified-Chinese family names (宋体/仿宋/黑体/楷体 + 华文 variants).
     const SC_HINTS: &[&str] = &[
-        "宋体", "仿宋", "黑体", "楷体", "华文", "微软雅黑", "方正",
-        "SimSun", "SimHei", "FangSong", "KaiTi", "Microsoft YaHei",
-        "STSong", "STFangsong", "STKaiti", "STHeiti", "STZhongsong",
+        "宋体",
+        "仿宋",
+        "黑体",
+        "楷体",
+        "华文",
+        "微软雅黑",
+        "方正",
+        "SimSun",
+        "SimHei",
+        "FangSong",
+        "KaiTi",
+        "Microsoft YaHei",
+        "STSong",
+        "STFangsong",
+        "STKaiti",
+        "STHeiti",
+        "STZhongsong",
     ];
     // Traditional-Chinese hints.
     const TC_HINTS: &[&str] = &[
-        "細明體", "新細明體", "標楷體", "微軟正黑體", "華康",
-        "PMingLiU", "MingLiU", "DFKai-SB", "Microsoft JhengHei",
+        "細明體",
+        "新細明體",
+        "標楷體",
+        "微軟正黑體",
+        "華康",
+        "PMingLiU",
+        "MingLiU",
+        "DFKai-SB",
+        "Microsoft JhengHei",
     ];
     // Japanese hints (kanji/kana forms + common font names).
     const JA_HINTS: &[&str] = &[
-        "明朝", "ゴシック", "メイリオ", "游明朝", "游ゴシック",
-        "ＭＳ明朝", "ＭＳ ゴシック", "ＭＳ Ｐ明朝", "ＭＳ Ｐゴシック",
-        "MS Mincho", "MS Gothic", "MS PMincho", "MS PGothic",
-        "Meiryo", "Yu Mincho", "Yu Gothic", "Hiragino",
+        "明朝",
+        "ゴシック",
+        "メイリオ",
+        "游明朝",
+        "游ゴシック",
+        "ＭＳ明朝",
+        "ＭＳ ゴシック",
+        "ＭＳ Ｐ明朝",
+        "ＭＳ Ｐゴシック",
+        "MS Mincho",
+        "MS Gothic",
+        "MS PMincho",
+        "MS PGothic",
+        "Meiryo",
+        "Yu Mincho",
+        "Yu Gothic",
+        "Hiragino",
     ];
     // Korean hints.
     const KO_HINTS: &[&str] = &[
-        "바탕", "돋움", "굴림", "궁서", "맑은 고딕", "나눔",
-        "Batang", "Dotum", "Gulim", "Gungsuh", "Malgun Gothic", "Nanum",
+        "바탕",
+        "돋움",
+        "굴림",
+        "궁서",
+        "맑은 고딕",
+        "나눔",
+        "Batang",
+        "Dotum",
+        "Gulim",
+        "Gungsuh",
+        "Malgun Gothic",
+        "Nanum",
     ];
 
     let by_name = [
@@ -380,53 +430,112 @@ pub(crate) fn cjk_fallback_fonts(script: CjkScript, serif: bool) -> &'static [&'
     use CjkScript::*;
     match (script, serif) {
         (Korean, true) => &[
-            "Batang", "Malgun Gothic", "Gulim", "AppleMyungjo", "Apple SD Gothic Neo",
-            "Noto Serif CJK KR", "Noto Sans CJK KR", "Arial Unicode MS",
+            "Batang",
+            "Malgun Gothic",
+            "Gulim",
+            "AppleMyungjo",
+            "Apple SD Gothic Neo",
+            "Noto Serif CJK KR",
+            "Noto Sans CJK KR",
+            "Arial Unicode MS",
         ],
         (Korean, false) => &[
-            "Malgun Gothic", "Gulim", "Batang", "Apple SD Gothic Neo", "AppleGothic",
-            "Noto Sans CJK KR", "Arial Unicode MS",
+            "Malgun Gothic",
+            "Gulim",
+            "Batang",
+            "Apple SD Gothic Neo",
+            "AppleGothic",
+            "Noto Sans CJK KR",
+            "Arial Unicode MS",
         ],
         (Japanese, true) => &[
-            "MS Mincho", "Yu Mincho", "MS Gothic", "Yu Gothic", "Meiryo",
-            "Hiragino Mincho ProN W3", "Hiragino Kaku Gothic ProN W3",
-            "Noto Serif CJK JP", "Noto Sans CJK JP", "Arial Unicode MS",
+            "MS Mincho",
+            "Yu Mincho",
+            "MS Gothic",
+            "Yu Gothic",
+            "Meiryo",
+            "Hiragino Mincho ProN W3",
+            "Hiragino Kaku Gothic ProN W3",
+            "Noto Serif CJK JP",
+            "Noto Sans CJK JP",
+            "Arial Unicode MS",
         ],
         (Japanese, false) => &[
-            "MS Gothic", "Yu Gothic", "Meiryo", "MS Mincho", "Yu Mincho",
-            "Hiragino Kaku Gothic ProN W3", "Hiragino Sans W3",
-            "Noto Sans CJK JP", "Arial Unicode MS",
+            "MS Gothic",
+            "Yu Gothic",
+            "Meiryo",
+            "MS Mincho",
+            "Yu Mincho",
+            "Hiragino Kaku Gothic ProN W3",
+            "Hiragino Sans W3",
+            "Noto Sans CJK JP",
+            "Arial Unicode MS",
         ],
         (SimplifiedChinese, true) => &[
-            "SimSun", "Microsoft YaHei", "Songti SC", "PingFang SC", "Hiragino Sans GB W3",
-            "Noto Serif CJK SC", "Noto Sans CJK SC", "Arial Unicode MS",
+            "SimSun",
+            "Microsoft YaHei",
+            "Songti SC",
+            "PingFang SC",
+            "Hiragino Sans GB W3",
+            "Noto Serif CJK SC",
+            "Noto Sans CJK SC",
+            "Arial Unicode MS",
         ],
         (SimplifiedChinese, false) => &[
-            "Microsoft YaHei", "SimSun", "PingFang SC", "Hiragino Sans GB W3", "Songti SC",
-            "Noto Sans CJK SC", "Arial Unicode MS",
+            "Microsoft YaHei",
+            "SimSun",
+            "PingFang SC",
+            "Hiragino Sans GB W3",
+            "Songti SC",
+            "Noto Sans CJK SC",
+            "Arial Unicode MS",
         ],
         (TraditionalChinese, true) => &[
-            "PMingLiU", "MingLiU", "Microsoft JhengHei", "Songti TC", "PingFang TC",
-            "Noto Serif CJK TC", "Noto Sans CJK TC", "Arial Unicode MS",
+            "PMingLiU",
+            "MingLiU",
+            "Microsoft JhengHei",
+            "Songti TC",
+            "PingFang TC",
+            "Noto Serif CJK TC",
+            "Noto Sans CJK TC",
+            "Arial Unicode MS",
         ],
         // Word rendered the missing script-family 標楷體 in Microsoft YaHei
         // (taiwanese_education_fraud_ruling), the same face it uses for missing
         // Simplified fonts, so YaHei leads the sans list here too.
         (TraditionalChinese, false) => &[
-            "Microsoft YaHei", "Microsoft JhengHei", "PMingLiU", "MingLiU", "PingFang TC",
-            "Songti TC", "Noto Sans CJK TC", "Arial Unicode MS",
+            "Microsoft YaHei",
+            "Microsoft JhengHei",
+            "PMingLiU",
+            "MingLiU",
+            "PingFang TC",
+            "Songti TC",
+            "Noto Sans CJK TC",
+            "Arial Unicode MS",
         ],
         // Han only. Kanji missing from a Korean face are usually Japanese
         // shinjitai (the reference rescued Batang's gaps with MS Mincho), while
         // SimSun/YaHei cover all 20 902 unified ideographs and catch the rest.
         (Unknown, true) => &[
-            "MS Mincho", "SimSun", "PMingLiU", "Batang", "Songti SC",
-            "Hiragino Mincho ProN W3", "Noto Serif CJK SC", "Noto Sans CJK SC",
+            "MS Mincho",
+            "SimSun",
+            "PMingLiU",
+            "Batang",
+            "Songti SC",
+            "Hiragino Mincho ProN W3",
+            "Noto Serif CJK SC",
+            "Noto Sans CJK SC",
             "Arial Unicode MS",
         ],
         (Unknown, false) => &[
-            "Microsoft YaHei", "MS Gothic", "Malgun Gothic", "PMingLiU", "PingFang SC",
-            "Hiragino Sans GB W3", "Noto Sans CJK SC", "Arial Unicode MS",
+            "Microsoft YaHei",
+            "MS Gothic",
+            "Malgun Gothic",
+            "PMingLiU",
+            "PingFang SC",
+            "Hiragino Sans GB W3",
+            "Noto Sans CJK SC",
+            "Arial Unicode MS",
         ],
     }
 }
@@ -437,7 +546,10 @@ fn glyph_coverage(name: &str, chars: &HashSet<char>) -> usize {
         return 0;
     };
     discovery::probe_face(&path, face_index, |face| {
-        chars.iter().filter(|&&c| face.glyph_index(c).is_some()).count()
+        chars
+            .iter()
+            .filter(|&&c| face.glyph_index(c).is_some())
+            .count()
     })
     .unwrap_or(0)
 }
@@ -505,8 +617,7 @@ pub(crate) fn register_font(
     // Word looks the run's whole name up: "Archivo;sans-serif" has no entry
     // even when "Archivo" has one.
     let table_entry = lookup_font_table(font_table, font_name.trim());
-    let script =
-        classify_cjk_script(primary, table_entry.and_then(|e| e.charset), used_chars);
+    let script = classify_cjk_script(primary, table_entry.and_then(|e| e.charset), used_chars);
     // The declared script, not the sampled text, decides whether this is a CJK
     // slot: an empty Korean paragraph's mark font still resolves to Batang.
     let needs_cjk = script != CjkScript::Unknown || has_cjk_chars(used_chars);
@@ -514,15 +625,16 @@ pub(crate) fn register_font(
     let substituted = std::cell::Cell::new(false);
     // List order, not glyph coverage: Word substitutes the whole run by script and
     // family and rescues single missing glyphs per character (`cjk_rescue_fonts`).
-    let try_list = |label: &str, names: &[&str], tc: &mut dyn FnMut(&str) -> Option<ResolvedFont>| {
-        names.iter().find_map(|&name| {
-            log::debug!("Trying {label} \"{name}\" for \"{primary}\"");
-            let m = tc(name)?;
-            log::info!("Font substitution: {primary} → {label} \"{name}\"");
-            substituted.set(true);
-            Some(m)
-        })
-    };
+    let try_list =
+        |label: &str, names: &[&str], tc: &mut dyn FnMut(&str) -> Option<ResolvedFont>| {
+            names.iter().find_map(|&name| {
+                log::debug!("Trying {label} \"{name}\" for \"{primary}\"");
+                let m = tc(name)?;
+                log::info!("Font substitution: {primary} → {label} \"{name}\"");
+                substituted.set(true);
+                Some(m)
+            })
+        };
     let cjk_fonts = cjk_fallback_fonts(script, serif);
 
     // The fontTable altName only stands in for a missing font: Word draws an
@@ -696,25 +808,52 @@ mod tests {
     #[test]
     fn cjk_script_from_charset_then_name_then_text() {
         let none = HashSet::new();
-        assert_eq!(classify_cjk_script("Whatever", Some(0x80), &none), CjkScript::Japanese);
-        assert_eq!(classify_cjk_script("HY헤드라인M", Some(0x81), &none), CjkScript::Korean);
-        assert_eq!(classify_cjk_script("X", Some(0x86), &none), CjkScript::SimplifiedChinese);
-        assert_eq!(classify_cjk_script("X", Some(0x88), &none), CjkScript::TraditionalChinese);
+        assert_eq!(
+            classify_cjk_script("Whatever", Some(0x80), &none),
+            CjkScript::Japanese
+        );
+        assert_eq!(
+            classify_cjk_script("HY헤드라인M", Some(0x81), &none),
+            CjkScript::Korean
+        );
+        assert_eq!(
+            classify_cjk_script("X", Some(0x86), &none),
+            CjkScript::SimplifiedChinese
+        );
+        assert_eq!(
+            classify_cjk_script("X", Some(0x88), &none),
+            CjkScript::TraditionalChinese
+        );
         // Hangul in the name is a hint by itself.
-        assert_eq!(classify_cjk_script("HY헤드라인M", None, &none), CjkScript::Korean);
+        assert_eq!(
+            classify_cjk_script("HY헤드라인M", None, &none),
+            CjkScript::Korean
+        );
         // Otherwise the text decides; Han alone stays Unknown.
         let kana: HashSet<char> = "表タイトル".chars().collect();
-        assert_eq!(classify_cjk_script("Mystery", None, &kana), CjkScript::Japanese);
+        assert_eq!(
+            classify_cjk_script("Mystery", None, &kana),
+            CjkScript::Japanese
+        );
         let han: HashSet<char> = "発表".chars().collect();
-        assert_eq!(classify_cjk_script("Mystery", None, &han), CjkScript::Unknown);
+        assert_eq!(
+            classify_cjk_script("Mystery", None, &han),
+            CjkScript::Unknown
+        );
     }
 
     #[test]
     fn cjk_fallback_picks_word_face_by_family() {
         // Word substituted the roman-family HY헤드라인M with Batang in the reference.
         assert_eq!(cjk_fallback_fonts(CjkScript::Korean, true)[0], "Batang");
-        assert_eq!(cjk_fallback_fonts(CjkScript::Korean, false)[0], "Malgun Gothic");
-        assert_eq!(cjk_fallback_fonts(CjkScript::Japanese, true)[0], "MS Mincho");
+        assert_eq!(
+            cjk_fallback_fonts(CjkScript::Korean, false)[0],
+            "Malgun Gothic"
+        );
+        assert_eq!(
+            cjk_fallback_fonts(CjkScript::Japanese, true)[0],
+            "MS Mincho"
+        );
         assert_eq!(cjk_fallback_fonts(CjkScript::Unknown, true)[0], "MS Mincho");
     }
 
@@ -725,7 +864,12 @@ mod tests {
             let table: FontTable = entry
                 .map(|(name, family, alt)| {
                     let alt_name = alt.map(Into::into);
-                    let e = crate::model::FontTableEntry { alt_name, family, charset: None, pitch_fixed: false };
+                    let e = crate::model::FontTableEntry {
+                        alt_name,
+                        family,
+                        charset: None,
+                        pitch_fixed: false,
+                    };
                     (name.to_string(), e)
                 })
                 .into_iter()
@@ -737,8 +881,16 @@ mod tests {
             };
             let chars: HashSet<char> = "Ab".chars().collect();
             let entry = register_font(
-                &mut Pdf::new(), run, false, false, "F1".into(), &mut alloc,
-                &EmbeddedFonts::new(), &chars, &table, true,
+                &mut Pdf::new(),
+                run,
+                false,
+                false,
+                "F1".into(),
+                &mut alloc,
+                &EmbeddedFonts::new(),
+                &chars,
+                &table,
+                true,
             );
             let path = entry.font_path.expect("resolved to a file");
             path.file_name().unwrap().to_string_lossy().to_lowercase()
@@ -746,20 +898,47 @@ mod tests {
         use FontFamily::*;
         let aptos = Some("Aptos");
         // The altName only stands in for a missing font.
-        assert_eq!(resolve("Calibri", Some(("Calibri", Swiss, aptos))), "calibri.ttf");
-        assert_eq!(resolve("Zqx Dalt", Some(("Zqx Dalt", Swiss, aptos))), "aptos.ttf");
+        assert_eq!(
+            resolve("Calibri", Some(("Calibri", Swiss, aptos))),
+            "calibri.ttf"
+        );
+        assert_eq!(
+            resolve("Zqx Dalt", Some(("Zqx Dalt", Swiss, aptos))),
+            "aptos.ttf"
+        );
         // No usable altName: Cambria for roman or no entry, Calibri otherwise.
-        assert_eq!(resolve("Zqx Broman", Some(("Zqx Broman", Roman, None))), "cambria.ttc");
-        assert_eq!(resolve("Zqx Bauto", Some(("Zqx Bauto", Auto, Some("sans-serif")))), "calibri.ttf");
+        assert_eq!(
+            resolve("Zqx Broman", Some(("Zqx Broman", Roman, None))),
+            "cambria.ttc"
+        );
+        assert_eq!(
+            resolve("Zqx Bauto", Some(("Zqx Bauto", Auto, Some("sans-serif")))),
+            "calibri.ttf"
+        );
         assert_eq!(resolve("Zqx Alpha", None), "cambria.ttc");
         // A "X;Y" run has no entry even when "X" does.
-        assert_eq!(resolve("Zqx Elist;sans-serif", Some(("Zqx Elist", Auto, None))), "cambria.ttc");
+        assert_eq!(
+            resolve("Zqx Elist;sans-serif", Some(("Zqx Elist", Auto, None))),
+            "cambria.ttc"
+        );
         // Windows' and Word's own name mappings beat the altName.
-        assert_eq!(resolve("Helvetica", Some(("Helvetica", Swiss, aptos))), "arial.ttf");
+        assert_eq!(
+            resolve("Helvetica", Some(("Helvetica", Swiss, aptos))),
+            "arial.ttf"
+        );
         assert_eq!(resolve("Liberation Sans", None), "arial.ttf");
         // A face's full name resolves to its family, not to the missing-font fallback.
-        assert_eq!(resolve("Arial Bold", Some(("Arial Bold", Roman, None))), "arial.ttf");
-        assert_eq!(resolve("Arial Bold", Some(("Arial Bold", Auto, Some("Courier New")))), "courier new.ttf");
+        assert_eq!(
+            resolve("Arial Bold", Some(("Arial Bold", Roman, None))),
+            "arial.ttf"
+        );
+        assert_eq!(
+            resolve(
+                "Arial Bold",
+                Some(("Arial Bold", Auto, Some("Courier New")))
+            ),
+            "courier new.ttf"
+        );
     }
 
     #[test]

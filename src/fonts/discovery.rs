@@ -23,8 +23,15 @@ static MAC_ONLY_FAMILIES: OnceLock<HashSet<String>> = OnceLock::new();
 fn font_family_names(face: &Face) -> (Vec<String>, bool) {
     let mut seen = HashSet::new();
     let mut names = Vec::new();
-    let family = || face.names().into_iter().filter(|n| n.name_id == ttf_parser::name_id::FAMILY);
-    for s in family().filter(|n| n.is_unicode()).filter_map(|n| n.to_string()) {
+    let family = || {
+        face.names()
+            .into_iter()
+            .filter(|n| n.name_id == ttf_parser::name_id::FAMILY)
+    };
+    for s in family()
+        .filter(|n| n.is_unicode())
+        .filter_map(|n| n.to_string())
+    {
         if seen.insert(s.to_lowercase()) {
             names.push(s);
         }
@@ -34,7 +41,9 @@ fn font_family_names(face: &Face) -> (Vec<String>, bool) {
     }
     // ponytail: ASCII-only Mac Roman decode; every such family name seen is ASCII.
     for n in family().filter(|n| {
-        n.platform_id == ttf_parser::PlatformId::Macintosh && n.encoding_id == 0 && n.name.is_ascii()
+        n.platform_id == ttf_parser::PlatformId::Macintosh
+            && n.encoding_id == 0
+            && n.name.is_ascii()
     }) {
         let s = String::from_utf8_lossy(n.name).into_owned();
         if seen.insert(s.to_lowercase()) {
@@ -174,7 +183,11 @@ fn scan_font_dirs() -> FontLookup {
             for file_path in &font_files {
                 if let Some(cached_file) = cache.files.get(file_path) {
                     for face in &cached_file.faces {
-                        let tier = if face.mac_roman_only { &mut mac_roman_index } else { &mut index };
+                        let tier = if face.mac_roman_only {
+                            &mut mac_roman_index
+                        } else {
+                            &mut index
+                        };
                         tier.entry((face.family.to_lowercase(), face.bold, face.italic))
                             .or_insert((file_path.clone(), face.face_index));
                     }
@@ -200,9 +213,15 @@ fn scan_font_dirs() -> FontLookup {
             let face_count = ttf_parser::fonts_in_collection(&data).unwrap_or(1);
             let mut faces = Vec::new();
             for face_idx in 0..face_count {
-                if let Some((families, bold, italic, mac_roman_only)) = read_font_style(&data, face_idx) {
+                if let Some((families, bold, italic, mac_roman_only)) =
+                    read_font_style(&data, face_idx)
+                {
                     for family in families {
-                        let tier = if mac_roman_only { &mut mac_roman_index } else { &mut index };
+                        let tier = if mac_roman_only {
+                            &mut mac_roman_index
+                        } else {
+                            &mut index
+                        };
                         tier.entry((family.to_lowercase(), bold, italic))
                             .or_insert((file_path.clone(), face_idx));
                         faces.push(CachedFace {
@@ -252,7 +271,9 @@ fn get_font_index() -> &'static FontLookup {
 /// which Windows Word, including Mac Word's online PDF export, never has.
 pub(super) fn is_mac_only_family(name: &str) -> bool {
     get_font_index();
-    MAC_ONLY_FAMILIES.get().is_some_and(|s| s.contains(&name.to_lowercase()))
+    MAC_ONLY_FAMILIES
+        .get()
+        .is_some_and(|s| s.contains(&name.to_lowercase()))
 }
 
 /// Parse one face of a font file (memory-mapped, so only the tables touched are read).

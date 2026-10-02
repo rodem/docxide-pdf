@@ -131,7 +131,12 @@ fn text_boundaries_match() {
     let page_mismatches: Vec<String> = results
         .iter()
         .filter(|r| r.tb.ref_pages != r.tb.gen_pages)
-        .map(|r| format!("{} (ref={}, gen={})", r.name, r.tb.ref_pages, r.tb.gen_pages))
+        .map(|r| {
+            format!(
+                "{} (ref={}, gen={})",
+                r.name, r.tb.ref_pages, r.tb.gen_pages
+            )
+        })
         .collect();
     if !page_mismatches.is_empty() {
         println!("  PAGE COUNT MISMATCH: {}", page_mismatches.join(", "));

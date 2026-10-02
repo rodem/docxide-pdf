@@ -48,9 +48,7 @@ impl Default for DocumentSettings {
     }
 }
 
-pub(super) fn parse_settings<R: Read + Seek>(
-    zip: &mut zip::ZipArchive<R>,
-) -> DocumentSettings {
+pub(super) fn parse_settings<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> DocumentSettings {
     let Some(xml_text) = read_zip_text(zip, "word/settings.xml") else {
         return DocumentSettings::default();
     };

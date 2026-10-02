@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use pdf_writer::types::TextRenderingMode;
 use pdf_writer::Content;
+use pdf_writer::types::TextRenderingMode;
 
 use crate::fonts::FontEntry;
 use crate::geometry::{self, ResolvedCommand};
@@ -76,7 +76,8 @@ impl ttf_parser::OutlineBuilder for GlyphOutlineCollector {
         self.commands.push(GlyphCommand::QuadTo(x1, y1, x, y));
     }
     fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
-        self.commands.push(GlyphCommand::CubicTo(x1, y1, x2, y2, x, y));
+        self.commands
+            .push(GlyphCommand::CubicTo(x1, y1, x2, y2, x, y));
     }
     fn close(&mut self) {
         self.commands.push(GlyphCommand::Close);
@@ -283,7 +284,17 @@ fn fill_and_stroke_glyphs(
 
 /// Evaluate a cubic bezier at parameter `t` given start point `(cx, cy)` and
 /// control/end points `(x1, y1, x2, y2, x, y)`.
-fn eval_cubic(cx: f64, cy: f64, x1: f64, y1: f64, x2: f64, y2: f64, x: f64, y: f64, t: f64) -> (f64, f64) {
+fn eval_cubic(
+    cx: f64,
+    cy: f64,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    x: f64,
+    y: f64,
+    t: f64,
+) -> (f64, f64) {
     let mt = 1.0 - t;
     let mt2 = mt * mt;
     let mt3 = mt2 * mt;
@@ -323,7 +334,12 @@ impl SampledBoundary {
                     points.push((cx, cy));
                 }
                 ResolvedCommand::CubicTo {
-                    x1, y1, x2, y2, x, y,
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    x,
+                    y,
                 } => {
                     let steps = 20;
                     for i in 1..=steps {
@@ -494,8 +510,15 @@ pub(super) fn render_warped_textbox(
         let gx = cursor_x + gx_font * scale;
         let gy = gy_font * scale - descender;
 
-        let (wx, wy) =
-            warp_point(gx, gy, text_w, text_h, boundary_w, &top_boundary, &bottom_boundary);
+        let (wx, wy) = warp_point(
+            gx,
+            gy,
+            text_w,
+            text_h,
+            boundary_w,
+            &top_boundary,
+            &bottom_boundary,
+        );
 
         let pdf_x = (tb_x as f64 + x_offset + wx) as f32;
         let pdf_y = (tb_y_top as f64 - envelope_top + wy) as f32;
@@ -552,7 +575,12 @@ impl ArcLengthPath {
                     samples.push((cx, cy, cum_len));
                 }
                 ResolvedCommand::CubicTo {
-                    x1, y1, x2, y2, x, y,
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    x,
+                    y,
                 } => {
                     let steps = 32;
                     for i in 1..=steps {
