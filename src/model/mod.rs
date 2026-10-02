@@ -135,6 +135,13 @@ pub struct SectionProperties {
     pub endnote_num_fmt: Option<String>,
 }
 
+impl SectionProperties {
+    /// Width of the text area between the side margins.
+    pub fn text_width(&self) -> f32 {
+        self.page_width - self.margin_left - self.margin_right
+    }
+}
+
 /// §17.6.8 `w:lnNumType` — line numbers shown in the margin (legal/contract docs).
 #[derive(Clone, Copy)]
 pub struct LineNumbering {
@@ -290,6 +297,13 @@ pub enum WrapType {
     Tight,
     Through,
     TopAndBottom,
+}
+
+impl WrapType {
+    /// Text flows beside the object (square, tight or through wrapping).
+    pub fn wraps_beside(self) -> bool {
+        matches!(self, WrapType::Square | WrapType::Tight | WrapType::Through)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

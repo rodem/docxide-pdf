@@ -43,7 +43,9 @@ use header_footer::{
     resolve_footer_for_page, resolve_header_for_page,
 };
 pub(super) use helpers::resolve_line_h;
-use helpers::{drops_contextual_spacing, joins_border_group};
+use helpers::{
+    collect_paras, drops_contextual_spacing, joins_border_group, para_runs_with_textboxes,
+};
 use images::{EffectXObjs, EmbeddedImages, embed_all_images};
 use layout::{
     CjkLayout, DualRegion, LineNumberArg, LinkAnnotation, LinkTagger, TextLine,
@@ -52,7 +54,7 @@ use layout::{
     picture_line_bottom, render_paragraph_lines, run_line_metrics, size_lines_by_own_runs,
     tallest_glyph_run_metrics, tallest_run_metrics,
 };
-use list_label::{collect_paras, label_font_key, para_runs_with_textboxes, render_list_label};
+use list_label::{label_font_key, render_list_label};
 use positioning::{
     render_connector, render_floating_images, render_foreground_floating_images_deferred,
     resolve_fi_x, wraps_in_column,
@@ -690,12 +692,12 @@ impl PageBuilder {
     }
 
     /// Start `node`'s content on the current page (see `tagging`).
-    pub(super) fn begin_tag(&mut self, node: usize) {
+    fn begin_tag(&mut self, node: usize) {
         let page = self.all_contents.len();
         self.tags.begin(&mut self.content, page, node);
     }
 
-    pub(super) fn end_tag(&mut self) {
+    fn end_tag(&mut self) {
         tagging::Tags::end(&mut self.content);
     }
 
@@ -1130,7 +1132,7 @@ fn compute_bookmark_positions(
                 SectionBreakType::Continuous => {}
             }
         }
-        let text_width = sp.page_width - sp.margin_left - sp.margin_right;
+        let text_width = sp.text_width();
         let blocks = &section.blocks;
         for (bi, block) in blocks.iter().enumerate() {
             match block {
@@ -1621,12 +1623,7 @@ fn render_paragraph_block(
     let extra_float_zones: Vec<FloatZone> = if !text_empty {
         para.floating_images
             .iter()
-            .filter(|fi| {
-                matches!(
-                    fi.wrap_type,
-                    WrapType::Square | WrapType::Tight | WrapType::Through
-                )
-            })
+            .filter(|fi| fi.wrap_type.wraps_beside())
             .skip(1)
             .map(|fi| {
                 let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
@@ -1830,12 +1827,7 @@ fn render_paragraph_block(
         let slot_top = state.pb.slot_top;
         para.floating_images
             .iter()
-            .filter(|fi| {
-                matches!(
-                    fi.wrap_type,
-                    WrapType::Square | WrapType::Tight | WrapType::Through
-                )
-            })
+            .filter(|fi| fi.wrap_type.wraps_beside())
             .filter_map(|fi| {
                 let fi_y_top = resolve_fi_y_top(fi, sp, slot_top);
                 let fi_y_bottom = fi_y_top - fi.image.display_height;
@@ -2043,12 +2035,7 @@ fn render_paragraph_block(
         if reserve {
             // Wide images block all text — add to content_h
             content_h = content_h.max(fi_h);
-        } else if fi.v_relative_from == VRelativeFrom::Paragraph
-            && matches!(
-                fi.wrap_type,
-                WrapType::Square | WrapType::Tight | WrapType::Through
-            )
-        {
+        } else if fi.v_relative_from == VRelativeFrom::Paragraph && fi.wrap_type.wraps_beside() {
             // Paragraph-relative wrapping images: track overflow
             // for page-break check only (text wraps beside them).
             float_overflow_h = float_overflow_h.max(fi_h);
@@ -3150,7 +3137,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         }
 
         cur_sp = sp;
-        let text_width = sp.page_width - sp.margin_left - sp.margin_right;
+        let text_width = sp.text_width();
 
         // Column geometry: vec of (x_offset, width) for each column
         let col_config = sp.columns.as_ref();
@@ -3422,18 +3409,17 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
     // Phase 2c: render footnotes at page bottom (above footer). Endnotes
     // (default pos=docEnd) flow inline after the last body block on the final
-    // page (see render_endnotes_inline), NOT pinned to the bottom.
+    // page (see render_endnotes_inline), NOT pinned to the bottom: their top is
+    // the cursor below the last paragraph and its space_after, then the same
+    // 12pt separator gap Word leaves above the note separator.
     let last_page_idx = state.pb.all_contents.len().saturating_sub(1);
-    // Endnotes (pos=docEnd) flow inline right after the last body block on the
-    // final page; capture that cursor (below the last paragraph + its space_after,
-    // then the same 12pt separator gap Word leaves above the note separator).
     let endnote_top_y = state.pb.slot_top - state.prev_space_after - 12.0;
     for (page_idx, content) in state.pb.all_contents.iter_mut().enumerate() {
         let (hf_si, is_first, si) = state.pb.page_section_indices[page_idx];
         let sp = &doc.sections[hf_si].properties;
         let eff_bottom = compute_effective_margin_bottom(sp, is_first, &ctx);
         let content_sp = &doc.sections[si].properties;
-        let text_width = content_sp.page_width - content_sp.margin_left - content_sp.margin_right;
+        let text_width = content_sp.text_width();
         let bottom = eff_bottom;
         let tops = render_page_footnotes(
             content,

@@ -48,7 +48,7 @@ fn map_symbol_pua(text: &str) -> Option<String> {
     )
 }
 
-pub(super) fn label_for_paragraph<'a>(
+fn label_for_paragraph<'a>(
     para: &Paragraph,
     seen_fonts: &'a HashMap<String, FontEntry>,
 ) -> (&'a str, Vec<u8>) {
@@ -112,24 +112,4 @@ pub(super) fn render_list_label(
     if label_color.is_some() {
         content.set_fill_gray(0.0);
     }
-}
-
-pub(super) fn para_runs_with_textboxes(para: &Paragraph) -> Vec<&Run> {
-    let mut out: Vec<&Run> = para.runs.iter().collect();
-    for tb in &para.textboxes {
-        for tp in &tb.paragraphs {
-            out.extend(para_runs_with_textboxes(tp));
-        }
-    }
-    out
-}
-
-pub(super) fn collect_paras(para: &Paragraph) -> Vec<&Paragraph> {
-    let mut out = vec![para];
-    for tb in &para.textboxes {
-        for tp in &tb.paragraphs {
-            out.extend(collect_paras(tp));
-        }
-    }
-    out
 }

@@ -893,44 +893,20 @@ pub(super) fn embed_all_images(
             for row in &table.rows {
                 for cell in &row.cells {
                     for para in cell.all_paragraphs() {
-                        if let Some(img) = &para.image {
-                            let key = std::sync::Arc::as_ptr(&img.data) as usize;
-                            if let std::collections::hash_map::Entry::Vacant(e) =
-                                table_cell_image_names.entry(key)
-                            {
-                                let name = embed_single_image(img, &mut image_xobjects, pdf, alloc);
-                                e.insert(name.clone());
-                                let fx = embed_image_effects(
-                                    img,
-                                    &mut image_xobjects,
-                                    &mut effect_counter,
-                                    pdf,
-                                    alloc,
-                                );
-                                if fx.has_any() {
-                                    effect_table_names.insert(key, fx);
-                                }
-                            }
-                        }
-                        for fi in &para.floating_images {
-                            let key = std::sync::Arc::as_ptr(&fi.image.data) as usize;
-                            if let std::collections::hash_map::Entry::Vacant(e) =
-                                table_cell_image_names.entry(key)
-                            {
-                                let name =
-                                    embed_single_image(&fi.image, &mut image_xobjects, pdf, alloc);
-                                e.insert(name.clone());
-                                let fx = embed_image_effects(
-                                    &fi.image,
-                                    &mut image_xobjects,
-                                    &mut effect_counter,
-                                    pdf,
-                                    alloc,
-                                );
-                                if fx.has_any() {
-                                    effect_table_names.insert(key, fx);
-                                }
-                            }
+                        for img in para
+                            .image
+                            .iter()
+                            .chain(para.floating_images.iter().map(|fi| &fi.image))
+                        {
+                            embed_table_image(
+                                img,
+                                &mut table_cell_image_names,
+                                &mut effect_table_names,
+                                &mut image_xobjects,
+                                &mut effect_counter,
+                                pdf,
+                                alloc,
+                            );
                         }
                     }
                 }
@@ -980,10 +956,13 @@ pub(super) fn embed_all_images(
                 for diagram in &para.smartart {
                     for shape in &diagram.shapes {
                         if let Some(ref img) = shape.image_fill {
-                            let key = std::sync::Arc::as_ptr(&img.data) as usize;
-                            smartart_image_names.entry(key).or_insert_with(|| {
-                                embed_single_image(img, &mut image_xobjects, pdf, alloc)
-                            });
+                            embed_keyed_image(
+                                img,
+                                &mut smartart_image_names,
+                                &mut image_xobjects,
+                                pdf,
+                                alloc,
+                            );
                         }
                     }
                 }
@@ -1031,6 +1010,7 @@ fn push_block_textboxes<'a>(block: &'a Block, out: &mut Vec<&'a Textbox>) {
     }
 }
 
+/// Embed a picture once per data `Arc` (see `EmbeddedImage::key`).
 fn embed_keyed_image(
     img: &EmbeddedImage,
     image_names: &mut HashMap<usize, String>,
@@ -1038,10 +1018,28 @@ fn embed_keyed_image(
     pdf: &mut Pdf,
     alloc: &mut impl FnMut() -> Ref,
 ) {
-    let key = std::sync::Arc::as_ptr(&img.data) as usize;
     image_names
-        .entry(key)
+        .entry(img.key())
         .or_insert_with(|| embed_single_image(img, image_xobjects, pdf, alloc));
+}
+
+/// `embed_keyed_image` for a table-cell picture, with its effects.
+fn embed_table_image(
+    img: &EmbeddedImage,
+    image_names: &mut HashMap<usize, String>,
+    effect_names: &mut HashMap<usize, EffectXObjs>,
+    image_xobjects: &mut Vec<(String, Ref)>,
+    effect_counter: &mut usize,
+    pdf: &mut Pdf,
+    alloc: &mut impl FnMut() -> Ref,
+) {
+    if let std::collections::hash_map::Entry::Vacant(e) = image_names.entry(img.key()) {
+        e.insert(embed_single_image(img, image_xobjects, pdf, alloc));
+        let fx = embed_image_effects(img, image_xobjects, effect_counter, pdf, alloc);
+        if fx.has_any() {
+            effect_names.insert(img.key(), fx);
+        }
+    }
 }
 
 fn embed_textbox_images(

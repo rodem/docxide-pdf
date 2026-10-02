@@ -2236,6 +2236,13 @@ pub(super) fn lines_height(lines: &[TextLine], line_pitch: f32, metrics: (f32, f
     }
 }
 
+/// Fake a bold face by stroking the glyph outlines along with the fill.
+fn begin_synthetic_bold(content: &mut Content, chunk: &WordChunk) {
+    content.set_line_width(chunk.font_size * 0.02);
+    stroke_color_or_black(content, chunk.color);
+    content.set_text_rendering_mode(TextRenderingMode::FillStroke);
+}
+
 /// winDescent as a fraction of the font size: the line-height ratio less the
 /// ascender ratio (identity used throughout), 0.25 when the font is unknown.
 pub(super) fn descender_ratio(lhr: Option<f32>, ar: Option<f32>) -> f32 {
@@ -2699,17 +2706,13 @@ pub(super) fn render_paragraph_lines(
                     super::wordart::reset_text_outline(content);
                     has_text_outline = false;
                     if cur_synthetic_bold {
-                        content.set_line_width(chunk.font_size * 0.02);
-                        stroke_color_or_black(content, chunk.color);
-                        content.set_text_rendering_mode(TextRenderingMode::FillStroke);
+                        begin_synthetic_bold(content, chunk);
                     }
                 }
 
                 if !has_text_outline && chunk.synthetic_bold != cur_synthetic_bold {
                     if chunk.synthetic_bold {
-                        content.set_line_width(chunk.font_size * 0.02);
-                        stroke_color_or_black(content, chunk.color);
-                        content.set_text_rendering_mode(TextRenderingMode::FillStroke);
+                        begin_synthetic_bold(content, chunk);
                     } else {
                         content.set_text_rendering_mode(TextRenderingMode::Fill);
                     }
@@ -2763,6 +2766,23 @@ pub(super) fn render_paragraph_lines(
 
                 if let (Some(primary), Some(fallback)) = (primary_entry, fallback_entry) {
                     let fallback_gids = fallback.char_to_gid.as_ref();
+                    // A segment of the chunk in its own font, or in the fallback
+                    // font when its characters are missing from the primary one.
+                    let show_seg = |content: &mut Content, seg: &[char], in_fallback: bool| {
+                        let seg: String = seg.iter().collect();
+                        if in_fallback {
+                            if let Some(map) = fallback_gids {
+                                content
+                                    .set_font(Name(fallback.pdf_name.as_bytes()), chunk.font_size);
+                                content.show(Str(&encode_as_gids(&seg, map)));
+                                content.set_font(Name(chunk.pdf_font.as_bytes()), chunk.font_size);
+                            }
+                        } else {
+                            let bytes =
+                                encode_text_for_pdf(&seg, &chunk.pdf_font, &pdf_name_to_entry);
+                            content.show(Str(&bytes));
+                        }
+                    };
                     // Split text into runs of primary vs fallback chars
                     let mut seg_start = 0;
                     let mut in_fallback = false;
@@ -2772,37 +2792,12 @@ pub(super) fn render_paragraph_lines(
                         if i == 0 {
                             in_fallback = needs_fb;
                         } else if needs_fb != in_fallback {
-                            let seg: String = chars[seg_start..i].iter().collect();
-                            if in_fallback {
-                                if let Some(map) = fallback_gids {
-                                    let fb_name = &fallback.pdf_name;
-                                    content.set_font(Name(fb_name.as_bytes()), chunk.font_size);
-                                    content.show(Str(&encode_as_gids(&seg, map)));
-                                    content
-                                        .set_font(Name(chunk.pdf_font.as_bytes()), chunk.font_size);
-                                }
-                            } else {
-                                let bytes =
-                                    encode_text_for_pdf(&seg, &chunk.pdf_font, &pdf_name_to_entry);
-                                content.show(Str(&bytes));
-                            }
+                            show_seg(content, &chars[seg_start..i], in_fallback);
                             seg_start = i;
                             in_fallback = needs_fb;
                         }
                     }
-                    // Flush last segment
-                    let seg: String = chars[seg_start..].iter().collect();
-                    if in_fallback {
-                        if let Some(map) = fallback_gids {
-                            let fb_name = &fallback.pdf_name;
-                            content.set_font(Name(fb_name.as_bytes()), chunk.font_size);
-                            content.show(Str(&encode_as_gids(&seg, map)));
-                            content.set_font(Name(chunk.pdf_font.as_bytes()), chunk.font_size);
-                        }
-                    } else {
-                        let bytes = encode_text_for_pdf(&seg, &chunk.pdf_font, &pdf_name_to_entry);
-                        content.show(Str(&bytes));
-                    }
+                    show_seg(content, &chars[seg_start..], in_fallback);
                     if boundary_space {
                         content.show(Str(&encode_text_for_pdf(
                             " ",
@@ -2823,8 +2818,8 @@ pub(super) fn render_paragraph_lines(
                     content.show(Str(&text_bytes));
                 };
 
+                let thick = (chunk.font_size * 0.05).max(0.5);
                 if chunk.underline {
-                    let thick = (chunk.font_size * 0.05).max(0.5);
                     let ul_y = if chunk.hyperlink_url.is_some() {
                         y - chunk.font_size * 0.08
                     } else {
@@ -2845,12 +2840,10 @@ pub(super) fn render_paragraph_lines(
                     }
                 }
                 if chunk.strikethrough {
-                    let thick = (chunk.font_size * 0.05).max(0.5);
                     let st_y = y + chunk.font_size * 0.3;
                     decorations.push((x, st_y, chunk.width, thick, chunk.color));
                 }
                 if chunk.dstrike {
-                    let thick = (chunk.font_size * 0.05).max(0.5);
                     let gap = thick * 1.5;
                     let mid_y = y + chunk.font_size * 0.3;
                     decorations.push((x, mid_y - gap / 2.0, chunk.width, thick, chunk.color));

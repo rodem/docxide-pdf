@@ -60,11 +60,7 @@ pub(super) fn wraps_in_column(
     col_w: f32,
     text_width: f32,
 ) -> bool {
-    use crate::model::WrapType;
-    matches!(
-        fi.wrap_type,
-        WrapType::Square | WrapType::Tight | WrapType::Through
-    ) && {
+    fi.wrap_type.wraps_beside() && {
         let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
         fi_x + fi.image.display_width + fi.dist_right > col_x && fi_x - fi.dist_left < col_x + col_w
     }

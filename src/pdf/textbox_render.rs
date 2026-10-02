@@ -439,8 +439,7 @@ pub(super) fn render_textbox_paragraphs(
         };
 
         if let Some(img) = textbox_para_block_image(tp) {
-            let key = std::sync::Arc::as_ptr(&img.data) as usize;
-            if let Some(pdf_name) = ctx.textbox_image_names.get(&key) {
+            if let Some(pdf_name) = ctx.textbox_image_names.get(&img.key()) {
                 let img_x = content_x
                     + tp.indent_left
                     + x_offset
@@ -472,9 +471,8 @@ pub(super) fn render_textbox_paragraphs(
                     .enumerate()
                     .filter_map(|(ri, run)| {
                         let img = run.inline_image.as_ref()?;
-                        let key = std::sync::Arc::as_ptr(&img.data) as usize;
                         ctx.textbox_image_names
-                            .get(&key)
+                            .get(&img.key())
                             .map(|name| (ri, name.clone()))
                     })
                     .collect()
