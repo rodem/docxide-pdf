@@ -2099,7 +2099,12 @@ fn render_paragraph_block(
     // text (ascent + descent) must fit inside the content
     // area.  Compute the excess leading so the page-break
     // check can tolerate it.
-    let last_line_lead = if !lines.is_empty()
+    // A lone paragraph mark is a last line too: Word keeps an empty 1.15-spaced
+    // Calibri paragraph whose leading overhangs the margin by 0.8pt
+    // (sao_paulo_procurement_contract p2) and an empty 1.5-spaced Arial one
+    // (czech_wastewater_discharge_permit p1).
+    let mark_only = text_empty && !para.paragraph_mark_vanish && para.content_height <= 0.0;
+    let last_line_lead = if (!lines.is_empty() || mark_only)
         && para.image.is_none()
         && para.inline_chart.is_none()
         && para.smartart.is_empty()
