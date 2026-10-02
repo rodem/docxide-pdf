@@ -3,7 +3,7 @@
 # requires-python = ">=3.9"
 # dependencies = []
 # ///
-"""Download random DOCX files, name them with Claude, and place in tests/fixtures/new/.
+"""Download random DOCX files, name them with Claude, and place in tests/fixtures/scraped/.
 
 Usage:
     uv run tools/add_new_cases.py 10          # download, name, and convert 10 new cases
@@ -32,7 +32,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-NEW_DIR = PROJECT_ROOT / "tests" / "fixtures" / "new"
+NEW_DIR = PROJECT_ROOT / "tests" / "fixtures" / "scraped"
 DOWNLOAD_DIR = PROJECT_ROOT / "downloads"
 MANIFEST = PROJECT_ROOT.parent / "docx-corpus" / "manifest.txt"
 

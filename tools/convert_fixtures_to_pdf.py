@@ -6,7 +6,7 @@
 """Convert input.docx → reference.pdf for fixture directories that lack a reference.pdf.
 
 Usage:
-    uv run tools/convert_fixtures_to_pdf.py tests/fixtures/new
+    uv run tools/convert_fixtures_to_pdf.py tests/fixtures/scraped
     uv run tools/convert_fixtures_to_pdf.py --file tests/fixtures/cases/case1
     uv run tools/convert_fixtures_to_pdf.py --file path/to/some.docx
 """

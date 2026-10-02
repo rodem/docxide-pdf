@@ -3,7 +3,7 @@
 # The Word fonts are not in this public repo; they come from the private sverrejb/docxide-pdf-assets repo,
 # checked out with a deploy key:
 #   assets/fonts/                           -> fonts/                   (engine_compare.py passes it as DOCXSIDE_FONTS)
-#   assets/fixtures/{scraped,new,samples}/  -> tests/fixtures/<group>/  (optional real-world corpus; only tracked
+#   assets/fixtures/{scraped,samples}/      -> tests/fixtures/<group>/  (optional real-world corpus; only tracked
 #                                                                         cases are compared when absent)
 # Deploy key setup (public half on the assets repo, private half as a secret here):
 #   ssh-keygen -t ed25519 -N "" -f assets_key -C docxide-pdf-ci
@@ -59,7 +59,7 @@ jobs:
       - name: Link private assets
         run: |
           ln -s "$PWD/assets/fonts" fonts
-          for g in scraped new samples; do [ ! -d "assets/fixtures/$g" ] || ln -s "$PWD/assets/fixtures/$g" "tests/fixtures/$g"; done
+          for g in scraped samples; do [ ! -d "assets/fixtures/$g" ] || ln -s "$PWD/assets/fixtures/$g" "tests/fixtures/$g"; done
           mkdir -p ~/.local/share && ln -s "$PWD/assets/fonts" ~/.local/share/fonts && fc-cache -f   # LibreOffice sees them via fontconfig
           python3 tools/restore_mtime.py . && python3 tools/restore_mtime.py assets
       - uses: dtolnay/rust-toolchain@stable

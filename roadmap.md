@@ -46,7 +46,7 @@ a Title in 157/174, TH without `/Scope`, Figure `/Alt` copied verbatim from
 
 **Deferred: 48 untagged references** are macOS Quartz print-path PDFs (not
 the accessibility export README.md claims) and score N/A until re-exported:
-cases/case17 case18 case19 case20 case36 case63 case64; new/alfies_arc_adult_safeguarding_policy
+cases/case17 case18 case19 case20 case36 case63 case64; scraped/alfies_arc_adult_safeguarding_policy
 alpharetta_school_governance_council americas_counter_terrorism_agenda
 arizona_physical_education_standards bosch_software_ai_announcement
 czech_census_2021_instructions dutch_council_member_resignation
@@ -762,10 +762,10 @@ a cluster of cases, i.e. we get the *structure* wrong, not just glyph placement:
 | cases/case13 (205 pp) | 8/21/1 | 46/90/100 |
 | scraped/brazilian_logistics_study | 17/30/16 | 54/81/93 |
 | scraped/russian_sports_ranking_decree | 10/20/42 | 43/89/100 |
-| new/candidate_reference_check_form | 21/48/23 | 81/96/62 |
-| new/family_kinship_lesson_plan | 23/39/32 | 58/87/94 |
-| new/slovak_pedagogical_practice_agreement | 14/38/14 | 24/86/100 |
-| new/school_meal_assistance_faq | 6/17/35 | 19/83/100 |
+| scraped/candidate_reference_check_form | 21/48/23 | 81/96/62 |
+| scraped/family_kinship_lesson_plan | 23/39/32 | 58/87/94 |
+| scraped/slovak_pedagogical_practice_agreement | 14/38/14 | 24/86/100 |
+| scraped/school_meal_assistance_faq | 6/17/35 | 19/83/100 |
 
 TB near 0 with LO at 100 means our line breaks or pagination diverge from page
 one onward. These are the highest-value targets in the corpus; open
@@ -1233,7 +1233,7 @@ Table conditional formatting (firstRow, lastRow, firstCol, lastCol, banded rows/
 
 Our `auto_fit_columns` uses `gridCol` widths from `tblGrid`, ignoring the specified `tblW` when `type="dxa"`. Word treats `tblW` as the authoritative total width and scales/caps columns to fit. This causes tables to render at full page width when python-docx (or other generators) emit oversized `gridCol` values alongside a smaller `tblW`.
 
-**Verified empty in current corpus**: a sweep of all `tests/fixtures/scraped/*` and `tests/fixtures/new/*` documents found zero tables where `gridCol` total exceeds the `tblW` value (tolerance 100 twips). The bug is real per OOXML, but no fixture triggers it — implementing this clamp moves zero scores. Park until a real-world fixture exhibits the mismatch.
+**Verified empty in current corpus**: a sweep of all `tests/fixtures/scraped/*` documents found zero tables where `gridCol` total exceeds the `tblW` value (tolerance 100 twips). The bug is real per OOXML, but no fixture triggers it — implementing this clamp moves zero scores. Park until a real-world fixture exhibits the mismatch.
 
 ### Percent-based widths: `tcW`/`tblW` `type="pct"` (PARTIALLY DONE 2026-06)
 
@@ -1485,7 +1485,7 @@ Run `./tools/target/debug/analyze-fixtures --failing` for current breakdown.
 
 ## Test Harness: Surface Conversion Panics Loudly (TODO — HIGH PRIORITY, found 2026-06)
 
-A library panic went unnoticed for an unknown number of runs: `new/construction_bathroom_accessories_spec` panicked in `cell_span_width` on every conversion, but the suite still reported "134 passed" with exit code 0. Three gaps compounded:
+A library panic went unnoticed for an unknown number of runs: `scraped/construction_bathroom_accessories_spec` panicked in `cell_span_width` on every conversion, but the suite still reported "134 passed" with exit code 0. Three gaps compounded:
 
 1. `tests/visual_comparison.rs` catches per-case panics and emits `[SKIP] <case>: conversion panicked` — visible only in `--verbose` output; the case silently gets no score, so the compact report's "N scored, N unchanged" looks green.
 2. `run-tests.sh` greps `thread.*panicked` into a "Panics:" section, but the exit code stays 0 — nothing fails.
@@ -1493,7 +1493,7 @@ A library panic went unnoticed for an unknown number of runs: `new/construction_
 
 Fixes:
 - `run-tests.sh`: exit non-zero when the Panics section is non-empty.
-- Harness/compact report: count panicked cases as failures and list them by name (`PANIC: new/construction_bat..`) in the compact output.
+- Harness/compact report: count panicked cases as failures and list them by name (`PANIC: scraped/construction_bat..`) in the compact output.
 - Name conversion threads after the case (`std::thread::Builder::new().name(case.clone())`) so panic messages self-identify.
 
 ## Test Corpus Expansion

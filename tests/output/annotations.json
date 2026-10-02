@@ -3,7 +3,7 @@
   "annotations": [
     {
       "id": 208,
-      "case": "new/irish_school_enrollment_form",
+      "case": "scraped/irish_school_enrollment_form",
       "page": 0,
       "source": "Generated",
       "x_pt": 50.0,
@@ -58,7 +58,7 @@
     },
     {
       "id": 93,
-      "case": "new/czech_works_contract_proposal",
+      "case": "scraped/czech_works_contract_proposal",
       "page": 0,
       "source": "Generated",
       "x_pt": 539.4887,
@@ -113,7 +113,7 @@
     },
     {
       "id": 124,
-      "case": "new/english_town_council_report",
+      "case": "scraped/english_town_council_report",
       "page": 2,
       "source": "Generated",
       "x_pt": 75.68638,
@@ -124,7 +124,7 @@
     },
     {
       "id": 133,
-      "case": "new/master_thesis_learning_agreement",
+      "case": "scraped/master_thesis_learning_agreement",
       "page": 1,
       "source": "Generated",
       "x_pt": 121.24737,
@@ -146,7 +146,7 @@
     },
     {
       "id": 158,
-      "case": "new/bosch_software_ai_announcement",
+      "case": "scraped/bosch_software_ai_announcement",
       "page": 0,
       "source": "Generated",
       "x_pt": 74.63493,
@@ -157,7 +157,7 @@
     },
     {
       "id": 167,
-      "case": "new/japanese_land_development_sign_form",
+      "case": "scraped/japanese_land_development_sign_form",
       "page": 0,
       "source": "Generated",
       "x_pt": 191.0586,
@@ -168,7 +168,7 @@
     },
     {
       "id": 185,
-      "case": "new/erasmus_plus_staff_mobility_agreement",
+      "case": "scraped/erasmus_plus_staff_mobility_agreement",
       "page": 2,
       "source": "Generated",
       "x_pt": 189.81116,
@@ -179,7 +179,7 @@
     },
     {
       "id": 186,
-      "case": "new/alfies_arc_adult_safeguarding_policy",
+      "case": "scraped/alfies_arc_adult_safeguarding_policy",
       "page": 0,
       "source": "Generated",
       "x_pt": 462.30698,
@@ -190,7 +190,7 @@
     },
     {
       "id": 190,
-      "case": "new/isla_language_lesson_plan",
+      "case": "scraped/isla_language_lesson_plan",
       "page": 4,
       "source": "Generated",
       "x_pt": 141.18594,
@@ -212,7 +212,7 @@
     },
     {
       "id": 195,
-      "case": "new/bosch_software_ai_announcement",
+      "case": "scraped/bosch_software_ai_announcement",
       "page": 0,
       "source": "Generated",
       "x_pt": 70.719734,
@@ -234,7 +234,7 @@
     },
     {
       "id": 201,
-      "case": "new/pendulum_mechanics_oscillation_lab",
+      "case": "scraped/pendulum_mechanics_oscillation_lab",
       "page": 1,
       "source": "Generated",
       "x_pt": 502.55814,
@@ -278,7 +278,7 @@
     },
     {
       "id": 210,
-      "case": "new/japanese_land_development_sign_form",
+      "case": "scraped/japanese_land_development_sign_form",
       "page": 0,
       "source": "Generated",
       "x_pt": 55.50664,
@@ -289,7 +289,7 @@
     },
     {
       "id": 211,
-      "case": "new/japanese_land_development_sign_form",
+      "case": "scraped/japanese_land_development_sign_form",
       "page": 0,
       "source": "Generated",
       "x_pt": 247.92374,
@@ -300,7 +300,7 @@
     },
     {
       "id": 212,
-      "case": "new/slovak_pedagogical_practice_agreement",
+      "case": "scraped/slovak_pedagogical_practice_agreement",
       "page": 0,
       "source": "Generated",
       "x_pt": 321.85455,
@@ -311,7 +311,7 @@
     },
     {
       "id": 213,
-      "case": "new/slovak_pedagogical_practice_agreement",
+      "case": "scraped/slovak_pedagogical_practice_agreement",
       "page": 0,
       "source": "Generated",
       "x_pt": 152.18144,
@@ -322,7 +322,7 @@
     },
     {
       "id": 214,
-      "case": "new/chinese_student_union_nomination_form",
+      "case": "scraped/chinese_student_union_nomination_form",
       "page": 0,
       "source": "Generated",
       "x_pt": 380.15063,
@@ -333,7 +333,7 @@
     },
     {
       "id": 215,
-      "case": "new/romanian_quality_evaluation_strategy",
+      "case": "scraped/romanian_quality_evaluation_strategy",
       "page": 10,
       "source": "Generated",
       "x_pt": 324.3827,
@@ -344,7 +344,7 @@
     },
     {
       "id": 216,
-      "case": "new/romanian_quality_evaluation_strategy",
+      "case": "scraped/romanian_quality_evaluation_strategy",
       "page": 10,
       "source": "Generated",
       "x_pt": 261.07718,
@@ -355,7 +355,7 @@
     },
     {
       "id": 217,
-      "case": "new/romanian_quality_evaluation_strategy",
+      "case": "scraped/romanian_quality_evaluation_strategy",
       "page": 9,
       "source": "Generated",
       "x_pt": 249.64117,
@@ -377,7 +377,7 @@
     },
     {
       "id": 219,
-      "case": "new/chinese_student_union_nomination_form",
+      "case": "scraped/chinese_student_union_nomination_form",
       "page": 0,
       "source": "Generated",
       "x_pt": 286.34097,
@@ -388,7 +388,7 @@
     },
     {
       "id": 220,
-      "case": "new/english_town_council_report",
+      "case": "scraped/english_town_council_report",
       "page": 5,
       "source": "Generated",
       "x_pt": 193.96237,
@@ -399,7 +399,7 @@
     },
     {
       "id": 221,
-      "case": "new/environmental_law_clinic_china",
+      "case": "scraped/environmental_law_clinic_china",
       "page": 2,
       "source": "Generated",
       "x_pt": 138.96144,
@@ -410,7 +410,7 @@
     },
     {
       "id": 222,
-      "case": "new/isla_language_lesson_plan",
+      "case": "scraped/isla_language_lesson_plan",
       "page": 4,
       "source": "Generated",
       "x_pt": 77.64451,
@@ -421,7 +421,7 @@
     },
     {
       "id": 223,
-      "case": "new/japanese_land_development_sign_form",
+      "case": "scraped/japanese_land_development_sign_form",
       "page": 0,
       "source": "Generated",
       "x_pt": 225.17592,
@@ -443,7 +443,7 @@
     },
     {
       "id": 225,
-      "case": "new/master_thesis_learning_agreement",
+      "case": "scraped/master_thesis_learning_agreement",
       "page": 1,
       "source": "Generated",
       "x_pt": 516.39966,
@@ -454,7 +454,7 @@
     },
     {
       "id": 226,
-      "case": "new/master_thesis_learning_agreement",
+      "case": "scraped/master_thesis_learning_agreement",
       "page": 2,
       "source": "Generated",
       "x_pt": 455.50012,
@@ -465,7 +465,7 @@
     },
     {
       "id": 227,
-      "case": "new/croatian_thesis_topic_approval_form",
+      "case": "scraped/croatian_thesis_topic_approval_form",
       "page": 0,
       "source": "Generated",
       "x_pt": 420.9978,
@@ -509,7 +509,7 @@
     },
     {
       "id": 231,
-      "case": "new/indigenous_innovation_sandbox_agreement",
+      "case": "scraped/indigenous_innovation_sandbox_agreement",
       "page": 0,
       "source": "Generated",
       "x_pt": 485.44128,
@@ -520,7 +520,7 @@
     },
     {
       "id": 232,
-      "case": "new/indigenous_innovation_sandbox_agreement",
+      "case": "scraped/indigenous_innovation_sandbox_agreement",
       "page": 1,
       "source": "Generated",
       "x_pt": 140.4051,
@@ -531,7 +531,7 @@
     },
     {
       "id": 233,
-      "case": "new/croatian_thesis_topic_approval_form",
+      "case": "scraped/croatian_thesis_topic_approval_form",
       "page": 0,
       "source": "Generated",
       "x_pt": 320.8641,
@@ -542,7 +542,7 @@
     },
     {
       "id": 234,
-      "case": "new/auditor_regulatory_report_template",
+      "case": "scraped/auditor_regulatory_report_template",
       "page": 1,
       "source": "Generated",
       "x_pt": 78.17676,
@@ -586,7 +586,7 @@
     },
     {
       "id": 238,
-      "case": "new/taiwanese_education_fraud_ruling",
+      "case": "scraped/taiwanese_education_fraud_ruling",
       "page": 0,
       "source": "Generated",
       "x_pt": 102.3861,
@@ -619,7 +619,7 @@
     },
     {
       "id": 241,
-      "case": "new/japanese_land_development_sign_form",
+      "case": "scraped/japanese_land_development_sign_form",
       "page": 0,
       "source": "Generated",
       "x_pt": 77.34532,
@@ -630,7 +630,7 @@
     },
     {
       "id": 242,
-      "case": "new/japanese_land_development_sign_form",
+      "case": "scraped/japanese_land_development_sign_form",
       "page": 0,
       "source": "Generated",
       "x_pt": 455.71875,
@@ -641,7 +641,7 @@
     },
     {
       "id": 243,
-      "case": "new/family_kinship_lesson_plan",
+      "case": "scraped/family_kinship_lesson_plan",
       "page": 3,
       "source": "Generated",
       "x_pt": 232.70312,
@@ -652,7 +652,7 @@
     },
     {
       "id": 244,
-      "case": "new/family_kinship_lesson_plan",
+      "case": "scraped/family_kinship_lesson_plan",
       "page": 3,
       "source": "Generated",
       "x_pt": 279.68832,
@@ -685,7 +685,7 @@
     },
     {
       "id": 247,
-      "case": "new/ut_koer_annual_meeting_minutes",
+      "case": "scraped/ut_koer_annual_meeting_minutes",
       "page": 2,
       "source": "Generated",
       "x_pt": 154.81268,
@@ -696,7 +696,7 @@
     },
     {
       "id": 248,
-      "case": "new/scottish_fundraising_awards_campaign",
+      "case": "scraped/scottish_fundraising_awards_campaign",
       "page": 0,
       "source": "Generated",
       "x_pt": 303.32812,
@@ -707,7 +707,7 @@
     },
     {
       "id": 249,
-      "case": "new/french_sexual_health_youth_strategy",
+      "case": "scraped/french_sexual_health_youth_strategy",
       "page": 1,
       "source": "Generated",
       "x_pt": 181.97098,
@@ -718,7 +718,7 @@
     },
     {
       "id": 250,
-      "case": "new/americas_counter_terrorism_agenda",
+      "case": "scraped/americas_counter_terrorism_agenda",
       "page": 0,
       "source": "Generated",
       "x_pt": 121.88979,

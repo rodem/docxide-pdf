@@ -38,8 +38,8 @@ All tools are in `tools/` (listed in `CLAUDE.md` → "Accuracy work").
 tools/score_snapshot.sh fixN fixN-1          # full suite → tests/output/snapshots/fixN.json + comparison
 python3 tools/compare_scores.py a.json b.json  # group means + every moved case
 cp target/release/docxide-pdf <scratch>/docxide-before   # keep the old build, then after the change:
-VDIFF=<vdiff> python3 tools/ab_view.py before <scratch>/docxide-before new/some_case
-VDIFF=<vdiff> python3 tools/ab_view.py after  target/release/docxide-pdf new/some_case
+VDIFF=<vdiff> python3 tools/ab_view.py before <scratch>/docxide-before scraped/some_case
+VDIFF=<vdiff> python3 tools/ab_view.py after  target/release/docxide-pdf scraped/some_case
 python3 tools/convert_scan.py                # find hangs/crashes before a suite run
 
 # external corpus: <dir>/docx/<name>.docx + <dir>/pdf/<name>.pdf
@@ -291,13 +291,13 @@ unchanged.
 | scraped/german_mezzo_soprano_bio | 50.3 | CSS-style font names ("Archivo;sans-serif"); Word substitutes Tahoma-ish |
 | cases/case3 | 62.1 | heading kerning (see §5) |
 | scraped/go_math_grade4_guide | 44.1 | 24 vs 26 pages; table header row with a floating picture and a page break inside a cell is 6.6pt short |
-| new/romanian_quality_evaluation_strategy | 53.9 | header row height (see §5) |
-| new/slovak_pedagogical_practice_agreement | 48.3 | header line sized by the paragraph, not its own runs (headers don't use per-line heights); body 0.5pt low |
+| scraped/romanian_quality_evaluation_strategy | 53.9 | header row height (see §5) |
+| scraped/slovak_pedagogical_practice_agreement | 48.3 | header line sized by the paragraph, not its own runs (headers don't use per-line heights); body 0.5pt low |
 | cases/case50 | 54.4 | lines wrap differently |
-| new/eco_int_agriculture_registration | 55.9 | Mac 0.25pt line grid + empty paragraph after a table |
+| scraped/eco_int_agriculture_registration | 55.9 | Mac 0.25pt line grid + empty paragraph after a table |
 | scraped/turkish_prostate_cancer_course | 63.4 | – |
-| new/french_sexual_health_youth_strategy | 22.2 | – |
-| new/dutch_government_budget_letter | 17.6 | – |
+| scraped/french_sexual_health_youth_strategy | 22.2 | – |
+| scraped/dutch_government_budget_letter | 17.6 | – |
 | scraped/polish_council_resolution | 49.4 | – |
 | cases/case46 | 52.3 | – |
 
