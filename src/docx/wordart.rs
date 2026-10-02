@@ -37,19 +37,8 @@ pub(super) fn parse_wordart_body_pr(body_pr: roxmltree::Node) -> WordArtBodyProp
 
     let auto_fit = if find_dml(body_pr, "spAutoFit").is_some() {
         AutoFit::Shape
-    } else if let Some(norm) = find_dml(body_pr, "normAutofit") {
-        let font_scale = norm
-            .attribute("fontScale")
-            .and_then(|v| v.parse::<f32>().ok())
-            .map(|v| v / 100_000.0);
-        let line_space_reduction = norm
-            .attribute("lnSpcReduction")
-            .and_then(|v| v.parse::<f32>().ok())
-            .map(|v| v / 100_000.0);
-        AutoFit::Normal {
-            font_scale,
-            line_space_reduction,
-        }
+    } else if find_dml(body_pr, "normAutofit").is_some() {
+        AutoFit::Normal
     } else {
         AutoFit::None
     };
@@ -215,11 +204,9 @@ pub(super) fn parse_vml_wordart(
         margin_top: 0.0,
         margin_bottom: 0.0,
         wrap_type: WrapType::None,
-        dist_top: 0.0,
         dist_bottom: 0.0,
         behind_doc: false,
         no_text_wrap: true,
-        is_wordart: true,
         text_warp: None,
         auto_fit: AutoFit::Shape,
         z_index: 0,

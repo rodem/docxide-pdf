@@ -96,7 +96,6 @@ pub(super) fn parse_smartart_drawing<R: Read + Seek>(
     rels: &HashMap<String, String>,
     zip: &mut zip::ZipArchive<R>,
     theme: &ThemeFonts,
-    display_w: f32,
     display_h: f32,
 ) -> SmartArtDiagram {
     let mut shapes = Vec::new();
@@ -130,7 +129,6 @@ pub(super) fn parse_smartart_drawing<R: Read + Seek>(
     }
 
     SmartArtDiagram {
-        display_width: display_w,
         display_height: display_h,
         shapes,
     }

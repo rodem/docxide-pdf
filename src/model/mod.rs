@@ -213,8 +213,6 @@ pub struct FontTableEntry {
     /// Windows charset byte (`w:charset`, hex in the XML): 0x80 Shift-JIS, 0x81 Hangul,
     /// 0x86 GB2312, 0x88 Big5. Word keys missing-font substitution on it.
     pub charset: Option<u8>,
-    #[allow(dead_code)]
-    pub pitch_fixed: bool,
 }
 
 pub type FontTable = HashMap<String, FontTableEntry>;
@@ -240,8 +238,6 @@ pub struct Document {
     pub author: Option<String>,
     pub subject: Option<String>,
     pub keywords: Option<String>,
-    #[allow(dead_code)]
-    pub auto_hyphenation: bool,
     pub default_lang: Option<String>,
     /// Word's `compressPunctuation` character-spacing control (see
     /// `docx::settings`); drives full-width punctuation squeezing in line breaking.
@@ -396,8 +392,6 @@ pub struct Paragraph {
     pub snap_to_grid: bool,
     pub auto_space_de: bool,
     pub auto_space_dn: bool,
-    #[allow(dead_code)]
-    pub suppress_auto_hyphens: bool,
     pub frame_props: Option<FrameProperties>,
 }
 

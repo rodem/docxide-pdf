@@ -163,8 +163,6 @@ fn non_empty_vec(v: Vec<f32>) -> Option<Vec<f32>> {
 }
 
 fn parse_axis(ax_node: roxmltree::Node) -> ChartAxis {
-    let delete = chart_attr(ax_node, "delete") == Some("1");
-
     let gridline_color = chart_child(ax_node, "majorGridlines")
         .and_then(|gl| chart_child(gl, "spPr"))
         .and_then(extract_line_color);
@@ -173,7 +171,6 @@ fn parse_axis(ax_node: roxmltree::Node) -> ChartAxis {
 
     ChartAxis {
         labels: Vec::new(),
-        delete,
         gridline_color,
         line_color,
     }
@@ -214,7 +211,6 @@ fn assign_cat_labels(cat_axis: &mut Option<ChartAxis>, cat_labels: Vec<String>) 
     } else if !cat_labels.is_empty() {
         *cat_axis = Some(ChartAxis {
             labels: cat_labels,
-            delete: true,
             gridline_color: None,
             line_color: None,
         });

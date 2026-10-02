@@ -848,7 +848,6 @@ mod tests {
                         alt_name,
                         family,
                         charset: None,
-                        pitch_fixed: false,
                     };
                     (name.to_string(), e)
                 })

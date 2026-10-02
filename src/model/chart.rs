@@ -49,8 +49,6 @@ pub enum ChartType {
 #[derive(Clone)]
 pub struct ChartAxis {
     pub labels: Vec<String>,
-    #[allow(dead_code)]
-    pub delete: bool,
     pub gridline_color: Option<[u8; 3]>,
     pub line_color: Option<[u8; 3]>,
 }

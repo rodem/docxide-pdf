@@ -392,11 +392,6 @@ fn parse_pic_effects(sp_pr: Option<roxmltree::Node>) -> PicEffects {
                     .and_then(|v| v.parse::<f32>().ok())
                     .map(emu_to_pts)
                     .unwrap_or(0.0);
-                let blur_radius = child
-                    .attribute("blurRad")
-                    .and_then(|v| v.parse::<f32>().ok())
-                    .map(emu_to_pts)
-                    .unwrap_or(0.0);
                 let end_pos = child
                     .attribute("endPos")
                     .and_then(|v| v.parse::<f32>().ok())
@@ -406,7 +401,6 @@ fn parse_pic_effects(sp_pr: Option<roxmltree::Node>) -> PicEffects {
                     start_alpha,
                     end_alpha,
                     distance,
-                    blur_radius,
                     end_pos,
                 });
             }
@@ -679,11 +673,9 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
                     margin_top: wsp.margin_top,
                     margin_bottom: wsp.margin_bottom,
                     wrap_type,
-                    dist_top: emu_attr(container, "distT"),
                     dist_bottom: emu_attr(container, "distB"),
                     behind_doc,
                     no_text_wrap: wsp.no_text_wrap,
-                    is_wordart: wsp.is_wordart,
                     text_warp: wsp.text_warp,
                     auto_fit: wsp.auto_fit,
                     z_index,
@@ -728,9 +720,8 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
             // SmartArt diagrams lack floating layout support; treat anchored
             // diagrams the same as inline to avoid dropping them entirely
             if display_h > 0.0 && has_diagram_ref(container) {
-                let diagram = parse_smartart_drawing(
-                    container, ctx.rels, ctx.zip, ctx.theme, display_w, display_h,
-                );
+                let diagram =
+                    parse_smartart_drawing(container, ctx.rels, ctx.zip, ctx.theme, display_h);
                 return Some(RunDrawingResult::SmartArt(diagram));
             }
             continue;
@@ -759,11 +750,9 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
                 margin_top: wsp.margin_top,
                 margin_bottom: wsp.margin_bottom,
                 wrap_type: WrapType::TopAndBottom,
-                dist_top: 0.0,
                 dist_bottom: 0.0,
                 behind_doc: false,
                 no_text_wrap: wsp.no_text_wrap,
-                is_wordart: wsp.is_wordart,
                 text_warp: wsp.text_warp,
                 auto_fit: wsp.auto_fit,
                 z_index: 0,
@@ -799,9 +788,8 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
         }
 
         if display_h > 0.0 && has_diagram_ref(container) {
-            let diagram = parse_smartart_drawing(
-                container, ctx.rels, ctx.zip, ctx.theme, display_w, display_h,
-            );
+            let diagram =
+                parse_smartart_drawing(container, ctx.rels, ctx.zip, ctx.theme, display_h);
             return Some(RunDrawingResult::SmartArt(diagram));
         }
     }

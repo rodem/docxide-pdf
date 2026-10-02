@@ -378,7 +378,6 @@ pub(super) struct WspResult {
     pub(super) margin_bottom: f32,
     pub(super) margin_right: f32,
     pub(super) no_text_wrap: bool,
-    pub(super) is_wordart: bool,
     pub(super) text_warp: Option<TextWarp>,
     pub(super) auto_fit: AutoFit,
 }
@@ -504,7 +503,6 @@ pub(super) fn parse_wsp_shape<R: Read + std::io::Seek>(
         margin_bottom,
         margin_right,
         no_text_wrap,
-        is_wordart: wa_props.is_wordart,
         text_warp: wa_props.text_warp,
         auto_fit: wa_props.auto_fit,
     })
@@ -785,11 +783,9 @@ fn parse_vml_geometry_shape(shape: roxmltree::Node) -> Option<Textbox> {
         margin_top: 0.0,
         margin_bottom: 0.0,
         wrap_type: WrapType::None,
-        dist_top: 0.0,
         dist_bottom: 0.0,
         behind_doc: false,
         no_text_wrap: true,
-        is_wordart: false,
         text_warp: None,
         auto_fit: AutoFit::None,
         z_index: 0,
@@ -879,11 +875,9 @@ pub(super) fn parse_textbox_from_vml<R: Read + std::io::Seek>(
         margin_top: 3.6,
         margin_bottom: 3.6,
         wrap_type: WrapType::None,
-        dist_top: 0.0,
         dist_bottom: 0.0,
         behind_doc: false,
         no_text_wrap: false,
-        is_wordart: false,
         text_warp: None,
         auto_fit: AutoFit::None,
         z_index: 0,
@@ -927,7 +921,6 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
                             };
                             let (wrap_type, _, _) = super::images::parse_wrap_type(container);
                             let behind_doc = container.attribute("behindDoc") == Some("1");
-                            let dist_top = emu_attr(container, "distT");
                             let dist_bottom = emu_attr(container, "distB");
                             textboxes.push(Textbox {
                                 paragraphs: wsp.paragraphs,
@@ -948,11 +941,9 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
                                 margin_top: wsp.margin_top,
                                 margin_bottom: wsp.margin_bottom,
                                 wrap_type,
-                                dist_top,
                                 dist_bottom,
                                 behind_doc,
                                 no_text_wrap: wsp.no_text_wrap,
-                                is_wordart: wsp.is_wordart,
                                 text_warp: wsp.text_warp,
                                 auto_fit: wsp.auto_fit,
                                 z_index: container

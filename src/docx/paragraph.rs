@@ -122,11 +122,6 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         .or_else(|| para_style.and_then(|s| s.auto_space_dn))
         .unwrap_or(true);
 
-    let suppress_auto_hyphens = ppr
-        .and_then(|ppr| wml_bool(ppr, "suppressAutoHyphens"))
-        .or_else(|| para_style.and_then(|s| s.suppress_auto_hyphens))
-        .unwrap_or(false);
-
     let num_pr = ppr.and_then(|ppr| wml(ppr, "numPr"));
     let style_num = opts.style_num_id.as_deref();
     let style_ilvl = opts.style_num_ilvl;
@@ -431,7 +426,6 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         snap_to_grid,
         auto_space_de,
         auto_space_dn,
-        suppress_auto_hyphens,
         frame_props: ppr.and_then(parse_frame_props),
     }
 }

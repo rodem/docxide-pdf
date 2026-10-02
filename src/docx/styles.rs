@@ -203,7 +203,6 @@ pub(super) struct ParagraphStyle {
     pub(super) snap_to_grid: Option<bool>,
     pub(super) auto_space_de: Option<bool>,
     pub(super) auto_space_dn: Option<bool>,
-    pub(super) suppress_auto_hyphens: Option<bool>,
     pub(super) text_outline: Option<TextOutline>,
     pub(super) text_fill: Option<TextFill>,
     pub(super) text_shadow: Option<TextShadow>,
@@ -859,8 +858,6 @@ pub(super) fn parse_styles<R: Read + Seek>(
                 let snap_to_grid = ppr.and_then(|ppr| wml_bool(ppr, "snapToGrid"));
                 let auto_space_de = ppr.and_then(|ppr| wml_bool(ppr, "autoSpaceDE"));
                 let auto_space_dn = ppr.and_then(|ppr| wml_bool(ppr, "autoSpaceDN"));
-                let suppress_auto_hyphens =
-                    ppr.and_then(|ppr| wml_bool(ppr, "suppressAutoHyphens"));
 
                 let based_on = wml_attr(style_node, "basedOn").map(|s| s.to_string());
 
@@ -916,7 +913,6 @@ pub(super) fn parse_styles<R: Read + Seek>(
                         snap_to_grid,
                         auto_space_de,
                         auto_space_dn,
-                        suppress_auto_hyphens,
                         text_outline,
                         text_fill,
                         text_shadow,
@@ -1177,7 +1173,6 @@ fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
                     snap_to_grid,
                     auto_space_de,
                     auto_space_dn,
-                    suppress_auto_hyphens,
                     shading,
                     text_outline,
                     text_fill,
