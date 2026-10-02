@@ -7,6 +7,8 @@ use crate::fonts::FontEntry;
 use crate::geometry::{self, ResolvedCommand};
 use crate::model::{TextFill, TextGlow, TextOutline, TextShadow, Textbox};
 
+use super::color::{fill_color_or_black, stroke_rgb};
+
 /// Apply text outline rendering state to the PDF content stream.
 /// Returns `true` if an outline mode was set (caller must call `reset_text_outline` afterward).
 pub(super) fn apply_text_outline(
@@ -176,8 +178,6 @@ fn collect_text_info(tb: &Textbox) -> Option<WordArtTextInfo> {
     Some(info)
 }
 
-use super::color::{fill_color_or_black, stroke_rgb};
-
 /// Resolve the effective fill color from text_fill + run color.
 fn resolve_fill_color(
     text_fill: &Option<TextFill>,
@@ -248,16 +248,6 @@ fn emit_glyph_commands(
     }
 }
 
-/// Emit glyph commands using a transform that also receives the cursor_x position.
-fn emit_glyph_commands_with_cursor(
-    glyph: &GlyphPath,
-    content: &mut Content,
-    cursor_x: f64,
-    transform: &impl Fn(f64, f64, f64) -> (f32, f32),
-) {
-    emit_glyph_commands(glyph, content, |gx, gy| transform(cursor_x, gx, gy));
-}
-
 /// Fill the current path, then optionally re-emit glyphs and stroke.
 fn fill_and_stroke_glyphs(
     content: &mut Content,
@@ -281,17 +271,13 @@ fn fill_and_stroke_glyphs(
     }
 }
 
-/// Evaluate a cubic bezier at parameter `t` given start point `(cx, cy)` and
-/// control/end points `(x1, y1, x2, y2, x, y)`.
+/// Evaluate a cubic bezier at parameter `t` from its start point and the
+/// two control points and end point.
 fn eval_cubic(
-    cx: f64,
-    cy: f64,
-    x1: f64,
-    y1: f64,
-    x2: f64,
-    y2: f64,
-    x: f64,
-    y: f64,
+    (cx, cy): (f64, f64),
+    (x1, y1): (f64, f64),
+    (x2, y2): (f64, f64),
+    (x, y): (f64, f64),
     t: f64,
 ) -> (f64, f64) {
     let mt = 1.0 - t;
@@ -343,7 +329,7 @@ impl SampledBoundary {
                     let steps = 20;
                     for i in 1..=steps {
                         let t = i as f64 / steps as f64;
-                        let (px, py) = eval_cubic(cx, cy, *x1, *y1, *x2, *y2, *x, *y, t);
+                        let (px, py) = eval_cubic((cx, cy), (*x1, *y1), (*x2, *y2), (*x, *y), t);
                         points.push((px, py));
                     }
                     cx = *x;
@@ -453,9 +439,8 @@ pub(super) fn render_warped_textbox(
     tb_y_top: f32,
     content_w: f32,
 ) -> bool {
-    let warp = match &tb.text_warp {
-        Some(w) => w,
-        None => return false,
+    let Some(warp) = &tb.text_warp else {
+        return false;
     };
 
     let Some(info) = collect_text_info(tb) else {
@@ -525,9 +510,7 @@ pub(super) fn render_warped_textbox(
     };
 
     let emit = |content: &mut Content| {
-        emit_all_glyphs(&face, &char_advances, content, |cursor_x, gx, gy| {
-            transform(cursor_x, gx, gy)
-        });
+        emit_all_glyphs(&face, &char_advances, content, transform);
     };
 
     emit(content);
@@ -584,7 +567,7 @@ impl ArcLengthPath {
                     let steps = 32;
                     for i in 1..=steps {
                         let t = i as f64 / steps as f64;
-                        let (px, py) = eval_cubic(cx, cy, *x1, *y1, *x2, *y2, *x, *y, t);
+                        let (px, py) = eval_cubic((cx, cy), (*x1, *y1), (*x2, *y2), (*x, *y), t);
                         let default = (cx, cy, 0.0);
                         let prev = samples.last().unwrap_or(&default);
                         let dx = px - prev.0;
@@ -656,9 +639,8 @@ pub(super) fn render_text_on_path(
     tb_y_top: f32,
     content_w: f32,
 ) -> bool {
-    let warp = match &tb.text_warp {
-        Some(w) => w,
-        None => return false,
+    let Some(warp) = &tb.text_warp else {
+        return false;
     };
 
     let Some(info) = collect_text_info(tb) else {
@@ -769,7 +751,7 @@ fn emit_all_glyphs(
     let mut cursor_x = 0.0_f64;
     for &(ch, advance) in char_advances {
         if let Some(glyph) = extract_glyph_path(face, ch) {
-            emit_glyph_commands_with_cursor(&glyph, content, cursor_x, &transform);
+            emit_glyph_commands(&glyph, content, |gx, gy| transform(cursor_x, gx, gy));
         }
         cursor_x += advance;
     }
