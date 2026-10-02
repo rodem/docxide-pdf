@@ -959,6 +959,20 @@ fn lines_kept_together(widow_control: bool, n: impl FnOnce() -> usize) -> usize 
     }
 }
 
+/// Height of `table`'s first row laid out in a column `col_w` wide, as
+/// `table::render_table` sizes it.
+fn first_row_height(table: &crate::model::Table, ctx: &RenderContext, col_w: f32) -> f32 {
+    let mut col_widths = if table.fixed_layout {
+        table.col_widths.clone()
+    } else {
+        table_layout::auto_fit_columns(table, ctx.fonts, Some(col_w), Some(col_w))
+    };
+    table_layout::apply_pct_width(table, &mut col_widths, col_w);
+    table_layout::compute_row_layouts(table, &col_widths, ctx, None)
+        .first()
+        .map_or(0.0, |r| r.height)
+}
+
 /// About how many lines `para` lays out to in a column `col_w` wide. Every
 /// line gets the body measure: a hanging label tabs its first line's text out
 /// to the indent anyway (western_australia's "(a)" items).
@@ -2131,7 +2145,18 @@ fn render_paragraph_block(
         let mut extra = 0.0;
         let mut prev_sa = effective_space_after;
         let mut i = block_idx + 1;
-        while let Some(next) = adjacent_para(i) {
+        loop {
+            let next = match section_blocks.get(i) {
+                Some(Block::Paragraph(p)) => p,
+                // The chain reaches into a following in-flow table: the paragraph
+                // stays with its first row (czech_wastewater's "8. Seznam…"
+                // heading moves to page 4 with its table).
+                Some(Block::Table(t)) if t.position.is_none() => {
+                    extra += prev_sa + first_row_height(t, &ctx, col_geometry[state.current_col].1);
+                    break;
+                }
+                _ => break,
+            };
             if next.page_break_before {
                 extra = f32::MAX;
                 break;
