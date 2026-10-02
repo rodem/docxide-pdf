@@ -877,7 +877,9 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
                 }
                 prev_list_num_id = num_id;
 
+                let continuation = paragraph::split_at_page_break(&mut para);
                 blocks.push(Block::Paragraph(para));
+                blocks.extend(continuation.map(Block::Paragraph));
 
                 // Mid-document section break: sectPr inside pPr ends the current section
                 if let Some(sect_node) = ppr.and_then(|ppr| wml(ppr, "sectPr")) {

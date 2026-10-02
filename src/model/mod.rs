@@ -433,6 +433,9 @@ pub struct Paragraph {
     /// emits a blank page in that case; the style property is idempotent.
     pub page_break_before_explicit: bool,
     pub page_break_after: bool,
+    /// Run index where a page break inside the paragraph splits it; the
+    /// body parser turns the rest into a continuation paragraph.
+    pub page_break_at: Option<usize>,
     pub column_break_before: bool,
     /// §17.3.3.1 `w:br w:type="textWrapping" w:clear="all"` — content after
     /// this paragraph restarts below any floating objects.

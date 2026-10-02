@@ -81,6 +81,9 @@ pub(super) struct ParsedRuns {
     /// `Paragraph.page_break_before_explicit`.
     pub(super) has_explicit_page_break_before: bool,
     pub(super) has_page_break_after: bool,
+    /// Index into `runs` of the first run after a `<w:br w:type="page"/>`
+    /// that has visible content after it in the same paragraph.
+    pub(super) page_break_at: Option<usize>,
     pub(super) has_column_break: bool,
     pub(super) has_clear_break: bool,
     pub(super) floating_images: Vec<FloatingImage>,
@@ -903,6 +906,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
     let mut horizontal_rule: Option<HorizontalRule> = None;
     let mut has_page_break_after = false;
     let mut page_break_before_content = false;
+    let mut page_break_at: Option<usize> = None;
     let mut has_column_break = false;
     let mut has_clear_break = false;
     let mut field_stack: Vec<FieldFrame> = Vec::new();
@@ -1106,6 +1110,8 @@ pub(super) fn parse_runs<R: Read + Seek>(
                         if runs.is_empty() && pending_text.is_empty() {
                             page_break_before_content = true;
                         } else {
+                            flush_pending(&mut pending_text, &mut runs);
+                            page_break_at.get_or_insert(runs.len());
                             has_page_break_after = true;
                         }
                     }
@@ -1243,13 +1249,26 @@ pub(super) fn parse_runs<R: Read + Seek>(
 
     ensure_nonempty_paragraph(&mut runs, ppr, &defaults, ctx.theme, has_page_break_before);
 
-    let runs = merge_compatible_runs(runs);
+    // Merge each side of a mid-paragraph page break on its own so the split
+    // index stays valid; a break with nothing visible after it stays a plain
+    // break after the paragraph.
+    let tail = page_break_at.map(|at| runs.split_off(at.min(runs.len())));
+    let mut runs = merge_compatible_runs(runs);
+    let page_break_at = tail.and_then(|tail| {
+        let at = runs.len();
+        let has_content = tail
+            .iter()
+            .any(|r| !r.text.trim().is_empty() || r.is_tab || r.inline_image.is_some());
+        runs.extend(merge_compatible_runs(tail));
+        has_content.then_some(at)
+    });
 
     ParsedRuns {
         runs,
         has_page_break_before,
         has_explicit_page_break_before: page_break_before_content,
         has_page_break_after,
+        page_break_at,
         has_column_break,
         has_clear_break,
         floating_images,
