@@ -786,11 +786,18 @@ pub(super) fn is_text_empty(runs: &[Run]) -> bool {
     })
 }
 
-fn effective_font_size(run: &Run) -> f32 {
-    match run.vertical_align {
-        VertAlign::Superscript | VertAlign::Subscript => run.font_size * 0.58,
-        VertAlign::Baseline => run.font_size,
-    }
+/// Word sizes a superscript or subscript by the face's OS/2 script size,
+/// rounded to the nearest half point: Aptos (0.600) 12pt → 7.0, Palatino
+/// (0.601) 10pt → 6.0, Times/Arial/Calibri (0.650) 12pt → 8.0, 11pt → 7.0,
+/// 9.5pt → 6.0 (census over 30 fixtures' references).
+fn effective_font_size(run: &Run, entry: &FontEntry) -> f32 {
+    let ratio = match run.vertical_align {
+        VertAlign::Superscript => entry.superscript_ratio,
+        VertAlign::Subscript => entry.subscript_ratio,
+        VertAlign::Baseline => return run.font_size,
+    };
+    // ponytail: 0.65 is the common OS/2 value, for faces without one (Type1 fallback).
+    (run.font_size * ratio.unwrap_or(0.65) * 2.0).round() / 2.0
     // Note: smallCaps sizing is handled per-segment via smallcaps_segments()
 }
 
@@ -1376,7 +1383,7 @@ pub(super) fn build_paragraph_lines(
 
         let key = font_key_buf(run, &mut key_buf);
         let entry = seen_fonts.get(key).expect("font registered");
-        let eff_fs = effective_font_size(run);
+        let eff_fs = effective_font_size(run, entry);
         let space_w = entry.space_width(eff_fs);
         let text = &run.text;
         let y_off = vert_y_offset(run);
@@ -1815,7 +1822,7 @@ fn segment_width(runs: &[&Run], seen_fonts: &HashMap<String, FontEntry>) -> f32 
     for run in runs {
         let key = font_key_buf(run, &mut key_buf);
         let entry = seen_fonts.get(key).expect("font registered");
-        let eff_fs = effective_font_size(run);
+        let eff_fs = effective_font_size(run, entry);
         let ts = run.text_scale / 100.0;
         let cs = run.char_spacing;
         let space_w = entry.space_width(eff_fs) * ts + cs;
@@ -1846,7 +1853,7 @@ fn decimal_before_width(runs: &[&Run], seen_fonts: &HashMap<String, FontEntry>) 
     for (run, text) in runs.iter().zip(texts.iter()) {
         let key = font_key_buf(run, &mut key_buf);
         let entry = seen_fonts.get(key).expect("font registered");
-        let eff_fs = effective_font_size(run);
+        let eff_fs = effective_font_size(run, entry);
         let ts = run.text_scale / 100.0;
         let cs = run.char_spacing;
         let text_to_measure = if text.len() <= chars_remaining {
@@ -2058,7 +2065,7 @@ pub(super) fn build_tabbed_line(
                         .unwrap_or(tab_run);
                     let key = font_key_buf(font_run, &mut key_buf);
                     let entry = seen_fonts.get(key).expect("font registered");
-                    let eff_fs = effective_font_size(tab_run).max(font_run.font_size);
+                    let eff_fs = effective_font_size(tab_run, entry).max(font_run.font_size);
                     all_chunks.push(WordChunk::tab_underline(
                         entry,
                         eff_fs,
@@ -2088,7 +2095,7 @@ pub(super) fn build_tabbed_line(
                     if let Some(run) = font_run {
                         let key = font_key_buf(run, &mut key_buf);
                         let entry = seen_fonts.get(key).expect("font registered");
-                        let eff_fs = effective_font_size(run);
+                        let eff_fs = effective_font_size(run, entry);
                         let char_w = entry.char_width_1000(leader_char) * eff_fs / 1000.0;
                         let leader_gap = seg_start - current_x;
                         if char_w > 0.0 && leader_gap > char_w * 2.0 {
@@ -2144,7 +2151,7 @@ pub(super) fn build_tabbed_line(
 
             let key = font_key_buf(run, &mut key_buf);
             let entry = seen_fonts.get(key).expect("font registered");
-            let eff_fs = effective_font_size(run);
+            let eff_fs = effective_font_size(run, entry);
             let space_w = entry.space_width(eff_fs);
             let y_off = vert_y_offset(run);
             let text = &run.text;
@@ -3267,11 +3274,10 @@ pub(super) fn grid_snapped_line_h(
         if run.is_line_break || run.is_math {
             continue;
         }
-        if let Some(t) = seen_fonts
-            .get(font_key_buf(run, &mut key_buf))
-            .and_then(|e| e.grid_line_ratio)
+        if let Some(e) = seen_fonts.get(font_key_buf(run, &mut key_buf))
+            && let Some(t) = e.grid_line_ratio
         {
-            grid_h = grid_h.max(effective_font_size(run) * t);
+            grid_h = grid_h.max(effective_font_size(run, e) * t);
         }
     }
     // Tolerance so an exact fit stays one cell despite f32 error.
@@ -3297,10 +3303,8 @@ pub(super) fn grid_baseline_offset(
             r.inline_image.is_none() && !r.vanish && !r.is_line_break && !r.is_math && sizes_line(r)
         })
         .filter_map(|r| {
-            let shift = seen_fonts
-                .get(font_key_buf(r, &mut key_buf))?
-                .grid_baseline_shift?;
-            Some(shift * effective_font_size(r))
+            let e = seen_fonts.get(font_key_buf(r, &mut key_buf))?;
+            Some(e.grid_baseline_shift? * effective_font_size(r, e))
         })
         .reduce(f32::max)
         .map(|shift| cell_h / 2.0 + shift)
@@ -3609,6 +3613,8 @@ mod tests {
             grid_line_ratio: None,
             plain_line_h_ratio: None,
             grid_baseline_shift: None,
+            superscript_ratio: None,
+            subscript_ratio: None,
             east_asian: false,
             plain_ascender_ratio: None,
             char_to_gid: None,
@@ -3675,28 +3681,34 @@ mod tests {
     #[test]
     fn test_effective_font_size_baseline() {
         let run = make_run(12.0, VertAlign::Baseline, false);
-        assert_eq!(effective_font_size(&run), 12.0);
+        assert_eq!(effective_font_size(&run, &stub_font_entry()), 12.0);
     }
 
     #[test]
     fn test_effective_font_size_superscript() {
+        // Aptos (OS/2 0.600) 12pt superscripts are 7pt in Word, Times (0.650) 8pt.
+        let mut entry = stub_font_entry();
+        entry.superscript_ratio = Some(0.6);
         let run = make_run(12.0, VertAlign::Superscript, false);
-        let expected = 12.0 * 0.58; // 6.96
-        assert!((effective_font_size(&run) - expected).abs() < 0.01);
+        assert_eq!(effective_font_size(&run, &entry), 7.0);
+        entry.superscript_ratio = Some(0.65);
+        assert_eq!(effective_font_size(&run, &entry), 8.0);
     }
 
     #[test]
     fn test_effective_font_size_subscript() {
-        let run = make_run(12.0, VertAlign::Subscript, false);
-        let expected = 12.0 * 0.58;
-        assert!((effective_font_size(&run) - expected).abs() < 0.01);
+        // 9.5pt at 0.650 is 6.175, Word draws 6.0.
+        let mut entry = stub_font_entry();
+        entry.subscript_ratio = Some(0.65);
+        let run = make_run(9.5, VertAlign::Subscript, false);
+        assert_eq!(effective_font_size(&run, &entry), 6.0);
     }
 
     #[test]
     fn test_effective_font_size_ignores_small_caps() {
         // smallCaps sizing is per-segment, not per-run — effective_font_size returns base size
         let run = make_run(12.0, VertAlign::Baseline, true);
-        assert_eq!(effective_font_size(&run), 12.0);
+        assert_eq!(effective_font_size(&run, &stub_font_entry()), 12.0);
     }
 
     #[test]
