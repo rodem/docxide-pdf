@@ -90,8 +90,6 @@ See `roadmap.md` for planned work prioritized by impact. **Always consult the ro
 
 ## Reference Material
 
-The repository includes:
-- `ISO_32000-2_sponsored-ec2.pdf` - PDF specification reference
 - PDF spec is ingested into local RAG system at `/Users/sverrejb/specs/pdf-spec.pdf` for semantic search queries about PDF internals
 - Office Open XML spec is ingested into local RAG system at `/Users/sverrejb/specs/office.pdf` for semantic search queries about DOCX format and WordprocessingML
 

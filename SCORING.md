@@ -80,7 +80,7 @@ the same. Shared = 600, either = 1,400, so Jaccard = 600 ÷ 1,400 ≈ 43%.
 **Why the numbers look low.** Text strokes are only a few pixels wide. If a
 line of text is one pixel off, most of its ink no longer overlaps, even though
 a person would call the pages identical. Across our fixtures the median is
-about 53% (the middle half fall between 27% and 73%), and the "pass" mark is
+about 68% (the middle half fall between 53% and 78%), and the "pass" mark is
 only **20.5%**. The pass mark is a label (`Y`/`N` in
 the full output); it doesn't fail the suite. Only a drop against the baseline
 does.
@@ -111,7 +111,7 @@ small vertical shifts.
 - The scores of all squares are averaged, then averaged over pages.
 
 SSIM is more forgiving than Jaccard, so its "pass" mark is **75%**. Across
-our fixtures the median is about 79%. As with Jaccard, the pass mark is only
+our fixtures the median is about 88%. As with Jaccard, the pass mark is only
 a label.
 
 **Limits:**
@@ -122,7 +122,7 @@ a label.
 ### Page count
 
 `ref_pages` and `gen_pages` record how many pages each PDF has. The summary
-line says, for example, "204/221 page counts match". It's reported, not gated.
+line says, for example, "228/234 page counts match". It's reported, not gated.
 
 ### Visual hashes (did anything change?)
 
@@ -236,10 +236,10 @@ Any difference in a block costs the whole block. This catches:
 ### Fixtures without a tagged Word reference
 
 `a11y_struct`, `a11y_text` and `ua_deficit` need a Word reference that is
-itself tagged. 48 of our references aren't: they were made through macOS's
-print path ("Quartz PDFContext"), not Word's accessibility export, so they
-have no structure tree at all. Those fixtures get only `ua_fail` until their
-references are re-exported. The other 173 get all four scores.
+itself tagged. 61 of our 234 references aren't: they were made through
+macOS's print path ("Quartz PDFContext"), not Word's accessibility export, so
+they have no structure tree at all. Those fixtures get only `ua_fail` until
+their references are re-exported. The other 173 get all four scores.
 
 ### Where to look
 
