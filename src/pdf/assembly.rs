@@ -5,7 +5,7 @@ use pdf_writer::{Content, Filter, Name, Pdf, Rect, Ref, Str, TextStr};
 use crate::fonts::FontEntry;
 use crate::model::{Document, PageBorderDisplay, PageBorders, ParagraphBorder, SectionProperties};
 
-use super::comments::{BODY_SCALE, BODY_TX, BODY_TY, render_comment_pane};
+use super::comments::{page_zoom, render_comment_pane};
 use super::layout::LinkAnnotation;
 use super::GradientSpec;
 
@@ -338,9 +338,13 @@ pub(super) fn assemble_pdf_pages(
         // by wrapping the body content stream in a `q s 0 0 s tx ty cm ... Q`
         // transform. The comment pane and connectors stay in unscaled PDF
         // coordinates and are rendered into a separate stream appended after.
+        let (.., zoom_si) = page_section_indices[i];
+        let zoom_sp = &doc.sections[zoom_si].properties;
+        let (zoom, zoom_tx, zoom_ty) =
+            page_zoom(zoom_sp.page_width, zoom_sp.page_height, zoom_sp.margin_right);
         let (scale_prefix, scale_suffix) = if has_any_comments {
             (
-                format!("q {BODY_SCALE} 0 0 {BODY_SCALE} {BODY_TX} {BODY_TY} cm\n").into_bytes(),
+                format!("q {zoom} 0 0 {zoom} {zoom_tx} {zoom_ty} cm\n").into_bytes(),
                 b"\nQ\n".to_vec(),
             )
         } else {
@@ -362,26 +366,17 @@ pub(super) fn assemble_pdf_pages(
 
         let mut pane_raw = Vec::new();
         if has_any_comments {
-            let (.., si) = page_section_indices[i];
-            let sp = &doc.sections[si].properties;
             let transformed: Vec<(u32, f32, f32, f32)> = all_page_comment_anchors[i]
                 .iter()
-                .map(|(id, x, y, fs)| {
-                    (
-                        *id,
-                        BODY_TX + BODY_SCALE * x,
-                        BODY_TY + BODY_SCALE * y,
-                        BODY_SCALE * fs,
-                    )
-                })
+                .map(|(id, x, y, fs)| (*id, zoom_tx + zoom * x, zoom_ty + zoom * y, zoom * fs))
                 .collect();
             let mut pane_content = Content::new();
             render_comment_pane(
                 &mut pane_content,
                 &doc.comments,
                 &transformed,
-                sp.page_width,
-                sp.page_height,
+                zoom_sp.page_width,
+                zoom_sp.page_height,
                 seen_fonts,
             );
             pane_raw = pane_content.finish().to_vec();
@@ -389,7 +384,10 @@ pub(super) fn assemble_pdf_pages(
 
         let mut combined: Vec<u8> = Vec::new();
         if let Some(hf) = all_hf_contents[i].take() {
+            // Word zooms headers and footers with the body (door_air_cooling_unit_spec).
+            combined.extend_from_slice(&scale_prefix);
             super::tagging::wrap_artifact(&mut combined, hf.finish().as_slice(), true);
+            combined.extend_from_slice(&scale_suffix);
         }
         // Page border box (page coords, unscaled — outside the comment-scale
         // wrapper). @display gates which pages get it; is_first = first page of

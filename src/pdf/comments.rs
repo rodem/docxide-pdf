@@ -13,13 +13,15 @@ const PANE_RIGHT_MARGIN: f32 = 10.0;
 /// Whitespace above and below the gray pane band.
 const PANE_VPAD: f32 = 94.0;
 
-/// Body content scale factor Word applies when comments are present (9.16pt /
-/// 12pt). Combined with the BODY_TX/BODY_TY translations below in a single
-/// `q s 0 0 s tx ty cm` operator that wraps the body content stream. Matches
-/// the CTM Word uses in its own PDF export for documents with comments.
-pub(super) const BODY_SCALE: f32 = 0.7633;
-pub(super) const BODY_TX: f32 = 0.96;
-pub(super) const BODY_TY: f32 = 94.4;
+/// Word's zoom `(scale, tx, ty)` for a page of a document with comments: the
+/// text column plus a 279.7pt balloon area fills the page width, so 12pt text
+/// prints at 9.16pt with a 90pt right margin (case63, case64) and at 8.96pt with
+/// 72pt (door_air_cooling_unit_spec). The zoomed page sits 0.96pt from the left
+/// edge and 0.54pt below vertical centre (Word's ty 94.32 and 100.80).
+pub(super) fn page_zoom(page_width: f32, page_height: f32, margin_right: f32) -> (f32, f32, f32) {
+    let scale = page_width / (page_width - margin_right + 279.7);
+    (scale, 0.96, page_height * (1.0 - scale) / 2.0 + 0.54)
+}
 
 const PANE_BG: [u8; 3] = [240, 240, 240];
 const CALLOUT_FILL: [u8; 3] = [251, 220, 217];
