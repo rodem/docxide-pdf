@@ -1,6 +1,16 @@
 use pdf_writer::Content;
 
-use crate::model::{LineSpacing, Paragraph, ParagraphBorder, ParagraphBorders, Run};
+use crate::model::{Alignment, LineSpacing, Paragraph, ParagraphBorder, ParagraphBorders, Run};
+
+/// How far an object `slack` narrower than its box moves to follow the
+/// paragraph alignment: centred takes half of it, right-aligned all of it.
+pub(super) fn align_offset(alignment: Alignment, slack: f32) -> f32 {
+    match alignment {
+        Alignment::Center => slack / 2.0,
+        Alignment::Right => slack,
+        _ => 0.0,
+    }
+}
 
 /// Approximate a circle with 4 cubic Bézier curves (path only — caller fills/strokes).
 pub(super) fn draw_circle(content: &mut Content, cx: f32, cy: f32, r: f32) {

@@ -5,6 +5,7 @@ use pdf_writer::Content;
 use crate::model::{Footnote, LineSpacing, Paragraph, Run};
 
 use super::RenderContext;
+use super::color::stroke_segment;
 use super::helpers::drops_contextual_spacing;
 use super::layout::{
     TextLine, build_paragraph_lines, is_text_empty, render_paragraph_lines, tallest_run_metrics,
@@ -179,12 +180,13 @@ pub(super) fn render_page_footnotes(
 fn draw_note_separator(content: &mut Content, margin_left: f32, sep_y: f32, text_width: f32) {
     // 0.5pt black rule, ~1/3 page width — matches Word's footnote/endnote separator
     let sep_width = 144.0f32.min(text_width);
-    content.save_state();
-    content.set_line_width(0.5);
-    content.move_to(margin_left, sep_y);
-    content.line_to(margin_left + sep_width, sep_y);
-    content.stroke();
-    content.restore_state();
+    stroke_segment(
+        content,
+        (margin_left, sep_y),
+        (margin_left + sep_width, sep_y),
+        0.5,
+        None,
+    );
 }
 
 /// Endnotes default to `pos=docEnd`: Word flows them in the normal content

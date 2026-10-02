@@ -267,6 +267,19 @@ pub enum HorizontalPosition {
     AlignRight,
 }
 
+impl HorizontalPosition {
+    /// Left edge of an object `obj_w` wide placed in the area `area_w` wide
+    /// that starts at `origin`.
+    pub fn place(self, origin: f32, area_w: f32, obj_w: f32) -> f32 {
+        match self {
+            HorizontalPosition::AlignCenter => origin + (area_w - obj_w) / 2.0,
+            HorizontalPosition::AlignRight => origin + area_w - obj_w,
+            HorizontalPosition::AlignLeft => origin,
+            HorizontalPosition::Offset(o) => origin + o,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum VerticalPosition {
     Offset(f32),

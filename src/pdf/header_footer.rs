@@ -3,11 +3,12 @@ use std::collections::HashMap;
 use pdf_writer::Content;
 
 use crate::model::{
-    Alignment, Block, Document, FieldCode, FrameProperties, HRelativeFrom, HeaderFooter,
-    HorizontalPosition, Paragraph, Run, SectionProperties, TextAnchor, VRelativeFrom,
-    VerticalPosition, WrapType,
+    Alignment, Block, Document, FieldCode, FrameProperties, HRelativeFrom, HeaderFooter, Paragraph,
+    Run, SectionProperties, TextAnchor, VRelativeFrom, VerticalPosition, WrapType,
 };
 
+use super::color::stroke_segment;
+use super::helpers::align_offset;
 use super::layout::{
     TextLine, build_paragraph_lines, build_tabbed_line, is_text_empty, lines_height,
     picture_line_bottom, render_paragraph_lines, runs_max_image_h, tallest_run_metrics,
@@ -487,13 +488,7 @@ pub(super) fn render_header_footer(
                             (sp.margin_left, text_width)
                         }
                     };
-                    let frame_left = match fp.h_position {
-                        HorizontalPosition::AlignRight => origin + area_width - fp.width,
-                        HorizontalPosition::AlignCenter => origin + (area_width - fp.width) / 2.0,
-                        HorizontalPosition::AlignLeft => origin,
-                        HorizontalPosition::Offset(o) => origin + o,
-                    };
-                    frame_left + para.indent_left
+                    fp.h_position.place(origin, area_width, fp.width) + para.indent_left
                 } else {
                     resolve_h_position(
                         fp.h_relative_from,
@@ -699,15 +694,10 @@ pub(super) fn render_header_footer(
                             if let Some(pdf_name) = ctx.textbox_image_names.get(&img.key()) {
                                 let img_x = content_x
                                     + tp.indent_left
-                                    + match tp.alignment {
-                                        Alignment::Center => {
-                                            (tp_text_w - img.display_width).max(0.0) / 2.0
-                                        }
-                                        Alignment::Right => {
-                                            (tp_text_w - img.display_width).max(0.0)
-                                        }
-                                        _ => 0.0,
-                                    };
+                                    + align_offset(
+                                        tp.alignment,
+                                        (tp_text_w - img.display_width).max(0.0),
+                                    );
                                 let img_y = tb_cursor - tp.space_before - img.display_height;
                                 super::smartart::render_image_with_clip(
                                     content,
@@ -838,13 +828,10 @@ pub(super) fn render_header_footer(
                         let img = para.image.as_ref().unwrap();
                         let y_bottom = baseline_y + font_size * ascender_ratio - img.display_height;
                         let x = sp.margin_left
-                            + match para.alignment {
-                                Alignment::Center => {
-                                    (text_width - img.display_width).max(0.0) / 2.0
-                                }
-                                Alignment::Right => (text_width - img.display_width).max(0.0),
-                                _ => 0.0,
-                            };
+                            + align_offset(
+                                para.alignment,
+                                (text_width - img.display_width).max(0.0),
+                            );
                         let hf_fx = pc.effect_para_names.get(&pi);
                         if let Some(ref shadow) = img.shadow {
                             super::color::draw_image_shadow(
@@ -913,13 +900,13 @@ pub(super) fn render_header_footer(
                 let draw_para_borders = |content: &mut Content, box_bottom: f32| {
                     let draw_h_border =
                         |content: &mut Content, b: &crate::model::ParagraphBorder, y: f32| {
-                            content.save_state();
-                            content.set_line_width(b.width_pt);
-                            super::color::stroke_rgb(content, b.color);
-                            content.move_to(box_left, y);
-                            content.line_to(box_right, y);
-                            content.stroke();
-                            content.restore_state();
+                            stroke_segment(
+                                content,
+                                (box_left, y),
+                                (box_right, y),
+                                b.width_pt,
+                                Some(b.color),
+                            );
                         };
                     if let Some(b) = &bdr.top {
                         draw_h_border(content, b, box_top);
@@ -936,12 +923,7 @@ pub(super) fn render_header_footer(
                 // mirrors the body render path in pdf::mod.
                 if let Some(ref hr) = para.horizontal_rule {
                     let rule_w = text_width * hr.width_pct / 100.0;
-                    let rule_x = sp.margin_left
-                        + match para.alignment {
-                            Alignment::Center => (text_width - rule_w) / 2.0,
-                            Alignment::Right => text_width - rule_w,
-                            _ => 0.0,
-                        };
+                    let rule_x = sp.margin_left + align_offset(para.alignment, text_width - rule_w);
                     let draw_h = if hr.is_standard { 0.5 } else { hr.height_pt };
                     let rule_y = cursor_y - (line_h - draw_h) / 2.0 - draw_h;
                     content.save_state();

@@ -25,12 +25,7 @@ pub(crate) fn resolve_h_position(
         HRelativeFrom::Column => (col_x, col_w),
         HRelativeFrom::Margin => (sp.margin_left, text_width),
     };
-    match h_position {
-        HorizontalPosition::AlignCenter => origin + (area_width - obj_width) / 2.0,
-        HorizontalPosition::AlignRight => origin + area_width - obj_width,
-        HorizontalPosition::AlignLeft => origin,
-        HorizontalPosition::Offset(o) => origin + o,
-    }
+    h_position.place(origin, area_width, obj_width)
 }
 
 pub(super) fn resolve_fi_x(

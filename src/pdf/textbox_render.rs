@@ -6,6 +6,7 @@ use crate::model::{EmbeddedImage, Paragraph, SectionProperties, TextAnchor, Text
 
 use super::color::{fill_rgb, stroke_rgb};
 use super::header_footer::resolve_tb_y_top;
+use super::helpers::align_offset;
 use super::layout::{
     LinkAnnotation, LinkTagger, build_paragraph_lines, build_tabbed_line, lines_height,
     picture_line_bottom, render_paragraph_lines, tallest_run_metrics,
@@ -402,7 +403,6 @@ pub(super) fn render_textbox_paragraphs(
     // ponytail: list paragraphs are tagged P too; L/LI if a textbox list matters
     mut tag: Option<(&mut Tags, usize, usize)>,
 ) {
-    use crate::model::Alignment;
     let mut cursor_y = start_y;
     let mut prev_space_after = 0.0f32;
     let empty_fx: HashMap<usize, super::images::EffectXObjs> = HashMap::new();
@@ -443,11 +443,7 @@ pub(super) fn render_textbox_paragraphs(
                 let img_x = content_x
                     + tp.indent_left
                     + x_offset
-                    + match tp.alignment {
-                        Alignment::Center => (tp_align_w - img.display_width).max(0.0) / 2.0,
-                        Alignment::Right => (tp_align_w - img.display_width).max(0.0),
-                        _ => 0.0,
-                    };
+                    + align_offset(tp.alignment, (tp_align_w - img.display_width).max(0.0));
                 let img_y = cursor_y - inter_gap - img.display_height - y_offset;
                 super::smartart::render_image_with_clip(
                     content,

@@ -28,14 +28,14 @@ use pdf_writer::{Content, Name, Pdf, Ref};
 use crate::error::Error;
 use crate::fonts::FontEntry;
 use crate::model::{
-    Alignment, Block, DocGridType, Document, FieldCode, HorizontalPosition, LineSpacing,
-    PageVerticalAlign, Paragraph, ParagraphBorder, Run, SectionBreakType, SectionProperties,
-    ShapeFill, ShapeGeometry, VRelativeFrom, VerticalPosition, WrapText, WrapType,
+    Block, DocGridType, Document, FieldCode, HRelativeFrom, LineSpacing, PageVerticalAlign,
+    Paragraph, ParagraphBorder, Run, SectionBreakType, SectionProperties, ShapeFill, ShapeGeometry,
+    VRelativeFrom, VerticalPosition, WrapText, WrapType,
 };
 
 use crate::fonts::font_key;
 use assembly::{HeadingEntry, assemble_pdf_pages};
-use color::{fill_rgb, stroke_rgb};
+use color::{fill_rgb, stroke_segment};
 use fonts::collect_and_register_fonts;
 use footnotes::{compute_footnote_height, render_endnotes_inline, render_page_footnotes};
 use header_footer::{
@@ -44,7 +44,8 @@ use header_footer::{
 };
 pub(super) use helpers::resolve_line_h;
 use helpers::{
-    collect_paras, drops_contextual_spacing, joins_border_group, para_runs_with_textboxes,
+    align_offset, collect_paras, drops_contextual_spacing, joins_border_group,
+    para_runs_with_textboxes,
 };
 use images::{EffectXObjs, EmbeddedImages, embed_all_images};
 use layout::{
@@ -836,6 +837,14 @@ impl PageBuilder {
 
     fn page_count(&self) -> usize {
         self.all_contents.len()
+    }
+
+    /// Endnotes render at the end of the document: collect the id once, in
+    /// encounter order, for the last page (Phase 2c).
+    fn track_endnote(&mut self, id: u32) {
+        if self.endnote_ids_set.insert(id) {
+            self.endnote_ids.push(id);
+        }
     }
 
     fn is_at_page_top(&self, sp: &SectionProperties) -> bool {
@@ -2380,10 +2389,8 @@ fn render_paragraph_block(
                 {
                     track_page_footnote(state, doc, ctx, text_width, id);
                 }
-                if let Some(id) = run.endnote_id
-                    && state.pb.endnote_ids_set.insert(id)
-                {
-                    state.pb.endnote_ids.push(id);
+                if let Some(id) = run.endnote_id {
+                    state.pb.track_endnote(id);
                 }
             }
 
@@ -2617,12 +2624,7 @@ fn render_paragraph_block(
     }
 
     if let Some(ref ic) = para.inline_chart {
-        let chart_x = col_x
-            + match para.alignment {
-                Alignment::Center => (col_w - ic.display_width).max(0.0) / 2.0,
-                Alignment::Right => (col_w - ic.display_width).max(0.0),
-                _ => 0.0,
-            };
+        let chart_x = col_x + align_offset(para.alignment, (col_w - ic.display_width).max(0.0));
         state.pb.figure_without_content(para, doc, None);
         charts::render_chart(
             ic,
@@ -2663,12 +2665,7 @@ fn render_paragraph_block(
         }
     } else if let Some(ref hr) = para.horizontal_rule {
         let rule_w = col_w * hr.width_pct / 100.0;
-        let rule_x = col_x
-            + match para.alignment {
-                Alignment::Center => (col_w - rule_w) / 2.0,
-                Alignment::Right => col_w - rule_w,
-                _ => 0.0,
-            };
+        let rule_x = col_x + align_offset(para.alignment, col_w - rule_w);
         // Standard HRs (o:hrstd) render as a thin 0.5pt line
         // centered in the specified height space
         let draw_h = if hr.is_standard { 0.5 } else { hr.height_pt };
@@ -2686,12 +2683,7 @@ fn render_paragraph_block(
                 state.pb.begin_figure(para, doc, img.alt.as_deref());
             }
             let y_bottom = state.pb.slot_top - img.layout_extra_top - img.display_height;
-            let x = col_x
-                + match para.alignment {
-                    Alignment::Center => (col_w - img.display_width).max(0.0) / 2.0,
-                    Alignment::Right => (col_w - img.display_width).max(0.0),
-                    _ => 0.0,
-                };
+            let x = col_x + align_offset(para.alignment, (col_w - img.display_width).max(0.0));
             let img_fx = effect_names.get(&state.global_block_idx);
             if let Some(ref shadow) = img.shadow {
                 color::draw_image_shadow(
@@ -2856,13 +2848,13 @@ fn render_paragraph_block(
         let h_left_ext = bdr.left.as_ref().map(|b| b.width_pt / 2.0).unwrap_or(0.0);
         let h_right_ext = bdr.right.as_ref().map(|b| b.width_pt / 2.0).unwrap_or(0.0);
         let draw_h_border = |content: &mut Content, b: &ParagraphBorder, y: f32| {
-            content.save_state();
-            content.set_line_width(b.width_pt);
-            stroke_rgb(content, b.color);
-            content.move_to(box_left - h_left_ext, y);
-            content.line_to(box_right + h_right_ext, y);
-            content.stroke();
-            content.restore_state();
+            stroke_segment(
+                content,
+                (box_left - h_left_ext, y),
+                (box_right + h_right_ext, y),
+                b.width_pt,
+                Some(b.color),
+            );
         };
         // When this paragraph continues a border group, extend vertical
         // borders upward through the inter-paragraph gap so there is no
@@ -2874,13 +2866,13 @@ fn render_paragraph_block(
                 0.0
             };
         let draw_v_border = |content: &mut Content, b: &ParagraphBorder, x: f32| {
-            content.save_state();
-            content.set_line_width(b.width_pt);
-            stroke_rgb(content, b.color);
-            content.move_to(x, v_border_top);
-            content.line_to(x, box_bottom);
-            content.stroke();
-            content.restore_state();
+            stroke_segment(
+                content,
+                (x, v_border_top),
+                (x, box_bottom),
+                b.width_pt,
+                Some(b.color),
+            );
         };
 
         if !prev_borders_match && let Some(b) = &bdr.top {
@@ -2916,26 +2908,11 @@ fn render_paragraph_block(
 
     // Track footnotes referenced on this page
     for run in para.runs.iter() {
-        if let Some(id) = run.footnote_id
-            && state.pb.footnote_ids_set.insert(id)
-        {
-            state.pb.footnote_ids.push(id);
-            if let Some(footnote) = doc.footnotes.get(&id) {
-                let fn_height = compute_footnote_height(footnote, ctx, text_width);
-                let separator_h = if state.pb.footnote_ids.len() == 1 {
-                    12.0
-                } else {
-                    0.0
-                };
-                state.effective_margin_bottom += separator_h + fn_height;
-            }
+        if let Some(id) = run.footnote_id {
+            track_page_footnote(state, doc, ctx, text_width, id);
         }
-        // Endnotes render at end of document; just collect IDs in encounter
-        // order — they're flushed to the last page in Phase 2c.
-        if let Some(id) = run.endnote_id
-            && state.pb.endnote_ids_set.insert(id)
-        {
-            state.pb.endnote_ids.push(id);
+        if let Some(id) = run.endnote_id {
+            state.pb.track_endnote(id);
         }
     }
 
@@ -3257,37 +3234,21 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                     state.pb.toc = None;
                     let override_pos = table.position.as_ref().map(|pos| {
                         let table_total_w: f32 = table.col_widths.iter().sum();
-                        let x = match pos.h_anchor {
-                            "page" => match pos.h_position {
-                                HorizontalPosition::AlignCenter => {
-                                    (sp.page_width - table_total_w) / 2.0
-                                }
-                                HorizontalPosition::AlignRight => sp.page_width - table_total_w,
-                                HorizontalPosition::AlignLeft => 0.0,
-                                HorizontalPosition::Offset(o) => o,
-                            },
-                            "margin" => match pos.h_position {
-                                HorizontalPosition::AlignCenter => {
-                                    sp.margin_left + (text_width - table_total_w) / 2.0
-                                }
-                                HorizontalPosition::AlignRight => {
-                                    sp.margin_left + text_width - table_total_w
-                                }
-                                HorizontalPosition::AlignLeft => sp.margin_left,
-                                HorizontalPosition::Offset(o) => sp.margin_left + o,
-                            },
-                            _ => {
-                                let (col_x, col_w) = col_geometry[state.current_col];
-                                match pos.h_position {
-                                    HorizontalPosition::AlignCenter => {
-                                        col_x + (col_w - table_total_w) / 2.0
-                                    }
-                                    HorizontalPosition::AlignRight => col_x + col_w - table_total_w,
-                                    HorizontalPosition::AlignLeft => col_x,
-                                    HorizontalPosition::Offset(o) => col_x + o,
-                                }
-                            }
+                        let (col_x, col_w) = col_geometry[state.current_col];
+                        let h_relative_from = match pos.h_anchor {
+                            "page" => HRelativeFrom::Page,
+                            "margin" => HRelativeFrom::Margin,
+                            _ => HRelativeFrom::Column,
                         };
+                        let x = resolve_h_position(
+                            h_relative_from,
+                            &pos.h_position,
+                            table_total_w,
+                            sp,
+                            col_x,
+                            col_w,
+                            text_width,
+                        );
                         let y = match pos.v_anchor {
                             "page" => sp.page_height - pos.v_offset_pt,
                             "margin" => sp.page_height - sp.margin_top - pos.v_offset_pt,
@@ -3395,12 +3356,13 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 x += col.width;
                 if i < cfg.columns.len() - 1 {
                     let mid_x = x + col.space / 2.0;
-                    content.save_state();
-                    content.set_line_width(0.5);
-                    content.move_to(mid_x, sp.margin_bottom);
-                    content.line_to(mid_x, sp.page_height - sp.margin_top);
-                    content.stroke();
-                    content.restore_state();
+                    stroke_segment(
+                        content,
+                        (mid_x, sp.margin_bottom),
+                        (mid_x, sp.page_height - sp.margin_top),
+                        0.5,
+                        None,
+                    );
                     x += col.space;
                 }
             }
