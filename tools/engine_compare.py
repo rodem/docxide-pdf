@@ -4,7 +4,12 @@
 Reuses PNGs the test harness already produced under tests/output/<group>/<case>/
 (reference/, generated/, libreoffice/) and only converts what is missing. Conversions and
 screenshots are cached in comparison/work/. Every engine is additionally timed by converting
-into comparison/work/ once (seconds cached in a .time file beside the PDF). The viewer is a self-contained static site:
+into comparison/work/ once (seconds cached in a .time file beside the PDF). A conversion over
+TIMEOUT (120 s) is killed, logged to comparison/work/timeouts.tsv and not retried until the document,
+the engine, the fonts or the limit change; each run ends with the list. Scores are cached per case and engine
+(<engine>.score.json), keyed by both PDFs' contents and a fingerprint of the scorer and the tools it
+runs (page-metrics, mutool, veraPDF, pdfinfo, DPI); screenshots and accessibility analyses are redone
+when those tools change. The viewer is a self-contained static site:
 comparison/index.html plus lossless WebP page images, deployable as-is with
 tools/deploy_comparison.sh (work/ is excluded by comparison/.gitignore).
 
@@ -13,6 +18,7 @@ Usage:
     python3 tools/engine_compare.py --case case41 --case 'case2*'   # exact or glob, repeatable
     python3 tools/engine_compare.py --group cases --open
     python3 tools/engine_compare.py --skip-libreoffice --no-scores
+    python3 tools/engine_compare.py --fresh         # reconvert everything, ignoring every cache
     python3 tools/engine_compare.py --html-only     # rebuild index.html from the cached manifest, no re-scoring
 
 rdocx: `rdocx` on PATH (cargo install rdocx) or RDOCX_BIN.
@@ -24,6 +30,8 @@ Accessibility scores need verapdf and pdfinfo on PATH (brew install verapdf popp
 from __future__ import annotations
 
 import argparse
+import functools
+import hashlib
 import html
 import json
 import os
@@ -35,7 +43,7 @@ import threading
 import time
 import webbrowser
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -50,6 +58,9 @@ METRICS_BIN = ROOT / "tools" / "target" / "release" / "page-metrics"
 METRICS = ["jaccard", "ssim", "text_boundary"]
 GROUPS = ["cases", "scraped", "new", "samples"]
 DPI = "150"  # same as tests/common/mod.rs MUTOOL_DPI
+TIMEOUT = 120  # seconds per conversion, every engine; slower ones are logged to TIMEOUT_LOG
+TIMEOUT_LOG = WORK / "timeouts.tsv"
+TIMEOUTS: list[tuple[str, str, bool]] = []  # (engine, group/case, timed out this run) for the summary
 
 # (key, label). Key doubles as the PNG directory name.
 ENGINES = [
@@ -61,6 +72,13 @@ ENGINES = [
     ("office2pdf", "office2pdf"),
 ]
 COMPETITORS = [k for k, _ in ENGINES if k != "reference"]
+
+# Scores are cached per case and engine, keyed by content rather than mtimes (CI dates files by
+# commit, the harness rewrites its PDFs). SCORING_FP covers everything besides the two PDFs that a
+# score depends on; main() sets it, and an empty one means "do not cache".
+SCORING_FP = ""
+A11Y_FP_FILE = WORK / "a11y.fingerprint"
+A11Y_SRC = ROOT / "tests" / "common" / "a11y.rs"
 
 
 # Seconds spent per phase, summed over the worker threads, so a CI log says where a run's time went.
@@ -75,6 +93,16 @@ def spent(phase: str, fn, *args):
     finally:
         with _SPENT_LOCK:
             SPENT[phase] += time.perf_counter() - t
+
+
+def report_timeouts() -> None:
+    """This run's conversions over the limit: timed out now, or skipped as a known timeout."""
+    if not TIMEOUTS:
+        return
+    print(f"{len(TIMEOUTS)} conversions over the {TIMEOUT} s limit, not retried until the document, engine, "
+          f"fonts or limit change (--fresh retries them; history in {TIMEOUT_LOG.relative_to(ROOT)}):")
+    for engine, case, new in sorted(TIMEOUTS, key=lambda t: (t[1], t[0])):
+        print(f"  {engine:12} {case}{'' if new else '  (known, skipped)'}")
 
 
 def report_spent() -> None:
@@ -134,9 +162,10 @@ def is_fresh(target: Path, source: Path) -> bool:
 
 
 def screenshot(pdf: Path, out_dir: Path) -> list[Path]:
-    """Render every page to out_dir/page_NNN.png. Skips when PNGs are newer than the PDF."""
+    """Render every page to out_dir/page_NNN.png. Skips when PNGs are newer than the PDF and RENDER_EPOCH."""
     existing = sorted(out_dir.glob("page_*.png"))
-    if existing and all(p.stat().st_mtime >= pdf.stat().st_mtime for p in existing):
+    fresh_after = max(pdf.stat().st_mtime, RENDER_EPOCH)
+    if existing and all(p.stat().st_mtime >= fresh_after for p in existing):
         return existing
     out_dir.mkdir(parents=True, exist_ok=True)
     for old in existing:
@@ -173,7 +202,7 @@ def convert_ours(docx: Path, pdf: Path) -> bool:
     tmp = pdf.with_name(pdf.stem + ".tmp.pdf")
     tmp.unlink(missing_ok=True)
     t = time.perf_counter()
-    r = subprocess.run([str(OURS_BIN), str(docx), str(tmp)], capture_output=True, text=True, env=env)
+    r = subprocess.run([str(OURS_BIN), str(docx), str(tmp)], capture_output=True, text=True, env=env, timeout=TIMEOUT)
     seconds = time.perf_counter() - t
     if r.returncode != 0 or not tmp.exists():
         tmp.unlink(missing_ok=True)
@@ -198,7 +227,7 @@ def convert_libreoffice(soffice: Path, docx: Path, pdf: Path) -> bool:
     r = subprocess.run(
         [str(soffice), f"-env:UserInstallation=file://{profile}", "--headless",
          "--convert-to", "pdf", "--outdir", str(out), str(docx)],
-        capture_output=True, text=True, timeout=300, check=False,
+        capture_output=True, text=True, timeout=TIMEOUT, check=False,
     )
     produced = out / (docx.stem + ".pdf")
     if produced.exists() and produced != pdf:
@@ -214,7 +243,7 @@ def convert_minipdf(minipdf: Path, docx: Path, pdf: Path) -> bool:
     # Linux system fonts and panics ("UnknownKind") on most documents.
     fonts = ["--fonts", str(ROOT / "fonts")] if (ROOT / "fonts").is_dir() else []
     r = subprocess.run([str(minipdf), "convert", str(docx), "-o", str(pdf), *fonts],
-                       capture_output=True, text=True, timeout=300, check=False)
+                       capture_output=True, text=True, timeout=TIMEOUT, check=False)
     return converted(r, pdf)
 
 
@@ -223,7 +252,7 @@ def convert_rdocx(rdocx: Path, docx: Path, pdf: Path) -> bool:
         return True
     pdf.parent.mkdir(parents=True, exist_ok=True)
     r = subprocess.run([str(rdocx), "convert", "--to", "pdf", "--output", str(pdf), str(docx)],
-                       capture_output=True, text=True, timeout=300, check=False)
+                       capture_output=True, text=True, timeout=TIMEOUT, check=False)
     return converted(r, pdf)
 
 
@@ -234,8 +263,24 @@ def convert_office2pdf(office2pdf: Path, docx: Path, pdf: Path) -> bool:
     # Same Word fonts as the other engines; otherwise it uses whatever the host happens to have installed.
     fonts = ["--font-path", str(ROOT / "fonts")] if (ROOT / "fonts").is_dir() else []
     r = subprocess.run([str(office2pdf), str(docx), "-o", str(pdf), *fonts],
-                       capture_output=True, text=True, timeout=300, check=False)
+                       capture_output=True, text=True, timeout=TIMEOUT, check=False)
     return converted(r, pdf)
+
+
+@functools.lru_cache(maxsize=None)
+def engine_id(engine: Path) -> str:
+    """What identifies an engine build: our binary's bytes (rebuilt from the working tree every
+    run), a competitor's version banner (a reinstall keeps it, an upgrade changes it)."""
+    return file_hash(engine) if engine == OURS_BIN else tool_version(str(engine), "--version")
+
+
+@functools.lru_cache(maxsize=None)
+def fonts_fingerprint() -> str:
+    """Every engine converts with fonts/, so adding or replacing a font can change what hangs."""
+    d = ROOT / "fonts"
+    if not d.is_dir():
+        return "no fonts"
+    return fingerprint(*(f"{p.relative_to(d)}:{p.stat().st_size}" for p in sorted(d.rglob("*")) if p.is_file()))
 
 
 def timed(convert, *args) -> tuple[bool, float | None]:
@@ -251,19 +296,28 @@ def timed(convert, *args) -> tuple[bool, float | None]:
         pdf.unlink()
     # A timeout leaves no PDF to cache, so without this marker the engine would hang for the full
     # timeout on the same document every run (minipdf: 2 × 300 s per run). Retried once the
-    # document or the engine changes.
+    # document, the engine, the fonts or the limit change: the marker holds a key of all four.
     timeout_marker = pdf.with_suffix(".timeout")
-    if is_fresh(timeout_marker, docx) and is_fresh(timeout_marker, engine):
+    case = pdf.parent.relative_to(WORK).as_posix()
+    timeout_key = fingerprint(str(TIMEOUT), file_hash(docx), engine_id(engine), fonts_fingerprint())
+    if timeout_marker.exists() and timeout_marker.read_text() == timeout_key:
+        with _SPENT_LOCK:
+            TIMEOUTS.append((pdf.stem, case, False))
         return False, None
     before = pdf.stat().st_mtime if pdf.exists() else None
     t = time.perf_counter()
     try:
         ok = convert(*args)
     except subprocess.TimeoutExpired as e:  # one hung engine must not drop the whole case
-        print(f"  {convert.__name__.removeprefix('convert_')} timed out after {e.timeout:.0f} s on {pdf.parent.name}")
+        print(f"  {pdf.stem} timed out after {e.timeout:.0f} s on {case}")
         pdf.parent.mkdir(parents=True, exist_ok=True)
-        timeout_marker.write_text(f"{e.timeout:.0f}")
+        timeout_marker.write_text(timeout_key)
+        with _SPENT_LOCK, TIMEOUT_LOG.open("a") as log:
+            log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\t{pdf.stem}\t{case}\t{e.timeout:.0f}\n")
+            TIMEOUTS.append((pdf.stem, case, True))
         return False, None
+    if ok:
+        timeout_marker.unlink(missing_ok=True)  # converts in time again (new engine or document)
     if ok and pdf.stat().st_mtime != before:
         stamp.write_text(f"{time.perf_counter() - t:.3f}")
     return ok, float(stamp.read_text()) if ok and stamp.exists() else None
@@ -323,6 +377,92 @@ def engine_metrics(ref_pdf: Path, other_pdf: Path, ref_dir: Path, other_dir: Pat
     return out
 
 
+def file_hash(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def tool_version(*cmd: str) -> str:
+    """A tool's version banner (mutool and pdfinfo print it on stderr), or "missing"."""
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        return (r.stdout + r.stderr).strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return "missing"
+
+
+def fingerprint(*parts: str) -> str:
+    return hashlib.sha256("\n".join(parts).encode()).hexdigest()
+
+
+def record_fingerprint(marker: Path, fp: str) -> bool:
+    """Store fp in marker; True when it differs from the one stored by an earlier run. The first
+    run has nothing to compare with and trusts the caches it finds (--fresh redoes a case anyway)."""
+    known = marker.read_text() if marker.exists() else None
+    if known == fp:
+        return False
+    WORK.mkdir(parents=True, exist_ok=True)
+    marker.write_text(fp)
+    if known is None:
+        os.utime(marker, (0, 0))  # an epoch-dated marker makes no screenshot look older than it
+    return known is not None
+
+
+RENDER_FP_FILE = WORK / "render.fingerprint"
+RENDER_EPOCH = 0.0  # screenshots older than this were rendered by another mutool or DPI
+
+
+def render_check() -> None:
+    """Screenshots are only re-rendered when older than their PDF, so a mutool upgrade or DPI change
+    moves RENDER_EPOCH forward instead: everything rendered before it, the harness's renders that
+    are reused here included, is redone in place (the site images and visual scores follow)."""
+    global RENDER_EPOCH
+    if record_fingerprint(RENDER_FP_FILE, fingerprint(tool_version("mutool", "-v"), DPI)):
+        print("mutool or DPI changed: every screenshot is rendered again")
+    RENDER_EPOCH = RENDER_FP_FILE.stat().st_mtime
+
+
+def scoring_fingerprint() -> str:
+    """The scorer and every tool it shells out to. page-metrics reuses the accessibility analyses
+    (*.a11y.json) while they are newer than the PDF, so those go when their own inputs change."""
+    a11y = fingerprint(file_hash(A11Y_SRC), tool_version("verapdf", "--version"), tool_version("pdfinfo", "-v"))
+    if record_fingerprint(A11Y_FP_FILE, a11y):
+        # The harness's analyses too: it reuses them on the same mtime test, so they are stale for it as well.
+        stale = [*WORK.glob("*/*/*.a11y.json"), *TEST_OUTPUT.glob("*/*/*.a11y.json")]
+        for f in stale:
+            f.unlink(missing_ok=True)
+        print(f"veraPDF, pdfinfo or {A11Y_SRC.name} changed: dropped {len(stale)} cached analyses")
+    # The scorer by its sources, not its binary: page-metrics links the whole library (tests/common
+    # calls the converter), so the binary changes with nearly every commit while scoring does not,
+    # and CI recompiles it every run (rust-cache keeps dependencies only).
+    sources = [ROOT / "tools" / "src" / "bin" / "page_metrics.rs", *sorted((ROOT / "tests" / "common").glob("*.rs")),
+               ROOT / "tools" / "Cargo.toml", ROOT / "tools" / "Cargo.lock"]
+    scorer = [file_hash(p) for p in sources] + [tool_version("rustc", "--version")]
+    return fingerprint(*scorer, DPI, tool_version("mutool", "-v"), a11y)
+
+
+def cached_metrics(engine: str, mine: Path, ref_pdf: Path, ref_hash: str, pdf: Path,
+                   ref_dir: Path, other_dir: Path) -> dict:
+    """engine_metrics, reused while both PDFs and the scoring fingerprint are unchanged."""
+    key = f"{SCORING_FP}:{ref_hash}:{file_hash(pdf)}" if SCORING_FP else None
+    cache = mine / f"{engine}.score.json"
+    if key:
+        try:
+            c = json.loads(cache.read_text())
+            if c["key"] == key:
+                return c["scores"]
+        except (OSError, ValueError, KeyError):
+            pass
+    m = spent("score", engine_metrics, ref_pdf, pdf, ref_dir, other_dir)
+    if m and key:  # an empty result is a failed run of page-metrics, not a score
+        mine.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps({"key": key, "scores": m}))
+    return m
+
+
 def process_fixture(fixture: Path, group: str, tools: dict, opts) -> dict | None:
     docx = fixture / "input.docx"
     ref_pdf = fixture / "reference.pdf"
@@ -344,10 +484,17 @@ def process_fixture(fixture: Path, group: str, tools: dict, opts) -> dict | None
 
     # Ours and LibreOffice: show the harness PDF when it exists so scores line up with run-tests.sh,
     # but always time a conversion of our own so every engine's speed is measured by this script.
+    # --fresh: drop cached conversions and timeout markers so every engine runs again, and show
+    # those conversions rather than the harness PDFs, which may predate the current binaries.
+    if opts.fresh:
+        for pattern in ("*.pdf", "*.time", "*.timeout", "*.score.json", "*.a11y.json"):
+            for f in mine.glob(pattern):
+                f.unlink()
+    use_harness = not opts.fresh
     times: dict[str, float | None] = {}
     if tools.get("ours"):
         ok, times["generated"] = spent("convert generated", timed, convert_ours, docx, mine / "generated.pdf")
-        if (harness / "generated.pdf").exists():
+        if use_harness and (harness / "generated.pdf").exists():
             add("generated", harness / "generated.pdf", harness / "generated")
         elif ok:
             add("generated", mine / "generated.pdf", mine / "generated")
@@ -355,7 +502,7 @@ def process_fixture(fixture: Path, group: str, tools: dict, opts) -> dict | None
     if tools.get("soffice"):
         ok, times["libreoffice"] = spent("convert libreoffice", timed, convert_libreoffice, tools["soffice"], docx,
                                          mine / "libreoffice.pdf")
-        if (harness / "libreoffice.pdf").exists():
+        if use_harness and (harness / "libreoffice.pdf").exists():
             add("libreoffice", harness / "libreoffice.pdf", harness / "libreoffice")
         elif ok:
             add("libreoffice", mine / "libreoffice.pdf", mine / "libreoffice")
@@ -369,9 +516,10 @@ def process_fixture(fixture: Path, group: str, tools: dict, opts) -> dict | None
 
     scores: dict[str, dict] = {}
     if not opts.no_scores:
+        ref_hash = file_hash(ref_pdf)
         for key in COMPETITORS:
             if pages.get(key):
-                m = spent("score", engine_metrics, ref_pdf, pdfs[key], ref_dir, pages[key][0].parent)
+                m = cached_metrics(key, mine, ref_pdf, ref_hash, pdfs[key], ref_dir, pages[key][0].parent)
                 if m:
                     scores[key] = m
 
@@ -408,6 +556,8 @@ kbd { background:#333; border:1px solid #555; border-radius:3px; padding:0 4px; 
 #navPos { color:var(--muted); font-size:11px; min-width:5.5em; text-align:center; font-variant-numeric:tabular-nums; }
 body.noside { grid-template-columns:1fr; }
 body.noside #side { display:none; }
+/* The table lists the cases itself; the sidebar keeps only the filters, which apply to it. */
+body.table #list { display:none; }
 #side { overflow:auto; background:var(--panel); border-right:1px solid var(--border); }
 #sidehead { position:sticky; top:0; z-index:1; background:var(--panel); border-bottom:1px solid var(--border); }
 #filter { width:100%; padding:6px 8px; background:#333; color:var(--fg); border:0; border-bottom:1px solid var(--border); font:inherit; }
@@ -447,6 +597,7 @@ body.noside #side { display:none; }
 #scores tbody tr:hover { background:#2c2c2c; }
 #scores tbody tr.sel { background:#094771; }
 #scores .note { color:var(--muted); font-size:11px; margin:8px 0 14px; }
+#scores .cname { display:block; max-width:14em; overflow:hidden; text-overflow:ellipsis; }
 .hidden { display:none !important; }
 #more { display:block; margin:4px 0 24px; padding:8px 18px; background:#333; color:var(--fg); border:1px solid #555; border-radius:4px; font:inherit; cursor:pointer; }
 #more:hover { background:#444; }
@@ -514,7 +665,7 @@ function applyHash() {
   return false;
 }
 applyHash();
-window.onhashchange = () => { if (applyHash()) render(); };
+window.onhashchange = () => { if (applyHash()) { render(); $('#main').scrollTop = history.state?.top ?? 0; } };
 
 // engine toggles
 ENGINES.forEach(([key,label],i) => {
@@ -607,7 +758,7 @@ function renderScores() {
   const engines = ENGINES.filter(([k]) => k !== 'reference');
   // Sort columns: 0 case (manifest order), 1 group, 2 reference pages, then one per engine×metric.
   const cols = [
-    { get: r => r.i, show: r => r.c.case },
+    { get: r => r.i, show: r => `<span class="cname" title="${r.c.case}">${r.c.case}</span>` },
     { get: r => r.c.group, show: r => r.c.group },
     { get: r => (r.c.pages.reference || []).length, show: r => (r.c.pages.reference || []).length, num: true },
   ];
@@ -653,8 +804,18 @@ function render() {
   renderList();
   const c = DATA[state.sel]; if (!c) return;
   const table = state.view === 'scores';
+  document.body.classList.toggle('table', table);
   $('#viewToggle').textContent = table ? 'Viewer' : 'Scores table';
-  history.replaceState(null, '', '#' + (table ? 'scores' : c.group + '/' + c.case));
+  // Switching between the table and the pages is a navigation, so Back returns to the
+  // other view where it was scrolled; moving between cases only rewrites the URL.
+  const hash = '#' + (table ? 'scores' : c.group + '/' + c.case);
+  if (location.hash && (location.hash === '#scores') !== table) {
+    history.replaceState({ top: $('#main').scrollTop }, '');
+    history.pushState(null, '', hash);
+    $('#main').scrollTop = 0;
+  } else {
+    history.replaceState(history.state, '', hash);
+  }
   $('#scores').classList.toggle('hidden', !table);
   if (table) {
     for (const id of ['#grid', '#overlay', '#more']) $(id).classList.add('hidden');
@@ -731,6 +892,8 @@ $('#filter').oninput = e => { state.filter = e.target.value; renderList(); };
 setupFx();
 document.onkeydown = e => {
   if (e.target.tagName === 'SELECT' || ['text', 'number'].includes(e.target.type)) return;
+  // Browser shortcuts are not ours: Cmd+R would pick a random case just before the reload.
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === 'ArrowDown') step(1);
   else if (e.key === 'ArrowUp') step(-1);
   else if (e.key === 'r') pickRandom();
@@ -822,6 +985,8 @@ def main() -> None:
     ap.add_argument("--skip-rdocx", action="store_true")
     ap.add_argument("--skip-office2pdf", action="store_true")
     ap.add_argument("--no-scores", action="store_true", help="skip Jaccard scoring")
+    ap.add_argument("--fresh", action="store_true",
+                    help="reconvert with every engine, ignoring cached PDFs, timeouts and the test harness's PDFs")
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
     ap.add_argument("--open", action="store_true", help="open the HTML when done")
     ap.add_argument("--html-only", action="store_true",
@@ -857,6 +1022,7 @@ def main() -> None:
 
     if not shutil.which("mutool"):
         sys.exit("mutool not found (brew install mupdf-tools)")
+    render_check()
     tools: dict = {}
     # Always rebuild: an incremental no-op build is ~1s and a stale binary silently skews the comparison.
     tools["ours"] = ensure_built(OURS_BIN, ROOT, "--release", always=True)
@@ -877,8 +1043,17 @@ def main() -> None:
         if not tools["office2pdf"]:
             print("office2pdf not found; skipping (cargo install office2pdf-cli, or OFFICE2PDF_BIN)")
     if not opts.no_scores:
-        # Release: SSIM over a 205-page fixture is painfully slow unoptimized.
-        ensure_built(METRICS_BIN, ROOT / "tools", "--release", "--bin", "page-metrics")
+        # Release: SSIM over a 205-page fixture is painfully slow unoptimized. Always rebuilt (a
+        # no-op when unchanged) so an edit to the scoring code is never scored with the old binary.
+        if ensure_built(METRICS_BIN, ROOT / "tools", "--release", "--bin", "page-metrics", always=True):
+            global SCORING_FP
+            SCORING_FP = scoring_fingerprint()
+
+    # Once, before the workers: each would otherwise run every engine's --version on its first case.
+    for t in tools.values():
+        if t:
+            engine_id(t)
+    fonts_fingerprint()
 
     groups = opts.group or GROUPS
     fixtures = [(g, d) for g in groups if (FIXTURES / g).is_dir()
@@ -890,7 +1065,8 @@ def main() -> None:
     results: list[dict] = []
     with ThreadPoolExecutor(max_workers=opts.jobs) as pool:
         futures = {pool.submit(process_fixture, d, g, tools, opts): (g, d.name) for g, d in fixtures}
-        for i, fut in enumerate(futures, 1):
+        # As they finish: in submission order one 200-page case stalls the log for every case behind it.
+        for i, fut in enumerate(as_completed(futures), 1):
             g, name = futures[fut]
             try:
                 r = fut.result()
@@ -904,6 +1080,7 @@ def main() -> None:
                 print(f"  [{i}/{len(futures)}] {g}/{name}  {sc}")
 
     print()
+    report_timeouts()
     finish(results, engine_versions(tools))
 
 
