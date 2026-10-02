@@ -733,9 +733,14 @@
     "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
+  "fonts/missing_font_sub..": {
+    "jaccard": 0.1866,
+    "ssim": 0.6699,
+    "ua_fail": 2
+  },
   "fonts/multi_font": {
-    "jaccard": 0.2194,
-    "ssim": 0.3924,
+    "jaccard": 0.22,
+    "ssim": 0.3923,
     "text_boundary": 1.0,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -937,8 +942,8 @@
     "ua_fail": 0
   },
   "scraped/brazilian_logist..": {
-    "jaccard": 0.6468,
-    "ssim": 0.7985,
+    "jaccard": 0.6478,
+    "ssim": 0.7983,
     "text_boundary": 0.1624,
     "convert_ms": 744.0,
     "ua_fail": 3,
@@ -1263,8 +1268,8 @@
     "a11y_text": 1.0
   },
   "scraped/german_mezzo_sop..": {
-    "jaccard": 0.5029,
-    "ssim": 0.5223,
+    "jaccard": 0.6898,
+    "ssim": 0.8123,
     "text_boundary": 0.8276,
     "convert_ms": 33.4,
     "ua_fail": 3,
@@ -1717,8 +1722,8 @@
     "ua_fail": 2
   },
   "scraped/slovak_pedagogic..": {
-    "jaccard": 0.4834,
-    "ssim": 0.8729,
+    "jaccard": 0.3455,
+    "ssim": 0.8724,
     "text_boundary": 0.1379,
     "ua_fail": 2,
     "ua_deficit": 0,
