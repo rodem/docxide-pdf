@@ -430,6 +430,16 @@ reproduced at the baseline and were marked fixed without a code change.
    taller now, runs past the bottom margin (inline endnotes are not paginated,
    see the `ponytail:` note in `render_endnotes_inline`). master_thesis and
    croatian_grant changed hash only.
+6. **Hyphen before a digit** (from #246's first divergence, "Sindh 2019-|2024"):
+   UAX #14's LB25 keeps "2019-2024" whole; a scan of the 223 reference PDFs
+   found 13 line ends of the form "<alnum>-" | "<digit>…" ("1(4): 108-",
+   "about 3-", "11-22-", DOIs), so Word breaks after a hyphen before a digit
+   as before a letter. `word_pair_rule`'s hyphen arm now covers it. Seven
+   fixtures improved, none dropped: polish_council J +12.3 / SSIM +12.9,
+   international_te +6.9 / +8.9, physical_therapy +6.2 / +5.9, dental_amalgam
+   +1.9, hyphenation/italian +0.9, covid +0.5, education_consultant +0.3; 19
+   more changed hash only. #246 itself remains: its table pagination differs
+   through cumulative line-height drift on page 2.
 
 Findings left for later:
 - `wp:effectExtent` is not part of an inline picture's line height; ut_koer's

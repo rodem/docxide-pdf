@@ -99,10 +99,12 @@ fn drop_url_breaks(text: &str, breaks: &mut Vec<usize>) {
 /// characters: `Some(true)` adds a break, `Some(false)` removes one, `None`
 /// keeps UAX #14's answer. The URL rule needs more context (`drop_url_breaks`).
 fn word_pair_rule(a: char, b: char) -> Option<bool> {
-    // LB21 never breaks before a hyphen, so a run of hyphen-minus would be one
-    // unbreakable word; Word wraps such a run after however many fit the line
-    // (family_kinship's 87-dash rules break into two columns of dashes).
-    if a == '-' && b == '-' {
+    // Word breaks after a hyphen-minus where UAX #14 does not: before another
+    // hyphen (LB21 would make a dash run one unbreakable word; family_kinship's
+    // 87-dash rules wrap into two columns of dashes) and before a digit (LB25
+    // keeps "2019-2024" whole; 13 reference line ends such as "Sindh 2019-",
+    // "1(4): 108-", "about 3-").
+    if a == '-' && (b == '-' || b.is_ascii_digit()) {
         return Some(true);
     }
     // Class IN allows a break after an ellipsis before digits, but Word keeps
@@ -3142,6 +3144,11 @@ mod tests {
     #[test]
     fn hyphen_runs_break_between_hyphens() {
         assert_eq!(split_preserving_spaces("a---b"), vec![(0, "a-"), (0, "-"), (0, "-"), (0, "b")]);
+    }
+
+    #[test]
+    fn hyphen_breaks_before_a_digit() {
+        assert_eq!(split_preserving_spaces("2019-2024"), vec![(0, "2019-"), (0, "2024")]);
     }
 
     #[test]
