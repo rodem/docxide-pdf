@@ -602,6 +602,9 @@ pub(super) struct PageBuilder {
     /// right columns share this top-y so advancing from left to right returns
     /// to where the section started rather than the top of the page.
     pub(super) column_top_y: f32,
+    /// Where this page's body starts: below a header taller than the top
+    /// margin, not at the margin (`is_at_page_top`).
+    pub(super) page_top_y: f32,
     pub(super) is_first_page_of_section: bool,
     /// Section that owns the current page for header/footer purposes.
     /// For continuous section breaks, this stays as the section that started
@@ -665,6 +668,7 @@ impl PageBuilder {
             styleref_page_first: HashMap::new(),
             slot_top,
             column_top_y: slot_top,
+            page_top_y: slot_top,
             is_first_page_of_section: true,
             page_hf_section: 0,
             float_zone: None,
@@ -820,7 +824,10 @@ impl PageBuilder {
     }
 
     fn is_at_page_top(&self, sp: &SectionProperties) -> bool {
+        // nabl's 47.49pt header ends below its 36pt top margin: Word still
+        // drops the space before the first paragraph under it.
         (self.slot_top - (sp.page_height - sp.margin_top)).abs() < 1.0
+            || (self.slot_top - self.page_top_y).abs() < 0.01
     }
 
     /// Advance to the next column if available, otherwise flush the current page.
@@ -841,6 +848,7 @@ impl PageBuilder {
             self.flush_page(sect_idx);
             self.slot_top = effective_slot_top(sp, false, ctx);
             self.column_top_y = self.slot_top;
+            self.page_top_y = self.slot_top;
             *effective_margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
             self.is_first_page_of_section = false;
         }
@@ -1322,6 +1330,7 @@ fn render_paragraph_block(
             state.pb.flush_page(sect_idx);
             state.pb.slot_top = effective_slot_top(sp, false, &ctx);
             state.pb.column_top_y = state.pb.slot_top;
+            state.pb.page_top_y = state.pb.slot_top;
             state.effective_margin_bottom =
                 compute_effective_margin_bottom(sp, false, &ctx);
             state.pb.is_first_page_of_section = false;
@@ -2857,6 +2866,7 @@ fn render_paragraph_block(
         state.pb.flush_page(sect_idx);
         state.pb.slot_top = effective_slot_top(sp, false, &ctx);
         state.pb.column_top_y = state.pb.slot_top;
+        state.pb.page_top_y = state.pb.slot_top;
         state.effective_margin_bottom =
             compute_effective_margin_bottom(sp, false, &ctx);
         state.pb.is_first_page_of_section = false;
@@ -3034,6 +3044,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
                     state.pb.slot_top = effective_slot_top(sp, true, &ctx);
                     state.pb.column_top_y = state.pb.slot_top;
+                    state.pb.page_top_y = state.pb.slot_top;
                     state.effective_margin_bottom = compute_effective_margin_bottom(sp, true, &ctx);
                     state.pb.page_hf_section = sect_idx;
                     state.pb.is_first_page_of_section = true;

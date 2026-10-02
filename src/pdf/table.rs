@@ -1491,6 +1491,7 @@ pub(super) fn render_table(
         pb.is_first_page_of_section = false;
         pb.slot_top = effective_slot_top(sp, false, ctx);
         pb.column_top_y = pb.slot_top;
+        pb.page_top_y = pb.slot_top;
         *emb = compute_effective_margin_bottom(sp, false, ctx);
         if header_count > 0 && ri >= header_count {
             render_header_rows(
@@ -1587,6 +1588,7 @@ pub(super) fn render_table(
             pb.is_first_page_of_section = false;
             pb.slot_top = effective_slot_top(sp, false, ctx);
             pb.column_top_y = pb.slot_top;
+            pb.page_top_y = pb.slot_top;
             *effective_margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
             did_flush_while_floating = true;
             // The body top is where the anchor paragraph flows (and where its
