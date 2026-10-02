@@ -64,6 +64,24 @@ pub(super) fn drops_contextual_spacing(para: &Paragraph, neighbour: Option<&Para
     para.contextual_spacing && neighbour.is_some_and(|n| n.style_id == para.style_id)
 }
 
+/// `space_before` unless contextual spacing drops it beside `prev`.
+pub(super) fn effective_space_before(para: &Paragraph, prev: Option<&Paragraph>) -> f32 {
+    if drops_contextual_spacing(para, prev) {
+        0.0
+    } else {
+        para.space_before
+    }
+}
+
+/// `space_after` unless contextual spacing drops it beside `next`.
+pub(super) fn effective_space_after(para: &Paragraph, next: Option<&Paragraph>) -> f32 {
+    if drops_contextual_spacing(para, next) {
+        0.0
+    } else {
+        para.space_after
+    }
+}
+
 pub(super) fn joins_border_group(a: &Paragraph, b: &Paragraph) -> bool {
     let same = |x: f32, y: f32| (x - y).abs() < 0.01;
     borders_match(&a.borders, &b.borders)

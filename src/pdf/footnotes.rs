@@ -6,7 +6,7 @@ use crate::model::{Footnote, LineSpacing, Paragraph, Run};
 
 use super::RenderContext;
 use super::color::stroke_segment;
-use super::helpers::drops_contextual_spacing;
+use super::helpers::{effective_space_after, effective_space_before};
 use super::layout::{
     EMPTY_EFFECTS, EMPTY_INLINE_IMAGES, TextLine, build_paragraph_lines, is_text_empty,
     render_paragraph_lines, tallest_run_metrics,
@@ -109,22 +109,13 @@ pub(super) fn compute_footnote_height(
             continue;
         }
         if i > 0 {
-            let effective_sb = if drops_contextual_spacing(para, prev_para) {
-                0.0
-            } else {
-                para.space_before
-            };
-            total += f32::max(prev_space_after, effective_sb);
+            total += f32::max(prev_space_after, effective_space_before(para, prev_para));
         }
         total += layout.as_ref().map_or_else(
             || empty_paragraph_line_h(para, ls, ctx),
             |l| l.lines.len().max(1) as f32 * l.line_height,
         );
-        prev_space_after = if drops_contextual_spacing(para, footnote.paragraphs.get(i + 1)) {
-            0.0
-        } else {
-            para.space_after
-        };
+        prev_space_after = effective_space_after(para, footnote.paragraphs.get(i + 1));
         prev_para = Some(para);
     }
     // Word puts a note's last space-after before the next note (erasmus_plus
@@ -270,12 +261,7 @@ fn render_notes_downward(
 
             // Inter-paragraph spacing within the footnote
             if pi > 0 {
-                let effective_sb = if drops_contextual_spacing(para, prev_para) {
-                    0.0
-                } else {
-                    para.space_before
-                };
-                fn_y -= f32::max(prev_space_after, effective_sb);
+                fn_y -= f32::max(prev_space_after, effective_space_before(para, prev_para));
             }
 
             if let Some(layout) = layout {
@@ -320,11 +306,7 @@ fn render_notes_downward(
             } else {
                 fn_y -= empty_paragraph_line_h(para, ls, ctx);
             }
-            prev_space_after = if drops_contextual_spacing(para, footnote.paragraphs.get(pi + 1)) {
-                0.0
-            } else {
-                para.space_after
-            };
+            prev_space_after = effective_space_after(para, footnote.paragraphs.get(pi + 1));
             prev_para = Some(para);
         }
         // The note's trailing space, as `compute_footnote_height` charges it.

@@ -11,15 +11,13 @@ use super::images::{
 };
 use super::is_east_asian_char;
 use super::styles::{
-    CharacterStyle, ParagraphStyle, StyleDefaults, ThemeFonts, parse_char_spacing, parse_font_size,
-    parse_lang, resolve_east_asia_font_from_node, resolve_font_from_node_opt,
+    ParagraphStyle, RunProps, StyleDefaults, ThemeFonts, parse_font_size, parse_run_props,
+    resolve_font_from_node_opt,
 };
 use super::textbox::parse_textbox_from_vml;
-use super::wordart::{parse_text_fill, parse_text_glow, parse_text_outline, parse_text_shadow};
 use super::{
     MATH_NS, MC_NS_TOP, OFFICE_NS, ParseContext, REL_NS, VML_NS, WML_NS, find_child,
-    highlight_color, parse_hex_color, parse_one_border, parse_pt, parse_run_shd, parse_text_color,
-    wml, wml_attr, wml_bool,
+    parse_hex_color, parse_pt, wml, wml_attr, wml_bool,
 };
 
 fn is_dynamic_field(instr: &str) -> bool {
@@ -93,84 +91,14 @@ pub(super) struct ParsedRuns {
     pub(super) horizontal_rule: Option<HorizontalRule>,
 }
 
-/// Resolved formatting for the current run, used to build Run structs concisely.
-struct RunFormat {
-    font_size: f32,
-    font_name: String,
-    east_asia_font_name: Option<String>,
-    bold: bool,
-    italic: bool,
-    underline: bool,
-    double_underline: bool,
-    strikethrough: bool,
-    dstrike: bool,
-    char_spacing: f32,
-    text_scale: f32,
-    caps: bool,
-    small_caps: bool,
-    vanish: bool,
-    color: Option<[u8; 3]>,
-    vertical_align: VertAlign,
-    highlight: Option<[u8; 3]>,
-    shading: Option<[u8; 3]>,
-    border: Option<crate::model::ParagraphBorder>,
-    kern_threshold: Option<f32>,
-    char_style_id: Option<String>,
-    text_outline: Option<TextOutline>,
-    text_fill: Option<TextFill>,
-    text_shadow: Option<TextShadow>,
-    text_glow: Option<TextGlow>,
-    lang: Option<String>,
-    text_lang: Option<std::sync::Arc<str>>,
-    text_lang_east_asia: Option<std::sync::Arc<str>>,
-    /// True when font_size came only from ParagraphRunDefaults (doc defaults / para style),
-    /// not from inline rPr or character style.
-    font_size_from_default: bool,
-    /// True when font_name came only from ParagraphRunDefaults.
-    font_name_from_default: bool,
-    bold_is_direct: bool,
-    italic_is_direct: bool,
-}
-
-impl RunFormat {
-    /// Build a text run with the full formatting applied.
+/// A `Run` doubles as the resolved formatting of one `w:r`: every run the
+/// element yields is built from that template with struct update syntax.
+impl Run {
     fn text_run(&self, text: String, hyperlink_url: Option<String>) -> Run {
         Run {
             text,
-            font_size: self.font_size,
-            font_name: self.font_name.clone(),
-            east_asia_font_name: self.east_asia_font_name.clone(),
-            bold: self.bold,
-            italic: self.italic,
-            underline: self.underline,
-            double_underline: self.double_underline,
-            strikethrough: self.strikethrough,
-            dstrike: self.dstrike,
-            char_spacing: self.char_spacing,
-            text_scale: self.text_scale,
-            caps: self.caps,
-            small_caps: self.small_caps,
-            vanish: self.vanish,
-            color: self.color,
-            vertical_align: self.vertical_align,
-            highlight: self.highlight,
-            shading: self.shading,
-            border: self.border.clone(),
-            kern_threshold: self.kern_threshold,
-            char_style_id: self.char_style_id.clone(),
-            text_outline: self.text_outline.clone(),
-            text_fill: self.text_fill.clone(),
-            text_shadow: self.text_shadow.clone(),
-            text_glow: self.text_glow.clone(),
-            lang: self.lang.clone(),
-            text_lang: self.text_lang.clone(),
-            text_lang_east_asia: self.text_lang_east_asia.clone(),
-            font_size_from_default: self.font_size_from_default,
-            font_name_from_default: self.font_name_from_default,
-            bold_is_direct: self.bold_is_direct,
-            italic_is_direct: self.italic_is_direct,
             hyperlink_url,
-            ..Run::default()
+            ..self.clone()
         }
     }
 
@@ -189,12 +117,10 @@ impl RunFormat {
     fn tab_run(&self) -> Run {
         Run {
             is_tab: true,
-            font_size: self.font_size,
-            font_name: self.font_name.clone(),
             underline: self.underline,
             double_underline: self.double_underline,
             color: self.color,
-            ..Run::default()
+            ..self.minimal_run()
         }
     }
 
@@ -204,23 +130,19 @@ impl RunFormat {
         Run {
             is_tab: true,
             ptab_alignment: Some(alignment),
-            font_size: self.font_size,
-            font_name: self.font_name.clone(),
             color: self.color,
-            ..Run::default()
+            ..self.minimal_run()
         }
     }
 
     fn styled_run(&self) -> Run {
         Run {
-            font_size: self.font_size,
-            font_name: self.font_name.clone(),
             bold: self.bold,
             italic: self.italic,
             color: self.color,
             highlight: self.highlight,
             shading: self.shading,
-            ..Run::default()
+            ..self.minimal_run()
         }
     }
 
@@ -266,46 +188,37 @@ impl ParagraphRunDefaults {
     fn from_style(para_style: Option<&ParagraphStyle>, defaults: &StyleDefaults) -> Self {
         let para_font_size = para_style.and_then(|s| s.font_size);
         let para_font_name = para_style.and_then(|s| s.font_name.as_deref());
+        let style_or = |f: fn(&ParagraphStyle) -> Option<bool>, default: bool| {
+            para_style.and_then(f).unwrap_or(default)
+        };
+        let style_or_clone = |f: fn(&ParagraphStyle) -> Option<&String>,
+                              default: &Option<String>| {
+            para_style.and_then(f).or(default.as_ref()).cloned()
+        };
         Self {
             font_size: para_font_size.unwrap_or(defaults.font_size),
             font_name: para_font_name.unwrap_or(&defaults.font_name).to_string(),
             font_size_is_doc_default: para_font_size.is_none(),
             font_name_is_doc_default: para_font_name.is_none(),
-            bold: para_style.and_then(|s| s.bold).unwrap_or(defaults.bold),
-            italic: para_style.and_then(|s| s.italic).unwrap_or(defaults.italic),
-            caps: para_style.and_then(|s| s.caps).unwrap_or(defaults.caps),
-            small_caps: para_style
-                .and_then(|s| s.small_caps)
-                .unwrap_or(defaults.small_caps),
-            vanish: para_style.and_then(|s| s.vanish).unwrap_or(defaults.vanish),
-            underline: para_style
-                .and_then(|s| s.underline)
-                .unwrap_or(defaults.underline),
-            double_underline: para_style
-                .and_then(|s| s.double_underline)
-                .unwrap_or(defaults.double_underline),
-            strikethrough: para_style
-                .and_then(|s| s.strikethrough)
-                .unwrap_or(defaults.strikethrough),
-            dstrike: para_style
-                .and_then(|s| s.dstrike)
-                .unwrap_or(defaults.dstrike),
+            bold: style_or(|s| s.bold, defaults.bold),
+            italic: style_or(|s| s.italic, defaults.italic),
+            caps: style_or(|s| s.caps, defaults.caps),
+            small_caps: style_or(|s| s.small_caps, defaults.small_caps),
+            vanish: style_or(|s| s.vanish, defaults.vanish),
+            underline: style_or(|s| s.underline, defaults.underline),
+            double_underline: style_or(|s| s.double_underline, defaults.double_underline),
+            strikethrough: style_or(|s| s.strikethrough, defaults.strikethrough),
+            dstrike: style_or(|s| s.dstrike, defaults.dstrike),
             color: para_style.and_then(|s| s.color).or(defaults.color),
             char_spacing: para_style
                 .and_then(|s| s.char_spacing)
                 .unwrap_or(defaults.char_spacing),
-            lang: para_style
-                .and_then(|s| s.lang.clone())
-                .or_else(|| defaults.lang.clone()),
-            lang_east_asia: para_style
-                .and_then(|s| s.lang_east_asia.clone())
-                .or_else(|| defaults.lang_east_asia.clone()),
+            lang: style_or_clone(|s| s.lang.as_ref(), &defaults.lang),
+            lang_east_asia: style_or_clone(|s| s.lang_east_asia.as_ref(), &defaults.lang_east_asia),
             kern_threshold: para_style
                 .and_then(|s| s.kern_threshold)
                 .or(defaults.kern_threshold),
-            east_asia_font: para_style
-                .and_then(|s| s.east_asia_font.clone())
-                .or_else(|| defaults.east_asia_font.clone()),
+            east_asia_font: style_or_clone(|s| s.east_asia_font.as_ref(), &defaults.east_asia_font),
             text_outline: para_style.and_then(|s| s.text_outline.clone()),
             text_fill: para_style.and_then(|s| s.text_fill.clone()),
             text_shadow: para_style.and_then(|s| s.text_shadow.clone()),
@@ -313,42 +226,39 @@ impl ParagraphRunDefaults {
         }
     }
 
+    /// The formatting template for one `w:r`: its own `rpr`, then the
+    /// character style, then this paragraph's defaults.
     fn resolve_run_format(
         &self,
         rpr: Option<roxmltree::Node>,
-        char_style: Option<&CharacterStyle>,
+        char_style: Option<&RunProps>,
         char_style_id_str: Option<&str>,
         theme: &ThemeFonts,
-    ) -> RunFormat {
-        let rfonts_node = rpr.and_then(|n| wml(n, "rFonts"));
-        let run_lang = rpr.map(parse_lang).unwrap_or_default();
-        let explicit_font_size = rpr.and_then(parse_font_size);
+    ) -> Run {
+        let own = rpr.map(|n| parse_run_props(n, theme)).unwrap_or_default();
+        let cs = |f: fn(&RunProps) -> Option<bool>| char_style.and_then(f);
         let char_style_font_size = char_style.and_then(|cs| cs.font_size);
-        let explicit_font_name =
-            rfonts_node.and_then(|rfonts| resolve_font_from_node_opt(rfonts, theme));
         let char_style_font_name = char_style.and_then(|cs| cs.font_name.clone());
         // True only when font_size/name came from doc defaults — not from inline rPr,
         // character style, OR paragraph style.  Table style overrides apply only here.
-        let font_size_from_default = explicit_font_size.is_none()
+        let font_size_from_default = own.font_size.is_none()
             && char_style_font_size.is_none()
             && self.font_size_is_doc_default;
-        let font_name_from_default = explicit_font_name.is_none()
+        let font_name_from_default = own.font_name.is_none()
             && char_style_font_name.is_none()
             && self.font_name_is_doc_default;
-        let underline_node = rpr.and_then(|n| wml(n, "u"));
-        let underline_val = underline_node.and_then(|u| u.attribute((WML_NS, "val")));
 
         // Legacy Word-97 run text-effect toggles (§17.3.2.23/.31/.13/.18). These
         // are independent of the modern w14 DrawingML effects parsed below: a
         // plain <w:outline/>/<w:shadow/>/<w:emboss/>/<w:imprint/> draws as hollow
         // / dropshadowed / raised / engraved text. `w:effect` (animated shimmer)
         // has no print form, so we deliberately don't read it — base text only.
-        let resolved_font_size = explicit_font_size
+        let font_size = own
+            .font_size
             .or(char_style_font_size)
             .unwrap_or(self.font_size);
-        let resolved_color = rpr
-            .and_then(|n| wml_attr(n, "color"))
-            .and_then(parse_text_color)
+        let color = own
+            .color
             .or_else(|| char_style.and_then(|cs| cs.color))
             .or(self.color);
         let legacy_outline = rpr.and_then(|n| wml_bool(n, "outline")).unwrap_or(false);
@@ -356,68 +266,53 @@ impl ParagraphRunDefaults {
         let legacy_emboss = rpr.and_then(|n| wml_bool(n, "emboss")).unwrap_or(false);
         let legacy_imprint = rpr.and_then(|n| wml_bool(n, "imprint")).unwrap_or(false);
 
-        RunFormat {
-            font_size: explicit_font_size
-                .or(char_style_font_size)
-                .unwrap_or(self.font_size),
-            font_name: explicit_font_name
+        Run {
+            font_size,
+            font_name: own
+                .font_name
                 .or(char_style_font_name)
                 .unwrap_or_else(|| self.font_name.clone()),
-            east_asia_font_name: rfonts_node
-                .and_then(|rfonts| resolve_east_asia_font_from_node(rfonts, theme))
+            east_asia_font_name: own
+                .east_asia_font
                 .or_else(|| char_style.and_then(|cs| cs.east_asia_font.clone()))
                 .or_else(|| self.east_asia_font.clone()),
-            bold: rpr
-                .and_then(|n| wml_bool(n, "b"))
-                .or_else(|| char_style.and_then(|cs| cs.bold))
-                .unwrap_or(self.bold),
-            italic: rpr
-                .and_then(|n| wml_bool(n, "i"))
-                .or_else(|| char_style.and_then(|cs| cs.italic))
+            bold: own.bold.or_else(|| cs(|c| c.bold)).unwrap_or(self.bold),
+            italic: own
+                .italic
+                .or_else(|| cs(|c| c.italic))
                 .unwrap_or(self.italic),
             // Decide underline from the w:val attribute, not the mere presence
             // of <w:u>. Word treats a bare <w:u> with no val (e.g.
             // <w:u w:color="000000"/>) as "no underline applied" and inherits,
             // so keying off presence wrongly underlines such runs.
-            underline: underline_val
-                .map(|v| v != "none")
-                .or_else(|| char_style.and_then(|cs| cs.underline))
+            underline: own
+                .underline
+                .or_else(|| cs(|c| c.underline))
                 .unwrap_or(self.underline),
-            double_underline: underline_val
-                .map(|v| v == "double")
-                .or_else(|| char_style.and_then(|cs| cs.double_underline))
+            double_underline: own
+                .double_underline
+                .or_else(|| cs(|c| c.double_underline))
                 .unwrap_or(self.double_underline),
-            strikethrough: rpr
-                .and_then(|n| wml_bool(n, "strike"))
-                .or_else(|| char_style.and_then(|cs| cs.strikethrough))
+            strikethrough: own
+                .strikethrough
+                .or_else(|| cs(|c| c.strikethrough))
                 .unwrap_or(self.strikethrough),
-            dstrike: rpr
-                .and_then(|n| wml_bool(n, "dstrike"))
-                .unwrap_or(self.dstrike),
-            char_spacing: rpr
-                .and_then(parse_char_spacing)
-                .unwrap_or(self.char_spacing),
+            dstrike: own.dstrike.unwrap_or(self.dstrike),
+            char_spacing: own.char_spacing.unwrap_or(self.char_spacing),
             text_scale: rpr
                 .and_then(|n| wml_attr(n, "w"))
                 .and_then(|v| v.trim_end_matches('%').parse::<f32>().ok())
                 .unwrap_or(100.0),
-            caps: rpr
-                .and_then(|n| wml_bool(n, "caps"))
-                .or_else(|| char_style.and_then(|cs| cs.caps))
-                .unwrap_or(self.caps),
-            small_caps: rpr
-                .and_then(|n| wml_bool(n, "smallCaps"))
-                .or_else(|| char_style.and_then(|cs| cs.small_caps))
+            caps: own.caps.or_else(|| cs(|c| c.caps)).unwrap_or(self.caps),
+            small_caps: own
+                .small_caps
+                .or_else(|| cs(|c| c.small_caps))
                 .unwrap_or(self.small_caps),
-            vanish: rpr
-                .and_then(|n| wml_bool(n, "vanish"))
-                .or_else(|| char_style.and_then(|cs| cs.vanish))
+            vanish: own
+                .vanish
+                .or_else(|| cs(|c| c.vanish))
                 .unwrap_or(self.vanish),
-            color: rpr
-                .and_then(|n| wml_attr(n, "color"))
-                .and_then(parse_text_color)
-                .or_else(|| char_style.and_then(|cs| cs.color))
-                .or(self.color),
+            color,
             vertical_align: rpr
                 .and_then(|n| wml_attr(n, "vertAlign"))
                 .map(|v| match v {
@@ -426,76 +321,63 @@ impl ParagraphRunDefaults {
                     _ => VertAlign::Baseline,
                 })
                 .unwrap_or(VertAlign::Baseline),
-            highlight: rpr
-                .and_then(|n| wml_attr(n, "highlight"))
-                .and_then(highlight_color)
+            highlight: own
+                .highlight
                 .or_else(|| char_style.and_then(|cs| cs.highlight)),
-            shading: rpr
-                .and_then(parse_run_shd)
-                .or_else(|| char_style.and_then(|cs| cs.shading)),
-            border: rpr
-                .and_then(|n| wml(n, "bdr"))
-                .and_then(parse_one_border)
+            shading: own.shading.or_else(|| char_style.and_then(|cs| cs.shading)),
+            border: own
+                .border
                 .or_else(|| char_style.and_then(|cs| cs.border.clone())),
-            kern_threshold: rpr
-                .and_then(|n| wml_attr(n, "kern"))
-                .and_then(|v| v.parse::<f32>().ok())
-                .map(|hp| hp / 2.0)
+            kern_threshold: own
+                .kern_threshold
                 .or_else(|| char_style.and_then(|cs| cs.kern_threshold))
                 .or(self.kern_threshold),
             char_style_id: char_style_id_str.map(|s| s.to_string()),
-            text_outline: rpr
-                .and_then(|n| parse_text_outline(n, theme))
+            text_outline: own
+                .text_outline
                 .or_else(|| {
                     legacy_outline.then(|| TextOutline {
                         // Thin hairline: Word's outline antialiases to light gray,
                         // which only happens with a sub-pixel stroke width.
-                        width_pt: (resolved_font_size * 0.014).max(0.3),
-                        color: resolved_color.unwrap_or([0, 0, 0]),
+                        width_pt: (font_size * 0.014).max(0.3),
+                        color: color.unwrap_or([0, 0, 0]),
                     })
                 })
                 .or_else(|| char_style.and_then(|cs| cs.text_outline.clone()))
                 .or_else(|| self.text_outline.clone()),
-            text_fill: rpr
-                .and_then(|n| parse_text_fill(n, theme))
+            text_fill: own
+                .text_fill
                 // <w:outline/> hollows the glyphs: stroke only, no fill.
                 .or_else(|| legacy_outline.then_some(TextFill::NoFill))
                 .or_else(|| char_style.and_then(|cs| cs.text_fill.clone()))
                 .or_else(|| self.text_fill.clone()),
-            text_shadow: rpr
-                .and_then(|n| parse_text_shadow(n, theme))
+            text_shadow: own
+                .text_shadow
                 .or_else(|| {
-                    legacy_text_shadow(
-                        legacy_shadow,
-                        legacy_emboss,
-                        legacy_imprint,
-                        resolved_font_size,
-                    )
+                    legacy_text_shadow(legacy_shadow, legacy_emboss, legacy_imprint, font_size)
                 })
                 .or_else(|| char_style.and_then(|cs| cs.text_shadow.clone()))
                 .or_else(|| self.text_shadow.clone()),
-            text_glow: rpr
-                .and_then(|n| parse_text_glow(n, theme))
+            text_glow: own
+                .text_glow
                 .or_else(|| char_style.and_then(|cs| cs.text_glow.clone()))
                 .or_else(|| self.text_glow.clone()),
-            lang: rpr
-                .and_then(|n| wml(n, "lang"))
-                .and_then(|n| n.attribute((WML_NS, "val")))
-                .map(|s| s.to_string()),
-            text_lang: run_lang
-                .0
+            lang: rpr.and_then(|n| wml_attr(n, "lang")).map(|s| s.to_string()),
+            text_lang: own
+                .lang
                 .or_else(|| char_style.and_then(|cs| cs.lang.clone()))
                 .or_else(|| self.lang.clone())
                 .map(Into::into),
-            text_lang_east_asia: run_lang
-                .1
+            text_lang_east_asia: own
+                .lang_east_asia
                 .or_else(|| char_style.and_then(|cs| cs.lang_east_asia.clone()))
                 .or_else(|| self.lang_east_asia.clone())
                 .map(Into::into),
             font_size_from_default,
             font_name_from_default,
-            bold_is_direct: rpr.and_then(|n| wml_bool(n, "b")).is_some(),
-            italic_is_direct: rpr.and_then(|n| wml_bool(n, "i")).is_some(),
+            bold_is_direct: own.bold.is_some(),
+            italic_is_direct: own.italic.is_some(),
+            ..Run::default()
         }
     }
 }
@@ -510,32 +392,21 @@ fn legacy_text_shadow(
     imprint: bool,
     font_size: f32,
 ) -> Option<TextShadow> {
+    // Drop shadow casts down-right. Word renders both emboss (raised) and
+    // imprint (engraved) on a white page as a prominent down-right gray drop
+    // shadow behind the glyph face, with the white background showing between
+    // as the raised/engraved ridge. Empirically the relief reads about as heavy
+    // as the plain-shadow line in Word's PDF export, so use the same offset
+    // (not a reduced one).
+    // ponytail: a single offset gray copy — Word's exact multi-pass face/
+    // highlight/shadow antialiasing isn't replicated (a rare legacy effect).
     let d = (font_size * 0.035).max(0.4);
-    if shadow {
-        // Drop shadow: cast down-right.
-        Some(TextShadow {
-            color: [128, 128, 128],
-            offset_x: d,
-            offset_y: -d,
-            alpha: 1.0,
-        })
-    } else if emboss || imprint {
-        // Word renders both emboss (raised) and imprint (engraved) on a white
-        // page as a prominent down-right gray drop shadow behind the glyph face,
-        // with the white background showing between as the raised/engraved ridge.
-        // Empirically the relief reads about as heavy as the plain-shadow line in
-        // Word's PDF export, so use the same offset (not a reduced one).
-        // ponytail: a single offset gray copy — Word's exact multi-pass face/
-        // highlight/shadow antialiasing isn't replicated (a rare legacy effect).
-        Some(TextShadow {
-            color: [128, 128, 128],
-            offset_x: d,
-            offset_y: -d,
-            alpha: 1.0,
-        })
-    } else {
-        None
-    }
+    (shadow || emboss || imprint).then_some(TextShadow {
+        color: [128, 128, 128],
+        offset_x: d,
+        offset_y: -d,
+        alpha: 1.0,
+    })
 }
 
 /// Create synthetic runs for empty paragraphs so the renderer computes the
