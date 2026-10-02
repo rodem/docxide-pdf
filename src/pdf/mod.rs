@@ -1175,6 +1175,7 @@ fn compute_bookmark_positions(
                         bookmark_positions.insert(bm.clone(), (page_idx, slot_top));
                     }
                     if para.is_section_break && is_text_empty(&para.runs) {
+                        prev_space_after = para.space_after;
                         continue;
                     }
                     let (mut font_size, mut tallest_lhr, _) =
@@ -1349,6 +1350,10 @@ fn render_paragraph_block(
         && para.floating_images.is_empty()
         && para.textboxes.is_empty()
     {
+        // Its space after still meets the next section's first space before:
+        // case25's sections (break paragraph after=10pt) start their 24pt
+        // heading 14pt down, victorian's (after=0) its 26pt heading 26pt down.
+        state.prev_space_after = para.space_after;
         state.global_block_idx += 1;
         return true;
     }
