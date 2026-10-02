@@ -367,6 +367,82 @@ Open findings (not done):
   height needs no special rule (Helvetica body lines already step as in Word);
   Courier → Courier New is Windows' substitute, unverified for Mac Word.
 
+## Layout-accuracy merge: regressions traced (2026-10-02)
+
+Every fixture that scored lower after merging `layout-accuracy` than `main` did
+before, traced to its commit: the CLI built at each of fixes 1–34, each
+fixture scored with `page-metrics`, then vdiff before/after the culprit. The
+merge itself caused none (each renders exactly as on the branch). Four are
+real bugs; the rest are correct rules that exposed older errors, or metric
+artifacts. Measured on the merge, before the 2026-10-02 annotation fixes
+below (`w:gridBefore` may touch case61's tables).
+
+**Real bugs (TODO):**
+1. **Character styles ignore `w:basedOn`** (`docx/styles.rs`, the
+   `"character"` arm keeps only the style's own rPr). case50's MidChar
+   (basedOn BaseChar: Georgia, bold) draws in Cambria, not Georgia Bold
+   Italic; the narrower text wraps differently and per-line heights (fix 7)
+   shorten page 2 by 1.35pt (J 58.3 → 54.4). Also used by
+   carbon_farming_initiative_rule (5 runs) and traditional_skills_job_form
+   (4). Fix: resolve the chain as `resolve_based_on` does for paragraph styles.
+2. **Missing fonts in LibreOffice documents.** german_mezzo's
+   "Archivo;sans-serif" (fontTable altName "sans-serif", family auto) is
+   **Cambria** in Word's PDF (the "D" of "Diese Frau…"); we try the altName,
+   then the theme body font, and draw Arial. Its 15 empty lines are each
+   ~0.26pt short, which fix 17 made visible (SSIM 78.2 → 52.2). With the font
+   forced to Cambria the merged build lands within 0.07pt: J 69.0, SSIM 81.2.
+   sample500kB's "Open Sans;Arial" (altName Arial) is **Segoe UI** in Word,
+   Arial in ours. Word ignored the LibreOffice altName both times. The theme
+   body font rule (#158 #195, 2026-09-18) cites german_mezzo → Arial, but that
+   was read off the PDF's font list (its explicit Arial runs), not the Archivo
+   glyphs; bosch and the Calibri-theme fixtures still support it. Census
+   missing fonts against the face Word drew per glyph (`mutool draw -F
+   stext`), fixtures and external corpus, before changing `register_font`.
+   Segoe UI is not vendored.
+3. **East Asian leading stacks with another run's descent** (fix 11,
+   `271baa31`). usep_handbook's checkbox lines (☐ in MS Gothic, text in
+   Calibri) are 1.5pt taller each than Word's: we put Calibri's descent under
+   MS Gothic's ascent, which already carries all of the 1.3× East Asian
+   leading. Word's 21.6pt pitch is MS Gothic's full 15.6pt line + 6pt after.
+   Page 5 runs +19pt by its end (SSIM 94.8 → 92.0).
+4. **At-least row height** (fix 14, `42719453`). japanese_land_development's
+   12 sign-board rows (atLeast 520–540 twips, 0.5pt borders) step trHeight +
+   band in ours, trHeight in Word: +6pt down the table (SSIM 46.7 → 26.8).
+   romanian_quality's header row (open finding above) is taller than trHeight,
+   so the rule needs a case split; a candidate is whether the content plus
+   cell margins reaches trHeight.
+
+**Correct rules that exposed older errors:**
+- air_pollution_permit_form (fix 13): every auto-spacing gap now matches Word
+  (page-end drift −119 → +16pt), but a 13.9pt excess at the top of the
+  checklist text box, unchanged by the fix, now pushes the rest of the page
+  low (SSIM 30.4 → 23.8, J +2.3).
+- dutch_government_budget_letter (fix 4): the old +0.5pt/row fudge hid part
+  of a borderless one-row table being ~2pt short (Table Row Height Deficit).
+  J 19.4 → 17.6.
+- polish_municipal_notification (fix 5): no slack at the run joins inside
+  "8³⁰" any more (correct), but the words after it sit up to 1.3pt left of
+  Word's, probably because Word stretches each of the two spaces after it
+  and we stretch the gap once (unverified). J −2.0, SSIM −2.3.
+- korean_japanese_conference_form, east_asia_conference_form (main's theme
+  font fix + fix 4): rows now match Word within 0.015pt; main's 0.25pt excess
+  per row was cancelling a 7pt shortfall above the table. Both still fit on
+  one page where Word has two. SSIM −2.2 / −1.3, J +1.1 / +1.2.
+- case61 (fixes 4, 41): borders within 0.15pt of Word (J 30 → 51), but the
+  text-to-border gap moved (SSIM 84.5 → 76.4). Its table 2 first column is
+  9.6pt too wide (older).
+
+**Metric artifacts** (positions as good or better per vdiff):
+arizona_physical_education_standards (fix 41 moved cell text 0.53pt toward
+Word, J −5.3; net J −0.8, SSIM +2.5), case67, case6,
+turkish_ancient_religions_plan, vaccines_history_chapter, lenten_prayer_unity,
+chinese_student_union_nomination_form, croatian_regulations_altchunk (page
+count now matches), construction_bathroom_accessories_spec.
+
+**From main:** multi_font (round 4, `96fbce99`): Word's reference embeds
+Copperplate Gothic Light and Bodoni MT; neither is vendored (only Copperplate
+Gothic Bold). Fix: add both to the assets repo.
+
 ## Annotation Fixes 2026-10-02 (one commit each, worktree `annot/wp-n`)
 
 Baseline for the round: HEAD 48a4eba0 (the layout-accuracy merge). Each fix
