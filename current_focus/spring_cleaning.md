@@ -147,8 +147,18 @@ Check these on a Mac with the visual suite before unifying anything near them:
 
 ## Housekeeping
 
-`main` has moved ~50 commits past this branch's base; merge it first. The
-rustfmt commit will make that merge noisier — dropping it and running
-`cargo fmt` once after the merge is the cheaper order. Leftover local
-worktrees `.claude/worktrees/agent-*` and one `git stash` entry can be
-deleted.
+`main` has moved ~50 commits past this branch's base. Do **not** drop the
+rustfmt commit to ease that merge: the 25 commits after it were written
+against the formatted tree and would conflict on nearly every reflowed
+line. Make `main` meet it halfway instead:
+
+1. On a scratch branch from `main`, run `cargo fmt` and commit (pure
+   reflow, like `49a1ecf`).
+2. `git merge -X ignore-all-space` that into this branch. With both sides
+   formatted the reflow noise cancels; only lines `main`'s commits really
+   changed conflict.
+3. After merging, `main` can take the `cargo fmt` commit, and formatting
+   stops being a merge tax.
+
+Leftover local worktrees `.claude/worktrees/agent-*` and one `git stash`
+entry can be deleted.
