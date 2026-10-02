@@ -1,9 +1,7 @@
-use std::collections::{HashMap, HashSet};
-
 use crate::model::{Paragraph, Run, TabAlignment, TabStop};
 
 use super::images::compute_drawing_info;
-use super::numbering::{ListLabelInfo, parse_list_info};
+use super::numbering::{ListCounters, ListLabelInfo, parse_list_info};
 use super::runs::{parse_runs, push_textbox};
 use super::styles::{parse_alignment, parse_font_size, resolve_font_from_node_opt};
 use super::textbox::collect_textboxes_from_paragraph;
@@ -14,6 +12,7 @@ use super::{
 };
 
 /// Options controlling which paragraph features to resolve.
+#[derive(Default)]
 pub(super) struct ParagraphOptions {
     /// Whether to resolve bookmarks from the node
     pub resolve_bookmarks: bool,
@@ -29,25 +28,10 @@ pub(super) struct ParagraphOptions {
     pub style_num_ilvl: Option<u8>,
 }
 
-impl Default for ParagraphOptions {
-    fn default() -> Self {
-        Self {
-            resolve_bookmarks: false,
-            resolve_outline_level: false,
-            resolve_drawings: false,
-            collect_extra_textboxes: false,
-            style_num_id: None,
-            style_num_ilvl: None,
-        }
-    }
-}
-
 pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
     node: roxmltree::Node,
     ctx: &mut ParseContext<'_, R>,
-    counters: &mut HashMap<(u32, u8), u32>,
-    last_seen_level: &mut HashMap<u32, u8>,
-    applied_overrides: &mut HashSet<(u32, u8)>,
+    lists: &mut ListCounters,
     opts: &ParagraphOptions,
 ) -> Paragraph {
     let ppr = wml(node, "pPr");
@@ -134,11 +118,6 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         .or_else(|| para_style.and_then(|s| s.auto_space_dn))
         .unwrap_or(true);
 
-    let suppress_auto_hyphens = ppr
-        .and_then(|ppr| wml_bool(ppr, "suppressAutoHyphens"))
-        .or_else(|| para_style.and_then(|s| s.suppress_auto_hyphens))
-        .unwrap_or(false);
-
     let num_pr = ppr.and_then(|ppr| wml(ppr, "numPr"));
     let style_num = opts.style_num_id.as_deref();
     let style_ilvl = opts.style_num_ilvl;
@@ -160,9 +139,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         Some(para_style_id),
         &ctx.styles.paragraph_styles,
         ctx.numbering,
-        counters,
-        last_seen_level,
-        applied_overrides,
+        lists,
     );
     // Paragraph-level `<w:tab val="num" pos="..."/>` overrides the numbering
     // level's num tab (paired with a `clear` of the inherited value when
@@ -298,15 +275,15 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
     // Add the numbering level's explicit tab stop so the label-text
     // gap matches Word (which uses this instead of the implicit
     // hanging-indent tab when it is closer).
-    if let Some(nts) = num_tab_stop {
-        if !tab_stops.iter().any(|t| (t.position - nts).abs() < 0.5) {
-            tab_stops.push(TabStop {
-                position: nts,
-                alignment: TabAlignment::Left,
-                leader: None,
-            });
-            tab_stops.sort_by(|a, b| a.position.total_cmp(&b.position));
-        }
+    if let Some(nts) = num_tab_stop
+        && !tab_stops.iter().any(|t| (t.position - nts).abs() < 0.5)
+    {
+        tab_stops.push(TabStop {
+            position: nts,
+            alignment: TabAlignment::Left,
+            leader: None,
+        });
+        tab_stops.sort_by(|a, b| a.position.total_cmp(&b.position));
     }
     // OOXML 17.3.1.38: hanging indent implicitly creates a tab stop
     if indent_hanging > 0.0 {
@@ -380,9 +357,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
 
     let bookmarks: Vec<String> = if opts.resolve_bookmarks {
         node.children()
-            .filter(|n| {
-                n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "bookmarkStart"
-            })
+            .filter(|n| n.has_tag_name((WML_NS, "bookmarkStart")))
             .filter_map(|n| n.attribute((WML_NS, "name")).map(|s| s.to_string()))
             .collect()
     } else {
@@ -454,7 +429,6 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         snap_to_grid,
         auto_space_de,
         auto_space_dn,
-        suppress_auto_hyphens,
         frame_props: ppr.and_then(parse_frame_props),
     }
 }

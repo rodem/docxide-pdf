@@ -17,13 +17,7 @@ fn analyze_fixture(fixture_dir: &Path) -> Option<CaseResult> {
         println!("  [SKIP] {name}: no reference.pdf");
         return None;
     }
-    let generated_pdf = match common::ensure_generated_pdf(fixture_dir) {
-        Ok(p) => p,
-        Err(e) => {
-            println!("  [SKIP] {name}: {e}");
-            return None;
-        }
-    };
+    let generated_pdf = common::generated_pdf_or_skip(fixture_dir, &name)?;
     let tb = common::text_boundary::analyze(&reference_pdf, &generated_pdf);
     Some(CaseResult { name, tb })
 }
@@ -47,12 +41,7 @@ fn text_boundaries_match() {
         .collect();
     results.sort_by(|a, b| a.name.cmp(&b.name));
 
-    let name_w = results
-        .iter()
-        .map(|r| r.name.len())
-        .max()
-        .unwrap_or(4)
-        .max(4);
+    let name_w = common::name_width(results.iter().map(|r| r.name.as_str()), 4);
     println!(
         "\n  {:<name_w$}  Pages  Breaks  Max drift      Lines  Match  Delta",
         "Case"
@@ -103,27 +92,19 @@ fn text_boundaries_match() {
         baseline_updates.insert(
             r.name.clone(),
             common::Baselines {
-                jaccard: None,
-                ssim: None,
                 text_boundary: Some(r.tb.line_match_pct()),
-                convert_ms: None,
-                ref_pages: None,
-                gen_pages: None,
                 ..Default::default()
             },
         );
     }
     common::write_latest_scores(&baseline_updates);
 
-    let regressions: Vec<&str> = results
-        .iter()
-        .filter(|r| {
-            prev_scores
-                .get(&r.name)
-                .is_some_and(|&p| r.tb.line_match_pct() < p - common::REGRESSION_SLACK)
-        })
-        .map(|r| r.name.as_str())
-        .collect();
+    let regressions = common::regressions(
+        results
+            .iter()
+            .map(|r| (r.name.as_str(), r.tb.line_match_pct())),
+        &prev_scores,
+    );
     if !regressions.is_empty() {
         println!("  REGRESSION in: {}", regressions.join(", "));
     }

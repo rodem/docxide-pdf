@@ -57,6 +57,12 @@ pub struct EmbeddedImage {
 }
 
 impl EmbeddedImage {
+    /// Identity of the picture bytes, the key of the image name maps: pictures
+    /// sharing one `Arc` of data are embedded once.
+    pub fn key(&self) -> usize {
+        Arc::as_ptr(&self.data) as usize
+    }
+
     /// Size of the box an inline picture occupies in the line: the bounding box of
     /// the rotated frame. Word gives the 56×108pt signature turned -90° on
     /// italian_evaluation_minutes p7 a 56pt line, not 108pt.
@@ -105,8 +111,6 @@ pub struct ImageReflection {
     pub start_alpha: f32, // 0.0–1.0
     pub end_alpha: f32,   // 0.0–1.0
     pub distance: f32,    // points (gap between image and reflection)
-    #[allow(dead_code)]
-    pub blur_radius: f32, // points
     /// Fraction of image height visible in the reflection (0.0–1.0). 1.0 = full image.
     pub end_pos: f32,
 }
@@ -271,9 +275,6 @@ pub struct SmartArtShape {
 }
 
 pub struct SmartArtDiagram {
-    #[allow(dead_code)]
-    pub display_width: f32,
-    #[allow(dead_code)]
     pub display_height: f32,
     pub shapes: Vec<SmartArtShape>,
 }
@@ -357,14 +358,11 @@ pub struct TextWarp {
 pub enum AutoFit {
     #[default]
     None,
-    #[allow(dead_code)]
-    Normal {
-        font_scale: Option<f32>,
-        line_space_reduction: Option<f32>,
-    },
+    Normal,
     Shape,
 }
 
+#[derive(Default)]
 pub struct Textbox {
     pub paragraphs: Vec<Paragraph>,
     pub width_pt: f32,
@@ -391,13 +389,9 @@ pub struct Textbox {
     pub margin_top: f32,
     pub margin_bottom: f32,
     pub wrap_type: WrapType,
-    #[allow(dead_code)]
-    pub dist_top: f32,
     pub dist_bottom: f32,
     pub behind_doc: bool,
     pub no_text_wrap: bool,
-    #[allow(dead_code)]
-    pub is_wordart: bool,
     pub text_warp: Option<TextWarp>,
     pub auto_fit: AutoFit,
     /// wp:anchor relativeHeight — stacking order among overlapping anchored

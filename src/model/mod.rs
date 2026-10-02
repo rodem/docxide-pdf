@@ -135,6 +135,13 @@ pub struct SectionProperties {
     pub endnote_num_fmt: Option<String>,
 }
 
+impl SectionProperties {
+    /// Width of the text area between the side margins.
+    pub fn text_width(&self) -> f32 {
+        self.page_width - self.margin_left - self.margin_right
+    }
+}
+
 /// §17.6.8 `w:lnNumType` — line numbers shown in the margin (legal/contract docs).
 #[derive(Clone, Copy)]
 pub struct LineNumbering {
@@ -213,8 +220,6 @@ pub struct FontTableEntry {
     /// Windows charset byte (`w:charset`, hex in the XML): 0x80 Shift-JIS, 0x81 Hangul,
     /// 0x86 GB2312, 0x88 Big5. Word keys missing-font substitution on it.
     pub charset: Option<u8>,
-    #[allow(dead_code)]
-    pub pitch_fixed: bool,
 }
 
 pub type FontTable = HashMap<String, FontTableEntry>;
@@ -240,8 +245,6 @@ pub struct Document {
     pub author: Option<String>,
     pub subject: Option<String>,
     pub keywords: Option<String>,
-    #[allow(dead_code)]
-    pub auto_hyphenation: bool,
     pub default_lang: Option<String>,
     /// Word's `compressPunctuation` character-spacing control (see
     /// `docx::settings`); drives full-width punctuation squeezing in line breaking.
@@ -260,6 +263,33 @@ pub enum HorizontalPosition {
     AlignRight,
 }
 
+impl Default for HorizontalPosition {
+    fn default() -> Self {
+        Self::Offset(0.0)
+    }
+}
+
+impl HorizontalPosition {
+    /// The explicit offset; 0 for the alignment variants.
+    pub fn offset_or_zero(self) -> f32 {
+        match self {
+            Self::Offset(o) => o,
+            _ => 0.0,
+        }
+    }
+
+    /// Left edge of an object `obj_w` wide placed in the area `area_w` wide
+    /// that starts at `origin`.
+    pub fn place(self, origin: f32, area_w: f32, obj_w: f32) -> f32 {
+        match self {
+            HorizontalPosition::AlignCenter => origin + (area_w - obj_w) / 2.0,
+            HorizontalPosition::AlignRight => origin + area_w - obj_w,
+            HorizontalPosition::AlignLeft => origin,
+            HorizontalPosition::Offset(o) => origin + o,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum VerticalPosition {
     Offset(f32),
@@ -268,23 +298,42 @@ pub enum VerticalPosition {
     AlignBottom,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+impl Default for VerticalPosition {
+    fn default() -> Self {
+        Self::Offset(0.0)
+    }
+}
+
+impl VerticalPosition {
+    /// The explicit offset; 0 for the alignment variants.
+    pub fn offset_or_zero(self) -> f32 {
+        match self {
+            Self::Offset(o) => o,
+            _ => 0.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum HRelativeFrom {
     Page,
     Margin,
+    #[default]
     Column,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum VRelativeFrom {
     Page,
     Margin,
     TopMargin,
+    #[default]
     Paragraph,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum WrapType {
+    #[default]
     None,
     Square,
     Tight,
@@ -292,8 +341,16 @@ pub enum WrapType {
     TopAndBottom,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+impl WrapType {
+    /// Text flows beside the object (square, tight or through wrapping).
+    pub fn wraps_beside(self) -> bool {
+        matches!(self, WrapType::Square | WrapType::Tight | WrapType::Through)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum WrapText {
+    #[default]
     BothSides,
     Left,
     Right,
@@ -396,8 +453,6 @@ pub struct Paragraph {
     pub snap_to_grid: bool,
     pub auto_space_de: bool,
     pub auto_space_dn: bool,
-    #[allow(dead_code)]
-    pub suppress_auto_hyphens: bool,
     pub frame_props: Option<FrameProperties>,
 }
 

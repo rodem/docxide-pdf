@@ -19,7 +19,7 @@ mod textbox;
 mod wmf;
 mod wordart;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::Read;
 
 use crate::error::Error;
@@ -51,6 +51,14 @@ pub(super) const CHART_NS: &str = "http://schemas.openxmlformats.org/drawingml/2
 pub(super) const DSP_NS: &str = "http://schemas.microsoft.com/office/drawing/2008/diagram";
 pub(super) const W14_NS: &str = "http://schemas.microsoft.com/office/word/2010/wordml";
 pub(super) const VML_NS: &str = "urn:schemas-microsoft-com:vml";
+pub(super) const W10_NS: &str = "urn:schemas-microsoft-com:office:word";
+pub(super) const OFFICE_NS: &str = "urn:schemas-microsoft-com:office:office";
+pub(super) const PIC_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+pub(super) const DIAGRAM_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/diagram";
+pub(super) const MATH_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/math";
+pub(super) const WPC_NS: &str =
+    "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas";
+pub(super) const WPG_NS: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
 
 pub(super) fn twips_to_pts(twips: f32) -> f32 {
     twips / 20.0
@@ -60,11 +68,42 @@ pub(super) fn emu_to_pts(emu: f32) -> f32 {
     emu / 12700.0
 }
 
+/// A numeric attribute; `None` when absent or unparsable.
+pub(super) fn f32_attr<'n, 'm>(
+    node: roxmltree::Node,
+    attr: impl Into<roxmltree::ExpandedName<'n, 'm>>,
+) -> Option<f32> {
+    node.attribute(attr).and_then(|v| v.parse::<f32>().ok())
+}
+
+/// An EMU attribute in points; `None` when absent.
+pub(super) fn emu_attr_opt<'n, 'm>(
+    node: roxmltree::Node,
+    attr: impl Into<roxmltree::ExpandedName<'n, 'm>>,
+) -> Option<f32> {
+    f32_attr(node, attr).map(emu_to_pts)
+}
+
+/// An EMU attribute in points; 0 when absent.
 pub(super) fn emu_attr(node: roxmltree::Node, attr: &str) -> f32 {
-    node.attribute(attr)
-        .and_then(|v| v.parse::<f32>().ok())
-        .unwrap_or(0.0)
-        / 12700.0
+    emu_attr_opt(node, attr).unwrap_or(0.0)
+}
+
+/// A DrawingML angle attribute (60000ths of a degree) in degrees.
+pub(super) fn angle_attr<'n, 'm>(
+    node: roxmltree::Node,
+    attr: impl Into<roxmltree::ExpandedName<'n, 'm>>,
+) -> Option<f32> {
+    f32_attr(node, attr).map(|v| v / 60_000.0)
+}
+
+/// A DrawingML percentage attribute (`ST_Percentage` as 1/1000 of a percent)
+/// as a fraction.
+pub(super) fn frac_attr<'n, 'm>(
+    node: roxmltree::Node,
+    attr: impl Into<roxmltree::ExpandedName<'n, 'm>>,
+) -> Option<f32> {
+    f32_attr(node, attr).map(|v| v / 100_000.0)
 }
 
 /// ST_OnOff truthiness (§17.17.4): "1", "true", and "on" all mean on.
@@ -84,8 +123,7 @@ pub(super) fn find_child<'a>(
     name: &str,
     namespace: &str,
 ) -> Option<roxmltree::Node<'a, 'a>> {
-    node.children()
-        .find(|n| n.tag_name().name() == name && n.tag_name().namespace() == Some(namespace))
+    node.children().find(|n| n.has_tag_name((namespace, name)))
 }
 
 pub(super) fn dml<'a>(
@@ -95,13 +133,21 @@ pub(super) fn dml<'a>(
     find_child(node, name, DML_NS)
 }
 
+/// All child elements with the given name and namespace.
+pub(super) fn find_children<'a>(
+    node: roxmltree::Node<'a, 'a>,
+    name: &str,
+    namespace: &str,
+) -> impl Iterator<Item = roxmltree::Node<'a, 'a>> {
+    node.children()
+        .filter(move |n| n.has_tag_name((namespace, name)))
+}
+
 pub(super) fn dml_children<'a>(
     parent: roxmltree::Node<'a, 'a>,
     name: &str,
 ) -> impl Iterator<Item = roxmltree::Node<'a, 'a>> {
-    parent
-        .children()
-        .filter(move |n| n.tag_name().name() == name && n.tag_name().namespace() == Some(DML_NS))
+    find_children(parent, name, DML_NS)
 }
 
 pub(super) fn wpd<'a>(
@@ -140,9 +186,7 @@ pub(super) fn chart_ns_children<'a>(
     parent: roxmltree::Node<'a, 'a>,
     name: &str,
 ) -> impl Iterator<Item = roxmltree::Node<'a, 'a>> {
-    parent
-        .children()
-        .filter(move |n| n.tag_name().name() == name && n.tag_name().namespace() == Some(CHART_NS))
+    find_children(parent, name, CHART_NS)
 }
 
 pub(in crate::docx) struct ParseContext<'a, R: std::io::Read + std::io::Seek> {
@@ -271,23 +315,16 @@ pub(super) fn wml<'a>(
     node: roxmltree::Node<'a, 'a>,
     name: &str,
 ) -> Option<roxmltree::Node<'a, 'a>> {
-    node.children()
-        .find(|n| n.tag_name().name() == name && n.tag_name().namespace() == Some(WML_NS))
+    find_child(node, name, WML_NS)
 }
 
 pub(super) fn wml_attr<'a>(node: roxmltree::Node<'a, 'a>, child: &str) -> Option<&'a str> {
     wml(node, child).and_then(|n| n.attribute((WML_NS, "val")))
 }
 
-/// True when `node` is the WordprocessingML element `name`.
-pub(super) fn is_wml(node: roxmltree::Node, name: &str) -> bool {
-    node.tag_name().name() == name && node.tag_name().namespace() == Some(WML_NS)
-}
-
+/// A WordprocessingML twips attribute in points.
 pub(super) fn twips_attr(node: roxmltree::Node, attr: &str) -> Option<f32> {
-    node.attribute((WML_NS, attr))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(twips_to_pts)
+    f32_attr(node, (WML_NS, attr)).map(twips_to_pts)
 }
 
 pub(super) fn parse_one_border(node: roxmltree::Node) -> Option<ParagraphBorder> {
@@ -395,17 +432,16 @@ pub(super) fn parse_frame_props(ppr: roxmltree::Node) -> Option<FrameProperties>
             _ => HorizontalPosition::AlignLeft,
         }
     } else {
-        let x_twips: f32 = attr("x").and_then(|v| v.parse().ok()).unwrap_or(0.0);
-        HorizontalPosition::Offset(twips_to_pts(x_twips))
+        HorizontalPosition::Offset(twips_attr(fp, "x").unwrap_or(0.0))
     };
     let v_anchor = match attr("vAnchor").unwrap_or("text") {
         "margin" => VRelativeFrom::Margin,
         "page" => VRelativeFrom::Page,
         _ => VRelativeFrom::Paragraph,
     };
-    let y_pts = twips_to_pts(attr("y").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0));
-    let width = twips_to_pts(attr("w").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0));
-    let height = twips_to_pts(attr("h").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0));
+    let y_pts = twips_attr(fp, "y").unwrap_or(0.0);
+    let width = twips_attr(fp, "w").unwrap_or(0.0);
+    let height = twips_attr(fp, "h").unwrap_or(0.0);
     Some(FrameProperties {
         h_relative_from: h_anchor,
         h_position,
@@ -442,10 +478,7 @@ pub(super) fn parse_tab_stops_with_clears(ppr: roxmltree::Node) -> (Vec<TabStop>
     };
     let mut stops = Vec::new();
     let mut clears = Vec::new();
-    for n in tabs
-        .children()
-        .filter(|n| n.tag_name().name() == "tab" && n.tag_name().namespace() == Some(WML_NS))
-    {
+    for n in tabs.children().filter(|n| n.has_tag_name((WML_NS, "tab"))) {
         let Some(pos) = twips_attr(n, "pos") else {
             continue;
         };
@@ -593,24 +626,20 @@ pub(super) fn collect_block_nodes<'a>(
 ) -> Vec<roxmltree::Node<'a, 'a>> {
     let mut nodes = Vec::new();
     for child in parent.children() {
-        if child.tag_name().name() == "sdt" && child.tag_name().namespace() == Some(WML_NS) {
+        if child.has_tag_name((WML_NS, "sdt")) {
             if let Some(content) = wml(child, "sdtContent") {
                 nodes.extend(collect_block_nodes(content));
             }
-        } else if child.tag_name().name() == "customXml"
-            && child.tag_name().namespace() == Some(WML_NS)
-        {
+        } else if child.has_tag_name((WML_NS, "customXml")) {
             // w:customXml is a transparent wrapper (block/row/cell): its children
             // ARE the content. Same descent drives tbl→tr and tr→tc unwrapping.
             nodes.extend(collect_block_nodes(child));
-        } else if child.tag_name().namespace() == Some(MC_NS_TOP)
-            && child.tag_name().name() == "AlternateContent"
-        {
+        } else if child.has_tag_name((MC_NS_TOP, "AlternateContent")) {
             // mc:AlternateContent wraps block-level content in mc:Choice/mc:Fallback.
             // Use mc:Fallback for compatibility (it avoids newer namespace requirements).
-            let fallback = child.children().find(|n| {
-                n.tag_name().namespace() == Some(MC_NS_TOP) && n.tag_name().name() == "Fallback"
-            });
+            let fallback = child
+                .children()
+                .find(|n| n.has_tag_name((MC_NS_TOP, "Fallback")));
             if let Some(fb) = fallback {
                 nodes.extend(collect_block_nodes(fb));
             }
@@ -628,6 +657,24 @@ pub(super) fn read_zip_text<R: Read + std::io::Seek>(
     let mut content = String::new();
     zip.by_name(name).ok()?.read_to_string(&mut content).ok()?;
     Some(content)
+}
+
+pub(super) fn read_zip_bytes<R: Read + std::io::Seek>(
+    zip: &mut zip::ZipArchive<R>,
+    name: &str,
+) -> Option<Vec<u8>> {
+    let mut data = Vec::new();
+    zip.by_name(name).ok()?.read_to_end(&mut data).ok()?;
+    Some(data)
+}
+
+/// Zip path of a relationship target: absolute (`/word/media/x.png`) as is,
+/// otherwise relative to `word/`.
+pub(super) fn part_path(target: &str) -> String {
+    match target.strip_prefix('/') {
+        Some(absolute) => absolute.to_string(),
+        None => format!("word/{target}"),
+    }
 }
 
 mod relationships {
@@ -718,43 +765,21 @@ fn parse_core_props<R: Read + std::io::Seek>(
         return (None, None, None, None);
     };
 
+    const DC_NS: &str = "http://purl.org/dc/elements/1.1/";
+    const CP_NS: &str = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties";
     let root = xml.root_element();
-
-    let mut title = None;
-    let mut author = None;
-    let mut subject = None;
-    let mut keywords = None;
-
-    for child in root.children() {
-        if child.tag_name().name() == "title"
-            && child.tag_name().namespace() == Some("http://purl.org/dc/elements/1.1/")
-        {
-            if let Some(text) = child.text() {
-                title = Some(text.to_string());
-            }
-        } else if child.tag_name().name() == "creator"
-            && child.tag_name().namespace() == Some("http://purl.org/dc/elements/1.1/")
-        {
-            if let Some(text) = child.text() {
-                author = Some(text.to_string());
-            }
-        } else if child.tag_name().name() == "subject"
-            && child.tag_name().namespace() == Some("http://purl.org/dc/elements/1.1/")
-        {
-            if let Some(text) = child.text() {
-                subject = Some(text.to_string());
-            }
-        } else if child.tag_name().name() == "keywords"
-            && child.tag_name().namespace()
-                == Some("http://schemas.openxmlformats.org/package/2006/metadata/core-properties")
-        {
-            if let Some(text) = child.text() {
-                keywords = Some(text.to_string());
-            }
-        }
-    }
-
-    (title, author, subject, keywords)
+    let prop = |ns, name| {
+        find_children(root, name, ns)
+            .filter_map(|n| n.text())
+            .last()
+            .map(str::to_string)
+    };
+    (
+        prop(DC_NS, "title"),
+        prop(DC_NS, "creator"),
+        prop(DC_NS, "subject"),
+        prop(CP_NS, "keywords"),
+    )
 }
 
 fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Document, Error> {
@@ -796,9 +821,7 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
 
     let mut sections: Vec<Section> = Vec::new();
     let mut blocks = Vec::new();
-    let mut counters: HashMap<(u32, u8), u32> = HashMap::new();
-    let mut last_seen_level: HashMap<u32, u8> = HashMap::new();
-    let mut applied_overrides: HashSet<(u32, u8)> = HashSet::new();
+    let mut lists = numbering::ListCounters::default();
     // numId of the previous body block when it was a list paragraph.
     let mut prev_list_num_id: Option<String> = None;
 
@@ -808,13 +831,7 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
         }
         match node.tag_name().name() {
             "tbl" => {
-                let table = parse_table_node(
-                    node,
-                    &mut ctx,
-                    &mut counters,
-                    &mut last_seen_level,
-                    &mut applied_overrides,
-                );
+                let table = parse_table_node(node, &mut ctx, &mut lists);
                 blocks.push(Block::Table(table));
                 prev_list_num_id = None;
             }
@@ -833,14 +850,7 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
                     style_num_id: para_style.and_then(|s| s.num_id.clone()),
                     style_num_ilvl: para_style.and_then(|s| s.num_ilvl),
                 };
-                let mut para = paragraph::build_paragraph(
-                    node,
-                    &mut ctx,
-                    &mut counters,
-                    &mut last_seen_level,
-                    &mut applied_overrides,
-                    &opts,
-                );
+                let mut para = paragraph::build_paragraph(node, &mut ctx, &mut lists, &opts);
 
                 // HTML auto spacing never opens the document, and it drops
                 // between items of one list: russian_university's auto-spaced
@@ -859,10 +869,10 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
                     if para.space_before_auto {
                         para.space_before = 0.0;
                     }
-                    if let Some(Block::Paragraph(prev)) = blocks.last_mut() {
-                        if prev.space_after_auto {
-                            prev.space_after = 0.0;
-                        }
+                    if let Some(Block::Paragraph(prev)) = blocks.last_mut()
+                        && prev.space_after_auto
+                    {
+                        prev.space_after = 0.0;
                     }
                 }
                 prev_list_num_id = num_id;
@@ -968,7 +978,6 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
         author,
         subject,
         keywords,
-        auto_hyphenation: settings.auto_hyphenation,
         default_lang: styles.defaults.lang.clone().or(settings.default_lang),
         compress_punctuation: settings.compress_punctuation,
         compat_mode: settings.compat_mode,

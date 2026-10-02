@@ -9,20 +9,16 @@
 use std::io::{Read, Seek};
 
 use crate::model::{
-    AutoFit, FloatingImage, HRelativeFrom, HorizontalPosition, ShapeGeometry, TextAnchor, Textbox,
-    VRelativeFrom, VerticalPosition, WrapText, WrapType,
+    FloatingImage, HRelativeFrom, HorizontalPosition, Textbox, VRelativeFrom, VerticalPosition,
+    WrapText, WrapType,
 };
 
 use super::images::{
-    RunDrawingResult, extent_dimensions, find_blip_embed, parse_anchor_position,
+    RunDrawingResult, anchor_z_order, extent_dimensions, find_blip_embed, parse_anchor_position,
     read_image_from_zip,
 };
 use super::textbox::{find_sp_pr, parse_connector_shape_node, parse_wsp_shape};
-use super::{ParseContext, WPS_NS, dml, emu_attr};
-
-const WPC_NS: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas";
-const WPG_NS: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
-const PIC_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+use super::{PIC_NS, ParseContext, WPC_NS, WPG_NS, WPS_NS, dml, emu_attr};
 
 /// Affine scale+translate mapping local shape coordinates to drawing
 /// coordinates (points, y-down, origin at the drawing's top-left).
@@ -117,32 +113,22 @@ pub(super) fn parse_canvas_or_group<R: Read + Seek>(
     is_anchor: bool,
     ctx: &mut ParseContext<'_, R>,
 ) -> Option<Vec<RunDrawingResult>> {
-    let root = container.descendants().find(|n| {
-        let tn = n.tag_name();
-        (tn.name() == "wpc" && tn.namespace() == Some(WPC_NS))
-            || (tn.name() == "wgp" && tn.namespace() == Some(WPG_NS))
-    })?;
+    let root = container
+        .descendants()
+        .find(|n| n.has_tag_name((WPC_NS, "wpc")) || n.has_tag_name((WPG_NS, "wgp")))?;
 
     let (display_w, display_h) = extent_dimensions(container);
 
     let base = if is_anchor {
         let (h_pos, h_rel, v_pos, v_rel) = parse_anchor_position(container);
+        let (behind_doc, z_index) = anchor_z_order(container);
         BaseAnchor {
-            x: match h_pos {
-                HorizontalPosition::Offset(v) => v,
-                _ => 0.0,
-            },
-            y: match v_pos {
-                VerticalPosition::Offset(v) => v,
-                _ => 0.0,
-            },
+            x: h_pos.offset_or_zero(),
+            y: v_pos.offset_or_zero(),
             h_rel,
             v_rel,
-            behind_doc: container.attribute("behindDoc") == Some("1"),
-            z_index: container
-                .attribute("relativeHeight")
-                .and_then(|v| v.parse::<u32>().ok())
-                .unwrap_or(0),
+            behind_doc,
+            z_index,
             indent_relative: false,
         }
     } else {
@@ -179,34 +165,12 @@ pub(super) fn parse_canvas_or_group<R: Read + Seek>(
         // extent with an invisible TopAndBottom textbox, then place the
         // children relative to the same paragraph without wrapping.
         out.push(RunDrawingResult::TextBox(Textbox {
-            paragraphs: Vec::new(),
             width_pt: display_w,
             height_pt: display_h,
-            h_position: HorizontalPosition::Offset(0.0),
-            h_relative_from: HRelativeFrom::Column,
-            v_offset_pt: 0.0,
-            v_position: VerticalPosition::Offset(0.0),
-            v_relative_from: VRelativeFrom::Paragraph,
-            fill: None,
-            shape_type: ShapeGeometry::default(),
-            stroke_color: None,
-            stroke_width: 0.0,
-            text_anchor: TextAnchor::Top,
-            margin_left: 0.0,
-            margin_right: 0.0,
-            margin_top: 0.0,
-            margin_bottom: 0.0,
             wrap_type: WrapType::TopAndBottom,
-            dist_top: 0.0,
-            dist_bottom: 0.0,
-            behind_doc: false,
             no_text_wrap: true,
-            is_wordart: false,
-            text_warp: None,
-            auto_fit: AutoFit::None,
-            z_index: 0,
-            anchor_seq: 0,
             indent_relative: true,
+            ..Textbox::default()
         }));
     }
     out.extend(shapes);
@@ -216,7 +180,7 @@ pub(super) fn parse_canvas_or_group<R: Read + Seek>(
 fn find_group_xfrm(group: roxmltree::Node) -> Option<Xfrm> {
     let grp_sp_pr = group
         .children()
-        .find(|n| n.tag_name().name() == "grpSpPr" && n.tag_name().namespace() == Some(WPG_NS))?;
+        .find(|n| n.has_tag_name((WPG_NS, "grpSpPr")))?;
     read_xfrm(grp_sp_pr)
 }
 
@@ -259,9 +223,7 @@ fn emit_wsp<R: Read + Seek>(
     let (w, h) = t.scale(xfrm.ext.0, xfrm.ext.1);
 
     let prst = dml(sp_pr, "prstGeom").and_then(|g| g.attribute("prst"));
-    let has_txbx = wsp
-        .children()
-        .any(|n| n.tag_name().name() == "txbx" && n.tag_name().namespace() == Some(WPS_NS));
+    let has_txbx = wsp.children().any(|n| n.has_tag_name((WPS_NS, "txbx")));
     let is_connector = matches!(prst, Some("line" | "straightConnector1" | "arc")) && !has_txbx;
 
     if is_connector {
@@ -278,7 +240,6 @@ fn emit_wsp<R: Read + Seek>(
 
     if let Some(shape) = parse_wsp_shape(wsp, ctx) {
         out.push(RunDrawingResult::TextBox(Textbox {
-            paragraphs: shape.paragraphs,
             width_pt: w,
             height_pt: h,
             h_position: HorizontalPosition::Offset(base.x + x),
@@ -286,26 +247,10 @@ fn emit_wsp<R: Read + Seek>(
             v_offset_pt: base.y + y,
             v_position: VerticalPosition::Offset(base.y + y),
             v_relative_from: base.v_rel,
-            fill: shape.fill,
-            shape_type: shape.shape_type,
-            stroke_color: shape.stroke_color,
-            stroke_width: shape.stroke_width,
-            text_anchor: shape.text_anchor,
-            margin_left: shape.margin_left,
-            margin_right: shape.margin_right,
-            margin_top: shape.margin_top,
-            margin_bottom: shape.margin_bottom,
-            wrap_type: WrapType::None,
-            dist_top: 0.0,
-            dist_bottom: 0.0,
             behind_doc: base.behind_doc,
-            no_text_wrap: shape.no_text_wrap,
-            is_wordart: shape.is_wordart,
-            text_warp: shape.text_warp,
-            auto_fit: shape.auto_fit,
             z_index: base.z_index,
-            anchor_seq: 0,
             indent_relative: base.indent_relative,
+            ..Textbox::from(shape)
         }));
     }
 }
@@ -317,10 +262,7 @@ fn emit_pic<R: Read + Seek>(
     ctx: &mut ParseContext<'_, R>,
     out: &mut Vec<RunDrawingResult>,
 ) {
-    let Some(sp_pr) = pic
-        .children()
-        .find(|n| n.tag_name().name() == "spPr" && n.tag_name().namespace() == Some(PIC_NS))
-    else {
+    let Some(sp_pr) = pic.children().find(|n| n.has_tag_name((PIC_NS, "spPr"))) else {
         return;
     };
     let Some(xfrm) = read_xfrm(sp_pr) else { return };

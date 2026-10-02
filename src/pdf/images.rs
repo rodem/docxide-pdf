@@ -45,9 +45,6 @@ pub(super) struct EmbeddedImages {
     pub(super) effect_floating_names: HashMap<(usize, usize), EffectXObjs>,
     pub(super) effect_inline_names: HashMap<(usize, usize), EffectXObjs>,
     pub(super) effect_hf_names: HashMap<(usize, u8, usize), EffectXObjs>,
-    #[allow(dead_code)]
-    pub(super) effect_hf_inline_names: HashMap<(usize, u8, usize, usize), EffectXObjs>,
-    pub(super) effect_hf_floating_names: HashMap<(usize, u8, usize, usize), EffectXObjs>,
     pub(super) effect_table_names: HashMap<usize, EffectXObjs>,
 }
 
@@ -129,7 +126,7 @@ fn decode_png_raw(data: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     let mut reader = decoder.read_info().ok()?;
     let buf_size = reader
         .output_buffer_size()
-        .unwrap_or(reader.info().raw_bytes() as usize);
+        .unwrap_or(reader.info().raw_bytes());
     let mut buf = vec![0u8; buf_size];
     let info = reader.next_frame(&mut buf).ok()?;
     let (w, h) = (info.width, info.height);
@@ -661,18 +658,18 @@ fn embed_image_effects(
     alloc: &mut impl FnMut() -> Ref,
 ) -> EffectXObjs {
     let mut fx = EffectXObjs::default();
-    if let Some(shadow) = img.shadow.as_ref() {
-        if shadow.blur_radius > 0.0 {
-            fx.shadow = Some(embed_shadow(
-                shadow,
-                img.display_width,
-                img.display_height,
-                image_xobjects,
-                effect_counter,
-                pdf,
-                alloc,
-            ));
-        }
+    if let Some(shadow) = img.shadow.as_ref()
+        && shadow.blur_radius > 0.0
+    {
+        fx.shadow = Some(embed_shadow(
+            shadow,
+            img.display_width,
+            img.display_height,
+            image_xobjects,
+            effect_counter,
+            pdf,
+            alloc,
+        ));
     }
     if let Some(glow) = img.glow.as_ref() {
         // Glow reuses shadow embedding: centered blur (zero offset) with glow color
@@ -797,10 +794,8 @@ pub(super) fn embed_all_images(
     let mut hf_inline_image_names: HashMap<(usize, u8, usize, usize), String> = HashMap::new();
     let mut hf_floating_image_names: HashMap<(usize, u8, usize, usize), String> = HashMap::new();
     let mut effect_hf_names: HashMap<(usize, u8, usize), EffectXObjs> = HashMap::new();
-    let mut effect_hf_inline_names: HashMap<(usize, u8, usize, usize), EffectXObjs> =
-        HashMap::new();
-    let mut effect_hf_floating_names: HashMap<(usize, u8, usize, usize), EffectXObjs> =
-        HashMap::new();
+    // ponytail: the effects of header/footer inline and floating pictures are
+    // embedded (keeping the XObject numbering) but never drawn.
     {
         let hf_variants: [(u8, fn(&SectionProperties) -> Option<&HeaderFooter>); 6] = [
             (0, |sp| sp.header_default.as_ref()),
@@ -835,16 +830,13 @@ pub(super) fn embed_all_images(
                                     let name =
                                         embed_single_image(img, &mut image_xobjects, pdf, alloc);
                                     hf_inline_image_names.insert((si, hf_type, pi, ri), name);
-                                    let fx = embed_image_effects(
+                                    embed_image_effects(
                                         img,
                                         &mut image_xobjects,
                                         &mut effect_counter,
                                         pdf,
                                         alloc,
                                     );
-                                    if fx.has_any() {
-                                        effect_hf_inline_names.insert((si, hf_type, pi, ri), fx);
-                                    }
                                 }
                             }
                             for (fi, floating) in para.floating_images.iter().enumerate() {
@@ -855,16 +847,13 @@ pub(super) fn embed_all_images(
                                     alloc,
                                 );
                                 hf_floating_image_names.insert((si, hf_type, pi, fi), name);
-                                let fx = embed_image_effects(
+                                embed_image_effects(
                                     &floating.image,
                                     &mut image_xobjects,
                                     &mut effect_counter,
                                     pdf,
                                     alloc,
                                 );
-                                if fx.has_any() {
-                                    effect_hf_floating_names.insert((si, hf_type, pi, fi), fx);
-                                }
                             }
                             pi += 1;
                         }
@@ -892,12 +881,10 @@ pub(super) fn embed_all_images(
                 section.properties.header_even.as_ref(),
                 section.properties.footer_even.as_ref(),
             ];
-            for hf_opt in hf_list {
-                if let Some(hf) = hf_opt {
-                    for block in &hf.blocks {
-                        if let Block::Table(table) = block {
-                            tables.push(table);
-                        }
+            for hf in hf_list.into_iter().flatten() {
+                for block in &hf.blocks {
+                    if let Block::Table(table) = block {
+                        tables.push(table);
                     }
                 }
             }
@@ -906,40 +893,20 @@ pub(super) fn embed_all_images(
             for row in &table.rows {
                 for cell in &row.cells {
                     for para in cell.all_paragraphs() {
-                        if let Some(img) = &para.image {
-                            let key = std::sync::Arc::as_ptr(&img.data) as usize;
-                            if !table_cell_image_names.contains_key(&key) {
-                                let name = embed_single_image(img, &mut image_xobjects, pdf, alloc);
-                                table_cell_image_names.insert(key, name.clone());
-                                let fx = embed_image_effects(
-                                    img,
-                                    &mut image_xobjects,
-                                    &mut effect_counter,
-                                    pdf,
-                                    alloc,
-                                );
-                                if fx.has_any() {
-                                    effect_table_names.insert(key, fx);
-                                }
-                            }
-                        }
-                        for fi in &para.floating_images {
-                            let key = std::sync::Arc::as_ptr(&fi.image.data) as usize;
-                            if !table_cell_image_names.contains_key(&key) {
-                                let name =
-                                    embed_single_image(&fi.image, &mut image_xobjects, pdf, alloc);
-                                table_cell_image_names.insert(key, name.clone());
-                                let fx = embed_image_effects(
-                                    &fi.image,
-                                    &mut image_xobjects,
-                                    &mut effect_counter,
-                                    pdf,
-                                    alloc,
-                                );
-                                if fx.has_any() {
-                                    effect_table_names.insert(key, fx);
-                                }
-                            }
+                        for img in para
+                            .image
+                            .iter()
+                            .chain(para.floating_images.iter().map(|fi| &fi.image))
+                        {
+                            embed_table_image(
+                                img,
+                                &mut table_cell_image_names,
+                                &mut effect_table_names,
+                                &mut image_xobjects,
+                                &mut effect_counter,
+                                pdf,
+                                alloc,
+                            );
                         }
                     }
                 }
@@ -964,11 +931,9 @@ pub(super) fn embed_all_images(
                 section.properties.header_even.as_ref(),
                 section.properties.footer_even.as_ref(),
             ];
-            for hf_opt in hf_list {
-                if let Some(hf) = hf_opt {
-                    for block in &hf.blocks {
-                        push_block_textboxes(block, &mut all_textboxes);
-                    }
+            for hf in hf_list.into_iter().flatten() {
+                for block in &hf.blocks {
+                    push_block_textboxes(block, &mut all_textboxes);
                 }
             }
         }
@@ -991,11 +956,13 @@ pub(super) fn embed_all_images(
                 for diagram in &para.smartart {
                     for shape in &diagram.shapes {
                         if let Some(ref img) = shape.image_fill {
-                            let key = std::sync::Arc::as_ptr(&img.data) as usize;
-                            if !smartart_image_names.contains_key(&key) {
-                                let name = embed_single_image(img, &mut image_xobjects, pdf, alloc);
-                                smartart_image_names.insert(key, name);
-                            }
+                            embed_keyed_image(
+                                img,
+                                &mut smartart_image_names,
+                                &mut image_xobjects,
+                                pdf,
+                                alloc,
+                            );
                         }
                     }
                 }
@@ -1018,8 +985,6 @@ pub(super) fn embed_all_images(
         effect_floating_names,
         effect_inline_names,
         effect_hf_names,
-        effect_hf_inline_names,
-        effect_hf_floating_names,
         effect_table_names,
     }
 }
@@ -1045,6 +1010,7 @@ fn push_block_textboxes<'a>(block: &'a Block, out: &mut Vec<&'a Textbox>) {
     }
 }
 
+/// Embed a picture once per data `Arc` (see `EmbeddedImage::key`).
 fn embed_keyed_image(
     img: &EmbeddedImage,
     image_names: &mut HashMap<usize, String>,
@@ -1052,10 +1018,27 @@ fn embed_keyed_image(
     pdf: &mut Pdf,
     alloc: &mut impl FnMut() -> Ref,
 ) {
-    let key = std::sync::Arc::as_ptr(&img.data) as usize;
-    if !image_names.contains_key(&key) {
-        let name = embed_single_image(img, image_xobjects, pdf, alloc);
-        image_names.insert(key, name);
+    image_names
+        .entry(img.key())
+        .or_insert_with(|| embed_single_image(img, image_xobjects, pdf, alloc));
+}
+
+/// `embed_keyed_image` for a table-cell picture, with its effects.
+fn embed_table_image(
+    img: &EmbeddedImage,
+    image_names: &mut HashMap<usize, String>,
+    effect_names: &mut HashMap<usize, EffectXObjs>,
+    image_xobjects: &mut Vec<(String, Ref)>,
+    effect_counter: &mut usize,
+    pdf: &mut Pdf,
+    alloc: &mut impl FnMut() -> Ref,
+) {
+    if let std::collections::hash_map::Entry::Vacant(e) = image_names.entry(img.key()) {
+        e.insert(embed_single_image(img, image_xobjects, pdf, alloc));
+        let fx = embed_image_effects(img, image_xobjects, effect_counter, pdf, alloc);
+        if fx.has_any() {
+            effect_names.insert(img.key(), fx);
+        }
     }
 }
 

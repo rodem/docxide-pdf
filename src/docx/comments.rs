@@ -18,7 +18,7 @@ pub(super) fn parse_comments<R: Read + Seek>(
     let root = xml.root_element();
     let mut display_index: u32 = 0;
     for node in root.children() {
-        if node.tag_name().namespace() != Some(WML_NS) || node.tag_name().name() != "comment" {
+        if !node.has_tag_name((WML_NS, "comment")) {
             continue;
         }
         let Some(id) = node
@@ -59,10 +59,8 @@ fn collect_text(node: roxmltree::Node) -> String {
             }
             "tab" => buf.push('\t'),
             "br" => buf.push('\n'),
-            "p" => {
-                if !buf.is_empty() && !buf.ends_with('\n') {
-                    buf.push('\n');
-                }
+            "p" if !buf.is_empty() && !buf.ends_with('\n') => {
+                buf.push('\n');
             }
             _ => {}
         }

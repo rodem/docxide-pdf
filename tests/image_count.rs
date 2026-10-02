@@ -2,16 +2,11 @@ mod common;
 
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::io;
 use std::path::Path;
-use std::process::Command;
 
 /// Parse `mutool info` output and return a map of page_number → image_count.
-fn pdf_images_per_page(pdf: &Path) -> io::Result<HashMap<u32, u32>> {
-    let output = Command::new("mutool")
-        .args(["info", pdf.to_str().unwrap()])
-        .output()?;
-    let text = String::from_utf8_lossy(&output.stdout);
+fn pdf_images_per_page(pdf: &Path) -> Option<HashMap<u32, u32>> {
+    let text = common::mutool_info(pdf).ok()?;
     let mut in_images = false;
     let mut counts: HashMap<u32, u32> = HashMap::new();
     for line in text.lines() {
@@ -33,7 +28,7 @@ fn pdf_images_per_page(pdf: &Path) -> io::Result<HashMap<u32, u32>> {
             }
         }
     }
-    Ok(counts)
+    Some(counts)
 }
 
 struct ImageResult {
@@ -52,21 +47,15 @@ fn analyze_fixture(fixture_dir: &Path) -> Option<ImageResult> {
         return None;
     }
 
-    let ref_images = pdf_images_per_page(&reference_pdf).ok()?;
+    let ref_images = pdf_images_per_page(&reference_pdf)?;
     let ref_total: u32 = ref_images.values().sum();
     if ref_total == 0 {
         return None;
     }
 
-    let generated_pdf = match common::ensure_generated_pdf(fixture_dir) {
-        Ok(p) => p,
-        Err(e) => {
-            println!("  [SKIP] {name}: {e}");
-            return None;
-        }
-    };
+    let generated_pdf = common::generated_pdf_or_skip(fixture_dir, &name)?;
 
-    let gen_images = pdf_images_per_page(&generated_pdf).ok()?;
+    let gen_images = pdf_images_per_page(&generated_pdf)?;
     let gen_total: u32 = gen_images.values().sum();
 
     let all_pages: Vec<u32> = {
@@ -119,12 +108,7 @@ fn image_count_and_placement() {
         return;
     }
 
-    let name_w = results
-        .iter()
-        .map(|r| r.name.len())
-        .max()
-        .unwrap_or(4)
-        .max(4);
+    let name_w = common::name_width(results.iter().map(|r| r.name.as_str()), 4);
 
     println!("\n  {:<name_w$}  Pass  Ref  Gen  Page mismatches", "Case");
 

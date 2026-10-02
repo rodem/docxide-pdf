@@ -1,5 +1,8 @@
 use super::styles::ThemeFonts;
-use super::{DML_NS, W14_NS, dml as find_dml, parse_hex_color, resolve_theme_color_key};
+use super::{
+    DML_NS, W14_NS, dml as find_dml, emu_attr_opt, f32_attr, frac_attr, parse_hex_color,
+    resolve_theme_color_key,
+};
 
 #[derive(Clone, Default)]
 pub(super) struct ColorTransforms {
@@ -20,12 +23,9 @@ pub(super) fn parse_color_transforms(scheme_clr: roxmltree::Node) -> ColorTransf
         .children()
         .filter(|n| matches!(n.tag_name().namespace(), Some(DML_NS) | Some(W14_NS)))
     {
-        let val = child
-            .attribute("val")
-            .and_then(|v| v.parse::<f32>().ok())
-            .map(|v| v / 100_000.0);
+        let val = frac_attr(child, "val");
         // hueOff/satOff/lumOff use raw integer units, not the /100_000 scaling
-        let raw_val = child.attribute("val").and_then(|v| v.parse::<f32>().ok());
+        let raw_val = f32_attr(child, "val");
         match child.tag_name().name() {
             "lumMod" => t.lum_mod = val,
             "lumOff" => t.lum_off = val,
@@ -56,11 +56,11 @@ pub(super) fn apply_color_transforms(base: [u8; 3], t: &ColorTransforms) -> [u8;
             (color[2] as f32 * shade).clamp(0.0, 255.0) as u8,
         ];
     }
-    if let Some(sat_mod) = t.sat_mod {
-        if (sat_mod - 1.0).abs() > 0.001 {
-            let (h, s, l) = rgb_to_hsl(color);
-            color = hsl_to_rgb(h, (s * sat_mod).clamp(0.0, 1.0), l);
-        }
+    if let Some(sat_mod) = t.sat_mod
+        && (sat_mod - 1.0).abs() > 0.001
+    {
+        let (h, s, l) = rgb_to_hsl(color);
+        color = hsl_to_rgb(h, (s * sat_mod).clamp(0.0, 1.0), l);
     }
     if t.lum_mod.is_some() || t.lum_off.is_some() {
         let m = t.lum_mod.unwrap_or(1.0);
@@ -159,11 +159,7 @@ pub(super) fn parse_line_stroke(ln: roxmltree::Node, theme: &ThemeFonts) -> Opti
         return None;
     }
     let color = parse_solid_fill(ln, theme)?;
-    let width = ln
-        .attribute("w")
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(super::emu_to_pts)
-        .unwrap_or(0.75);
+    let width = emu_attr_opt(ln, "w").unwrap_or(0.75);
     Some((color, width))
 }
 

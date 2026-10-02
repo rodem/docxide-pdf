@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use pdf_writer::{Pdf, Ref};
 
-use crate::fonts::{FontEntry, font_key_buf, register_font};
+use crate::fonts::{FontContext, FontEntry, font_key_buf, register_font};
 use crate::model::{Block, Document, FieldCode, Paragraph, Run};
 
 use super::header_footer::hf_paragraphs;
@@ -355,11 +355,11 @@ pub(super) fn collect_and_register_fonts(
                                     let key = smartart_font_key_str(name, run.bold, run.italic);
                                     let chars = used_chars_per_font.entry(key).or_default();
                                     chars.extend(run.text.chars());
-                                    if i == 0 {
-                                        if let Some(ref b) = sa_para.bullet {
-                                            chars.extend(b.chars());
-                                            chars.insert(' ');
-                                        }
+                                    if i == 0
+                                        && let Some(ref b) = sa_para.bullet
+                                    {
+                                        chars.extend(b.chars());
+                                        chars.insert(' ');
                                     }
                                 }
                             }
@@ -381,6 +381,12 @@ pub(super) fn collect_and_register_fonts(
                 .get(&key_owned)
                 .cloned()
                 .unwrap_or_default();
+            let ctx = FontContext {
+                embedded_fonts: &doc.embedded_fonts,
+                font_table: &doc.font_table,
+                used_chars: &used,
+                word_text: true,
+            };
             let entry = register_font(
                 pdf,
                 &run.font_name,
@@ -388,10 +394,7 @@ pub(super) fn collect_and_register_fonts(
                 run.italic,
                 pdf_name,
                 alloc,
-                &doc.embedded_fonts,
-                &used,
-                &doc.font_table,
-                true,
+                &ctx,
             );
             font_order.push(key_owned.clone());
             seen_fonts.insert(key_owned, entry);
@@ -414,18 +417,13 @@ pub(super) fn collect_and_register_fonts(
             (key.as_str(), false, false)
         };
         let pdf_name = format!("F{}", font_order.len() + 1);
-        let entry = register_font(
-            pdf,
-            base,
-            bold,
-            italic,
-            pdf_name,
-            alloc,
-            &doc.embedded_fonts,
-            used,
-            &doc.font_table,
-            false,
-        );
+        let ctx = FontContext {
+            embedded_fonts: &doc.embedded_fonts,
+            font_table: &doc.font_table,
+            used_chars: used,
+            word_text: false,
+        };
+        let entry = register_font(pdf, base, bold, italic, pdf_name, alloc, &ctx);
         seen_fonts.insert(key.clone(), entry);
         font_order.push(key.clone());
     }
@@ -440,6 +438,12 @@ pub(super) fn collect_and_register_fonts(
         let fallback_key = "__cjk_fallback".to_string();
         let pdf_name = format!("F{}", font_order.len() + 1);
         let fallback_font_name = crate::fonts::cjk_rescue_fonts(&all_missing_cjk);
+        let ctx = FontContext {
+            embedded_fonts: &doc.embedded_fonts,
+            font_table: &doc.font_table,
+            used_chars: &all_missing_cjk,
+            word_text: false,
+        };
         let entry = register_font(
             pdf,
             &fallback_font_name,
@@ -447,10 +451,7 @@ pub(super) fn collect_and_register_fonts(
             false,
             pdf_name,
             alloc,
-            &doc.embedded_fonts,
-            &all_missing_cjk,
-            &doc.font_table,
-            false,
+            &ctx,
         );
         font_order.push(fallback_key.clone());
         seen_fonts.insert(fallback_key, entry);
@@ -476,18 +477,13 @@ pub(super) fn collect_and_register_fonts(
 
     if seen_fonts.is_empty() {
         let pdf_name = "F1".to_string();
-        let entry = register_font(
-            pdf,
-            "Helvetica",
-            false,
-            false,
-            pdf_name,
-            alloc,
-            &doc.embedded_fonts,
-            &HashSet::new(),
-            &doc.font_table,
-            false,
-        );
+        let ctx = FontContext {
+            embedded_fonts: &doc.embedded_fonts,
+            font_table: &doc.font_table,
+            used_chars: &HashSet::new(),
+            word_text: false,
+        };
+        let entry = register_font(pdf, "Helvetica", false, false, pdf_name, alloc, &ctx);
         seen_fonts.insert("Helvetica".to_string(), entry);
         font_order.push("Helvetica".to_string());
     }

@@ -1,10 +1,20 @@
 use pdf_writer::Content;
 
-use crate::model::{LineSpacing, Paragraph, ParagraphBorder, ParagraphBorders};
+use crate::model::{Alignment, LineSpacing, Paragraph, ParagraphBorder, ParagraphBorders, Run};
+
+/// How far an object `slack` narrower than its box moves to follow the
+/// paragraph alignment: centred takes half of it, right-aligned all of it.
+pub(super) fn align_offset(alignment: Alignment, slack: f32) -> f32 {
+    match alignment {
+        Alignment::Center => slack / 2.0,
+        Alignment::Right => slack,
+        _ => 0.0,
+    }
+}
 
 /// Approximate a circle with 4 cubic Bézier curves (path only — caller fills/strokes).
 pub(super) fn draw_circle(content: &mut Content, cx: f32, cy: f32, r: f32) {
-    let k = r * 0.5522847498;
+    let k = r * 0.552_284_8;
     content.move_to(cx + r, cy);
     content.cubic_to(cx + r, cy + k, cx + k, cy + r, cx, cy + r);
     content.cubic_to(cx - k, cy + r, cx - r, cy + k, cx - r, cy);
@@ -54,6 +64,24 @@ pub(super) fn drops_contextual_spacing(para: &Paragraph, neighbour: Option<&Para
     para.contextual_spacing && neighbour.is_some_and(|n| n.style_id == para.style_id)
 }
 
+/// `space_before` unless contextual spacing drops it beside `prev`.
+pub(super) fn effective_space_before(para: &Paragraph, prev: Option<&Paragraph>) -> f32 {
+    if drops_contextual_spacing(para, prev) {
+        0.0
+    } else {
+        para.space_before
+    }
+}
+
+/// `space_after` unless contextual spacing drops it beside `next`.
+pub(super) fn effective_space_after(para: &Paragraph, next: Option<&Paragraph>) -> f32 {
+    if drops_contextual_spacing(para, next) {
+        0.0
+    } else {
+        para.space_after
+    }
+}
+
 pub(super) fn joins_border_group(a: &Paragraph, b: &Paragraph) -> bool {
     let same = |x: f32, y: f32| (x - y).abs() < 0.01;
     borders_match(&a.borders, &b.borders)
@@ -61,6 +89,28 @@ pub(super) fn joins_border_group(a: &Paragraph, b: &Paragraph) -> bool {
         && same(a.indent_right, b.indent_right)
         && same(a.indent_hanging, b.indent_hanging)
         && same(a.indent_first_line, b.indent_first_line)
+}
+
+/// The paragraph's runs and those of the paragraphs in its textboxes, at any depth.
+pub(super) fn para_runs_with_textboxes(para: &Paragraph) -> Vec<&Run> {
+    let mut out: Vec<&Run> = para.runs.iter().collect();
+    for tb in &para.textboxes {
+        for tp in &tb.paragraphs {
+            out.extend(para_runs_with_textboxes(tp));
+        }
+    }
+    out
+}
+
+/// The paragraph and the paragraphs of its textboxes, at any depth.
+pub(super) fn collect_paras(para: &Paragraph) -> Vec<&Paragraph> {
+    let mut out = vec![para];
+    for tb in &para.textboxes {
+        for tp in &tb.paragraphs {
+            out.extend(collect_paras(tp));
+        }
+    }
+    out
 }
 
 #[cfg(test)]

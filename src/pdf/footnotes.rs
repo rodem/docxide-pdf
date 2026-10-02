@@ -5,9 +5,11 @@ use pdf_writer::Content;
 use crate::model::{Footnote, LineSpacing, Paragraph, Run};
 
 use super::RenderContext;
-use super::helpers::drops_contextual_spacing;
+use super::color::stroke_segment;
+use super::helpers::{effective_space_after, effective_space_before};
 use super::layout::{
-    TextLine, build_paragraph_lines, is_text_empty, render_paragraph_lines, tallest_run_metrics,
+    EMPTY_EFFECTS, EMPTY_INLINE_IMAGES, TextLine, build_paragraph_lines, is_text_empty,
+    render_paragraph_lines, tallest_run_metrics,
 };
 use super::list_label::render_list_label;
 use super::resolve_line_h;
@@ -58,8 +60,8 @@ fn layout_paragraph(
         ctx.fonts,
         text_width,
         first_line_hanging,
-        &HashMap::new(),
-        &HashMap::new(),
+        &EMPTY_INLINE_IMAGES,
+        &EMPTY_EFFECTS,
         None,
         None,
         None,
@@ -107,22 +109,13 @@ pub(super) fn compute_footnote_height(
             continue;
         }
         if i > 0 {
-            let effective_sb = if drops_contextual_spacing(para, prev_para) {
-                0.0
-            } else {
-                para.space_before
-            };
-            total += f32::max(prev_space_after, effective_sb);
+            total += f32::max(prev_space_after, effective_space_before(para, prev_para));
         }
         total += layout.as_ref().map_or_else(
             || empty_paragraph_line_h(para, ls, ctx),
             |l| l.lines.len().max(1) as f32 * l.line_height,
         );
-        prev_space_after = if drops_contextual_spacing(para, footnote.paragraphs.get(i + 1)) {
-            0.0
-        } else {
-            para.space_after
-        };
+        prev_space_after = effective_space_after(para, footnote.paragraphs.get(i + 1));
         prev_para = Some(para);
     }
     // Word puts a note's last space-after before the next note (erasmus_plus
@@ -179,12 +172,13 @@ pub(super) fn render_page_footnotes(
 fn draw_note_separator(content: &mut Content, margin_left: f32, sep_y: f32, text_width: f32) {
     // 0.5pt black rule, ~1/3 page width — matches Word's footnote/endnote separator
     let sep_width = 144.0f32.min(text_width);
-    content.save_state();
-    content.set_line_width(0.5);
-    content.move_to(margin_left, sep_y);
-    content.line_to(margin_left + sep_width, sep_y);
-    content.stroke();
-    content.restore_state();
+    stroke_segment(
+        content,
+        (margin_left, sep_y),
+        (margin_left + sep_width, sep_y),
+        0.5,
+        None,
+    );
 }
 
 /// Endnotes default to `pos=docEnd`: Word flows them in the normal content
@@ -267,12 +261,7 @@ fn render_notes_downward(
 
             // Inter-paragraph spacing within the footnote
             if pi > 0 {
-                let effective_sb = if drops_contextual_spacing(para, prev_para) {
-                    0.0
-                } else {
-                    para.space_before
-                };
-                fn_y -= f32::max(prev_space_after, effective_sb);
+                fn_y -= f32::max(prev_space_after, effective_space_before(para, prev_para));
             }
 
             if let Some(layout) = layout {
@@ -317,11 +306,7 @@ fn render_notes_downward(
             } else {
                 fn_y -= empty_paragraph_line_h(para, ls, ctx);
             }
-            prev_space_after = if drops_contextual_spacing(para, footnote.paragraphs.get(pi + 1)) {
-                0.0
-            } else {
-                para.space_after
-            };
+            prev_space_after = effective_space_after(para, footnote.paragraphs.get(pi + 1));
             prev_para = Some(para);
         }
         // The note's trailing space, as `compute_footnote_height` charges it.

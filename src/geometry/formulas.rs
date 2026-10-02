@@ -58,7 +58,7 @@ pub struct GuideDef {
 
 const ANG_UNIT: f64 = 60000.0;
 
-fn ang_to_rad(ang: f64) -> f64 {
+pub(super) fn ang_to_rad(ang: f64) -> f64 {
     ang / (ANG_UNIT * 180.0) * std::f64::consts::PI
 }
 

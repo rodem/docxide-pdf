@@ -7,6 +7,7 @@ use crate::model::{BarGrouping, Chart, ChartType, InlineChart, LegendPosition, M
 
 use super::chart_legend::{LegendItem, LegendPlacement, SwatchStyle, render_chart_legend};
 use super::charts_radial;
+use super::color::{fill_rgb, stroke_rgb};
 use super::helpers::draw_circle;
 
 fn ceil_nice(val: f32) -> f32 {
@@ -32,9 +33,7 @@ fn nice_tick_step(max_val: f32, target_ticks: usize) -> f32 {
     ceil_nice(raw_step)
 }
 
-use super::color::{fill_rgb, stroke_rgb};
-
-pub(super) fn text_width_approx(text: &str, font_size: f32) -> f32 {
+fn text_width_approx(text: &str, font_size: f32) -> f32 {
     text.len() as f32 * font_size * 0.5
 }
 
@@ -266,18 +265,6 @@ pub(super) fn show_text(
     text: &str,
     font_entry: Option<&FontEntry>,
 ) {
-    show_text_encoded(content, font_key, font_size, x, y, text, font_entry);
-}
-
-pub(super) fn show_text_encoded(
-    content: &mut Content,
-    font_key: &str,
-    font_size: f32,
-    x: f32,
-    y: f32,
-    text: &str,
-    font_entry: Option<&FontEntry>,
-) {
     let bytes = match font_entry {
         Some(e) => e.encode(text),
         None => to_winansi_bytes(text),
@@ -314,10 +301,8 @@ fn draw_chart_series(
     content: &mut Content,
     rect: PlotRect,
     num_categories: usize,
-    num_series: usize,
     axis_max: f32,
     x_axis_max: f32,
-    is_percent_stacked: bool,
     alpha_states: &mut HashSet<u8>,
 ) {
     let PlotRect {
@@ -328,114 +313,68 @@ fn draw_chart_series(
     } = rect;
     match c.chart_type {
         ChartType::Bar {
-            horizontal: false,
-            grouping: BarGrouping::Clustered,
+            horizontal,
+            grouping,
         } => {
-            let gap_ratio = c.gap_width_pct / 100.0;
-            let group_w = plot_w / num_categories as f32;
-            let bar_w = group_w / (num_series as f32 + gap_ratio);
-            let gap = gap_ratio * bar_w;
-
-            for ci in 0..num_categories {
-                let group_x = plot_x + ci as f32 * group_w + gap / 2.0;
-                for (si, series) in c.series.iter().enumerate() {
-                    let val = series.values.get(ci).copied().unwrap_or(0.0);
-                    let bar_h = (val / axis_max) * plot_h;
-                    let bx = group_x + si as f32 * bar_w;
-                    set_color(content, series.color);
-                    content.rect(bx, plot_y, bar_w, bar_h);
-                    content.fill_nonzero();
-                }
-            }
-        }
-        ChartType::Bar {
-            horizontal: false,
-            grouping: BarGrouping::Stacked | BarGrouping::PercentStacked,
-        } => {
-            let gap_ratio = c.gap_width_pct / 100.0;
-            let group_w = plot_w / num_categories as f32;
-            let bar_w = group_w / (1.0 + gap_ratio);
-            let gap = gap_ratio * bar_w;
-
-            for ci in 0..num_categories {
-                let bx = plot_x + ci as f32 * group_w + gap / 2.0;
-                let cat_total = if is_percent_stacked {
-                    c.series
-                        .iter()
-                        .map(|s| s.values.get(ci).copied().unwrap_or(0.0))
-                        .sum::<f32>()
+            // Categories run along one side of the plot, values along the other.
+            let (cat_origin, cat_extent, val_origin, val_extent) = if horizontal {
+                (plot_y, plot_h, plot_x, plot_w)
+            } else {
+                (plot_x, plot_w, plot_y, plot_h)
+            };
+            let bar = |content: &mut Content, cat_pos: f32, val_pos: f32, thick: f32, len: f32| {
+                if horizontal {
+                    content.rect(val_pos, cat_pos, len, thick);
                 } else {
-                    0.0
-                };
-                let mut cumulative_h = 0.0;
-                for series in c.series.iter() {
-                    let raw = series.values.get(ci).copied().unwrap_or(0.0);
-                    let val = if is_percent_stacked && cat_total > 0.0 {
-                        (raw / cat_total) * 100.0
+                    content.rect(cat_pos, val_pos, thick, len);
+                }
+                content.fill_nonzero();
+            };
+            let stacked = grouping != BarGrouping::Clustered;
+            let is_percent_stacked = grouping == BarGrouping::PercentStacked;
+            let gap_ratio = c.gap_width_pct / 100.0;
+            let group = cat_extent / num_categories as f32;
+            let slots = if stacked { 1.0 } else { c.series.len() as f32 };
+            let thick = group / (slots + gap_ratio);
+            let gap = gap_ratio * thick;
+
+            for ci in 0..num_categories {
+                let group_pos = cat_origin + ci as f32 * group + gap / 2.0;
+                if stacked {
+                    let cat_total = if is_percent_stacked {
+                        c.series
+                            .iter()
+                            .map(|s| s.values.get(ci).copied().unwrap_or(0.0))
+                            .sum::<f32>()
                     } else {
-                        raw
+                        0.0
                     };
-                    let bar_h = (val / axis_max) * plot_h;
-                    set_color(content, series.color);
-                    content.rect(bx, plot_y + cumulative_h, bar_w, bar_h);
-                    content.fill_nonzero();
-                    cumulative_h += bar_h;
-                }
-            }
-        }
-        ChartType::Bar {
-            horizontal: true,
-            grouping: BarGrouping::Clustered,
-        } => {
-            let gap_ratio = c.gap_width_pct / 100.0;
-            let group_h = plot_h / num_categories as f32;
-            let bar_h = group_h / (num_series as f32 + gap_ratio);
-            let gap = gap_ratio * bar_h;
-
-            for ci in 0..num_categories {
-                let group_y = plot_y + ci as f32 * group_h + gap / 2.0;
-                for (si, series) in c.series.iter().enumerate() {
-                    let val = series.values.get(ci).copied().unwrap_or(0.0);
-                    let bw = (val / axis_max) * plot_w;
-                    let by = group_y + si as f32 * bar_h;
-                    set_color(content, series.color);
-                    content.rect(plot_x, by, bw, bar_h);
-                    content.fill_nonzero();
-                }
-            }
-        }
-        ChartType::Bar {
-            horizontal: true,
-            grouping: BarGrouping::Stacked | BarGrouping::PercentStacked,
-        } => {
-            let gap_ratio = c.gap_width_pct / 100.0;
-            let group_h = plot_h / num_categories as f32;
-            let bar_h = group_h / (1.0 + gap_ratio);
-            let gap = gap_ratio * bar_h;
-
-            for ci in 0..num_categories {
-                let by = plot_y + ci as f32 * group_h + gap / 2.0;
-                let cat_total = if is_percent_stacked {
-                    c.series
-                        .iter()
-                        .map(|s| s.values.get(ci).copied().unwrap_or(0.0))
-                        .sum::<f32>()
+                    let mut cumulative = 0.0;
+                    for series in c.series.iter() {
+                        let raw = series.values.get(ci).copied().unwrap_or(0.0);
+                        let val = if is_percent_stacked && cat_total > 0.0 {
+                            (raw / cat_total) * 100.0
+                        } else {
+                            raw
+                        };
+                        let len = (val / axis_max) * val_extent;
+                        set_color(content, series.color);
+                        bar(content, group_pos, val_origin + cumulative, thick, len);
+                        cumulative += len;
+                    }
                 } else {
-                    0.0
-                };
-                let mut cumulative_w = 0.0;
-                for series in c.series.iter() {
-                    let raw = series.values.get(ci).copied().unwrap_or(0.0);
-                    let val = if is_percent_stacked && cat_total > 0.0 {
-                        (raw / cat_total) * 100.0
-                    } else {
-                        raw
-                    };
-                    let bw = (val / axis_max) * plot_w;
-                    set_color(content, series.color);
-                    content.rect(plot_x + cumulative_w, by, bw, bar_h);
-                    content.fill_nonzero();
-                    cumulative_w += bw;
+                    for (si, series) in c.series.iter().enumerate() {
+                        let val = series.values.get(ci).copied().unwrap_or(0.0);
+                        let len = (val / axis_max) * val_extent;
+                        set_color(content, series.color);
+                        bar(
+                            content,
+                            group_pos + si as f32 * thick,
+                            val_origin,
+                            thick,
+                            len,
+                        );
+                    }
                 }
             }
         }
@@ -626,19 +565,18 @@ pub(super) fn render_chart(
 
     match c.chart_type {
         ChartType::Pie => {
-            charts_radial::render_pie(chart, content, x, y, has_font, label_font_key, label_font);
+            charts_radial::render_radial(chart, content, x, y, label_font_key, label_font, None);
             return;
         }
         ChartType::Doughnut { hole_size_pct } => {
-            charts_radial::render_doughnut(
+            charts_radial::render_radial(
                 chart,
                 content,
                 x,
                 y,
-                has_font,
                 label_font_key,
-                hole_size_pct,
                 label_font,
+                Some(hole_size_pct),
             );
             return;
         }
@@ -874,10 +812,8 @@ pub(super) fn render_chart(
             h: plot_h,
         },
         num_categories,
-        num_series,
         axis_max,
         x_axis_max,
-        is_percent_stacked,
         alpha_states,
     );
 

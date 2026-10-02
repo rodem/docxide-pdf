@@ -1,11 +1,10 @@
-use std::collections::{HashMap, HashSet};
 use std::io::Read;
 
 use crate::geometry::{FormulaOp, PathFill};
 use crate::model::{
     ArrowEnd, AutoFit, ConnectorShape, ConnectorType, CustomGeometry, CustomGuideDef,
     CustomPathCommand, CustomPathDef, HRelativeFrom, HorizontalPosition, Paragraph, ShapeFill,
-    ShapeGeometry, TextAnchor, TextWarp, Textbox, VRelativeFrom, VerticalPosition, WrapType,
+    ShapeGeometry, TextAnchor, TextWarp, Textbox, VRelativeFrom, VerticalPosition,
 };
 
 use super::color::{
@@ -14,8 +13,9 @@ use super::color::{
 use super::images::{extent_dimensions, parse_anchor_position};
 use super::styles::{ThemeFillStyle, ThemeFonts};
 use super::{
-    DML_NS, MC_NS_TOP, ParseContext, VML_NS, WML_NS, WPD_NS, WPS_NS, dml as find_dml,
-    dml_children as find_dml_all, emu_attr, parse_pt, wps as find_wps,
+    DML_NS, MC_NS_TOP, OFFICE_NS, ParseContext, VML_NS, WML_NS, WPD_NS, WPS_NS, angle_attr,
+    dml as find_dml, dml_children as find_dml_all, emu_attr, emu_attr_opt, frac_attr, parse_pt,
+    wps as find_wps,
 };
 
 struct VmlBoxStyle {
@@ -79,11 +79,8 @@ fn collect_dml_points(parent: roxmltree::Node) -> Vec<(String, String)> {
 }
 
 pub(super) fn find_sp_pr<'a>(wsp: roxmltree::Node<'a, 'a>) -> Option<roxmltree::Node<'a, 'a>> {
-    wsp.children().find(|n| {
-        n.tag_name().name() == "spPr"
-            && (n.tag_name().namespace() == Some(WPS_NS)
-                || n.tag_name().namespace() == Some(DML_NS))
-    })
+    wsp.children()
+        .find(|n| n.has_tag_name((WPS_NS, "spPr")) || n.has_tag_name((DML_NS, "spPr")))
 }
 
 fn find_wps_style_ref<'a>(
@@ -99,22 +96,13 @@ pub(super) fn parse_txbx_content_paragraphs<R: Read + std::io::Seek>(
     ctx: &mut ParseContext<'_, R>,
 ) -> Vec<Paragraph> {
     let mut paragraphs = Vec::new();
-    let mut counters: HashMap<(u32, u8), u32> = HashMap::new();
-    let mut last_seen_level: HashMap<u32, u8> = HashMap::new();
-    let mut applied_overrides: HashSet<(u32, u8)> = HashSet::new();
+    let mut lists = super::numbering::ListCounters::default();
     let opts = super::paragraph::ParagraphOptions::default();
     for p in txbx_content
         .children()
-        .filter(|n| n.tag_name().name() == "p" && n.tag_name().namespace() == Some(WML_NS))
+        .filter(|n| n.has_tag_name((WML_NS, "p")))
     {
-        paragraphs.push(super::paragraph::build_paragraph(
-            p,
-            ctx,
-            &mut counters,
-            &mut last_seen_level,
-            &mut applied_overrides,
-            &opts,
-        ));
+        paragraphs.push(super::paragraph::build_paragraph(p, ctx, &mut lists, &opts));
     }
     paragraphs
 }
@@ -125,11 +113,7 @@ fn parse_gradient_fill(sp_pr: roxmltree::Node, theme: &ThemeFonts) -> Option<Sha
 
     let stops: Vec<([u8; 3], f32)> = find_dml_all(gs_lst, "gs")
         .filter_map(|gs| {
-            let pos = gs
-                .attribute("pos")
-                .and_then(|v| v.parse::<f32>().ok())
-                .map(|v| v / 100_000.0)
-                .unwrap_or(0.0);
+            let pos = frac_attr(gs, "pos").unwrap_or(0.0);
             resolve_dml_color(gs, theme).map(|color| (color, pos))
         })
         .collect();
@@ -139,9 +123,7 @@ fn parse_gradient_fill(sp_pr: roxmltree::Node, theme: &ThemeFonts) -> Option<Sha
 
     // OOXML a:lin @ang is in 60,000ths of a degree
     let angle_deg = find_dml(grad_fill, "lin")
-        .and_then(|lin| lin.attribute("ang"))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(|v| v / 60_000.0)
+        .and_then(|lin| angle_attr(lin, "ang"))
         .unwrap_or(0.0);
 
     Some(ShapeFill::LinearGradient { stops, angle_deg })
@@ -191,14 +173,14 @@ pub(super) fn parse_shape_geometry(sp_pr: roxmltree::Node) -> ShapeGeometry {
         };
     }
 
-    if let Some(cust_geom) = find_dml(sp_pr, "custGeom") {
-        if let Some(custom) = parse_custom_geometry(cust_geom) {
-            return ShapeGeometry {
-                preset: None,
-                adjustments: Vec::new(),
-                custom: Some(custom),
-            };
-        }
+    if let Some(cust_geom) = find_dml(sp_pr, "custGeom")
+        && let Some(custom) = parse_custom_geometry(cust_geom)
+    {
+        return ShapeGeometry {
+            preset: None,
+            adjustments: Vec::new(),
+            custom: Some(custom),
+        };
     }
 
     ShapeGeometry::default()
@@ -339,12 +321,7 @@ fn parse_body_margins(wsp: roxmltree::Node) -> (f32, f32, f32, f32) {
     let Some(bp) = find_wps(wsp, "bodyPr") else {
         return (3.6, 7.2, 3.6, 7.2); // Word defaults: 0.05" top/bottom, 0.1" left/right
     };
-    let emu_to_pt = |attr: &str, default: f32| -> f32 {
-        bp.attribute(attr)
-            .and_then(|v| v.parse::<f32>().ok())
-            .map(super::emu_to_pts)
-            .unwrap_or(default)
-    };
+    let emu_to_pt = |attr: &str, default: f32| -> f32 { emu_attr_opt(bp, attr).unwrap_or(default) };
     (
         emu_to_pt("tIns", 3.6),
         emu_to_pt("lIns", 7.2),
@@ -378,9 +355,31 @@ pub(super) struct WspResult {
     pub(super) margin_bottom: f32,
     pub(super) margin_right: f32,
     pub(super) no_text_wrap: bool,
-    pub(super) is_wordart: bool,
     pub(super) text_warp: Option<TextWarp>,
     pub(super) auto_fit: AutoFit,
+}
+
+/// The shape's own properties; size, anchoring and wrapping stay at their
+/// defaults for the caller to fill in.
+impl From<WspResult> for Textbox {
+    fn from(wsp: WspResult) -> Textbox {
+        Textbox {
+            paragraphs: wsp.paragraphs,
+            fill: wsp.fill,
+            shape_type: wsp.shape_type,
+            stroke_color: wsp.stroke_color,
+            stroke_width: wsp.stroke_width,
+            text_anchor: wsp.text_anchor,
+            margin_left: wsp.margin_left,
+            margin_right: wsp.margin_right,
+            margin_top: wsp.margin_top,
+            margin_bottom: wsp.margin_bottom,
+            no_text_wrap: wsp.no_text_wrap,
+            text_warp: wsp.text_warp,
+            auto_fit: wsp.auto_fit,
+            ..Textbox::default()
+        }
+    }
 }
 
 pub(super) fn parse_textbox_from_wsp<R: Read + std::io::Seek>(
@@ -389,7 +388,7 @@ pub(super) fn parse_textbox_from_wsp<R: Read + std::io::Seek>(
 ) -> Option<WspResult> {
     let wsp = anchor
         .descendants()
-        .find(|n| n.tag_name().name() == "wsp" && n.tag_name().namespace() == Some(WPS_NS))?;
+        .find(|n| n.has_tag_name((WPS_NS, "wsp")))?;
     parse_wsp_shape(wsp, ctx)
 }
 
@@ -428,10 +427,7 @@ pub(super) fn parse_wsp_shape<R: Read + std::io::Seek>(
 
     let ln_node = sp_pr.and_then(|sp| find_dml(sp, "ln"));
     let ln_no_fill = ln_node.is_some_and(|ln| find_dml(ln, "noFill").is_some());
-    let explicit_ln_width = ln_node
-        .and_then(|ln| ln.attribute("w"))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(super::emu_to_pts);
+    let explicit_ln_width = ln_node.and_then(|ln| emu_attr_opt(ln, "w"));
     let (stroke_color, stroke_width) = if ln_no_fill {
         (None, 0.0)
     } else if let Some((color, width)) = ln_node.and_then(|ln| parse_line_stroke(ln, ctx.theme)) {
@@ -481,9 +477,8 @@ pub(super) fn parse_wsp_shape<R: Read + std::io::Seek>(
 
     let paragraphs = find_wps(wsp, "txbx")
         .and_then(|txbx| {
-            txbx.children().find(|n| {
-                n.tag_name().name() == "txbxContent" && n.tag_name().namespace() == Some(WML_NS)
-            })
+            txbx.children()
+                .find(|n| n.has_tag_name((WML_NS, "txbxContent")))
         })
         .map(|tc| parse_txbx_content_paragraphs(tc, ctx))
         .unwrap_or_default();
@@ -504,7 +499,6 @@ pub(super) fn parse_wsp_shape<R: Read + std::io::Seek>(
         margin_bottom,
         margin_right,
         no_text_wrap,
-        is_wordart: wa_props.is_wordart,
         text_warp: wa_props.text_warp,
         auto_fit: wa_props.auto_fit,
     })
@@ -516,7 +510,7 @@ pub(super) fn parse_connector_from_wsp(
 ) -> Option<ConnectorShape> {
     let wsp = anchor
         .descendants()
-        .find(|n| n.tag_name().name() == "wsp" && n.tag_name().namespace() == Some(WPS_NS))?;
+        .find(|n| n.has_tag_name((WPS_NS, "wsp")))?;
 
     let (h_position, _, v_pos, _) = parse_anchor_position(anchor);
     let (display_w, display_h) = extent_dimensions(anchor);
@@ -564,17 +558,13 @@ pub(super) fn parse_connector_shape_node(
             ConnectorType::Line { flip_h, flip_v }
         }
         "arc" => {
-            let rotation = xfrm
-                .and_then(|x| x.attribute("rot"))
-                .and_then(|v| v.parse::<f32>().ok())
-                .unwrap_or(0.0)
-                / 60000.0;
+            let rotation = xfrm.and_then(|x| angle_attr(x, "rot")).unwrap_or(0.0);
 
             let mut adj1 = 0.0_f32;
             let mut adj2 = 0.0_f32;
             for gd in prst_geom
                 .descendants()
-                .filter(|n| n.tag_name().name() == "gd" && n.tag_name().namespace() == Some(DML_NS))
+                .filter(|n| n.has_tag_name((DML_NS, "gd")))
             {
                 let name = gd.attribute("name").unwrap_or("");
                 let val = gd
@@ -607,9 +597,7 @@ pub(super) fn parse_connector_shape_node(
         .or_else(|| parse_style_stroke(wsp, theme))
         .unwrap_or([0, 0, 0]);
     let stroke_width = ln_node
-        .and_then(|ln| ln.attribute("w"))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(super::emu_to_pts)
+        .and_then(|ln| emu_attr_opt(ln, "w"))
         .unwrap_or_else(|| parse_style_stroke_width(wsp));
 
     let (head_end, tail_end) = ln_node
@@ -716,7 +704,6 @@ fn vml_spt_to_preset(spt: u32) -> Option<&'static str> {
 /// Resolve a VML shape's preset geometry from its `o:spt` attribute or its
 /// `type="#_x0000_t<N>"` reference.
 fn vml_shape_preset(shape: roxmltree::Node) -> Option<&'static str> {
-    const OFFICE_NS: &str = "urn:schemas-microsoft-com:office:office";
     let spt = shape
         .attribute((OFFICE_NS, "spt"))
         .and_then(|v| v.trim().parse::<f64>().ok().map(|f| f as u32))
@@ -763,7 +750,6 @@ fn parse_vml_geometry_shape(shape: roxmltree::Node) -> Option<Textbox> {
     }
 
     Some(Textbox {
-        paragraphs: Vec::new(),
         width_pt: width,
         height_pt: height,
         h_position: HorizontalPosition::Offset(margin_left),
@@ -771,7 +757,6 @@ fn parse_vml_geometry_shape(shape: roxmltree::Node) -> Option<Textbox> {
         v_offset_pt: margin_top,
         v_position: VerticalPosition::Offset(margin_top),
         v_relative_from: v_relative,
-        fill: None,
         shape_type: ShapeGeometry {
             preset: Some(preset.to_string()),
             adjustments: Vec::new(),
@@ -779,22 +764,8 @@ fn parse_vml_geometry_shape(shape: roxmltree::Node) -> Option<Textbox> {
         },
         stroke_color: Some(stroke_color),
         stroke_width,
-        text_anchor: TextAnchor::Top,
-        margin_left: 0.0,
-        margin_right: 0.0,
-        margin_top: 0.0,
-        margin_bottom: 0.0,
-        wrap_type: WrapType::None,
-        dist_top: 0.0,
-        dist_bottom: 0.0,
-        behind_doc: false,
         no_text_wrap: true,
-        is_wordart: false,
-        text_warp: None,
-        auto_fit: AutoFit::None,
-        z_index: 0,
-        anchor_seq: 0,
-        indent_relative: false,
+        ..Textbox::default()
     })
 }
 
@@ -809,11 +780,11 @@ pub(super) fn parse_textbox_from_vml<R: Read + std::io::Seek>(
     // VML WordArt uses v:textpath instead of v:textbox
     let Some(textbox_node) = shape
         .children()
-        .find(|n| n.tag_name().name() == "textbox" && n.tag_name().namespace() == Some(VML_NS))
+        .find(|n| n.has_tag_name((VML_NS, "textbox")))
     else {
         if let Some(tp) = shape
             .children()
-            .find(|n| n.tag_name().name() == "textpath" && n.tag_name().namespace() == Some(VML_NS))
+            .find(|n| n.has_tag_name((VML_NS, "textpath")))
         {
             return super::wordart::parse_vml_wordart(shape, tp, ctx.styles, ctx.theme);
         }
@@ -823,9 +794,9 @@ pub(super) fn parse_textbox_from_vml<R: Read + std::io::Seek>(
         // Build a paragraph-less stroked shape from the preset geometry.
         return parse_vml_geometry_shape(shape);
     };
-    let txbx_content = textbox_node.children().find(|n| {
-        n.tag_name().name() == "txbxContent" && n.tag_name().namespace() == Some(WML_NS)
-    })?;
+    let txbx_content = textbox_node
+        .children()
+        .find(|n| n.has_tag_name((WML_NS, "txbxContent")))?;
 
     let style_str = shape.attribute("style").unwrap_or("");
     let VmlBoxStyle {
@@ -869,26 +840,13 @@ pub(super) fn parse_textbox_from_vml<R: Read + std::io::Seek>(
         v_offset_pt: margin_top,
         v_position: VerticalPosition::Offset(margin_top),
         v_relative_from: v_relative,
-        fill: None,
-        shape_type: ShapeGeometry::default(),
         stroke_color,
         stroke_width,
-        text_anchor: TextAnchor::Top,
         margin_left: 7.2,
         margin_right: 7.2,
         margin_top: 3.6,
         margin_bottom: 3.6,
-        wrap_type: WrapType::None,
-        dist_top: 0.0,
-        dist_bottom: 0.0,
-        behind_doc: false,
-        no_text_wrap: false,
-        is_wordart: false,
-        text_warp: None,
-        auto_fit: AutoFit::None,
-        z_index: 0,
-        anchor_seq: 0,
-        indent_relative: false,
+        ..Textbox::default()
     })
 }
 
@@ -902,83 +860,58 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
         let ns = child.tag_name().namespace();
         let name = child.tag_name().name();
         if ns == Some(MC_NS_TOP) && name == "AlternateContent" {
-            let choice = child.children().find(|n| {
-                n.tag_name().namespace() == Some(MC_NS_TOP) && n.tag_name().name() == "Choice"
-            });
-            let fallback = child.children().find(|n| {
-                n.tag_name().namespace() == Some(MC_NS_TOP) && n.tag_name().name() == "Fallback"
-            });
+            let choice = child
+                .children()
+                .find(|n| n.has_tag_name((MC_NS_TOP, "Choice")));
+            let fallback = child
+                .children()
+                .find(|n| n.has_tag_name((MC_NS_TOP, "Fallback")));
 
             if let Some(branch) = choice {
-                for drawing in branch.children().filter(|n| {
-                    n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "drawing"
-                }) {
-                    for container in drawing.children().filter(|n| {
-                        n.tag_name().namespace() == Some(WPD_NS) && n.tag_name().name() == "anchor"
-                    }) {
+                for drawing in branch
+                    .children()
+                    .filter(|n| n.has_tag_name((WML_NS, "drawing")))
+                {
+                    for container in drawing
+                        .children()
+                        .filter(|n| n.has_tag_name((WPD_NS, "anchor")))
+                    {
                         let (display_w, display_h) = extent_dimensions(container);
 
                         if let Some(wsp) = parse_textbox_from_wsp(container, ctx) {
                             let (h_position, h_relative, v_pos, v_relative) =
                                 parse_anchor_position(container);
-                            let v_offset = match v_pos {
-                                VerticalPosition::Offset(o) => o,
-                                _ => 0.0,
-                            };
                             let (wrap_type, _, _) = super::images::parse_wrap_type(container);
-                            let behind_doc = container.attribute("behindDoc") == Some("1");
-                            let (dist_top, dist_bottom) =
-                                super::images::wrap_dist_top_bottom(container);
+                            let (behind_doc, z_index) = super::images::anchor_z_order(container);
+                            let (_, dist_bottom) = super::images::wrap_dist_top_bottom(container);
                             textboxes.push(Textbox {
-                                paragraphs: wsp.paragraphs,
                                 width_pt: display_w,
                                 height_pt: display_h,
                                 h_position,
                                 h_relative_from: h_relative,
-                                v_offset_pt: v_offset,
+                                v_offset_pt: v_pos.offset_or_zero(),
                                 v_position: v_pos,
                                 v_relative_from: v_relative,
-                                fill: wsp.fill,
-                                shape_type: wsp.shape_type,
-                                stroke_color: wsp.stroke_color,
-                                stroke_width: wsp.stroke_width,
-                                text_anchor: wsp.text_anchor,
-                                margin_left: wsp.margin_left,
-                                margin_right: wsp.margin_right,
-                                margin_top: wsp.margin_top,
-                                margin_bottom: wsp.margin_bottom,
                                 wrap_type,
-                                dist_top,
                                 dist_bottom,
                                 behind_doc,
-                                no_text_wrap: wsp.no_text_wrap,
-                                is_wordart: wsp.is_wordart,
-                                text_warp: wsp.text_warp,
-                                auto_fit: wsp.auto_fit,
-                                z_index: container
-                                    .attribute("relativeHeight")
-                                    .and_then(|v| v.parse::<u32>().ok())
-                                    .unwrap_or(0),
-                                anchor_seq: 0,
-                                indent_relative: false,
+                                z_index,
+                                ..Textbox::from(wsp)
                             });
                         }
                     }
                 }
             } else if let Some(branch) = fallback {
-                for pict in branch.children().filter(|n| {
-                    n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "pict"
-                }) {
+                for pict in branch
+                    .children()
+                    .filter(|n| n.has_tag_name((WML_NS, "pict")))
+                {
                     if let Some(tb) = parse_textbox_from_vml(pict, ctx) {
                         textboxes.push(tb);
                     }
                 }
-                for r in branch.children().filter(|n| {
-                    n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "r"
-                }) {
-                    for pict in r.children().filter(|n| {
-                        n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "pict"
-                    }) {
+                for r in branch.children().filter(|n| n.has_tag_name((WML_NS, "r"))) {
+                    for pict in r.children().filter(|n| n.has_tag_name((WML_NS, "pict"))) {
                         if let Some(tb) = parse_textbox_from_vml(pict, ctx) {
                             textboxes.push(tb);
                         }

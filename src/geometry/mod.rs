@@ -1,13 +1,15 @@
-pub mod definitions;
-pub mod formulas;
-pub mod path;
+mod definitions;
+mod formulas;
+mod path;
 pub mod text_warp_definitions;
 
 use crate::model::CustomGeometry;
 
-pub use definitions::PresetDef;
-pub use formulas::{FormulaOp, GuideEnv};
-pub use path::{PathFill, ResolvedCommand, resolve_custom_path};
+use definitions::PresetDef;
+pub use formulas::FormulaOp;
+use formulas::GuideEnv;
+use path::PathCommandDef;
+pub use path::{PathFill, ResolvedCommand};
 
 pub struct EvaluatedPath {
     pub commands: Vec<ResolvedCommand>,
@@ -18,17 +20,51 @@ pub struct EvaluatedPath {
 
 pub struct EvaluatedShape {
     pub paths: Vec<EvaluatedPath>,
-    #[allow(dead_code)]
     pub text_rect: Option<(f64, f64, f64, f64)>,
 }
 
 // 1 point = 12700 EMU. Preserves precision for the integer formula evaluator.
 const EMU_SCALE: f64 = 12700.0;
 
-fn scaled_env(w: f64, h: f64) -> (GuideEnv, i64, i64) {
-    let wi = (w * EMU_SCALE) as i64;
-    let hi = (h * EMU_SCALE) as i64;
-    (GuideEnv::new(wi, hi), wi, hi)
+/// A shape under evaluation: its guides, its size in points and the EMU-scaled
+/// coordinate space the guides are computed in.
+struct Frame {
+    env: GuideEnv,
+    w: f64,
+    h: f64,
+    wi: i64,
+    hi: i64,
+}
+
+impl Frame {
+    fn new(w: f64, h: f64) -> Self {
+        let wi = (w * EMU_SCALE) as i64;
+        let hi = (h * EMU_SCALE) as i64;
+        Frame {
+            env: GuideEnv::new(wi, hi),
+            w,
+            h,
+            wi,
+            hi,
+        }
+    }
+
+    /// Resolve one path; its own w/h, when given, replace the shape's coordinate space.
+    fn path<'a>(
+        &self,
+        commands: impl Iterator<Item = PathCommandDef<&'a str>>,
+        (w, h): (Option<i64>, Option<i64>),
+        fill: PathFill,
+        stroke: bool,
+    ) -> EvaluatedPath {
+        let path_w = w.unwrap_or(self.wi) as f64;
+        let path_h = h.unwrap_or(self.hi) as f64;
+        EvaluatedPath {
+            commands: path::resolve_path(commands, &self.env, self.w, self.h, path_w, path_h),
+            fill,
+            stroke,
+        }
+    }
 }
 
 pub fn evaluate_preset(
@@ -47,25 +83,23 @@ pub fn evaluate_def(
     h: f64,
     adj_overrides: &[(String, i64)],
 ) -> EvaluatedShape {
-    let (mut env, wi, hi) = scaled_env(w, h);
-    env.set_adjustments(def.adjust_defaults, adj_overrides);
-    env.evaluate_guides(def.guides);
+    let mut frame = Frame::new(w, h);
+    frame
+        .env
+        .set_adjustments(def.adjust_defaults, adj_overrides);
+    frame.env.evaluate_guides(def.guides);
 
     let paths = def
         .paths
         .iter()
-        .map(|p| EvaluatedPath {
-            commands: path::resolve_path(p, &env, w, h, wi, hi),
-            fill: p.fill,
-            stroke: p.stroke,
-        })
+        .map(|p| frame.path(p.commands.iter().copied(), (p.w, p.h), p.fill, p.stroke))
         .collect();
 
     let text_rect = def.text_rect.as_ref().map(|tr| {
-        let l = env.resolve(tr.l) as f64 / EMU_SCALE;
-        let t = env.resolve(tr.t) as f64 / EMU_SCALE;
-        let r = env.resolve(tr.r) as f64 / EMU_SCALE;
-        let b = env.resolve(tr.b) as f64 / EMU_SCALE;
+        let l = frame.env.resolve(tr.l) as f64 / EMU_SCALE;
+        let t = frame.env.resolve(tr.t) as f64 / EMU_SCALE;
+        let r = frame.env.resolve(tr.r) as f64 / EMU_SCALE;
+        let b = frame.env.resolve(tr.b) as f64 / EMU_SCALE;
         (l, h - b, r - l, b - t)
     });
 
@@ -78,18 +112,21 @@ pub fn evaluate_custom(
     h: f64,
     adj_overrides: &[(String, i64)],
 ) -> EvaluatedShape {
-    let (mut env, wi, hi) = scaled_env(w, h);
-    env.set_adjustments(&[], &custom.adjust_defaults);
-    env.set_adjustments(&[], adj_overrides);
-    env.evaluate_custom_guides(&custom.guides);
+    let mut frame = Frame::new(w, h);
+    frame.env.set_adjustments(&[], &custom.adjust_defaults);
+    frame.env.set_adjustments(&[], adj_overrides);
+    frame.env.evaluate_custom_guides(&custom.guides);
 
     let paths = custom
         .paths
         .iter()
-        .map(|p| EvaluatedPath {
-            commands: resolve_custom_path(p, &env, w, h, wi, hi),
-            fill: p.fill,
-            stroke: p.stroke,
+        .map(|p| {
+            frame.path(
+                p.commands.iter().map(PathCommandDef::from),
+                (p.w, p.h),
+                p.fill,
+                p.stroke,
+            )
         })
         .collect();
 

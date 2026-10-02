@@ -9,10 +9,11 @@ use crate::model::{
 pub(super) use super::color::{ColorTransforms, parse_color_transforms};
 use super::wordart::{parse_text_fill, parse_text_glow, parse_text_outline, parse_text_shadow};
 use super::{
-    DML_NS, WML_NS, dml, extract_indents, highlight_color, merge_tab_stops, parse_cell_border,
-    parse_cell_border_left, parse_cell_border_right, parse_hex_color, parse_on_off,
-    parse_one_border, parse_paragraph_borders, parse_run_shd, parse_tab_stops_with_clears,
-    parse_text_color, read_zip_text, twips_attr, twips_to_pts, wml, wml_attr, wml_bool,
+    DML_NS, WML_NS, angle_attr, dml, extract_indents, frac_attr, highlight_color, merge_tab_stops,
+    parse_cell_border, parse_cell_border_left, parse_cell_border_right, parse_hex_color,
+    parse_on_off, parse_one_border, parse_paragraph_borders, parse_run_shd,
+    parse_tab_stops_with_clears, parse_text_color, read_zip_text, twips_attr, twips_to_pts, wml,
+    wml_attr, wml_bool,
 };
 
 fn dml_typeface<'a>(node: roxmltree::Node<'a, 'a>, element: &str) -> Option<&'a str> {
@@ -37,11 +38,7 @@ fn group_typeface<'a>(
 fn script_font_typeface<'a>(font_group: roxmltree::Node<'a, 'a>, script: &str) -> Option<&'a str> {
     font_group
         .children()
-        .find(|n| {
-            n.tag_name().name() == "font"
-                && n.tag_name().namespace() == Some(DML_NS)
-                && n.attribute("script") == Some(script)
-        })
+        .find(|n| n.has_tag_name((DML_NS, "font")) && n.attribute("script") == Some(script))
         .and_then(|n| n.attribute("typeface"))
         .filter(|tf| !tf.is_empty())
 }
@@ -203,14 +200,17 @@ pub(super) struct ParagraphStyle {
     pub(super) snap_to_grid: Option<bool>,
     pub(super) auto_space_de: Option<bool>,
     pub(super) auto_space_dn: Option<bool>,
-    pub(super) suppress_auto_hyphens: Option<bool>,
     pub(super) text_outline: Option<TextOutline>,
     pub(super) text_fill: Option<TextFill>,
     pub(super) text_shadow: Option<TextShadow>,
     pub(super) text_glow: Option<TextGlow>,
 }
 
-pub(super) struct CharacterStyle {
+/// Run properties read from one `w:rPr`; every field is `None` when the
+/// element doesn't set it. Shared by docDefaults, paragraph styles,
+/// character styles (which are exactly this) and inline runs.
+#[derive(Default)]
+pub(super) struct RunProps {
     pub(super) font_size: Option<f32>,
     pub(super) font_name: Option<String>,
     pub(super) east_asia_font: Option<String>,
@@ -219,6 +219,7 @@ pub(super) struct CharacterStyle {
     pub(super) underline: Option<bool>,
     pub(super) double_underline: Option<bool>,
     pub(super) strikethrough: Option<bool>,
+    pub(super) dstrike: Option<bool>,
     pub(super) caps: Option<bool>,
     pub(super) small_caps: Option<bool>,
     pub(super) lang: Option<String>,
@@ -231,11 +232,43 @@ pub(super) struct CharacterStyle {
     /// `w:fill="auto"` as "no color," not as a clearing override.
     pub(super) shading: Option<[u8; 3]>,
     pub(super) border: Option<crate::model::ParagraphBorder>,
+    pub(super) char_spacing: Option<f32>,
     pub(super) kern_threshold: Option<f32>,
     pub(super) text_outline: Option<TextOutline>,
     pub(super) text_fill: Option<TextFill>,
     pub(super) text_shadow: Option<TextShadow>,
     pub(super) text_glow: Option<TextGlow>,
+}
+
+pub(super) fn parse_run_props(rpr: roxmltree::Node, theme: &ThemeFonts) -> RunProps {
+    let rfonts = wml(rpr, "rFonts");
+    let (lang, lang_east_asia) = parse_lang(rpr);
+    RunProps {
+        font_size: parse_font_size(rpr),
+        font_name: rfonts.and_then(|rf| resolve_font_from_node_opt(rf, theme)),
+        east_asia_font: rfonts.and_then(|rf| resolve_east_asia_font_from_node(rf, theme)),
+        bold: wml_bool(rpr, "b"),
+        italic: wml_bool(rpr, "i"),
+        underline: parse_underline(rpr),
+        double_underline: parse_double_underline(rpr),
+        strikethrough: wml_bool(rpr, "strike"),
+        dstrike: wml_bool(rpr, "dstrike"),
+        caps: wml_bool(rpr, "caps"),
+        small_caps: wml_bool(rpr, "smallCaps"),
+        lang,
+        lang_east_asia,
+        vanish: wml_bool(rpr, "vanish"),
+        color: wml_attr(rpr, "color").and_then(parse_text_color),
+        highlight: wml_attr(rpr, "highlight").and_then(highlight_color),
+        shading: parse_run_shd(rpr),
+        border: wml(rpr, "bdr").and_then(parse_one_border),
+        char_spacing: parse_char_spacing(rpr),
+        kern_threshold: parse_kern(rpr),
+        text_outline: parse_text_outline(rpr, theme),
+        text_fill: parse_text_fill(rpr, theme),
+        text_shadow: parse_text_shadow(rpr, theme),
+        text_glow: parse_text_glow(rpr, theme),
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -246,6 +279,18 @@ pub(super) struct TableBordersDef {
     pub(super) right: CellBorder,
     pub(super) inside_h: CellBorder,
     pub(super) inside_v: CellBorder,
+}
+
+/// A `w:tblBorders` or `w:tcBorders` set.
+pub(super) fn parse_table_borders_def(bdr_node: roxmltree::Node) -> TableBordersDef {
+    TableBordersDef {
+        top: parse_cell_border(bdr_node, "top"),
+        bottom: parse_cell_border(bdr_node, "bottom"),
+        left: parse_cell_border_left(bdr_node),
+        right: parse_cell_border_right(bdr_node),
+        inside_h: parse_cell_border(bdr_node, "insideH"),
+        inside_v: parse_cell_border(bdr_node, "insideV"),
+    }
 }
 
 /// Conditional formatting for a specific table region (e.g. firstRow, band1Horz).
@@ -275,7 +320,7 @@ pub(super) struct TableStyleDef {
 pub(super) struct StylesInfo {
     pub(super) defaults: StyleDefaults,
     pub(super) paragraph_styles: HashMap<String, ParagraphStyle>,
-    pub(super) character_styles: HashMap<String, CharacterStyle>,
+    pub(super) character_styles: HashMap<String, RunProps>,
     pub(super) table_styles: HashMap<String, TableStyleDef>,
     /// Maps style ID → display name (for STYLEREF resolution)
     pub(super) style_id_to_name: HashMap<String, String>,
@@ -304,16 +349,19 @@ pub(super) fn parse_alignment(val: &str) -> Alignment {
     }
 }
 
-pub(super) fn parse_font_size(rpr: roxmltree::Node) -> Option<f32> {
-    wml_attr(rpr, "sz")
+/// A half-point child value (`w:sz`, `w:kern`) in points.
+fn half_points(rpr: roxmltree::Node, name: &str) -> Option<f32> {
+    wml_attr(rpr, name)
         .and_then(|v| v.parse::<f32>().ok())
         .map(|hp| hp / 2.0)
 }
 
+pub(super) fn parse_font_size(rpr: roxmltree::Node) -> Option<f32> {
+    half_points(rpr, "sz")
+}
+
 fn parse_kern(rpr: roxmltree::Node) -> Option<f32> {
-    wml_attr(rpr, "kern")
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(|hp| hp / 2.0)
+    half_points(rpr, "kern")
 }
 
 /// rFonts ascii (falling back to hAnsi) typeface name. Deliberately ignores
@@ -339,9 +387,7 @@ fn parse_double_underline(rpr: roxmltree::Node) -> Option<bool> {
 }
 
 pub(super) fn parse_char_spacing(rpr: roxmltree::Node) -> Option<f32> {
-    wml_attr(rpr, "spacing")
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(twips_to_pts)
+    wml(rpr, "spacing").and_then(|n| twips_attr(n, "val"))
 }
 
 pub(super) fn parse_theme<R: Read + Seek>(
@@ -418,9 +464,7 @@ pub(super) fn parse_theme<R: Read + Seek>(
                                 if let Some(gs_lst) = dml(child, "gsLst") {
                                     let stops = parse_theme_gradient_stops(gs_lst);
                                     let angle_deg = dml(child, "lin")
-                                        .and_then(|lin| lin.attribute("ang"))
-                                        .and_then(|v| v.parse::<f32>().ok())
-                                        .map(|v| v / 60_000.0)
+                                        .and_then(|lin| angle_attr(lin, "ang"))
                                         .unwrap_or(0.0);
                                     fill_styles.push(ThemeFillStyle::Gradient { stops, angle_deg });
                                 }
@@ -449,18 +493,12 @@ pub(super) fn parse_theme<R: Read + Seek>(
 fn parse_theme_gradient_stops(gs_lst: roxmltree::Node) -> Vec<ThemeGradientStop> {
     gs_lst
         .children()
-        .filter(|n| n.tag_name().name() == "gs" && n.tag_name().namespace() == Some(DML_NS))
+        .filter(|n| n.has_tag_name((DML_NS, "gs")))
         .map(|gs| {
-            let position = gs
-                .attribute("pos")
-                .and_then(|v| v.parse::<f32>().ok())
-                .map(|v| v / 100_000.0)
-                .unwrap_or(0.0);
+            let position = frac_attr(gs, "pos").unwrap_or(0.0);
             let transforms = gs
                 .descendants()
-                .find(|n| {
-                    n.tag_name().name() == "schemeClr" && n.tag_name().namespace() == Some(DML_NS)
-                })
+                .find(|n| n.has_tag_name((DML_NS, "schemeClr")))
                 .map(parse_color_transforms)
                 .unwrap_or_default();
             ThemeGradientStop {
@@ -484,14 +522,6 @@ pub(super) fn resolve_font(
         .and_then(|t| theme.slot(t))
         .unwrap_or(default_font)
         .to_string()
-}
-
-pub(super) fn resolve_font_from_node(
-    rfonts: roxmltree::Node,
-    theme: &ThemeFonts,
-    default_font: &str,
-) -> String {
-    resolve_font_from_node_opt(rfonts, theme).unwrap_or_else(|| default_font.to_string())
 }
 
 /// Returns Some only when rFonts actually specifies an ascii/hAnsi font or theme.
@@ -650,20 +680,17 @@ pub(super) fn parse_styles<R: Read + Seek>(
     let mut style_id_to_name = HashMap::new();
     let mut default_paragraph_style_id = String::from("Normal");
 
-    let Some(mut xml_content) = read_zip_text(zip, "word/styles.xml") else {
-        return StylesInfo {
-            defaults,
-            paragraph_styles,
-            character_styles,
-            table_styles: HashMap::new(),
-            style_id_to_name,
-            default_paragraph_style_id,
-        };
-    };
-    if from_normal_template {
-        xml_content = with_normal_template(&xml_content);
-    }
-    let Ok(xml) = roxmltree::Document::parse(&xml_content) else {
+    let xml_content = read_zip_text(zip, "word/styles.xml").map(|xml| {
+        if from_normal_template {
+            with_normal_template(&xml)
+        } else {
+            xml
+        }
+    });
+    let Some(xml) = xml_content
+        .as_deref()
+        .and_then(|xml| roxmltree::Document::parse(xml).ok())
+    else {
         return StylesInfo {
             defaults,
             paragraph_styles,
@@ -678,26 +705,23 @@ pub(super) fn parse_styles<R: Read + Seek>(
 
     if let Some(doc_defaults) = wml(root, "docDefaults") {
         if let Some(rpr) = wml(doc_defaults, "rPrDefault").and_then(|n| wml(n, "rPr")) {
-            if let Some(fs) = parse_font_size(rpr) {
-                defaults.font_size = fs;
-            }
-            if let Some(rfonts) = wml(rpr, "rFonts") {
-                defaults.font_name = resolve_font_from_node(rfonts, theme, &theme.minor);
-                defaults.east_asia_font = resolve_east_asia_font_from_node(rfonts, theme);
-            }
-            defaults.kern_threshold = parse_kern(rpr);
-            defaults.bold = wml_bool(rpr, "b").unwrap_or(false);
-            defaults.italic = wml_bool(rpr, "i").unwrap_or(false);
-            defaults.caps = wml_bool(rpr, "caps").unwrap_or(false);
-            defaults.small_caps = wml_bool(rpr, "smallCaps").unwrap_or(false);
-            defaults.vanish = wml_bool(rpr, "vanish").unwrap_or(false);
-            defaults.strikethrough = wml_bool(rpr, "strike").unwrap_or(false);
-            defaults.dstrike = wml_bool(rpr, "dstrike").unwrap_or(false);
-            defaults.underline = parse_underline(rpr).unwrap_or(false);
-            defaults.double_underline = parse_double_underline(rpr).unwrap_or(false);
-            defaults.color = wml_attr(rpr, "color").and_then(parse_text_color);
-            defaults.char_spacing = parse_char_spacing(rpr).unwrap_or(0.0);
-            (defaults.lang, defaults.lang_east_asia) = parse_lang(rpr);
+            let r = parse_run_props(rpr, theme);
+            defaults.font_size = r.font_size.unwrap_or(defaults.font_size);
+            defaults.font_name = r.font_name.unwrap_or_else(|| theme.minor.clone());
+            defaults.east_asia_font = r.east_asia_font;
+            defaults.kern_threshold = r.kern_threshold;
+            defaults.bold = r.bold.unwrap_or(false);
+            defaults.italic = r.italic.unwrap_or(false);
+            defaults.caps = r.caps.unwrap_or(false);
+            defaults.small_caps = r.small_caps.unwrap_or(false);
+            defaults.vanish = r.vanish.unwrap_or(false);
+            defaults.strikethrough = r.strikethrough.unwrap_or(false);
+            defaults.dstrike = r.dstrike.unwrap_or(false);
+            defaults.underline = r.underline.unwrap_or(false);
+            defaults.double_underline = r.double_underline.unwrap_or(false);
+            defaults.color = r.color;
+            defaults.char_spacing = r.char_spacing.unwrap_or(0.0);
+            (defaults.lang, defaults.lang_east_asia) = (r.lang, r.lang_east_asia);
         }
         // A docDefaults with no pPrDefault at all (PHPWord writes these) takes
         // Word's built-in paragraph defaults, 8pt after and line 278 auto:
@@ -747,9 +771,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
     let mut table_styles = HashMap::new();
 
     for style_node in root.children() {
-        if style_node.tag_name().name() != "style"
-            || style_node.tag_name().namespace() != Some(WML_NS)
-        {
+        if !style_node.has_tag_name((WML_NS, "style")) {
             continue;
         }
 
@@ -784,30 +806,32 @@ pub(super) fn parse_styles<R: Read + Seek>(
                 let borders = ppr.and_then(parse_paragraph_borders).unwrap_or_default();
                 let shading = ppr.and_then(|n| wml(n, "shd")).and_then(super::shd_color);
 
-                let rpr = wml(style_node, "rPr");
-
-                let font_size = rpr.and_then(parse_font_size);
-                let rfonts_node = rpr.and_then(|n| wml(n, "rFonts"));
-                let font_name =
-                    rfonts_node.and_then(|rfonts| resolve_font_from_node_opt(rfonts, theme));
-                let east_asia_font =
-                    rfonts_node.and_then(|rfonts| resolve_east_asia_font_from_node(rfonts, theme));
-
-                let bold = rpr.and_then(|n| wml_bool(n, "b"));
-                let italic = rpr.and_then(|n| wml_bool(n, "i"));
-                let caps = rpr.and_then(|n| wml_bool(n, "caps"));
-                let small_caps = rpr.and_then(|n| wml_bool(n, "smallCaps"));
-                let (lang, lang_east_asia) = rpr.map(parse_lang).unwrap_or_default();
-                let vanish = rpr.and_then(|n| wml_bool(n, "vanish"));
-                let underline = rpr.and_then(parse_underline);
-                let double_underline = rpr.and_then(parse_double_underline);
-                let strikethrough = rpr.and_then(|n| wml_bool(n, "strike"));
-                let dstrike = rpr.and_then(|n| wml_bool(n, "dstrike"));
-                let char_spacing = rpr.and_then(parse_char_spacing);
-                let kern_threshold = rpr.and_then(parse_kern);
-                let color = rpr
-                    .and_then(|n| wml_attr(n, "color"))
-                    .and_then(parse_text_color);
+                let RunProps {
+                    font_size,
+                    font_name,
+                    east_asia_font,
+                    bold,
+                    italic,
+                    caps,
+                    small_caps,
+                    lang,
+                    lang_east_asia,
+                    vanish,
+                    underline,
+                    double_underline,
+                    strikethrough,
+                    dstrike,
+                    char_spacing,
+                    kern_threshold,
+                    color,
+                    text_outline,
+                    text_fill,
+                    text_shadow,
+                    text_glow,
+                    ..
+                } = wml(style_node, "rPr")
+                    .map(|rpr| parse_run_props(rpr, theme))
+                    .unwrap_or_default();
 
                 let alignment = ppr.and_then(|ppr| wml_attr(ppr, "jc")).map(parse_alignment);
 
@@ -859,15 +883,8 @@ pub(super) fn parse_styles<R: Read + Seek>(
                 let snap_to_grid = ppr.and_then(|ppr| wml_bool(ppr, "snapToGrid"));
                 let auto_space_de = ppr.and_then(|ppr| wml_bool(ppr, "autoSpaceDE"));
                 let auto_space_dn = ppr.and_then(|ppr| wml_bool(ppr, "autoSpaceDN"));
-                let suppress_auto_hyphens =
-                    ppr.and_then(|ppr| wml_bool(ppr, "suppressAutoHyphens"));
 
                 let based_on = wml_attr(style_node, "basedOn").map(|s| s.to_string());
-
-                let text_outline = rpr.and_then(|n| parse_text_outline(n, theme));
-                let text_fill = rpr.and_then(|n| parse_text_fill(n, theme));
-                let text_shadow = rpr.and_then(|n| parse_text_shadow(n, theme));
-                let text_glow = rpr.and_then(|n| parse_text_glow(n, theme));
 
                 paragraph_styles.insert(
                     style_id.to_string(),
@@ -916,7 +933,6 @@ pub(super) fn parse_styles<R: Read + Seek>(
                         snap_to_grid,
                         auto_space_de,
                         auto_space_dn,
-                        suppress_auto_hyphens,
                         text_outline,
                         text_fill,
                         text_shadow,
@@ -925,73 +941,14 @@ pub(super) fn parse_styles<R: Read + Seek>(
                 );
             }
             Some("character") => {
-                let Some(rpr) = wml(style_node, "rPr") else {
-                    continue;
-                };
-                let font_size = parse_font_size(rpr);
-                let rfonts_node = wml(rpr, "rFonts");
-                let font_name =
-                    rfonts_node.and_then(|rfonts| resolve_font_from_node_opt(rfonts, theme));
-                let east_asia_font =
-                    rfonts_node.and_then(|rfonts| resolve_east_asia_font_from_node(rfonts, theme));
-                let bold = wml_bool(rpr, "b");
-                let italic = wml_bool(rpr, "i");
-                let underline = parse_underline(rpr);
-                let double_underline = parse_double_underline(rpr);
-                let strikethrough = wml_bool(rpr, "strike");
-                let caps = wml_bool(rpr, "caps");
-                let small_caps = wml_bool(rpr, "smallCaps");
-                let (lang, lang_east_asia) = parse_lang(rpr);
-                let vanish = wml_bool(rpr, "vanish");
-                let color = wml_attr(rpr, "color").and_then(parse_text_color);
-                let highlight = wml_attr(rpr, "highlight").and_then(highlight_color);
-                let shading = parse_run_shd(rpr);
-                let border = wml(rpr, "bdr").and_then(parse_one_border);
-                let kern_threshold = parse_kern(rpr);
-                let text_outline = parse_text_outline(rpr, theme);
-                let text_fill = parse_text_fill(rpr, theme);
-                let text_shadow = parse_text_shadow(rpr, theme);
-                let text_glow = parse_text_glow(rpr, theme);
-
-                character_styles.insert(
-                    style_id.to_string(),
-                    CharacterStyle {
-                        font_size,
-                        font_name,
-                        east_asia_font,
-                        bold,
-                        italic,
-                        underline,
-                        double_underline,
-                        strikethrough,
-                        caps,
-                        small_caps,
-                        lang,
-                        lang_east_asia,
-                        vanish,
-                        color,
-                        highlight,
-                        shading,
-                        border,
-                        kern_threshold,
-                        text_outline,
-                        text_fill,
-                        text_shadow,
-                        text_glow,
-                    },
-                );
+                if let Some(rpr) = wml(style_node, "rPr") {
+                    character_styles.insert(style_id.to_string(), parse_run_props(rpr, theme));
+                }
             }
             Some("table") => {
                 let base_borders = wml(style_node, "tblPr")
                     .and_then(|pr| wml(pr, "tblBorders"))
-                    .map(|tbl_borders| TableBordersDef {
-                        top: parse_cell_border(tbl_borders, "top"),
-                        bottom: parse_cell_border(tbl_borders, "bottom"),
-                        left: parse_cell_border_left(tbl_borders),
-                        right: parse_cell_border_right(tbl_borders),
-                        inside_h: parse_cell_border(tbl_borders, "insideH"),
-                        inside_v: parse_cell_border(tbl_borders, "insideV"),
-                    });
+                    .map(parse_table_borders_def);
 
                 // Parse base rPr from the table style
                 let base_rpr = wml(style_node, "rPr");
@@ -1008,17 +965,9 @@ pub(super) fn parse_styles<R: Read + Seek>(
                     let Some(cond_type) = child.attribute((WML_NS, "type")) else {
                         continue;
                     };
-                    let cond_borders =
-                        wml(child, "tcPr")
-                            .and_then(|tc| wml(tc, "tcBorders"))
-                            .map(|b| TableBordersDef {
-                                top: parse_cell_border(b, "top"),
-                                bottom: parse_cell_border(b, "bottom"),
-                                left: parse_cell_border_left(b),
-                                right: parse_cell_border_right(b),
-                                inside_h: parse_cell_border(b, "insideH"),
-                                inside_v: parse_cell_border(b, "insideV"),
-                            });
+                    let cond_borders = wml(child, "tcPr")
+                        .and_then(|tc| wml(tc, "tcBorders"))
+                        .map(parse_table_borders_def);
                     let cond_shading = wml(child, "tcPr")
                         .and_then(|tc| wml(tc, "shd"))
                         .and_then(super::shd_color);
@@ -1028,7 +977,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
                     let cond_color = cond_rpr
                         .and_then(|rpr| wml_attr(rpr, "color"))
                         .and_then(parse_text_color);
-                    let cond_font_size = cond_rpr.and_then(|rpr| parse_font_size(rpr));
+                    let cond_font_size = cond_rpr.and_then(parse_font_size);
                     let cond_font_name = cond_rpr.and_then(rfonts_ascii_name);
                     if cond_borders.is_some()
                         || cond_shading.is_some()
@@ -1079,10 +1028,10 @@ pub(super) fn parse_styles<R: Read + Seek>(
 
     // The default paragraph style (w:default="1") may carry properties like w:kern
     // that aren't in docDefaults. Merge kern_threshold into defaults if missing.
-    if defaults.kern_threshold.is_none() {
-        if let Some(default_para) = paragraph_styles.get(&default_paragraph_style_id) {
-            defaults.kern_threshold = default_para.kern_threshold;
-        }
+    if defaults.kern_threshold.is_none()
+        && let Some(default_para) = paragraph_styles.get(&default_paragraph_style_id)
+    {
+        defaults.kern_threshold = default_para.kern_threshold;
     }
 
     StylesInfo {
@@ -1177,7 +1126,6 @@ fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
                     snap_to_grid,
                     auto_space_de,
                     auto_space_dn,
-                    suppress_auto_hyphens,
                     shading,
                     text_outline,
                     text_fill,

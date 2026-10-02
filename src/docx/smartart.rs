@@ -7,11 +7,7 @@ use super::color::{parse_line_stroke, parse_solid_fill, resolve_dml_color};
 use super::images::{find_blip_embed, read_image_from_zip};
 use super::styles::ThemeFonts;
 use super::textbox::parse_shape_geometry;
-use super::{DML_NS, DSP_NS, dml, dsp, emu_attr, read_zip_text};
-
-fn is_ns(node: roxmltree::Node, name: &str, ns: &str) -> bool {
-    node.tag_name().name() == name && node.tag_name().namespace() == Some(ns)
-}
+use super::{DIAGRAM_NS, DML_NS, DSP_NS, dml, dsp, emu_attr, frac_attr, part_path, read_zip_text};
 
 /// Load the OPC relationship file for a given part and resolve relative targets
 /// to full zip paths (e.g. `../media/image1.jpg` relative to `word/diagrams/`
@@ -62,19 +58,10 @@ fn normalize_path(path: &str) -> String {
     parts.join("/")
 }
 
-const DIAGRAM_URI: &str = "http://schemas.openxmlformats.org/drawingml/2006/diagram";
-
-fn has_dml(node: roxmltree::Node, name: &str) -> bool {
-    node.children()
-        .any(|n| n.tag_name().name() == name && n.tag_name().namespace() == Some(DML_NS))
-}
-
 pub(super) fn has_diagram_ref(container: roxmltree::Node) -> bool {
-    container.descendants().any(|n| {
-        n.tag_name().name() == "graphicData"
-            && n.tag_name().namespace() == Some(DML_NS)
-            && n.attribute("uri") == Some(DIAGRAM_URI)
-    })
+    container
+        .descendants()
+        .any(|n| n.has_tag_name((DML_NS, "graphicData")) && n.attribute("uri") == Some(DIAGRAM_NS))
 }
 
 /// Resolve the drawing file for a specific SmartArt diagram by extracting
@@ -83,9 +70,9 @@ fn find_diagram_drawing(
     container: roxmltree::Node,
     rels: &HashMap<String, String>,
 ) -> Option<String> {
-    let dgm_rel_ids = container.descendants().find(|n| {
-        n.tag_name().name() == "relIds" && n.tag_name().namespace() == Some(DIAGRAM_URI)
-    })?;
+    let dgm_rel_ids = container
+        .descendants()
+        .find(|n| n.has_tag_name((DIAGRAM_NS, "relIds")))?;
     let dm_rid = dgm_rel_ids.attribute((super::REL_NS, "dm"))?;
     let data_target = rels.get(dm_rid)?;
     Some(data_target.replace("/data", "/drawing"))
@@ -96,7 +83,6 @@ pub(super) fn parse_smartart_drawing<R: Read + Seek>(
     rels: &HashMap<String, String>,
     zip: &mut zip::ZipArchive<R>,
     theme: &ThemeFonts,
-    display_w: f32,
     display_h: f32,
 ) -> SmartArtDiagram {
     let mut shapes = Vec::new();
@@ -107,30 +93,26 @@ pub(super) fn parse_smartart_drawing<R: Read + Seek>(
             .cloned()
     });
     if let Some(target) = drawing_target {
-        let zip_path = target
-            .strip_prefix('/')
-            .map(String::from)
-            .unwrap_or_else(|| format!("word/{}", target));
+        let zip_path = part_path(&target);
 
         let diagram_rels = load_part_rels(zip, &zip_path);
 
-        if let Some(xml) = read_zip_text(zip, &zip_path) {
-            if let Ok(doc) = roxmltree::Document::parse(&xml) {
-                let sp_tree = dsp(doc.root(), "drawing").and_then(|d| dsp(d, "spTree"));
+        if let Some(xml) = read_zip_text(zip, &zip_path)
+            && let Ok(doc) = roxmltree::Document::parse(&xml)
+        {
+            let sp_tree = dsp(doc.root(), "drawing").and_then(|d| dsp(d, "spTree"));
 
-                if let Some(tree) = sp_tree {
-                    shapes = tree
-                        .children()
-                        .filter(|n| is_ns(*n, "sp", DSP_NS))
-                        .filter_map(|sp| parse_dsp_shape(sp, theme, &diagram_rels, zip))
-                        .collect();
-                }
+            if let Some(tree) = sp_tree {
+                shapes = tree
+                    .children()
+                    .filter(|n| n.has_tag_name((DSP_NS, "sp")))
+                    .filter_map(|sp| parse_dsp_shape(sp, theme, &diagram_rels, zip))
+                    .collect();
             }
         }
     }
 
     SmartArtDiagram {
-        display_width: display_w,
         display_height: display_h,
         shapes,
     }
@@ -158,7 +140,7 @@ fn parse_dsp_shape<R: Read + Seek>(
         .map(|v| (v / 60_000.0) as f32)
         .unwrap_or(0.0);
 
-    let fill = if has_dml(sp_pr, "noFill") {
+    let fill = if dml(sp_pr, "noFill").is_some() {
         None
     } else {
         parse_solid_fill(sp_pr, theme)
@@ -280,7 +262,7 @@ fn parse_dsp_text(sp: roxmltree::Node, theme: &ThemeFonts) -> DspTextProps {
     let mut default_font_size = 0.0_f32;
     let mut paragraphs = Vec::new();
 
-    for p in body.children().filter(|n| is_ns(*n, "p", DML_NS)) {
+    for p in body.children().filter(|n| n.has_tag_name((DML_NS, "p"))) {
         let ppr = dml(p, "pPr");
         let bullet = ppr
             .and_then(|pp| dml(pp, "buChar"))
@@ -296,7 +278,7 @@ fn parse_dsp_text(sp: roxmltree::Node, theme: &ThemeFonts) -> DspTextProps {
             .unwrap_or(SmartArtTextAlign::Left);
 
         let mut runs = Vec::new();
-        for r in p.children().filter(|n| is_ns(*n, "r", DML_NS)) {
+        for r in p.children().filter(|n| n.has_tag_name((DML_NS, "r"))) {
             let text = dml(r, "t").and_then(|t| t.text()).unwrap_or("").to_string();
             if text.is_empty() {
                 continue;
@@ -355,9 +337,7 @@ fn parse_dsp_text(sp: roxmltree::Node, theme: &ThemeFonts) -> DspTextProps {
         let line_spacing_pct = ppr
             .and_then(|pp| dml(pp, "lnSpc"))
             .and_then(|ls| dml(ls, "spcPct"))
-            .and_then(|sp| sp.attribute("val"))
-            .and_then(|v| v.parse::<f32>().ok())
-            .map(|v| v / 100_000.0)
+            .and_then(|sp| frac_attr(sp, "val"))
             .unwrap_or(0.0);
 
         if !runs.is_empty() {

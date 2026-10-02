@@ -28,14 +28,14 @@ use pdf_writer::{Content, Name, Pdf, Ref};
 use crate::error::Error;
 use crate::fonts::FontEntry;
 use crate::model::{
-    Alignment, Block, DocGridType, Document, FieldCode, HorizontalPosition, LineSpacing,
-    PageVerticalAlign, Paragraph, ParagraphBorder, Run, SectionBreakType, SectionProperties,
-    ShapeFill, ShapeGeometry, VRelativeFrom, VerticalPosition, WrapText, WrapType,
+    Block, DocGridType, Document, FieldCode, HRelativeFrom, LineSpacing, PageVerticalAlign,
+    Paragraph, ParagraphBorder, Run, SectionBreakType, SectionProperties, ShapeFill, ShapeGeometry,
+    VRelativeFrom, VerticalPosition, WrapText, WrapType,
 };
 
 use crate::fonts::font_key;
 use assembly::{HeadingEntry, assemble_pdf_pages};
-use color::{fill_rgb, stroke_rgb};
+use color::{fill_rgb, stroke_segment};
 use fonts::collect_and_register_fonts;
 use footnotes::{compute_footnote_height, render_endnotes_inline, render_page_footnotes};
 use header_footer::{
@@ -43,16 +43,19 @@ use header_footer::{
     resolve_footer_for_page, resolve_header_for_page,
 };
 pub(super) use helpers::resolve_line_h;
-use helpers::{drops_contextual_spacing, joins_border_group};
+use helpers::{
+    align_offset, collect_paras, drops_contextual_spacing, joins_border_group,
+    para_runs_with_textboxes,
+};
 use images::{EffectXObjs, EmbeddedImages, embed_all_images};
 use layout::{
-    CjkLayout, DualRegion, LineNumberArg, LinkAnnotation, LinkTagger, TextLine,
-    build_paragraph_lines, build_tabbed_line, descender_ratio, grid_baseline_offset,
-    grid_snapped_line_h, inline_image_line_extra, is_text_empty, line_max_image_h, lines_height,
-    picture_line_bottom, render_paragraph_lines, run_line_metrics, size_lines_by_own_runs,
-    tallest_glyph_run_metrics, tallest_run_metrics,
+    CjkLayout, DualRegion, EMPTY_EFFECTS, EMPTY_INLINE_IMAGES, LineNumberArg, LineOpts,
+    LinkAnnotation, LinkTagger, TextLine, build_lines, build_paragraph_lines, descender_ratio,
+    grid_baseline_offset, grid_snapped_line_h, inline_image_line_extra, is_text_empty,
+    line_max_image_h, lines_height, picture_line_bottom, render_paragraph_lines, run_line_metrics,
+    size_lines_by_own_runs, tallest_glyph_run_metrics, tallest_run_metrics,
 };
-use list_label::{collect_paras, label_font_key, para_runs_with_textboxes, render_list_label};
+use list_label::{label_font_key, render_list_label};
 use positioning::{
     render_connector, render_floating_images, render_foreground_floating_images_deferred,
     resolve_fi_x, wraps_in_column,
@@ -271,8 +274,7 @@ fn break_run_lhr(runs: &[Run], break_fs: f32, fonts: &HashMap<String, FontEntry>
     // Find the break run with the matching font size
     let br_run = runs
         .iter()
-        .filter(|r| r.is_line_break && (r.font_size - break_fs).abs() < 0.01)
-        .last();
+        .rfind(|r| r.is_line_break && (r.font_size - break_fs).abs() < 0.01);
     if let Some(run) = br_run {
         let key = font_key(run);
         fonts.get(&key).and_then(|e| e.line_h_ratio)
@@ -320,11 +322,11 @@ fn update_styleref_from_para(
         }
     }
     for run in &para.runs {
-        if let Some(ref csid) = run.char_style_id {
-            if !run.text.is_empty() {
-                styleref_insert(running, csid, &run.text, style_id_to_name);
-                styleref_insert_first(page_first, csid, &run.text, style_id_to_name);
-            }
+        if let Some(ref csid) = run.char_style_id
+            && !run.text.is_empty()
+        {
+            styleref_insert(running, csid, &run.text, style_id_to_name);
+            styleref_insert_first(page_first, csid, &run.text, style_id_to_name);
         }
     }
 }
@@ -375,10 +377,10 @@ impl FloatZone {
     /// Returns (left_edge, right_edge) of the exclusion zone at the given Y.
     /// Falls back to rectangular bounds if no polygon or scanline misses.
     fn exclusion_at_y(&self, y: f32) -> (f32, f32) {
-        if let Some(ref pts) = self.polygon_pts {
-            if let Some((left, right)) = poly_scanline(pts, y) {
-                return (left, right);
-            }
+        if let Some(ref pts) = self.polygon_pts
+            && let Some((left, right)) = poly_scanline(pts, y)
+        {
+            return (left, right);
         }
         (self.obj_left, self.obj_right)
     }
@@ -497,17 +499,17 @@ fn draw_debug_wrap_overlay(content: &mut Content, fz: &FloatZone) {
     content.save_state();
 
     // Green: raw polygon outline
-    if let Some(ref pts) = fz.polygon_pts {
-        if pts.len() >= 3 {
-            content.set_stroke_rgb(0.0, 0.7, 0.0);
-            content.set_line_width(0.5);
-            content.move_to(pts[0].0, pts[0].1);
-            for &(x, y) in &pts[1..] {
-                content.line_to(x, y);
-            }
-            content.close_path();
-            content.stroke();
+    if let Some(ref pts) = fz.polygon_pts
+        && pts.len() >= 3
+    {
+        content.set_stroke_rgb(0.0, 0.7, 0.0);
+        content.set_line_width(0.5);
+        content.move_to(pts[0].0, pts[0].1);
+        for &(x, y) in &pts[1..] {
+            content.line_to(x, y);
         }
+        content.close_path();
+        content.stroke();
     }
 
     // Blue: effective wrap zone boundaries (polygon shifted by dist margins)
@@ -695,12 +697,12 @@ impl PageBuilder {
     }
 
     /// Start `node`'s content on the current page (see `tagging`).
-    pub(super) fn begin_tag(&mut self, node: usize) {
+    fn begin_tag(&mut self, node: usize) {
         let page = self.all_contents.len();
         self.tags.begin(&mut self.content, page, node);
     }
 
-    pub(super) fn end_tag(&mut self) {
+    fn end_tag(&mut self) {
         tagging::Tags::end(&mut self.content);
     }
 
@@ -839,6 +841,14 @@ impl PageBuilder {
 
     fn page_count(&self) -> usize {
         self.all_contents.len()
+    }
+
+    /// Endnotes render at the end of the document: collect the id once, in
+    /// encounter order, for the last page (Phase 2c).
+    fn track_endnote(&mut self, id: u32) {
+        if self.endnote_ids_set.insert(id) {
+            self.endnote_ids.push(id);
+        }
     }
 
     fn is_at_page_top(&self, sp: &SectionProperties) -> bool {
@@ -1000,14 +1010,13 @@ fn first_row_height(table: &crate::model::Table, ctx: &RenderContext, col_w: f32
 /// to the indent anyway (western_australia's "(a)" items).
 fn line_count(para: &Paragraph, ctx: &RenderContext, col_w: f32) -> usize {
     let width = (col_w - para.indent_left - para.indent_right).max(1.0);
-    let no_images = HashMap::new();
     build_paragraph_lines(
         &para.runs,
         ctx.fonts,
         width,
         0.0,
-        &no_images,
-        &HashMap::new(),
+        &EMPTY_INLINE_IMAGES,
+        &EMPTY_EFFECTS,
         None,
         None,
         None,
@@ -1135,8 +1144,6 @@ fn compute_bookmark_positions(
     let mut margin_bottom = compute_effective_margin_bottom(sp, true, ctx);
     let mut prev_space_after: f32 = 0.0;
     let mut prev_para: Option<&Paragraph> = None;
-    let empty_imgs: HashMap<usize, String> = HashMap::new();
-    let empty_fx: HashMap<usize, images::EffectXObjs> = HashMap::new();
 
     for (si, section) in doc.sections.iter().enumerate() {
         sp = &section.properties;
@@ -1153,7 +1160,7 @@ fn compute_bookmark_positions(
                 SectionBreakType::Continuous => {}
             }
         }
-        let text_width = sp.page_width - sp.margin_left - sp.margin_right;
+        let text_width = sp.text_width();
         let blocks = &section.blocks;
         for (bi, block) in blocks.iter().enumerate() {
             match block {
@@ -1199,35 +1206,21 @@ fn compute_bookmark_positions(
                     };
                     let para_w = (text_width - para.indent_left - para.indent_right).max(1.0);
                     let hanging = compute_text_hanging(para, ctx.default_tab_stop);
-                    let has_tabs = para.runs.iter().any(|r| r.is_tab);
                     let lines = if is_text_empty(&para.runs) {
                         vec![]
-                    } else if has_tabs {
-                        build_tabbed_line(
-                            &para.runs,
-                            ctx.fonts,
-                            &para.tab_stops,
-                            para.indent_left,
-                            para_w,
-                            para.indent_right,
-                            hanging,
-                            &empty_imgs,
-                            &empty_fx,
-                            doc.default_tab_stop,
-                            &[],
-                        )
                     } else {
-                        build_paragraph_lines(
+                        build_lines(
                             &para.runs,
-                            ctx.fonts,
+                            ctx,
                             para_w,
-                            hanging,
-                            &empty_imgs,
-                            &empty_fx,
-                            None,
-                            None,
-                            None,
                             ctx.cjk(para.auto_space_de || para.auto_space_dn, para.alignment),
+                            &LineOpts {
+                                tab_stops: &para.tab_stops,
+                                indent_left: para.indent_left,
+                                indent_right: para.indent_right,
+                                hanging,
+                                ..Default::default()
+                            },
                         )
                     };
                     let num_lines = lines.len().max(1);
@@ -1370,10 +1363,10 @@ fn render_paragraph_block(
         let at_top = state.pb.is_at_page_top(sp);
         if !at_top || para.page_break_before_explicit {
             state.pb.flush_page(sect_idx);
-            state.pb.slot_top = effective_slot_top(sp, false, &ctx);
+            state.pb.slot_top = effective_slot_top(sp, false, ctx);
             state.pb.column_top_y = state.pb.slot_top;
             state.pb.page_top_y = state.pb.slot_top;
-            state.effective_margin_bottom = compute_effective_margin_bottom(sp, false, &ctx);
+            state.effective_margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
             state.pb.is_first_page_of_section = false;
             state.current_col = 0;
         }
@@ -1392,7 +1385,7 @@ fn render_paragraph_block(
             sect_idx,
             sp,
             &mut state.effective_margin_bottom,
-            &ctx,
+            ctx,
         );
         state.prev_space_after = 0.0;
     }
@@ -1528,32 +1521,32 @@ fn render_paragraph_block(
     // and has text, set up the float zone NOW so width-narrowing
     // applies to this paragraph's own lines.  Always replace any
     // previous float zone — the paragraph's own image takes priority.
-    if !para.floating_images.is_empty() && !text_empty {
-        if let Some(fi) = para
+    if !para.floating_images.is_empty()
+        && !text_empty
+        && let Some(fi) = para
             .floating_images
             .iter()
             .find(|fi| wraps_in_column(fi, sp, col_x, col_w, text_width))
-        {
-            let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
-            // The previous paragraph may have re-wrapped around this float and
-            // grown; the float stays where that look-ahead anchored it
-            // (peeked here, taken below).
-            let anchor_top = state.pb.pending_float_anchor.unwrap_or(state.pb.slot_top);
-            let fi_y_top = resolve_fi_y_top(fi, sp, anchor_top);
-            state.pb.float_zone = Some(FloatZone::for_float(fi, fi_x, fi_y_top));
-            // Re-narrow para_text_x / para_text_width using the
-            // new float zone (same logic as the block above).
-            let fz = state.pb.float_zone.as_ref().unwrap();
-            fz.narrow_paragraph(
-                first_line_top,
-                col_x,
-                col_w,
-                para,
-                &mut para_text_x,
-                &mut para_text_width,
-                &mut label_x,
-            );
-        }
+    {
+        let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
+        // The previous paragraph may have re-wrapped around this float and
+        // grown; the float stays where that look-ahead anchored it
+        // (peeked here, taken below).
+        let anchor_top = state.pb.pending_float_anchor.unwrap_or(state.pb.slot_top);
+        let fi_y_top = resolve_fi_y_top(fi, sp, anchor_top);
+        state.pb.float_zone = Some(FloatZone::for_float(fi, fi_x, fi_y_top));
+        // Re-narrow para_text_x / para_text_width using the
+        // new float zone (same logic as the block above).
+        let fz = state.pb.float_zone.as_ref().unwrap();
+        fz.narrow_paragraph(
+            first_line_top,
+            col_x,
+            col_w,
+            para,
+            &mut para_text_x,
+            &mut para_text_width,
+            &mut label_x,
+        );
     }
 
     let cjk = ctx.cjk(para.auto_space_de || para.auto_space_dn, para.alignment);
@@ -1603,17 +1596,17 @@ fn render_paragraph_block(
             _ => None,
         });
         if let Some((fi, next_space_before)) = next {
-            let full_lines = build_paragraph_lines(
+            let full_lines = build_lines(
                 &effective_runs,
-                ctx.fonts,
+                ctx,
                 para_text_width,
-                text_hanging,
-                &block_inline_images,
-                &block_effect_inlines,
-                None,
-                None,
-                None,
                 cjk,
+                &LineOpts {
+                    inline_images: Some(&block_inline_images),
+                    effects: Some(&block_effect_inlines),
+                    hanging: text_hanging,
+                    ..Default::default()
+                },
             );
             let gap = para.space_after.max(next_space_before);
             let anchor_top = state.pb.slot_top - inter_gap - full_lines.len() as f32 * line_h - gap;
@@ -1645,12 +1638,7 @@ fn render_paragraph_block(
     let extra_float_zones: Vec<FloatZone> = if !text_empty {
         para.floating_images
             .iter()
-            .filter(|fi| {
-                matches!(
-                    fi.wrap_type,
-                    WrapType::Square | WrapType::Tight | WrapType::Through
-                )
-            })
+            .filter(|fi| fi.wrap_type.wraps_beside())
             .skip(1)
             .map(|fi| {
                 let fi_x = resolve_fi_x(fi, sp, col_x, col_w, text_width);
@@ -1854,12 +1842,7 @@ fn render_paragraph_block(
         let slot_top = state.pb.slot_top;
         para.floating_images
             .iter()
-            .filter(|fi| {
-                matches!(
-                    fi.wrap_type,
-                    WrapType::Square | WrapType::Tight | WrapType::Through
-                )
-            })
+            .filter(|fi| fi.wrap_type.wraps_beside())
             .filter_map(|fi| {
                 let fi_y_top = resolve_fi_y_top(fi, sp, slot_top);
                 let fi_y_bottom = fi_y_top - fi.image.display_height;
@@ -1876,20 +1859,6 @@ fn render_paragraph_block(
     };
     let mut lines = if para.image.is_some() || (text_empty && !has_inline_image_runs) {
         vec![]
-    } else if has_tabs {
-        build_tabbed_line(
-            &effective_runs,
-            ctx.fonts,
-            &para.tab_stops,
-            para.indent_left,
-            para_text_width,
-            para.indent_right,
-            text_hanging,
-            &block_inline_images,
-            &block_effect_inlines,
-            doc.default_tab_stop,
-            &tab_exclusions,
-        )
     } else {
         // Per-line geometry handles narrow→wide transitions;
         // dual geometry takes priority over single-region widths.
@@ -1898,17 +1867,22 @@ fn render_paragraph_block(
         } else {
             poly_line_widths.as_deref()
         };
-        build_paragraph_lines(
+        build_lines(
             &effective_runs,
-            ctx.fonts,
+            ctx,
             para_text_width,
-            text_hanging,
-            &block_inline_images,
-            &block_effect_inlines,
-            None,
-            plw,
-            poly_dual_geom.as_deref(),
             cjk,
+            &LineOpts {
+                inline_images: Some(&block_inline_images),
+                effects: Some(&block_effect_inlines),
+                tab_stops: &para.tab_stops,
+                indent_left: para.indent_left,
+                indent_right: para.indent_right,
+                hanging: text_hanging,
+                tab_exclusions: &tab_exclusions,
+                per_line_widths: plw,
+                dual: poly_dual_geom.as_deref(),
+            },
         )
     };
     // The look-ahead zone reached up through this paragraph's space-after only
@@ -2067,12 +2041,7 @@ fn render_paragraph_block(
         if reserve {
             // Wide images block all text — add to content_h
             content_h = content_h.max(fi_h);
-        } else if fi.v_relative_from == VRelativeFrom::Paragraph
-            && matches!(
-                fi.wrap_type,
-                WrapType::Square | WrapType::Tight | WrapType::Through
-            )
-        {
+        } else if fi.v_relative_from == VRelativeFrom::Paragraph && fi.wrap_type.wraps_beside() {
             // Paragraph-relative wrapping images: track overflow
             // for page-break check only (text wraps beside them).
             float_overflow_h = float_overflow_h.max(fi_h);
@@ -2255,7 +2224,7 @@ fn render_paragraph_block(
         |id| {
             doc.footnotes
                 .get(&id)
-                .map_or(0.0, |f| compute_footnote_height(f, &ctx, text_width))
+                .map_or(0.0, |f| compute_footnote_height(f, ctx, text_width))
         },
     );
 
@@ -2363,7 +2332,7 @@ fn render_paragraph_block(
             // to the continuation page while the space stays reserved here.
             let first_part_fn_ids = line_footnote_ids(first_part);
             for &id in &first_part_fn_ids {
-                track_page_footnote(state, doc, &ctx, text_width, id);
+                track_page_footnote(state, doc, ctx, text_width, id);
             }
 
             state.pb.advance_column_or_page(
@@ -2372,7 +2341,7 @@ fn render_paragraph_block(
                 sect_idx,
                 sp,
                 &mut state.effective_margin_bottom,
-                &ctx,
+                ctx,
             );
 
             let rest = &lines[lines_that_fit..];
@@ -2428,15 +2397,13 @@ fn render_paragraph_block(
 
             // Track the remaining footnotes for the split paragraph on the new page
             for run in para.runs.iter() {
-                if let Some(id) = run.footnote_id {
-                    if !first_part_fn_ids.contains(&id) {
-                        track_page_footnote(state, doc, &ctx, text_width, id);
-                    }
+                if let Some(id) = run.footnote_id
+                    && !first_part_fn_ids.contains(&id)
+                {
+                    track_page_footnote(state, doc, ctx, text_width, id);
                 }
                 if let Some(id) = run.endnote_id {
-                    if state.pb.endnote_ids_set.insert(id) {
-                        state.pb.endnote_ids.push(id);
-                    }
+                    state.pb.track_endnote(id);
                 }
             }
 
@@ -2450,7 +2417,7 @@ fn render_paragraph_block(
             sect_idx,
             sp,
             &mut state.effective_margin_bottom,
-            &ctx,
+            ctx,
         );
         inter_gap = 0.0;
     }
@@ -2526,8 +2493,8 @@ fn render_paragraph_block(
         &para.floating_images,
         true,
         state.global_block_idx,
-        &floating_image_pdf_names,
-        &effect_floating_names,
+        floating_image_pdf_names,
+        effect_floating_names,
         sp,
         col_x,
         col_w,
@@ -2552,7 +2519,7 @@ fn render_paragraph_block(
             float_anchor_top,
             &mut state.pb.content,
             &mut state.pb.gradient_specs,
-            &ctx,
+            ctx,
             &mut state.pb.links,
             &mut state.pb.tags,
             page,
@@ -2601,8 +2568,8 @@ fn render_paragraph_block(
     render_foreground_floating_images_deferred(
         &para.floating_images,
         state.global_block_idx,
-        &floating_image_pdf_names,
-        &effect_floating_names,
+        floating_image_pdf_names,
+        effect_floating_names,
         sp,
         col_x,
         col_w,
@@ -2629,10 +2596,8 @@ fn render_paragraph_block(
         state.pb.float_zone = Some(FloatZone::for_float(fi, fi_x, fi_y_top));
     }
 
-    if debug_wrap {
-        if let Some(ref fz) = state.pb.float_zone {
-            draw_debug_wrap_overlay(&mut state.pb.content, fz);
-        }
+    if debug_wrap && let Some(ref fz) = state.pb.float_zone {
+        draw_debug_wrap_overlay(&mut state.pb.content, fz);
     }
 
     for tb in para.textboxes.iter().filter(|t| !t.behind_doc) {
@@ -2654,7 +2619,7 @@ fn render_paragraph_block(
             float_anchor_top,
             &mut shape_content,
             &mut state.pb.gradient_specs,
-            &ctx,
+            ctx,
             &mut state.pb.links,
             &mut state.pb.tags,
             page,
@@ -2672,12 +2637,7 @@ fn render_paragraph_block(
     }
 
     if let Some(ref ic) = para.inline_chart {
-        let chart_x = col_x
-            + match para.alignment {
-                Alignment::Center => (col_w - ic.display_width).max(0.0) / 2.0,
-                Alignment::Right => (col_w - ic.display_width).max(0.0),
-                _ => 0.0,
-            };
+        let chart_x = col_x + align_offset(para.alignment, (col_w - ic.display_width).max(0.0));
         state.pb.figure_without_content(para, doc, None);
         charts::render_chart(
             ic,
@@ -2713,17 +2673,12 @@ fn render_paragraph_block(
                 state.pb.slot_top,
                 ctx.fonts,
                 smartart_font_key,
-                &smartart_image_names,
+                smartart_image_names,
             );
         }
     } else if let Some(ref hr) = para.horizontal_rule {
         let rule_w = col_w * hr.width_pct / 100.0;
-        let rule_x = col_x
-            + match para.alignment {
-                Alignment::Center => (col_w - rule_w) / 2.0,
-                Alignment::Right => col_w - rule_w,
-                _ => 0.0,
-            };
+        let rule_x = col_x + align_offset(para.alignment, col_w - rule_w);
         // Standard HRs (o:hrstd) render as a thin 0.5pt line
         // centered in the specified height space
         let draw_h = if hr.is_standard { 0.5 } else { hr.height_pt };
@@ -2741,12 +2696,7 @@ fn render_paragraph_block(
                 state.pb.begin_figure(para, doc, img.alt.as_deref());
             }
             let y_bottom = state.pb.slot_top - img.layout_extra_top - img.display_height;
-            let x = col_x
-                + match para.alignment {
-                    Alignment::Center => (col_w - img.display_width).max(0.0) / 2.0,
-                    Alignment::Right => (col_w - img.display_width).max(0.0),
-                    _ => 0.0,
-                };
+            let x = col_x + align_offset(para.alignment, (col_w - img.display_width).max(0.0));
             let img_fx = effect_names.get(&state.global_block_idx);
             if let Some(ref shadow) = img.shadow {
                 color::draw_image_shadow(
@@ -2911,13 +2861,13 @@ fn render_paragraph_block(
         let h_left_ext = bdr.left.as_ref().map(|b| b.width_pt / 2.0).unwrap_or(0.0);
         let h_right_ext = bdr.right.as_ref().map(|b| b.width_pt / 2.0).unwrap_or(0.0);
         let draw_h_border = |content: &mut Content, b: &ParagraphBorder, y: f32| {
-            content.save_state();
-            content.set_line_width(b.width_pt);
-            stroke_rgb(content, b.color);
-            content.move_to(box_left - h_left_ext, y);
-            content.line_to(box_right + h_right_ext, y);
-            content.stroke();
-            content.restore_state();
+            stroke_segment(
+                content,
+                (box_left - h_left_ext, y),
+                (box_right + h_right_ext, y),
+                b.width_pt,
+                Some(b.color),
+            );
         };
         // When this paragraph continues a border group, extend vertical
         // borders upward through the inter-paragraph gap so there is no
@@ -2929,19 +2879,17 @@ fn render_paragraph_block(
                 0.0
             };
         let draw_v_border = |content: &mut Content, b: &ParagraphBorder, x: f32| {
-            content.save_state();
-            content.set_line_width(b.width_pt);
-            stroke_rgb(content, b.color);
-            content.move_to(x, v_border_top);
-            content.line_to(x, box_bottom);
-            content.stroke();
-            content.restore_state();
+            stroke_segment(
+                content,
+                (x, v_border_top),
+                (x, box_bottom),
+                b.width_pt,
+                Some(b.color),
+            );
         };
 
-        if !prev_borders_match {
-            if let Some(b) = &bdr.top {
-                draw_h_border(&mut state.pb.content, b, box_top);
-            }
+        if !prev_borders_match && let Some(b) = &bdr.top {
+            draw_h_border(&mut state.pb.content, b, box_top);
         }
         if bottom_collapses {
             if let Some(b) = &bdr.between {
@@ -2974,25 +2922,10 @@ fn render_paragraph_block(
     // Track footnotes referenced on this page
     for run in para.runs.iter() {
         if let Some(id) = run.footnote_id {
-            if state.pb.footnote_ids_set.insert(id) {
-                state.pb.footnote_ids.push(id);
-                if let Some(footnote) = doc.footnotes.get(&id) {
-                    let fn_height = compute_footnote_height(footnote, &ctx, text_width);
-                    let separator_h = if state.pb.footnote_ids.len() == 1 {
-                        12.0
-                    } else {
-                        0.0
-                    };
-                    state.effective_margin_bottom += separator_h + fn_height;
-                }
-            }
+            track_page_footnote(state, doc, ctx, text_width, id);
         }
-        // Endnotes render at end of document; just collect IDs in encounter
-        // order — they're flushed to the last page in Phase 2c.
         if let Some(id) = run.endnote_id {
-            if state.pb.endnote_ids_set.insert(id) {
-                state.pb.endnote_ids.push(id);
-            }
+            state.pb.track_endnote(id);
         }
     }
 
@@ -3005,10 +2938,10 @@ fn render_paragraph_block(
 
     if para.page_break_after {
         state.pb.flush_page(sect_idx);
-        state.pb.slot_top = effective_slot_top(sp, false, &ctx);
+        state.pb.slot_top = effective_slot_top(sp, false, ctx);
         state.pb.column_top_y = state.pb.slot_top;
         state.pb.page_top_y = state.pb.slot_top;
-        state.effective_margin_bottom = compute_effective_margin_bottom(sp, false, &ctx);
+        state.effective_margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
         state.pb.is_first_page_of_section = false;
         state.prev_space_after = 0.0;
         state.current_col = 0;
@@ -3050,8 +2983,6 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         effect_floating_names,
         effect_inline_names,
         effect_hf_names,
-        effect_hf_inline_names: _,
-        effect_hf_floating_names,
         effect_table_names,
     } = embed_all_images(doc, &mut pdf, &mut alloc);
 
@@ -3198,7 +3129,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         }
 
         cur_sp = sp;
-        let text_width = sp.page_width - sp.margin_left - sp.margin_right;
+        let text_width = sp.text_width();
 
         // Column geometry: vec of (x_offset, width) for each column
         let col_config = sp.columns.as_ref();
@@ -3318,37 +3249,21 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                     state.pb.toc = None;
                     let override_pos = table.position.as_ref().map(|pos| {
                         let table_total_w: f32 = table.col_widths.iter().sum();
-                        let x = match pos.h_anchor {
-                            "page" => match pos.h_position {
-                                HorizontalPosition::AlignCenter => {
-                                    (sp.page_width - table_total_w) / 2.0
-                                }
-                                HorizontalPosition::AlignRight => sp.page_width - table_total_w,
-                                HorizontalPosition::AlignLeft => 0.0,
-                                HorizontalPosition::Offset(o) => o,
-                            },
-                            "margin" => match pos.h_position {
-                                HorizontalPosition::AlignCenter => {
-                                    sp.margin_left + (text_width - table_total_w) / 2.0
-                                }
-                                HorizontalPosition::AlignRight => {
-                                    sp.margin_left + text_width - table_total_w
-                                }
-                                HorizontalPosition::AlignLeft => sp.margin_left,
-                                HorizontalPosition::Offset(o) => sp.margin_left + o,
-                            },
-                            _ => {
-                                let (col_x, col_w) = col_geometry[state.current_col];
-                                match pos.h_position {
-                                    HorizontalPosition::AlignCenter => {
-                                        col_x + (col_w - table_total_w) / 2.0
-                                    }
-                                    HorizontalPosition::AlignRight => col_x + col_w - table_total_w,
-                                    HorizontalPosition::AlignLeft => col_x,
-                                    HorizontalPosition::Offset(o) => col_x + o,
-                                }
-                            }
+                        let (col_x, col_w) = col_geometry[state.current_col];
+                        let h_relative_from = match pos.h_anchor {
+                            "page" => HRelativeFrom::Page,
+                            "margin" => HRelativeFrom::Margin,
+                            _ => HRelativeFrom::Column,
                         };
+                        let x = resolve_h_position(
+                            h_relative_from,
+                            &pos.h_position,
+                            table_total_w,
+                            sp,
+                            col_x,
+                            col_w,
+                            text_width,
+                        );
                         let y = match pos.v_anchor {
                             "page" => sp.page_height - pos.v_offset_pt,
                             "margin" => sp.page_height - sp.margin_top - pos.v_offset_pt,
@@ -3408,26 +3323,25 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             }
             // §17.3.3.1 br clear="all": content after this paragraph restarts
             // below any floating objects.
-            if let Block::Paragraph(p) = block {
-                if p.clears_floats {
-                    if let Some(ref fz) = state.pb.float_zone {
-                        if state.pb.slot_top > fz.bottom_y {
-                            // The line following the break resumes below the
-                            // float and still occupies its full line height
-                            // there (the break paragraph's mark line).
-                            let (fs, lhr, _) = tallest_run_metrics(&p.runs, ctx.fonts);
-                            let ls = p.line_spacing.unwrap_or(ctx.doc_line_spacing);
-                            state.pb.slot_top = fz.bottom_y - resolve_line_h(ls, fs, lhr);
-                        }
-                        state.pb.float_zone = None;
-                    }
+            if let Block::Paragraph(p) = block
+                && p.clears_floats
+                && let Some(ref fz) = state.pb.float_zone
+            {
+                if state.pb.slot_top > fz.bottom_y {
+                    // The line following the break resumes below the
+                    // float and still occupies its full line height
+                    // there (the break paragraph's mark line).
+                    let (fs, lhr, _) = tallest_run_metrics(&p.runs, ctx.fonts);
+                    let ls = p.line_spacing.unwrap_or(ctx.doc_line_spacing);
+                    state.pb.slot_top = fz.bottom_y - resolve_line_h(ls, fs, lhr);
                 }
+                state.pb.float_zone = None;
             }
             // Clear float zone once cursor passes below it
-            if let Some(ref fz) = state.pb.float_zone {
-                if state.pb.slot_top <= fz.bottom_y {
-                    state.pb.float_zone = None;
-                }
+            if let Some(ref fz) = state.pb.float_zone
+                && state.pb.slot_top <= fz.bottom_y
+            {
+                state.pb.float_zone = None;
             }
 
             state.global_block_idx += 1;
@@ -3449,21 +3363,22 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         let (.., si) = state.pb.page_section_indices[page_idx];
         let sp = &doc.sections[si].properties;
 
-        if let Some(cfg) = &sp.columns {
-            if cfg.sep {
-                let mut x = sp.margin_left;
-                for (i, col) in cfg.columns.iter().enumerate() {
-                    x += col.width;
-                    if i < cfg.columns.len() - 1 {
-                        let mid_x = x + col.space / 2.0;
-                        content.save_state();
-                        content.set_line_width(0.5);
-                        content.move_to(mid_x, sp.margin_bottom);
-                        content.line_to(mid_x, sp.page_height - sp.margin_top);
-                        content.stroke();
-                        content.restore_state();
-                        x += col.space;
-                    }
+        if let Some(cfg) = &sp.columns
+            && cfg.sep
+        {
+            let mut x = sp.margin_left;
+            for (i, col) in cfg.columns.iter().enumerate() {
+                x += col.width;
+                if i < cfg.columns.len() - 1 {
+                    let mid_x = x + col.space / 2.0;
+                    stroke_segment(
+                        content,
+                        (mid_x, sp.margin_bottom),
+                        (mid_x, sp.page_height - sp.margin_top),
+                        0.5,
+                        None,
+                    );
+                    x += col.space;
                 }
             }
         }
@@ -3471,18 +3386,17 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
     // Phase 2c: render footnotes at page bottom (above footer). Endnotes
     // (default pos=docEnd) flow inline after the last body block on the final
-    // page (see render_endnotes_inline), NOT pinned to the bottom.
+    // page (see render_endnotes_inline), NOT pinned to the bottom: their top is
+    // the cursor below the last paragraph and its space_after, then the same
+    // 12pt separator gap Word leaves above the note separator.
     let last_page_idx = state.pb.all_contents.len().saturating_sub(1);
-    // Endnotes (pos=docEnd) flow inline right after the last body block on the
-    // final page; capture that cursor (below the last paragraph + its space_after,
-    // then the same 12pt separator gap Word leaves above the note separator).
     let endnote_top_y = state.pb.slot_top - state.prev_space_after - 12.0;
     for (page_idx, content) in state.pb.all_contents.iter_mut().enumerate() {
         let (hf_si, is_first, si) = state.pb.page_section_indices[page_idx];
         let sp = &doc.sections[hf_si].properties;
         let eff_bottom = compute_effective_margin_bottom(sp, is_first, &ctx);
         let content_sp = &doc.sections[si].properties;
-        let text_width = content_sp.page_width - content_sp.margin_left - content_sp.margin_right;
+        let text_width = content_sp.text_width();
         let bottom = eff_bottom;
         let tops = render_page_footnotes(
             content,
@@ -3536,13 +3450,12 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
     let total_pages = state.pb.all_contents.len();
 
     // Pre-index header/footer image maps by (section_index, hf_type)
-    // Fields: (para_images, inline_images, floating_images, effect_para, effect_floating)
+    // Fields: (para_images, inline_images, floating_images, effect_para)
     type HfMaps = (
         HashMap<usize, String>,
         HashMap<(usize, usize), String>,
         HashMap<(usize, usize), String>,
         HashMap<usize, EffectXObjs>,
-        HashMap<(usize, usize), EffectXObjs>,
     );
     let mut hf_maps_index: HashMap<(usize, u8), HfMaps> = HashMap::new();
     for ((s, t, pi), name) in &hf_image_names {
@@ -3572,13 +3485,6 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             .or_default()
             .3
             .insert(*pi, fx.clone());
-    }
-    for ((s, t, pi, fi), fx) in &effect_hf_floating_names {
-        hf_maps_index
-            .entry((*s, *t))
-            .or_default()
-            .4
-            .insert((*pi, *fi), fx.clone());
     }
     let empty_hf_maps: HfMaps = Default::default();
 
@@ -3657,7 +3563,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
         let (header, hdr_type, hdr_si) = resolve_header_for_page(doc, si, is_first, page_num);
         if let Some(header_data) = header {
-            let (pi_map, ii_map, fi_map, sh_para, sh_float) = hf_maps_index
+            let (pi_map, ii_map, fi_map, sh_para) = hf_maps_index
                 .get(&(hdr_si, hdr_type))
                 .unwrap_or(&empty_hf_maps);
             let pc = HfPageContext {
@@ -3667,7 +3573,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 inline_image_names: ii_map,
                 floating_image_names: fi_map,
                 effect_para_names: sh_para,
-                effect_floating_names: sh_float,
+
                 styleref_values: page_styleref,
                 page_num_format: effective_page_num_format,
             };
@@ -3685,7 +3591,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
         let (footer, ftr_type, ftr_si) = resolve_footer_for_page(doc, si, is_first, page_num);
         if let Some(footer_data) = footer {
-            let (pi_map, ii_map, fi_map, sh_para, sh_float) = hf_maps_index
+            let (pi_map, ii_map, fi_map, sh_para) = hf_maps_index
                 .get(&(ftr_si, ftr_type))
                 .unwrap_or(&empty_hf_maps);
             let pc = HfPageContext {
@@ -3695,7 +3601,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 inline_image_names: ii_map,
                 floating_image_names: fi_map,
                 effect_para_names: sh_para,
-                effect_floating_names: sh_float,
+
                 styleref_values: page_styleref,
                 page_num_format: effective_page_num_format,
             };

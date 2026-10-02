@@ -65,7 +65,7 @@ pub(super) fn render_chart_legend(
             }
         }
         LegendPlacement::Bottom { center_x, y: ly } => {
-            let total_w: f32 = items.iter().map(|item| item_width(item)).sum();
+            let total_w: f32 = items.iter().map(&item_width).sum();
             let mut lx = center_x - total_w / 2.0;
             for item in items {
                 render_swatch(content, &item.swatch, item.color, lx, ly, swatch_size);

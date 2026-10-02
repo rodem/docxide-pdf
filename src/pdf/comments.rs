@@ -53,7 +53,6 @@ pub(super) fn render_comment_pane(
         return;
     };
     let label_entry = pick_font(seen_fonts, &["Aptos/B", "Aptos Bold", "Calibri/B"])
-        .map(|(k, e)| (k, e))
         .unwrap_or((body_font_key.clone(), body_entry));
 
     let pane_x = page_width - PANE_WIDTH - PANE_RIGHT_MARGIN;

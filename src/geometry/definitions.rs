@@ -15327,9 +15327,9 @@ mod tests {
     fn test_arc_has_two_paths() {
         let shape = evaluate_preset("arc", 100.0, 100.0, &[]).unwrap();
         assert_eq!(shape.paths.len(), 2);
-        assert!(shape.paths[0].fill.is_filled());
+        assert_eq!(shape.paths[0].fill, PathFill::Norm);
         assert!(!shape.paths[0].stroke);
-        assert!(!shape.paths[1].fill.is_filled());
+        assert_eq!(shape.paths[1].fill, PathFill::None);
         assert!(shape.paths[1].stroke);
     }
 
@@ -15359,7 +15359,7 @@ mod tests {
         let shape = evaluate_preset("straightConnector1", 100.0, 50.0, &[]).unwrap();
         assert_eq!(shape.paths.len(), 1);
         assert_eq!(shape.paths[0].commands.len(), 2);
-        assert!(!shape.paths[0].fill.is_filled());
+        assert_eq!(shape.paths[0].fill, PathFill::None);
     }
 
     #[test]

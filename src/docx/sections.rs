@@ -8,8 +8,8 @@ use crate::model::{
 use super::headers_footers::parse_header_footer_xml;
 use super::relationships::parse_part_relationships;
 use super::{
-    ParseContext, REL_NS, WML_NS, parse_on_off, parse_one_border, read_zip_text, twips_attr,
-    twips_to_pts, wml, wml_attr, wml_bool,
+    ParseContext, REL_NS, WML_NS, parse_on_off, parse_one_border, part_path, read_zip_text,
+    twips_attr, wml, wml_attr, wml_bool,
 };
 
 pub(super) fn parse_section_properties<R: Read + Seek>(
@@ -96,7 +96,7 @@ pub(super) fn parse_section_properties<R: Read + Seek>(
 
         let child_cols: Vec<_> = cols_node
             .children()
-            .filter(|c| c.tag_name().name() == "col" && c.tag_name().namespace() == Some(WML_NS))
+            .filter(|c| c.has_tag_name((WML_NS, "col")))
             .collect();
 
         let col_defs: Vec<ColumnDef> = if !equal_width && !child_cols.is_empty() {
@@ -108,11 +108,7 @@ pub(super) fn parse_section_properties<R: Read + Seek>(
                 })
                 .collect()
         } else if num > 1 {
-            let default_space = cols_node
-                .attribute((WML_NS, "space"))
-                .and_then(|v| v.parse::<f32>().ok())
-                .map(twips_to_pts)
-                .unwrap_or(36.0);
+            let default_space = twips_attr(cols_node, "space").unwrap_or(36.0);
             let col_width = (available - (num - 1) as f32 * default_space) / num as f32;
             (0..num)
                 .map(|i| ColumnDef {
@@ -227,21 +223,13 @@ fn resolve_hf<R: Read + Seek>(
     ctx: &mut ParseContext<'_, R>,
 ) -> Option<HeaderFooter> {
     let rid = sect_node.children().find_map(|child| {
-        if child.tag_name().namespace() == Some(WML_NS)
-            && child.tag_name().name() == tag
-            && child.attribute((WML_NS, "type")) == Some(hf_type)
-        {
+        if child.has_tag_name((WML_NS, tag)) && child.attribute((WML_NS, "type")) == Some(hf_type) {
             child.attribute((REL_NS, "id"))
         } else {
             None
         }
     })?;
-    let target = ctx.rels.get(rid)?;
-    let zip_path = if let Some(stripped) = target.strip_prefix('/') {
-        stripped.to_string()
-    } else {
-        format!("word/{}", target)
-    };
+    let zip_path = part_path(ctx.rels.get(rid)?);
     let part_rels = parse_part_relationships(ctx.zip, &zip_path);
     let xml_text = read_zip_text(ctx.zip, &zip_path)?;
     let mut hf_ctx = ParseContext {

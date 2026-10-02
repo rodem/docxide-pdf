@@ -10,6 +10,26 @@ pub(super) fn stroke_rgb(content: &mut Content, [r, g, b]: [u8; 3]) {
     content.set_stroke_rgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0);
 }
 
+/// Stroke one straight line in its own graphics state; `None` keeps the
+/// current stroke color.
+pub(super) fn stroke_segment(
+    content: &mut Content,
+    (x0, y0): (f32, f32),
+    (x1, y1): (f32, f32),
+    width: f32,
+    color: Option<[u8; 3]>,
+) {
+    content.save_state();
+    content.set_line_width(width);
+    if let Some(c) = color {
+        stroke_rgb(content, c);
+    }
+    content.move_to(x0, y0);
+    content.line_to(x1, y1);
+    content.stroke();
+    content.restore_state();
+}
+
 /// Set fill color from an optional RGB byte array, defaulting to black.
 pub(super) fn fill_color_or_black(content: &mut Content, color: Option<[u8; 3]>) {
     if let Some(c) = color {
@@ -97,7 +117,7 @@ fn box_blur_3pass(buf: &mut [u8], px_w: u32, px_h: u32, box_r: usize) {
                 if right < w && x > 0 {
                     acc += buf[y * w + right] as u32;
                 }
-                let left_edge = if x > box_r { x - box_r } else { 0 };
+                let left_edge = x.saturating_sub(box_r);
                 let right_edge = right.min(w - 1);
                 let count = (right_edge - left_edge + 1) as u32;
                 tmp[y * w + x] = (acc / count).min(255) as u8;
@@ -117,7 +137,7 @@ fn box_blur_3pass(buf: &mut [u8], px_w: u32, px_h: u32, box_r: usize) {
                 if bottom < h && y > 0 {
                     acc += tmp[bottom * w + x] as u32;
                 }
-                let top_edge = if y > box_r { y - box_r } else { 0 };
+                let top_edge = y.saturating_sub(box_r);
                 let bottom_edge = bottom.min(h - 1);
                 let count = (bottom_edge - top_edge + 1) as u32;
                 buf[y * w + x] = (acc / count).min(255) as u8;

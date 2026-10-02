@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use pdf_writer::types::TextRenderingMode;
 use pdf_writer::{Content, Name, Rect, Str};
@@ -11,7 +11,15 @@ use crate::model::{
     TextShadow, VertAlign,
 };
 
+use super::RenderContext;
 use super::color::{fill_color_or_black, stroke_color_or_black};
+use super::images::EffectXObjs;
+
+/// Placeholders for a paragraph without inline pictures.
+pub(super) static EMPTY_INLINE_IMAGES: LazyLock<HashMap<usize, String>> =
+    LazyLock::new(HashMap::new);
+pub(super) static EMPTY_EFFECTS: LazyLock<HashMap<usize, EffectXObjs>> =
+    LazyLock::new(HashMap::new);
 
 /// How many gaps a stretched line's slack spreads across when the slack goes
 /// between *characters* (applied as PDF `Tc`) rather than between word gaps.
@@ -292,8 +300,11 @@ pub(super) struct WordChunk {
 /// Pale-pink highlight color Word uses for comment-anchored text spans.
 pub(super) const COMMENT_HIGHLIGHT_RGB: [u8; 3] = [251, 220, 217];
 
+/// A decoration rectangle (underline, strikethrough, shading): x, y, width, height, colour.
+type Decoration = (f32, f32, f32, f32, Option<[u8; 3]>);
+
 fn push_decoration(
-    decorations: &mut Vec<(f32, f32, f32, f32, Option<[u8; 3]>)>,
+    decorations: &mut Vec<Decoration>,
     x: f32,
     y: f32,
     width: f32,
@@ -810,12 +821,12 @@ pub(super) fn smallcaps_segments(word: &str, base_fs: f32) -> Vec<(String, f32, 
             ch.to_string()
         };
         let end = i + ch.len_utf8();
-        if let Some(last) = segments.last_mut() {
-            if (last.1 - fs).abs() < 0.001 {
-                last.0.push_str(&display);
-                last.2 = &word[start..end];
-                continue;
-            }
+        if let Some(last) = segments.last_mut()
+            && (last.1 - fs).abs() < 0.001
+        {
+            last.0.push_str(&display);
+            last.2 = &word[start..end];
+            continue;
         }
         start = i;
         segments.push((display, fs, &word[i..end]));
@@ -946,28 +957,6 @@ fn vert_y_offset(run: &Run) -> f32 {
 }
 
 const DEFAULT_TAB_INTERVAL: f32 = 36.0; // 0.5 inches
-
-/// Count CJK↔Latin/Digit boundaries in text for autoSpaceDE/DN.
-/// Word adds ~1/4 em spacing at each boundary by default.
-#[allow(dead_code)]
-fn count_script_boundaries(text: &str) -> usize {
-    let mut count = 0;
-    let mut prev_cjk: Option<bool> = None;
-    for ch in text.chars() {
-        if ch.is_whitespace() {
-            prev_cjk = None;
-            continue;
-        }
-        let is_cjk = crate::docx::is_east_asian_char(ch) || is_cjk_punctuation(ch);
-        if let Some(was_cjk) = prev_cjk {
-            if was_cjk != is_cjk {
-                count += 1;
-            }
-        }
-        prev_cjk = Some(is_cjk);
-    }
-    count
-}
 
 fn is_cjk_punctuation(ch: char) -> bool {
     matches!(ch as u32,
@@ -1118,6 +1107,65 @@ fn compress_punctuation(chunks: &mut [WordChunk], needed: f32) -> bool {
 /// For lines outside the float zone, right_w is 0.0 (single region).
 pub(super) type DualRegion = (f32, f32, f32, f32);
 
+/// What line breaking takes besides the runs and the measure of a paragraph.
+/// The default is a plain paragraph: no pictures, tab stops, indents or floats.
+#[derive(Default, Clone, Copy)]
+pub(super) struct LineOpts<'a> {
+    /// Inline pictures and their effect XObjects, by run index.
+    pub(super) inline_images: Option<&'a HashMap<usize, String>>,
+    pub(super) effects: Option<&'a HashMap<usize, EffectXObjs>>,
+    pub(super) tab_stops: &'a [TabStop],
+    pub(super) indent_left: f32,
+    pub(super) indent_right: f32,
+    pub(super) hanging: f32,
+    /// Spans a left tab skips (see `build_tabbed_line`).
+    pub(super) tab_exclusions: &'a [(f32, f32)],
+    /// The measure of each line beside a float (see `build_paragraph_lines`).
+    pub(super) per_line_widths: Option<&'a [f32]>,
+    pub(super) dual: Option<&'a [DualRegion]>,
+}
+
+/// Lay a paragraph out as lines: against its tab stops when it holds a tab,
+/// by plain word wrapping otherwise.
+pub(super) fn build_lines(
+    runs: &[Run],
+    ctx: &RenderContext,
+    width: f32,
+    cjk: CjkLayout,
+    opts: &LineOpts<'_>,
+) -> Vec<TextLine> {
+    let inline_images = opts.inline_images.unwrap_or(&EMPTY_INLINE_IMAGES);
+    let effects = opts.effects.unwrap_or(&EMPTY_EFFECTS);
+    if runs.iter().any(|r| r.is_tab) {
+        build_tabbed_line(
+            runs,
+            ctx.fonts,
+            opts.tab_stops,
+            opts.indent_left,
+            width,
+            opts.indent_right,
+            opts.hanging,
+            inline_images,
+            effects,
+            ctx.default_tab_stop,
+            opts.tab_exclusions,
+        )
+    } else {
+        build_paragraph_lines(
+            runs,
+            ctx.fonts,
+            width,
+            opts.hanging,
+            inline_images,
+            effects,
+            None,
+            opts.per_line_widths,
+            opts.dual,
+            cjk,
+        )
+    }
+}
+
 /// Layout runs into wrapped lines.
 /// Handles cross-run contiguous text correctly: no space is inserted between
 /// runs unless the preceding text ended with whitespace or the new run starts
@@ -1165,10 +1213,10 @@ pub(super) fn build_paragraph_lines(
     let mut word_start = 0usize;
 
     let left_max = |line_count: usize| -> f32 {
-        if let Some(dual) = per_line_dual {
-            if let Some(&(_, lw, _, _)) = dual.get(line_count) {
-                return lw;
-            }
+        if let Some(dual) = per_line_dual
+            && let Some(&(_, lw, _, _)) = dual.get(line_count)
+        {
+            return lw;
         }
         if let Some(widths) = per_line_widths {
             if let Some(&w) = widths.get(line_count) {
@@ -1193,7 +1241,7 @@ pub(super) fn build_paragraph_lines(
                     0.0
                 };
                 let rw = rw + shift;
-                (rw > 0.0).then(|| (rx - shift, rw, rw))
+                (rw > 0.0).then_some((rx - shift, rw, rw))
             })
         })
     };
@@ -1273,24 +1321,22 @@ pub(super) fn build_paragraph_lines(
                     line_max
                 };
                 if !current_chunks.is_empty() && proposed_x + img_w > cur_max {
-                    if !in_right_region {
-                        if let Some((rx, rw, _)) = right_region_for(lines.len()) {
-                            cur_right_info = Some((current_chunks.len(), rx, rw));
-                            in_right_region = true;
-                            pending_space_w = 0.0;
-                            // Retry placement in right region
-                            let proposed_x2 = 0.0;
-                            if proposed_x2 + img_w <= rw {
-                                current_chunks.push(WordChunk::image(
-                                    pdf_name,
-                                    run.font_size,
-                                    proposed_x2,
-                                    img,
-                                    effect_inline_names.get(&run_idx).cloned(),
-                                ));
-                                current_x = img_w;
-                                continue;
-                            }
+                    if !in_right_region && let Some((rx, rw, _)) = right_region_for(lines.len()) {
+                        cur_right_info = Some((current_chunks.len(), rx, rw));
+                        in_right_region = true;
+                        pending_space_w = 0.0;
+                        // Retry placement in right region
+                        let proposed_x2 = 0.0;
+                        if proposed_x2 + img_w <= rw {
+                            current_chunks.push(WordChunk::image(
+                                pdf_name,
+                                run.font_size,
+                                proposed_x2,
+                                img,
+                                effect_inline_names.get(&run_idx).cloned(),
+                            ));
+                            current_x = img_w;
+                            continue;
                         }
                     }
                     lines.push(finish_dual_line(
@@ -1349,19 +1395,18 @@ pub(super) fn build_paragraph_lines(
             // CJK auto-spacing (autoSpaceDE/DN): add ~0.25em gap at
             // script boundaries between East Asian and Latin/digit text
             // when there is no explicit whitespace.
-            if cjk.auto_space {
-                if let Some(prev_ch) = prev_last_char {
-                    if let Some(first_ch) = shown.chars().next() {
-                        if pending_space_w == 0.0 && space_count == 0 {
-                            let prev_ea = crate::docx::is_east_asian_char(prev_ch)
-                                || is_cjk_punctuation(prev_ch);
-                            let cur_ea = crate::docx::is_east_asian_char(first_ch)
-                                || is_cjk_punctuation(first_ch);
-                            if prev_ea != cur_ea {
-                                pending_space_w += eff_fs * 0.25;
-                            }
-                        }
-                    }
+            if cjk.auto_space
+                && let Some(prev_ch) = prev_last_char
+                && let Some(first_ch) = shown.chars().next()
+                && pending_space_w == 0.0
+                && space_count == 0
+            {
+                let prev_ea =
+                    crate::docx::is_east_asian_char(prev_ch) || is_cjk_punctuation(prev_ch);
+                let cur_ea =
+                    crate::docx::is_east_asian_char(first_ch) || is_cjk_punctuation(first_ch);
+                if prev_ea != cur_ea {
+                    pending_space_w += eff_fs * 0.25;
                 }
             }
 
@@ -1597,18 +1642,17 @@ pub(super) fn build_paragraph_lines(
                 current_x = 0.0;
                 // A word wider than the new line breaks at its margin too.
                 let room = left_max(lines.len());
-                if ww > room {
-                    if let Some(cut) =
+                if ww > room
+                    && let Some(cut) =
                         fitting_prefix_len(source, room, |w| width(&caps_word(run, w)))
-                    {
-                        words.push_front((0, &source[cut..]));
-                        source = &source[..cut];
-                        shown = caps_word(run, source);
-                        word = &shown;
-                        original = run.caps.then_some(source);
-                        ww = width(word);
-                        prev_last_char = word.chars().last();
-                    }
+                {
+                    words.push_front((0, &source[cut..]));
+                    source = &source[..cut];
+                    shown = caps_word(run, source);
+                    word = &shown;
+                    original = run.caps.then_some(source);
+                    ww = width(word);
+                    prev_last_char = word.chars().last();
                 }
                 // If the new line's left region is zero-width, go
                 // straight to the right region for this word.
@@ -2284,6 +2328,13 @@ pub(super) fn lines_height(lines: &[TextLine], line_pitch: f32, metrics: (f32, f
     }
 }
 
+/// Fake a bold face by stroking the glyph outlines along with the fill.
+fn begin_synthetic_bold(content: &mut Content, chunk: &WordChunk) {
+    content.set_line_width(chunk.font_size * 0.02);
+    stroke_color_or_black(content, chunk.color);
+    content.set_text_rendering_mode(TextRenderingMode::FillStroke);
+}
+
 /// winDescent as a fraction of the font size: the line-height ratio less the
 /// ascender ratio (identity used throughout), 0.25 when the font is unknown.
 pub(super) fn descender_ratio(lhr: Option<f32>, ar: Option<f32>) -> f32 {
@@ -2368,38 +2419,37 @@ pub(super) fn render_paragraph_lines(
             *ln.counter = idx + 1;
             let value = ln.start + ln.continuous_offset as i32 + idx as i32;
             let show = value >= 1 && (ln.count_by <= 1 || value % ln.count_by as i32 == 0);
-            if show {
-                if let Some((font, fs)) = line
+            if show
+                && let Some((font, fs)) = line
                     .chunks
                     .iter()
                     .find(|c| c.inline_image_name.is_none() && !c.text.is_empty())
                     .map(|c| (c.pdf_font.clone(), c.font_size))
-                {
-                    let s = value.to_string();
-                    let w = pdf_name_to_entry
-                        .get(font.as_str())
-                        .map(|e| e.word_width(&s, fs, false))
-                        .unwrap_or(fs * 0.5 * s.chars().count() as f32);
-                    let bytes = encode_text_for_pdf(&s, &font, &pdf_name_to_entry);
-                    let x = ln.right_x - w;
-                    let draw = |content: &mut Content| {
-                        content.save_state();
-                        content.set_char_spacing(0.0);
-                        content.set_horizontal_scaling(100.0);
-                        fill_color_or_black(content, None);
-                        content.begin_text();
-                        content.set_font(Name(font.as_bytes()), fs);
-                        content.next_line(x, y);
-                        content.show(Str(&bytes));
-                        content.end_text();
-                        content.restore_state();
-                    };
-                    // Margin numbering isn't the paragraph's text: a screen
-                    // reader would read "2Numbered line".
-                    match link_tags.as_mut() {
-                        Some(lt) => lt.artifact(content, draw),
-                        None => draw(content),
-                    }
+            {
+                let s = value.to_string();
+                let w = pdf_name_to_entry
+                    .get(font.as_str())
+                    .map(|e| e.word_width(&s, fs, false))
+                    .unwrap_or(fs * 0.5 * s.chars().count() as f32);
+                let bytes = encode_text_for_pdf(&s, &font, &pdf_name_to_entry);
+                let x = ln.right_x - w;
+                let draw = |content: &mut Content| {
+                    content.save_state();
+                    content.set_char_spacing(0.0);
+                    content.set_horizontal_scaling(100.0);
+                    fill_color_or_black(content, None);
+                    content.begin_text();
+                    content.set_font(Name(font.as_bytes()), fs);
+                    content.next_line(x, y);
+                    content.show(Str(&bytes));
+                    content.end_text();
+                    content.restore_state();
+                };
+                // Margin numbering isn't the paragraph's text: a screen
+                // reader would read "2Numbered line".
+                match link_tags.as_mut() {
+                    Some(lt) => lt.artifact(content, draw),
+                    None => draw(content),
                 }
             }
         }
@@ -2492,11 +2542,11 @@ pub(super) fn render_paragraph_lines(
 
         // Helper: compute absolute x for a chunk, accounting for dual regions
         let chunk_abs_x = |chunk_idx: usize, chunk: &WordChunk| -> f32 {
-            if let Some(ref rr) = line.right_region {
-                if chunk_idx >= rr.first_chunk_idx {
-                    let local_idx = chunk_idx - rr.first_chunk_idx;
-                    return right_start_x + chunk.x_offset + local_idx as f32 * right_extra_per_gap;
-                }
+            if let Some(ref rr) = line.right_region
+                && chunk_idx >= rr.first_chunk_idx
+            {
+                let local_idx = chunk_idx - rr.first_chunk_idx;
+                return right_start_x + chunk.x_offset + local_idx as f32 * right_extra_per_gap;
             }
             if is_char_justified {
                 // Tc adds extra space after each character; shift chunk start
@@ -2511,7 +2561,7 @@ pub(super) fn render_paragraph_lines(
             }
         };
 
-        let mut decorations: Vec<(f32, f32, f32, f32, Option<[u8; 3]>)> = Vec::new();
+        let mut decorations: Vec<Decoration> = Vec::new();
 
         // Draw run shading first (bottom layer), then run highlights on top.
         // Both use the same rectangle geometry; when a run sets both, highlight
@@ -2749,17 +2799,13 @@ pub(super) fn render_paragraph_lines(
                     super::wordart::reset_text_outline(content);
                     has_text_outline = false;
                     if cur_synthetic_bold {
-                        content.set_line_width(chunk.font_size * 0.02);
-                        stroke_color_or_black(content, chunk.color);
-                        content.set_text_rendering_mode(TextRenderingMode::FillStroke);
+                        begin_synthetic_bold(content, chunk);
                     }
                 }
 
                 if !has_text_outline && chunk.synthetic_bold != cur_synthetic_bold {
                     if chunk.synthetic_bold {
-                        content.set_line_width(chunk.font_size * 0.02);
-                        stroke_color_or_black(content, chunk.color);
-                        content.set_text_rendering_mode(TextRenderingMode::FillStroke);
+                        begin_synthetic_bold(content, chunk);
                     } else {
                         content.set_text_rendering_mode(TextRenderingMode::Fill);
                     }
@@ -2826,8 +2872,24 @@ pub(super) fn render_paragraph_lines(
                     .flatten();
 
                 if let (Some(primary), Some(fallback)) = (primary_entry, fallback_entry) {
-                    let _primary_gids = primary.char_to_gid.as_ref();
                     let fallback_gids = fallback.char_to_gid.as_ref();
+                    // A segment of the chunk in its own font, or in the fallback
+                    // font when its characters are missing from the primary one.
+                    let show_seg = |content: &mut Content, seg: &[char], in_fallback: bool| {
+                        let seg: String = seg.iter().collect();
+                        if in_fallback {
+                            if let Some(map) = fallback_gids {
+                                content
+                                    .set_font(Name(fallback.pdf_name.as_bytes()), chunk.font_size);
+                                content.show(Str(&encode_as_gids(&seg, map)));
+                                content.set_font(Name(chunk.pdf_font.as_bytes()), chunk.font_size);
+                            }
+                        } else {
+                            let bytes =
+                                encode_text_for_pdf(&seg, &chunk.pdf_font, &pdf_name_to_entry);
+                            content.show(Str(&bytes));
+                        }
+                    };
                     // Split text into runs of primary vs fallback chars
                     let mut seg_start = 0;
                     let mut in_fallback = false;
@@ -2837,37 +2899,12 @@ pub(super) fn render_paragraph_lines(
                         if i == 0 {
                             in_fallback = needs_fb;
                         } else if needs_fb != in_fallback {
-                            let seg: String = chars[seg_start..i].iter().collect();
-                            if in_fallback {
-                                if let Some(map) = fallback_gids {
-                                    let fb_name = &fallback.pdf_name;
-                                    content.set_font(Name(fb_name.as_bytes()), chunk.font_size);
-                                    content.show(Str(&encode_as_gids(&seg, map)));
-                                    content
-                                        .set_font(Name(chunk.pdf_font.as_bytes()), chunk.font_size);
-                                }
-                            } else {
-                                let bytes =
-                                    encode_text_for_pdf(&seg, &chunk.pdf_font, &pdf_name_to_entry);
-                                content.show(Str(&bytes));
-                            }
+                            show_seg(content, &chars[seg_start..i], in_fallback);
                             seg_start = i;
                             in_fallback = needs_fb;
                         }
                     }
-                    // Flush last segment
-                    let seg: String = chars[seg_start..].iter().collect();
-                    if in_fallback {
-                        if let Some(map) = fallback_gids {
-                            let fb_name = &fallback.pdf_name;
-                            content.set_font(Name(fb_name.as_bytes()), chunk.font_size);
-                            content.show(Str(&encode_as_gids(&seg, map)));
-                            content.set_font(Name(chunk.pdf_font.as_bytes()), chunk.font_size);
-                        }
-                    } else {
-                        let bytes = encode_text_for_pdf(&seg, &chunk.pdf_font, &pdf_name_to_entry);
-                        content.show(Str(&bytes));
-                    }
+                    show_seg(content, &chars[seg_start..], in_fallback);
                     if boundary_space {
                         content.show(Str(&encode_text_for_pdf(
                             " ",
@@ -2888,8 +2925,8 @@ pub(super) fn render_paragraph_lines(
                     content.show(Str(&text_bytes));
                 };
 
+                let thick = (chunk.font_size * 0.05).max(0.5);
                 if chunk.underline {
-                    let thick = (chunk.font_size * 0.05).max(0.5);
                     let ul_y = if chunk.hyperlink_url.is_some() {
                         y - chunk.font_size * 0.08
                     } else {
@@ -2910,12 +2947,10 @@ pub(super) fn render_paragraph_lines(
                     }
                 }
                 if chunk.strikethrough {
-                    let thick = (chunk.font_size * 0.05).max(0.5);
                     let st_y = y + chunk.font_size * 0.3;
                     decorations.push((x, st_y, chunk.width, thick, chunk.color));
                 }
                 if chunk.dstrike {
-                    let thick = (chunk.font_size * 0.05).max(0.5);
                     let gap = thick * 1.5;
                     let mid_y = y + chunk.font_size * 0.3;
                     decorations.push((x, mid_y - gap / 2.0, chunk.width, thick, chunk.color));
