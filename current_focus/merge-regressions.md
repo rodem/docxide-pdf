@@ -244,7 +244,7 @@ Mean Jaccard went 51.2 → 63.4 and SSIM 70.9 → 80.5 over the merge.
   (assets `4661648`): missing_font_substitution J 18.7 → 39.9, SSIM 67.0 →
   88.5; sample500kB J 34.7 → 38.4, SSIM 52.8 → 59.1 (its "Open Sans;Arial"
   splits to Open Sans, closer to Word's Segoe UI than Arial). Baselines for
-  those two not yet accepted.
+  those two accepted.
 
 ### 6. Per-line heights in headers
 

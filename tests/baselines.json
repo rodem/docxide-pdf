@@ -734,8 +734,8 @@
     "a11y_text": 1.0
   },
   "fonts/missing_font_sub..": {
-    "jaccard": 0.1866,
-    "ssim": 0.6699,
+    "jaccard": 0.399,
+    "ssim": 0.8852,
     "ua_fail": 2
   },
   "fonts/multi_font": {
@@ -849,8 +849,8 @@
     "ua_fail": 0
   },
   "samples/sample500kB": {
-    "jaccard": 0.3474,
-    "ssim": 0.5279,
+    "jaccard": 0.3835,
+    "ssim": 0.591,
     "text_boundary": 0.7816,
     "convert_ms": 18.3,
     "ua_fail": 3
