@@ -10,8 +10,8 @@ use crate::model::{
 use super::color::stroke_segment;
 use super::helpers::align_offset;
 use super::layout::{
-    TextLine, build_paragraph_lines, build_tabbed_line, is_text_empty, lines_height,
-    picture_line_bottom, render_paragraph_lines, runs_max_image_h, tallest_run_metrics,
+    LineOpts, build_lines, is_text_empty, lines_height, picture_line_bottom,
+    render_paragraph_lines, runs_max_image_h, tallest_run_metrics,
 };
 use super::positioning::resolve_h_position;
 use super::table;
@@ -294,75 +294,6 @@ pub(super) fn resolve_tb_y_top(
     }
 }
 
-fn build_lines(
-    runs: &[Run],
-    ctx: &RenderContext,
-    tab_stops: &[crate::model::TabStop],
-    text_width: f32,
-    inline_images: &HashMap<usize, String>,
-    indent_left: f32,
-    indent_right: f32,
-    text_hanging: f32,
-    alignment: crate::model::Alignment,
-) -> Vec<TextLine> {
-    build_lines_with_float(
-        runs,
-        ctx,
-        tab_stops,
-        text_width,
-        inline_images,
-        indent_left,
-        indent_right,
-        text_hanging,
-        None,
-        alignment,
-    )
-}
-
-fn build_lines_with_float(
-    runs: &[Run],
-    ctx: &RenderContext,
-    tab_stops: &[crate::model::TabStop],
-    text_width: f32,
-    inline_images: &HashMap<usize, String>,
-    indent_left: f32,
-    indent_right: f32,
-    text_hanging: f32,
-    per_line_widths: Option<&[f32]>,
-    alignment: crate::model::Alignment,
-) -> Vec<TextLine> {
-    let empty_fx: HashMap<usize, super::images::EffectXObjs> = HashMap::new();
-    let has_tabs = runs.iter().any(|r| r.is_tab);
-    if has_tabs {
-        build_tabbed_line(
-            runs,
-            ctx.fonts,
-            tab_stops,
-            indent_left,
-            text_width,
-            indent_right,
-            text_hanging,
-            inline_images,
-            &empty_fx,
-            ctx.default_tab_stop,
-            &[],
-        )
-    } else {
-        build_paragraph_lines(
-            runs,
-            ctx.fonts,
-            text_width,
-            text_hanging,
-            inline_images,
-            &empty_fx,
-            None,
-            per_line_widths,
-            None,
-            ctx.cjk(true, alignment),
-        )
-    }
-}
-
 /// A wrapping float in a header or footer: its box (PDF coordinates) and the
 /// distances text keeps from its sides.
 #[derive(Clone, Copy)]
@@ -463,17 +394,15 @@ pub(super) fn render_header_footer(
                 let (font_size, _, tallest_ar) = tallest_run_metrics(&substituted_runs, ctx.fonts);
                 let ascender_ratio = tallest_ar.unwrap_or(0.75);
 
-                let empty_inline_imgs: HashMap<usize, String> = HashMap::new();
                 let lines = build_lines(
                     &substituted_runs,
                     ctx,
-                    &para.tab_stops,
                     text_width,
-                    &empty_inline_imgs,
-                    0.0,
-                    0.0,
-                    0.0,
-                    para.alignment,
+                    ctx.cjk(true, para.alignment),
+                    &LineOpts {
+                        tab_stops: &para.tab_stops,
+                        ..Default::default()
+                    },
                 );
                 let content_width = lines.iter().map(|l| l.total_width).fold(0.0f32, f32::max);
 
@@ -645,13 +574,16 @@ pub(super) fn render_header_footer(
                                 let tb_lines = build_lines(
                                     &tp.runs,
                                     ctx,
-                                    &tp.tab_stops,
                                     tp_text_w,
-                                    &inline_imgs,
-                                    tp.indent_left,
-                                    tp.indent_right,
-                                    tp_hanging,
-                                    tp.alignment,
+                                    ctx.cjk(true, tp.alignment),
+                                    &LineOpts {
+                                        inline_images: Some(&inline_imgs),
+                                        tab_stops: &tp.tab_stops,
+                                        indent_left: tp.indent_left,
+                                        indent_right: tp.indent_right,
+                                        hanging: tp_hanging,
+                                        ..Default::default()
+                                    },
                                 );
                                 if tb_lines.is_empty() {
                                     let (fs, _, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
@@ -734,13 +666,16 @@ pub(super) fn render_header_footer(
                         let tb_lines = build_lines(
                             &tp.runs,
                             ctx,
-                            &tp.tab_stops,
                             tp_text_w,
-                            &inline_imgs,
-                            tp.indent_left,
-                            tp.indent_right,
-                            tp_hanging,
-                            tp.alignment,
+                            ctx.cjk(true, tp.alignment),
+                            &LineOpts {
+                                inline_images: Some(&inline_imgs),
+                                tab_stops: &tp.tab_stops,
+                                indent_left: tp.indent_left,
+                                indent_right: tp.indent_right,
+                                hanging: tp_hanging,
+                                ..Default::default()
+                            },
                         );
                         if tb_lines.is_empty() {
                             let (fs, _, _) = tallest_run_metrics(&tp.runs, ctx.fonts);
@@ -1073,17 +1008,20 @@ pub(super) fn render_header_footer(
                     .as_ref()
                     .map(|g| g.iter().map(|&(_, w)| w).collect());
 
-                let lines = build_lines_with_float(
+                let lines = build_lines(
                     &substituted_runs,
                     ctx,
-                    &para.tab_stops,
                     para_text_width,
-                    &block_inline_images,
-                    para.indent_left,
-                    para.indent_right,
-                    text_hanging,
-                    per_line_widths.as_deref(),
-                    para.alignment,
+                    ctx.cjk(true, para.alignment),
+                    &LineOpts {
+                        inline_images: Some(&block_inline_images),
+                        tab_stops: &para.tab_stops,
+                        indent_left: para.indent_left,
+                        indent_right: para.indent_right,
+                        hanging: text_hanging,
+                        per_line_widths: per_line_widths.as_deref(),
+                        ..Default::default()
+                    },
                 );
 
                 let metrics = (font_size * ascender_ratio, picture_bottom);

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use pdf_writer::types::TextRenderingMode;
 use pdf_writer::{Content, Name, Rect, Str};
@@ -11,7 +11,15 @@ use crate::model::{
     TextShadow, VertAlign,
 };
 
+use super::RenderContext;
 use super::color::{fill_color_or_black, stroke_color_or_black};
+use super::images::EffectXObjs;
+
+/// Placeholders for a paragraph without inline pictures.
+pub(super) static EMPTY_INLINE_IMAGES: LazyLock<HashMap<usize, String>> =
+    LazyLock::new(HashMap::new);
+pub(super) static EMPTY_EFFECTS: LazyLock<HashMap<usize, EffectXObjs>> =
+    LazyLock::new(HashMap::new);
 
 /// How many gaps a stretched line's slack spreads across when the slack goes
 /// between *characters* (applied as PDF `Tc`) rather than between word gaps.
@@ -1073,6 +1081,65 @@ fn compress_punctuation(chunks: &mut [WordChunk], needed: f32) -> bool {
 /// Dual-region geometry for bothSides wrapping: (left_x, left_w, right_x, right_w).
 /// For lines outside the float zone, right_w is 0.0 (single region).
 pub(super) type DualRegion = (f32, f32, f32, f32);
+
+/// What line breaking takes besides the runs and the measure of a paragraph.
+/// The default is a plain paragraph: no pictures, tab stops, indents or floats.
+#[derive(Default, Clone, Copy)]
+pub(super) struct LineOpts<'a> {
+    /// Inline pictures and their effect XObjects, by run index.
+    pub(super) inline_images: Option<&'a HashMap<usize, String>>,
+    pub(super) effects: Option<&'a HashMap<usize, EffectXObjs>>,
+    pub(super) tab_stops: &'a [TabStop],
+    pub(super) indent_left: f32,
+    pub(super) indent_right: f32,
+    pub(super) hanging: f32,
+    /// Spans a left tab skips (see `build_tabbed_line`).
+    pub(super) tab_exclusions: &'a [(f32, f32)],
+    /// The measure of each line beside a float (see `build_paragraph_lines`).
+    pub(super) per_line_widths: Option<&'a [f32]>,
+    pub(super) dual: Option<&'a [DualRegion]>,
+}
+
+/// Lay a paragraph out as lines: against its tab stops when it holds a tab,
+/// by plain word wrapping otherwise.
+pub(super) fn build_lines(
+    runs: &[Run],
+    ctx: &RenderContext,
+    width: f32,
+    cjk: CjkLayout,
+    opts: &LineOpts<'_>,
+) -> Vec<TextLine> {
+    let inline_images = opts.inline_images.unwrap_or(&EMPTY_INLINE_IMAGES);
+    let effects = opts.effects.unwrap_or(&EMPTY_EFFECTS);
+    if runs.iter().any(|r| r.is_tab) {
+        build_tabbed_line(
+            runs,
+            ctx.fonts,
+            opts.tab_stops,
+            opts.indent_left,
+            width,
+            opts.indent_right,
+            opts.hanging,
+            inline_images,
+            effects,
+            ctx.default_tab_stop,
+            opts.tab_exclusions,
+        )
+    } else {
+        build_paragraph_lines(
+            runs,
+            ctx.fonts,
+            width,
+            opts.hanging,
+            inline_images,
+            effects,
+            None,
+            opts.per_line_widths,
+            opts.dual,
+            cjk,
+        )
+    }
+}
 
 /// Layout runs into wrapped lines.
 /// Handles cross-run contiguous text correctly: no space is inserted between

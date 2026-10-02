@@ -8,7 +8,8 @@ use super::RenderContext;
 use super::color::stroke_segment;
 use super::helpers::drops_contextual_spacing;
 use super::layout::{
-    TextLine, build_paragraph_lines, is_text_empty, render_paragraph_lines, tallest_run_metrics,
+    EMPTY_EFFECTS, EMPTY_INLINE_IMAGES, TextLine, build_paragraph_lines, is_text_empty,
+    render_paragraph_lines, tallest_run_metrics,
 };
 use super::list_label::render_list_label;
 use super::resolve_line_h;
@@ -59,8 +60,8 @@ fn layout_paragraph(
         ctx.fonts,
         text_width,
         first_line_hanging,
-        &HashMap::new(),
-        &HashMap::new(),
+        &EMPTY_INLINE_IMAGES,
+        &EMPTY_EFFECTS,
         None,
         None,
         None,

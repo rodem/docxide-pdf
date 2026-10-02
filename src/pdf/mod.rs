@@ -49,11 +49,11 @@ use helpers::{
 };
 use images::{EffectXObjs, EmbeddedImages, embed_all_images};
 use layout::{
-    CjkLayout, DualRegion, LineNumberArg, LinkAnnotation, LinkTagger, TextLine,
-    build_paragraph_lines, build_tabbed_line, descender_ratio, grid_baseline_offset,
-    grid_snapped_line_h, inline_image_line_extra, is_text_empty, line_max_image_h, lines_height,
-    picture_line_bottom, render_paragraph_lines, run_line_metrics, size_lines_by_own_runs,
-    tallest_glyph_run_metrics, tallest_run_metrics,
+    CjkLayout, DualRegion, EMPTY_EFFECTS, EMPTY_INLINE_IMAGES, LineNumberArg, LineOpts,
+    LinkAnnotation, LinkTagger, TextLine, build_lines, build_paragraph_lines, descender_ratio,
+    grid_baseline_offset, grid_snapped_line_h, inline_image_line_extra, is_text_empty,
+    line_max_image_h, lines_height, picture_line_bottom, render_paragraph_lines, run_line_metrics,
+    size_lines_by_own_runs, tallest_glyph_run_metrics, tallest_run_metrics,
 };
 use list_label::{label_font_key, render_list_label};
 use positioning::{
@@ -988,14 +988,13 @@ fn lines_kept_together(widow_control: bool, n: impl FnOnce() -> usize) -> usize 
 /// to the indent anyway (western_australia's "(a)" items).
 fn line_count(para: &Paragraph, ctx: &RenderContext, col_w: f32) -> usize {
     let width = (col_w - para.indent_left - para.indent_right).max(1.0);
-    let no_images = HashMap::new();
     build_paragraph_lines(
         &para.runs,
         ctx.fonts,
         width,
         0.0,
-        &no_images,
-        &HashMap::new(),
+        &EMPTY_INLINE_IMAGES,
+        &EMPTY_EFFECTS,
         None,
         None,
         None,
@@ -1123,8 +1122,6 @@ fn compute_bookmark_positions(
     let mut margin_bottom = compute_effective_margin_bottom(sp, true, ctx);
     let mut prev_space_after: f32 = 0.0;
     let mut prev_para: Option<&Paragraph> = None;
-    let empty_imgs: HashMap<usize, String> = HashMap::new();
-    let empty_fx: HashMap<usize, images::EffectXObjs> = HashMap::new();
 
     for (si, section) in doc.sections.iter().enumerate() {
         sp = &section.properties;
@@ -1187,35 +1184,21 @@ fn compute_bookmark_positions(
                     };
                     let para_w = (text_width - para.indent_left - para.indent_right).max(1.0);
                     let hanging = compute_text_hanging(para, ctx.default_tab_stop);
-                    let has_tabs = para.runs.iter().any(|r| r.is_tab);
                     let lines = if is_text_empty(&para.runs) {
                         vec![]
-                    } else if has_tabs {
-                        build_tabbed_line(
-                            &para.runs,
-                            ctx.fonts,
-                            &para.tab_stops,
-                            para.indent_left,
-                            para_w,
-                            para.indent_right,
-                            hanging,
-                            &empty_imgs,
-                            &empty_fx,
-                            doc.default_tab_stop,
-                            &[],
-                        )
                     } else {
-                        build_paragraph_lines(
+                        build_lines(
                             &para.runs,
-                            ctx.fonts,
+                            ctx,
                             para_w,
-                            hanging,
-                            &empty_imgs,
-                            &empty_fx,
-                            None,
-                            None,
-                            None,
                             ctx.cjk(para.auto_space_de || para.auto_space_dn, para.alignment),
+                            &LineOpts {
+                                tab_stops: &para.tab_stops,
+                                indent_left: para.indent_left,
+                                indent_right: para.indent_right,
+                                hanging,
+                                ..Default::default()
+                            },
                         )
                     };
                     let num_lines = lines.len().max(1);
@@ -1590,17 +1573,17 @@ fn render_paragraph_block(
             _ => None,
         });
         if let Some((fi, next_space_before)) = next {
-            let full_lines = build_paragraph_lines(
+            let full_lines = build_lines(
                 &effective_runs,
-                ctx.fonts,
+                ctx,
                 para_text_width,
-                text_hanging,
-                &block_inline_images,
-                &block_effect_inlines,
-                None,
-                None,
-                None,
                 cjk,
+                &LineOpts {
+                    inline_images: Some(&block_inline_images),
+                    effects: Some(&block_effect_inlines),
+                    hanging: text_hanging,
+                    ..Default::default()
+                },
             );
             let gap = para.space_after.max(next_space_before);
             let anchor_top = state.pb.slot_top - inter_gap - full_lines.len() as f32 * line_h - gap;
@@ -1853,20 +1836,6 @@ fn render_paragraph_block(
     };
     let mut lines = if para.image.is_some() || (text_empty && !has_inline_image_runs) {
         vec![]
-    } else if has_tabs {
-        build_tabbed_line(
-            &effective_runs,
-            ctx.fonts,
-            &para.tab_stops,
-            para.indent_left,
-            para_text_width,
-            para.indent_right,
-            text_hanging,
-            &block_inline_images,
-            &block_effect_inlines,
-            doc.default_tab_stop,
-            &tab_exclusions,
-        )
     } else {
         // Per-line geometry handles narrow→wide transitions;
         // dual geometry takes priority over single-region widths.
@@ -1875,17 +1844,22 @@ fn render_paragraph_block(
         } else {
             poly_line_widths.as_deref()
         };
-        build_paragraph_lines(
+        build_lines(
             &effective_runs,
-            ctx.fonts,
+            ctx,
             para_text_width,
-            text_hanging,
-            &block_inline_images,
-            &block_effect_inlines,
-            None,
-            plw,
-            poly_dual_geom.as_deref(),
             cjk,
+            &LineOpts {
+                inline_images: Some(&block_inline_images),
+                effects: Some(&block_effect_inlines),
+                tab_stops: &para.tab_stops,
+                indent_left: para.indent_left,
+                indent_right: para.indent_right,
+                hanging: text_hanging,
+                tab_exclusions: &tab_exclusions,
+                per_line_widths: plw,
+                dual: poly_dual_geom.as_deref(),
+            },
         )
     };
     // The look-ahead zone reached up through this paragraph's space-after only
