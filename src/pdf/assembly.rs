@@ -144,7 +144,7 @@ pub(super) fn assemble_pdf_pages(
     valign_offsets: Vec<f32>,
     all_contents: Vec<Content>,
     all_deferred_shapes: Vec<Vec<(u32, Content)>>,
-    all_hf_contents: &mut Vec<Option<Content>>,
+    all_hf_contents: &mut [Option<Content>],
     all_page_links: &[Vec<LinkAnnotation>],
     all_page_comment_anchors: &[Vec<(u32, f32, f32, f32)>],
     all_page_alpha_states: &[HashSet<u8>],

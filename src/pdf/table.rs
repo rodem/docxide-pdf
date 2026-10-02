@@ -1793,16 +1793,8 @@ pub(super) fn render_table(
             && available_h > 50.0
             && first_chunk_fits;
 
-        if row_h > available_h && (row_h > page_content_h || keep_with_anchor) && !row.cant_split {
-            split_row_across_pages(
-                row,
-                layout,
-                pb,
-                ri,
-                &mut did_flush_while_floating,
-                effective_margin_bottom,
-            );
-        } else if row_h > available_h && can_meaningfully_split {
+        let must_split = (row_h > page_content_h || keep_with_anchor) && !row.cant_split;
+        if row_h > available_h && (must_split || can_meaningfully_split) {
             split_row_across_pages(
                 row,
                 layout,

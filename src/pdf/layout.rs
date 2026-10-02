@@ -289,8 +289,11 @@ pub(super) struct WordChunk {
 /// Pale-pink highlight color Word uses for comment-anchored text spans.
 pub(super) const COMMENT_HIGHLIGHT_RGB: [u8; 3] = [251, 220, 217];
 
+/// A decoration rectangle (underline, strikethrough, shading): x, y, width, height, colour.
+type Decoration = (f32, f32, f32, f32, Option<[u8; 3]>);
+
 fn push_decoration(
-    decorations: &mut Vec<(f32, f32, f32, f32, Option<[u8; 3]>)>,
+    decorations: &mut Vec<Decoration>,
     x: f32,
     y: f32,
     width: f32,
@@ -2536,7 +2539,7 @@ pub(super) fn render_paragraph_lines(
             }
         };
 
-        let mut decorations: Vec<(f32, f32, f32, f32, Option<[u8; 3]>)> = Vec::new();
+        let mut decorations: Vec<Decoration> = Vec::new();
 
         // Draw run shading first (bottom layer), then run highlights on top.
         // Both use the same rectangle geometry; when a run sets both, highlight
