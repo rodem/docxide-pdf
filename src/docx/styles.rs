@@ -1157,6 +1157,12 @@ fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
         for ancestor_id in chain.iter().rev() {
             if let Some(s) = styles.get(ancestor_id) {
                 inherit!(inh, s);
+                // firstLine and hanging are one value: a style setting either
+                // replaces both of its parent's.
+                if s.indent_hanging.is_some() || s.indent_first_line.is_some() {
+                    inh.indent_hanging = s.indent_hanging;
+                    inh.indent_first_line = s.indent_first_line;
+                }
                 // Tab stops are additive: accumulate from ancestors, child overrides at same pos
                 // Clear tabs remove inherited tabs at matching positions
                 merge_tab_stops(

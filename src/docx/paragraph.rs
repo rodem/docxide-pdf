@@ -198,17 +198,24 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
     let (left, right, hanging, first) =
         if let Some(ind) = ppr.and_then(|ppr| wml(ppr, "ind")) {
             let (l, r, h, f) = extract_indents(ind, Some(char_width_fs / 2.0));
+            // firstLine and hanging are one value: a direct either replaces the
+            // style's both (indonesian's title, ind left=281 firstLine=0 over
+            // Heading1's hanging=543, starts at 281 in Word).
+            let first_hanging_direct = h.is_some() || f.is_some();
             // Merge: inline w:ind attributes override style, but missing
             // attributes fall back to the paragraph style values.
             if let Some(s) = para_style {
                 if numbering_ind {
-                    (l, r.or(s.indent_right), h, f.or(s.indent_first_line))
+                    let f = if first_hanging_direct { f } else { s.indent_first_line };
+                    (l, r.or(s.indent_right), h, f)
+                } else if first_hanging_direct {
+                    (l.or(s.indent_left), r.or(s.indent_right), h, f)
                 } else {
                     (
                         l.or(s.indent_left),
                         r.or(s.indent_right),
-                        h.or(s.indent_hanging),
-                        f.or(s.indent_first_line),
+                        s.indent_hanging,
+                        s.indent_first_line,
                     )
                 }
             } else {
