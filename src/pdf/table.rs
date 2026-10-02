@@ -615,12 +615,9 @@ fn render_cell_floating_shapes(
     use super::positioning::render_connector;
     use crate::model::HorizontalPosition;
 
+    // Positioned relative to the cell column origin and paragraph top.
     for conn in &para.connectors {
-        let conn_x = conn.x;
-        let mut conn_clone = conn.clone();
-        // Position relative to cell column origin and paragraph top
-        conn_clone.x = conn_x;
-        render_connector(&conn_clone, content, cell_x, para_top);
+        render_connector(conn, content, cell_x, para_top);
     }
 
     for tb in &para.textboxes {

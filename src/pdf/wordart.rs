@@ -49,8 +49,6 @@ pub(super) fn find_text_glow(tb: &Textbox) -> Option<&TextGlow> {
 
 pub(super) struct GlyphPath {
     pub commands: Vec<GlyphCommand>,
-    #[allow(dead_code)]
-    pub advance_width: f32,
 }
 
 pub(super) enum GlyphCommand {
@@ -86,14 +84,15 @@ impl ttf_parser::OutlineBuilder for GlyphOutlineCollector {
 
 pub(super) fn extract_glyph_path(face: &ttf_parser::Face, ch: char) -> Option<GlyphPath> {
     let gid = face.glyph_index(ch)?;
-    let advance = face.glyph_hor_advance(gid)? as f32;
+    // A glyph without an hmtx entry is not drawn (advances come from
+    // `compute_char_advances`).
+    face.glyph_hor_advance(gid)?;
     let mut collector = GlyphOutlineCollector {
         commands: Vec::new(),
     };
     face.outline_glyph(gid, &mut collector)?;
     Some(GlyphPath {
         commands: collector.commands,
-        advance_width: advance,
     })
 }
 
