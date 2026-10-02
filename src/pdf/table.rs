@@ -1803,16 +1803,15 @@ pub(super) fn render_table(
                 cm.top + cm.bottom + item_h <= available_h
             })
         });
-        // ponytail: 50pt (~4 lines) sliver guard. Word splits with even one
-        // line of room, but our line heights run a few pt short of Word's, so
-        // near-boundary rows see phantom space Word doesn't have (victorian
-        // p8: ours 43pt vs Word's 6pt). Lower toward one line height once
-        // line-height fidelity improves.
+        // Word splits with one line of room: nabl's "Remarks" row breaks
+        // between its paragraphs with 30pt left. ponytail: 14pt (a line) guard
+        // so a near-boundary rounding error can't split off nothing; drop it
+        // if a reference ever splits with less.
         let can_meaningfully_split = !row.cant_split
             && row.height.is_none()
             && any_cell_multi_item
             && !at_page_top
-            && available_h > 50.0
+            && available_h > 14.0
             && first_chunk_fits;
 
         let must_split = (row_h > page_content_h || keep_with_anchor) && !row.cant_split;
