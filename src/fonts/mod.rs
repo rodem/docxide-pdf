@@ -260,6 +260,17 @@ fn word_substitute(name: &str) -> Option<&'static str> {
     }
 }
 
+/// The family of a missing name that is an installed face's full name: Word
+/// draws "Arial Bold" (fontTable family roman, no altName) in Arial at the run's
+/// own weight, ArialMT for the 37 plain runs of welsh_palliative_care_abstract_form
+/// and Arial-BoldMT for its one w:b run. An altName comes first: "Bradley Hand
+/// Bold" with altName Courier New is Courier New (pendulum_mechanics_oscillation_lab).
+fn family_of_face_name(name: &str) -> Option<&str> {
+    ["Bold Italic", "Bold", "Italic", "Regular"]
+        .iter()
+        .find_map(|style| name.strip_suffix(style)?.strip_suffix(' '))
+}
+
 fn known_font_alias(name: &str) -> Option<&'static str> {
     match name {
         // Word's own mapping for LibreOffice's metric clones; Liberation Mono,
@@ -547,6 +558,7 @@ pub(crate) fn register_font(
             log::info!("Font substitution: {primary} → altName \"{alt}\"");
             Some(m)
         })
+        .or_else(|| try_candidate(family_of_face_name(primary)?))
         .or_else(|| {
             let alias = known_font_alias(primary)?;
             let m = try_candidate(alias)?;
@@ -737,6 +749,9 @@ mod tests {
         // Windows' and Word's own name mappings beat the altName.
         assert_eq!(resolve("Helvetica", Some(("Helvetica", Swiss, aptos))), "arial.ttf");
         assert_eq!(resolve("Liberation Sans", None), "arial.ttf");
+        // A face's full name resolves to its family, not to the missing-font fallback.
+        assert_eq!(resolve("Arial Bold", Some(("Arial Bold", Roman, None))), "arial.ttf");
+        assert_eq!(resolve("Arial Bold", Some(("Arial Bold", Auto, Some("Courier New")))), "courier new.ttf");
     }
 
     #[test]
