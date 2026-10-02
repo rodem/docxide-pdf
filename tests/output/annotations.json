@@ -691,7 +691,7 @@
       "x_pt": 154.81268,
       "y_pt": 796.3466,
       "note": "Dark thick lines is placed wrong relative to the music notes here. See reference.",
-      "fixed": false,
+      "fixed": true,
       "cleared": false
     },
     {

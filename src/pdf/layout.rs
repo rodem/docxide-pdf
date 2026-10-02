@@ -2013,6 +2013,14 @@ pub(super) fn line_max_image_h(line: &TextLine) -> f32 {
         .fold(0.0f32, f32::max)
 }
 
+/// The tallest inline picture among `runs`, wrap distances included.
+pub(super) fn runs_max_image_h(runs: &[Run]) -> f32 {
+    runs.iter()
+        .filter_map(|r| r.inline_image.as_ref())
+        .map(|img| img.display_height + img.layout_extra_height)
+        .fold(0.0f32, f32::max)
+}
+
 /// How far an inline picture lowers its line's baseline. Word sits the picture on
 /// the baseline, so a picture taller than the paragraph's text ascent pushes the
 /// baseline down by the difference. `ascent` is the paragraph's baseline offset

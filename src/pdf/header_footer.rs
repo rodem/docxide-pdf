@@ -9,7 +9,7 @@ use crate::model::{
 
 use super::layout::{
     TextLine, build_paragraph_lines, build_tabbed_line, is_text_empty, lines_height,
-    picture_line_bottom, render_paragraph_lines, tallest_run_metrics,
+    picture_line_bottom, render_paragraph_lines, runs_max_image_h, tallest_run_metrics,
 };
 use super::positioning::resolve_h_position;
 use super::table;
@@ -78,6 +78,12 @@ fn anchored_frame_top(fp: &FrameProperties, sp: &SectionProperties) -> Option<f3
     }
 }
 
+/// The band a bottom border adds below a paragraph: its `space` and its stroke
+/// (the body path's `bdr_bottom_extent`). The next paragraph starts below it.
+fn bottom_border_band(para: &Paragraph) -> f32 {
+    para.borders.bottom.as_ref().map_or(0.0, |b| b.space_pt + b.width_pt)
+}
+
 /// Where a line of height `line_h` whose top sits `top` below the page top
 /// really starts: below the first blocking frame band it would overlap.
 fn below_blocking_frames(top: f32, line_h: f32, bands: &[(f32, f32)]) -> f32 {
@@ -112,13 +118,14 @@ pub(super) fn compute_header_height(
                 let line_h = resolve_line_h(effective_ls, font_size, tallest_lhr);
                 height = below_blocking_frames(sp.header_margin + height, line_h, &bands)
                     - sp.header_margin;
-                let max_img_h = para
-                    .runs
-                    .iter()
-                    .filter_map(|r| r.inline_image.as_ref())
-                    .map(|img| img.display_height + img.layout_extra_height)
-                    .fold(0.0f32, f32::max);
-                let mut content_h = max_img_h.max(line_h);
+                // Mirrors the render loop's advance: a picture line is the
+                // picture plus the text descent (`inline_line_advance`).
+                let picture_h = runs_max_image_h(&para.runs);
+                let mut content_h = if picture_h > 0.0 {
+                    line_h.max(picture_h + picture_line_bottom(&para.runs, ctx.fonts, effective_ls))
+                } else {
+                    line_h
+                };
 
                 for fi in &para.floating_images {
                     if matches!(fi.wrap_type, WrapType::None) {
@@ -176,7 +183,7 @@ pub(super) fn compute_header_height(
                 let br_count = para.runs.iter().filter(|r| r.is_line_break).count();
                 content_h += br_count as f32 * line_h;
 
-                height += content_h;
+                height += content_h + bottom_border_band(para);
                 prev_space_after = para.space_after;
             }
             Block::Table(table) => {
@@ -807,13 +814,21 @@ pub(super) fn render_header_footer(
                     continue;
                 }
 
-                // Before text_empty skip so empty paragraphs with borders still render
-                {
-                    let bdr = &para.borders;
-                    let box_left = sp.margin_left;
-                    let box_right = sp.margin_left + text_width;
-                    let box_top = cursor_y;
-                    let box_bottom = cursor_y - line_h;
+                // Inline pictures sit on the baseline and grow their line to the
+                // picture plus the text descent (`inline_line_advance`).
+                let picture_bottom = if runs_max_image_h(&para.runs) > 0.0 {
+                    picture_line_bottom(&substituted_runs, ctx.fonts, effective_ls)
+                } else {
+                    0.0
+                };
+
+                // Paragraph borders span the laid-out height, so each exit below
+                // draws them once it knows it (ut_koer: a header staff image
+                // with a bottom border); empty bordered paragraphs render too.
+                let bdr = &para.borders;
+                let (box_left, box_right, box_top) =
+                    (sp.margin_left, sp.margin_left + text_width, cursor_y);
+                let draw_para_borders = |content: &mut Content, box_bottom: f32| {
                     let draw_h_border =
                         |content: &mut Content, b: &crate::model::ParagraphBorder, y: f32| {
                             content.save_state();
@@ -828,9 +843,11 @@ pub(super) fn render_header_footer(
                         draw_h_border(content, b, box_top);
                     }
                     if let Some(b) = &bdr.bottom {
-                        draw_h_border(content, b, box_bottom);
+                        // The stroke sits `space` below the box, outside it,
+                        // as the body path's bottom pad places it.
+                        draw_h_border(content, b, box_bottom - b.space_pt - b.width_pt / 2.0);
                     }
-                }
+                };
 
                 // VML horizontal rules (o:hr) are carried on otherwise-empty
                 // paragraphs, so draw them before the text_empty skip below —
@@ -853,7 +870,7 @@ pub(super) fn render_header_footer(
                 }
 
                 if text_empty {
-                    let mut advance = line_h;
+                    let mut advance = line_h + bottom_border_band(para);
                     // TopAndBottom textboxes push content below them
                     for tb in &para.textboxes {
                         if matches!(tb.wrap_type, WrapType::TopAndBottom) {
@@ -868,6 +885,7 @@ pub(super) fn render_header_footer(
                             advance = advance.max(needed);
                         }
                     }
+                    draw_para_borders(content, cursor_y - line_h);
                     cursor_y -= advance;
                     prev_space_after = para.space_after;
                     pi += 1;
@@ -1021,15 +1039,7 @@ pub(super) fn render_header_footer(
                     para.alignment,
                 );
 
-                // Inline pictures sit on the baseline and grow their line upward.
-                let metrics = (
-                    font_size * ascender_ratio,
-                    if block_inline_images.is_empty() {
-                        0.0
-                    } else {
-                        picture_line_bottom(&substituted_runs, ctx.fonts, effective_ls)
-                    },
-                );
+                let metrics = (font_size * ascender_ratio, picture_bottom);
                 render_paragraph_lines(
                     content,
                     &lines,
@@ -1051,7 +1061,9 @@ pub(super) fn render_header_footer(
                     None,
                 );
 
-                cursor_y -= lines_height(&lines, line_h, metrics);
+                let para_h = lines_height(&lines, line_h, metrics);
+                draw_para_borders(content, cursor_y - para_h);
+                cursor_y -= para_h + bottom_border_band(para);
                 prev_space_after = para.space_after;
                 pi += 1;
             }

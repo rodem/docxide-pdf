@@ -406,8 +406,24 @@ reproduced at the baseline and were marked fixed without a code change.
    Only the fixture itself changed (J 22.2 → 22.2, SSIM 29.3 → 29.7); the
    remaining difference there is vertical (our lines sit 10pt lower). #245
    (italian_evaluation line fit) no longer reproduced and was marked fixed.
+4. **#247 ut_koer header staff**: the header renderer drew paragraph borders
+   at one text line height before laying the paragraph out, so a staff
+   picture's bottom border cut through the staff. Borders are now drawn by
+   each exit once the paragraph's height is known (`lines_height`, so
+   multi-line bordered header paragraphs are right too), the stroke sits
+   `space` below the box as in the body path, and the band (`space` +
+   width) is part of the paragraph's advance and of the header/footer
+   height estimate, which also gained the picture line's descent. Measured:
+   ut_koer rule 46.95 → 76.95 (Word 77.78; the rest is the picture's
+   `effectExtent`, unread); bush_fires footer rule 652.05 vs Word 652.20 with
+   its text unmoved (its bottom-anchored footer hid the band before);
+   carbon_farming header rule 98.65 → 100.40 (Word 100.53). ut_koer J +20.9
+   / SSIM +8.2, bush_fires J +3.7 / SSIM +4.5, carbon_farming J +3.0, covid
+   J +0.7; western_australia and croatian_grant hash only.
 
 Findings left for later:
+- `wp:effectExtent` is not part of an inline picture's line height; ut_koer's
+  0.75pt bottom extent is the residual on its header rule.
 - Two adjacent `w:noBreakHyphen` (parsed to plain `-`, `docx/runs.rs`) now
   become a break opportunity; map them to U+2011 if a fixture ever shows it.
 - The tblGrid-less column inference (`docx/tables.rs`, `row_widths`) does not
