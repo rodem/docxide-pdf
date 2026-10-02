@@ -11,10 +11,10 @@ use super::numbering::{ListLabelInfo, parse_list_info};
 use super::runs::parse_runs;
 use super::styles::{TableBordersDef, parse_alignment};
 use super::{
-    ParseContext, WML_NS, collect_block_nodes, extract_indents, is_wml, merge_tab_stops,
-    parse_cell_border, parse_cell_border_left, parse_cell_border_right, parse_hex_color,
-    parse_on_off, parse_paragraph_spacing, parse_tab_stops_with_clears, twips_attr, twips_to_pts,
-    wml, wml_attr, wml_bool,
+    ParseContext, WML_NS, collect_block_nodes, extract_indents, merge_tab_stops, parse_cell_border,
+    parse_cell_border_left, parse_cell_border_right, parse_hex_color, parse_on_off,
+    parse_paragraph_spacing, parse_tab_stops_with_clears, twips_attr, twips_to_pts, wml, wml_attr,
+    wml_bool,
 };
 
 /// Approximate a `w:shd` stripe/cross pattern as a solid color for render
@@ -157,7 +157,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
     let mut col_widths: Vec<f32> = wml(node, "tblGrid")
         .into_iter()
         .flat_map(|grid| grid.children())
-        .filter(|n| is_wml(*n, "gridCol"))
+        .filter(|n| n.has_tag_name((WML_NS, "gridCol")))
         .filter_map(|n| twips_attr(n, "w"))
         .collect();
 
@@ -180,7 +180,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
             // Fall back to first row's w:trPr/w:jc if table-level jc absent
             collect_block_nodes(node)
                 .into_iter()
-                .find(|n| is_wml(*n, "tr"))
+                .find(|n| n.has_tag_name((WML_NS, "tr")))
                 .and_then(|tr| wml(tr, "trPr"))
                 .and_then(|pr| wml(pr, "jc"))
                 .and_then(|jc| jc.attribute((WML_NS, "val")))
@@ -332,7 +332,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
 
     let tbl_rows: Vec<_> = collect_block_nodes(node)
         .into_iter()
-        .filter(|n| is_wml(*n, "tr"))
+        .filter(|n| n.has_tag_name((WML_NS, "tr")))
         .collect();
 
     // OOXML §17.4.48 requires tblGrid, but some generators (e.g. SpecLink)
@@ -344,7 +344,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
             let mut row_widths: Vec<f32> = Vec::new();
             for tc in collect_block_nodes(*tr)
                 .into_iter()
-                .filter(|n| is_wml(*n, "tc"))
+                .filter(|n| n.has_tag_name((WML_NS, "tc")))
             {
                 let tc_pr = wml(tc, "tcPr");
                 let w = tc_pr
@@ -404,7 +404,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
         let mut grid_col = grid_before;
         for tc in collect_block_nodes(*tr)
             .into_iter()
-            .filter(|n| is_wml(*n, "tc"))
+            .filter(|n| n.has_tag_name((WML_NS, "tc")))
         {
             let ci = grid_col;
             let tc_pr = wml(tc, "tcPr");
@@ -784,7 +784,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
             let mut cell_blocks: Vec<Block> = Vec::new();
             let block_nodes = collect_block_nodes(tc);
             for n in &block_nodes {
-                if is_wml(*n, "p") {
+                if n.has_tag_name((WML_NS, "p")) {
                     let p = *n;
                     let parsed = parse_runs(p, ctx);
                     let mut runs = parsed.runs;
@@ -939,7 +939,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         tab_stops,
                         ..Paragraph::default()
                     }));
-                } else if is_wml(*n, "tbl") {
+                } else if n.has_tag_name((WML_NS, "tbl")) {
                     let nested =
                         parse_table_node(*n, ctx, counters, last_seen_level, applied_overrides);
                     cell_blocks.push(Block::Table(nested));

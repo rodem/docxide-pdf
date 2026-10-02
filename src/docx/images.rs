@@ -11,12 +11,9 @@ use super::charts::parse_chart_from_zip;
 use super::smartart::{has_diagram_ref, parse_smartart_drawing};
 use super::textbox::{parse_connector_from_wsp, parse_textbox_from_wsp};
 use super::{
-    DML_NS, ParseContext, REL_NS, WML_NS, WPD_NS, dml, emu_attr, emu_to_pts, parse_hex_color,
-    parse_on_off, parse_pt, twips_attr, wml, wpd,
+    CHART_NS, DML_NS, PIC_NS, ParseContext, REL_NS, VML_NS, W10_NS, WML_NS, WPD_NS, dml, emu_attr,
+    emu_to_pts, parse_hex_color, parse_on_off, parse_pt, twips_attr, wml, wpd,
 };
-
-const CHART_URI: &str = "http://schemas.openxmlformats.org/drawingml/2006/chart";
-const PIC_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/picture";
 
 fn parse_emu_text(text: Option<&str>) -> f32 {
     emu_to_pts(text.unwrap_or("0").parse::<f32>().unwrap_or(0.0))
@@ -122,11 +119,8 @@ fn parse_jpeg_dimensions(data: &[u8]) -> Option<(u32, u32, ImageFormat, u8)> {
 fn find_pic_sp_pr<'a>(container: roxmltree::Node<'a, 'a>) -> Option<roxmltree::Node<'a, 'a>> {
     container
         .descendants()
-        .find(|n| n.tag_name().name() == "pic" && n.tag_name().namespace() == Some(PIC_NS))
-        .and_then(|p| {
-            p.children()
-                .find(|c| c.tag_name().name() == "spPr" && c.tag_name().namespace() == Some(PIC_NS))
-        })
+        .find(|n| n.has_tag_name((PIC_NS, "pic")))
+        .and_then(|p| p.children().find(|c| c.has_tag_name((PIC_NS, "spPr"))))
 }
 
 /// Crop fractions (l, t, r, b) from the `a:srcRect` beside the picture's `a:blip`, each
@@ -221,10 +215,7 @@ fn parse_image_rotation(sp_pr: Option<roxmltree::Node>) -> f32 {
 
 /// Parse outline stroke from `pic:spPr/a:ln`.
 fn parse_pic_outline(sp_pr: Option<roxmltree::Node>) -> (Option<[u8; 3]>, f32) {
-    let ln = sp_pr.and_then(|s| {
-        s.children()
-            .find(|c| c.tag_name().name() == "ln" && c.tag_name().namespace() == Some(DML_NS))
-    });
+    let ln = sp_pr.and_then(|s| s.children().find(|c| c.has_tag_name((DML_NS, "ln"))));
     let Some(ln) = ln else {
         return (None, 0.0);
     };
@@ -235,7 +226,7 @@ fn parse_pic_outline(sp_pr: Option<roxmltree::Node>) -> (Option<[u8; 3]>, f32) {
         .unwrap_or(0.75); // default 0.75pt
     let color = ln
         .descendants()
-        .find(|n| n.tag_name().name() == "srgbClr" && n.tag_name().namespace() == Some(DML_NS))
+        .find(|n| n.has_tag_name((DML_NS, "srgbClr")))
         .and_then(|n| n.attribute("val"))
         .and_then(parse_hex_color);
     if color.is_some() {
@@ -259,11 +250,7 @@ fn parse_dml_color_alpha(node: roxmltree::Node) -> ([u8; 3], f32) {
         .and_then(parse_hex_color)
         .unwrap_or([0, 0, 0]);
     let alpha = color_node
-        .and_then(|n| {
-            n.children().find(|c| {
-                c.tag_name().name() == "alpha" && c.tag_name().namespace() == Some(DML_NS)
-            })
-        })
+        .and_then(|n| n.children().find(|c| c.has_tag_name((DML_NS, "alpha"))))
         .and_then(|a| a.attribute("val"))
         .and_then(|v| v.parse::<f32>().ok())
         .map(|v| v / 100000.0)
@@ -309,7 +296,7 @@ fn parse_pic_effects(sp_pr: Option<roxmltree::Node>) -> PicEffects {
     };
     let Some(effect_lst) = sp
         .children()
-        .find(|c| c.tag_name().name() == "effectLst" && c.tag_name().namespace() == Some(DML_NS))
+        .find(|c| c.has_tag_name((DML_NS, "effectLst")))
     else {
         return fx;
     };
@@ -474,7 +461,7 @@ pub(super) fn read_image_from_zip_extra<R: Read + Seek>(
 fn find_blip<'a>(container: roxmltree::Node<'a, 'a>) -> Option<roxmltree::Node<'a, 'a>> {
     container
         .descendants()
-        .find(|n| n.tag_name().name() == "blip" && n.tag_name().namespace() == Some(DML_NS))
+        .find(|n| n.has_tag_name((DML_NS, "blip")))
 }
 
 pub(super) fn find_blip_embed<'a>(container: roxmltree::Node<'a, 'a>) -> Option<&'a str> {
@@ -568,9 +555,9 @@ pub(super) fn parse_wrap_type(
 }
 
 fn parse_wrap_polygon(wrap_elem: roxmltree::Node) -> Option<Vec<(i32, i32)>> {
-    let poly = wrap_elem.children().find(|c| {
-        c.tag_name().name() == "wrapPolygon" && c.tag_name().namespace() == Some(WPD_NS)
-    })?;
+    let poly = wrap_elem
+        .children()
+        .find(|c| c.has_tag_name((WPD_NS, "wrapPolygon")))?;
     let mut vertices = Vec::new();
     for child in poly.children() {
         if child.tag_name().namespace() != Some(WPD_NS) {
@@ -609,17 +596,13 @@ pub(super) enum RunDrawingResult {
     Group(Vec<RunDrawingResult>),
 }
 
-fn is_wpd_drawing(node: roxmltree::Node, expected: &str) -> bool {
-    node.tag_name().name() == expected && node.tag_name().namespace() == Some(WPD_NS)
-}
-
 pub(super) fn parse_run_drawing<R: Read + Seek>(
     drawing_node: roxmltree::Node,
     ctx: &mut ParseContext<'_, R>,
 ) -> Option<RunDrawingResult> {
     for container in drawing_node.children() {
-        let is_inline = is_wpd_drawing(container, "inline");
-        let is_anchor = is_wpd_drawing(container, "anchor");
+        let is_inline = container.has_tag_name((WPD_NS, "inline"));
+        let is_anchor = container.has_tag_name((WPD_NS, "anchor"));
         if !is_inline && !is_anchor {
             continue;
         }
@@ -799,11 +782,7 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
 fn find_chart_ref<'a>(container: roxmltree::Node<'a, 'a>) -> Option<&'a str> {
     container
         .descendants()
-        .find(|n| {
-            n.tag_name().name() == "graphicData"
-                && n.tag_name().namespace() == Some(DML_NS)
-                && n.attribute("uri") == Some(CHART_URI)
-        })
+        .find(|n| n.has_tag_name((DML_NS, "graphicData")) && n.attribute("uri") == Some(CHART_NS))
         .and_then(|gd| {
             gd.children()
                 .find(|n| n.tag_name().name() == "chart")
@@ -831,7 +810,7 @@ pub(super) fn compute_drawing_info<R: Read + Seek>(
             continue;
         };
         for container in drawing.children() {
-            if !is_wpd_drawing(container, "inline") {
+            if !container.has_tag_name((WPD_NS, "inline")) {
                 continue;
             }
 
@@ -870,10 +849,9 @@ pub(super) fn parse_object_inline_image<R: Read + Seek>(
     obj: roxmltree::Node,
     ctx: &mut ParseContext<'_, R>,
 ) -> Option<EmbeddedImage> {
-    const VML_NS_LOCAL: &str = "urn:schemas-microsoft-com:vml";
-    let imagedata = obj.descendants().find(|n| {
-        n.tag_name().namespace() == Some(VML_NS_LOCAL) && n.tag_name().name() == "imagedata"
-    })?;
+    let imagedata = obj
+        .descendants()
+        .find(|n| n.has_tag_name((VML_NS, "imagedata")))?;
     let embed_id = imagedata.attribute((REL_NS, "id"))?;
     let (w, h) = object_dimensions(obj)?;
     read_image_from_zip(embed_id, ctx.rels, ctx.zip, w, h)
@@ -890,9 +868,8 @@ pub(super) fn parse_object_floating_image<R: Read + Seek>(
     obj: roxmltree::Node,
     ctx: &mut ParseContext<'_, R>,
 ) -> Option<FloatingImage> {
-    const VML_NS_LOCAL: &str = "urn:schemas-microsoft-com:vml";
     let shape = obj.children().find(|n| {
-        n.tag_name().namespace() == Some(VML_NS_LOCAL)
+        n.tag_name().namespace() == Some(VML_NS)
             && matches!(n.tag_name().name(), "rect" | "shape" | "oval" | "roundrect")
     })?;
     let style = shape.attribute("style")?;
@@ -927,19 +904,18 @@ pub(super) fn parse_object_floating_image<R: Read + Seek>(
             }
         }
     }
-    let imagedata = obj.descendants().find(|n| {
-        n.tag_name().namespace() == Some(VML_NS_LOCAL) && n.tag_name().name() == "imagedata"
-    })?;
+    let imagedata = obj
+        .descendants()
+        .find(|n| n.has_tag_name((VML_NS, "imagedata")))?;
     let embed_id = imagedata.attribute((REL_NS, "id"))?;
     let (w, h) = object_dimensions(obj)?;
     let image = read_image_from_zip(embed_id, ctx.rels, ctx.zip, w, h)?;
     // An explicit <w10:wrap type="square"/> means the object reflows text
     // (Word wraps centered header text between such logos); without it the
     // logo sits over/beside the text and None keeps the text full-width.
-    const W10_NS: &str = "urn:schemas-microsoft-com:office:word";
     let wrap_type = shape
         .children()
-        .find(|n| n.tag_name().namespace() == Some(W10_NS) && n.tag_name().name() == "wrap")
+        .find(|n| n.has_tag_name((W10_NS, "wrap")))
         .and_then(|n| n.attribute("type"))
         .map(|t| match t {
             "square" => WrapType::Square,
@@ -974,12 +950,9 @@ pub(super) fn compute_object_height(para_node: roxmltree::Node) -> f32 {
     let mut max_height: f32 = 0.0;
     for r in para_node
         .children()
-        .filter(|n| n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "r")
+        .filter(|n| n.has_tag_name((WML_NS, "r")))
     {
-        for obj in r
-            .children()
-            .filter(|n| n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "object")
-        {
+        for obj in r.children().filter(|n| n.has_tag_name((WML_NS, "object"))) {
             // Absolutely-positioned objects float (see parse_object_floating_image)
             // and must not reserve inline line height.
             if object_is_absolute(obj) {
@@ -994,10 +967,9 @@ pub(super) fn compute_object_height(para_node: roxmltree::Node) -> f32 {
 }
 
 fn object_is_absolute(obj: roxmltree::Node) -> bool {
-    const VML_NS_LOCAL: &str = "urn:schemas-microsoft-com:vml";
     obj.children()
         .find(|n| {
-            n.tag_name().namespace() == Some(VML_NS_LOCAL)
+            n.tag_name().namespace() == Some(VML_NS)
                 && matches!(n.tag_name().name(), "rect" | "shape" | "oval" | "roundrect")
         })
         .and_then(|s| s.attribute("style"))
@@ -1005,9 +977,8 @@ fn object_is_absolute(obj: roxmltree::Node) -> bool {
 }
 
 fn object_dimensions(obj: roxmltree::Node) -> Option<(f32, f32)> {
-    const VML_NS_LOCAL: &str = "urn:schemas-microsoft-com:vml";
     let rect = obj.children().find(|n| {
-        n.tag_name().namespace() == Some(VML_NS_LOCAL)
+        n.tag_name().namespace() == Some(VML_NS)
             && matches!(n.tag_name().name(), "rect" | "shape" | "oval" | "roundrect")
     });
     if let Some(rect) = rect

@@ -9,8 +9,8 @@ use super::relationships::parse_part_relationships;
 use super::runs::parse_runs;
 use super::styles::{ParagraphStyle, StylesInfo, ThemeFonts, parse_alignment};
 use super::{
-    ParseContext, WML_NS, collect_block_nodes, extract_indents, is_wml, parse_paragraph_spacing,
-    wml, wml_attr,
+    ParseContext, WML_NS, collect_block_nodes, extract_indents, parse_paragraph_spacing, wml,
+    wml_attr,
 };
 
 fn resolve_alignment(
@@ -141,7 +141,7 @@ fn parse_notes_simple<R: Read + Seek>(
     };
 
     for node in root.children() {
-        if !is_wml(node, element_name) {
+        if !node.has_tag_name((WML_NS, element_name)) {
             continue;
         }
         if node.attribute((WML_NS, "type")).is_some() {
@@ -212,18 +212,18 @@ fn parse_notes_simple<R: Read + Seek>(
 
         let mut paragraphs = Vec::new();
         for child in node.children() {
-            if is_wml(child, "p") {
+            if child.has_tag_name((WML_NS, "p")) {
                 paragraphs.push(parse_para(child, &mut fn_ctx));
-            } else if is_wml(child, "tbl") {
+            } else if child.has_tag_name((WML_NS, "tbl")) {
                 // Some templates (FAR/ST4) lay a footnote out as a table: the reference
                 // mark in a narrow first cell, the text in the second. Dropping the table
                 // dropped the whole footnote (auditor_regulatory_report_template p2).
                 // ponytail: each row becomes one paragraph with the cells joined by a
                 // space; real column geometry needs Block support in Footnote.
-                for tr in child.children().filter(|n| is_wml(*n, "tr")) {
+                for tr in child.children().filter(|n| n.has_tag_name((WML_NS, "tr"))) {
                     let mut cell_paras = tr
                         .descendants()
-                        .filter(|n| is_wml(*n, "p"))
+                        .filter(|n| n.has_tag_name((WML_NS, "p")))
                         .map(|p| parse_para(p, &mut fn_ctx));
                     let Some(mut merged) = cell_paras.next() else {
                         continue;
@@ -289,7 +289,7 @@ fn parse_notes_rich<R: Read + Seek>(
     let mut applied_overrides = HashSet::new();
 
     for node in root.children() {
-        if !is_wml(node, element_name) {
+        if !node.has_tag_name((WML_NS, element_name)) {
             continue;
         }
         if node.attribute((WML_NS, "type")).is_some() {
@@ -303,7 +303,7 @@ fn parse_notes_rich<R: Read + Seek>(
         };
 
         let mut paragraphs = Vec::new();
-        for p in node.children().filter(|n| is_wml(*n, "p")) {
+        for p in node.children().filter(|n| n.has_tag_name((WML_NS, "p"))) {
             let mut para = super::paragraph::build_paragraph(
                 p,
                 &mut fn_ctx,

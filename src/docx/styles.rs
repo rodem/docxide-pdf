@@ -37,11 +37,7 @@ fn group_typeface<'a>(
 fn script_font_typeface<'a>(font_group: roxmltree::Node<'a, 'a>, script: &str) -> Option<&'a str> {
     font_group
         .children()
-        .find(|n| {
-            n.tag_name().name() == "font"
-                && n.tag_name().namespace() == Some(DML_NS)
-                && n.attribute("script") == Some(script)
-        })
+        .find(|n| n.has_tag_name((DML_NS, "font")) && n.attribute("script") == Some(script))
         .and_then(|n| n.attribute("typeface"))
         .filter(|tf| !tf.is_empty())
 }
@@ -448,7 +444,7 @@ pub(super) fn parse_theme<R: Read + Seek>(
 fn parse_theme_gradient_stops(gs_lst: roxmltree::Node) -> Vec<ThemeGradientStop> {
     gs_lst
         .children()
-        .filter(|n| n.tag_name().name() == "gs" && n.tag_name().namespace() == Some(DML_NS))
+        .filter(|n| n.has_tag_name((DML_NS, "gs")))
         .map(|gs| {
             let position = gs
                 .attribute("pos")
@@ -457,9 +453,7 @@ fn parse_theme_gradient_stops(gs_lst: roxmltree::Node) -> Vec<ThemeGradientStop>
                 .unwrap_or(0.0);
             let transforms = gs
                 .descendants()
-                .find(|n| {
-                    n.tag_name().name() == "schemeClr" && n.tag_name().namespace() == Some(DML_NS)
-                })
+                .find(|n| n.has_tag_name((DML_NS, "schemeClr")))
                 .map(parse_color_transforms)
                 .unwrap_or_default();
             ThemeGradientStop {
@@ -746,9 +740,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
     let mut table_styles = HashMap::new();
 
     for style_node in root.children() {
-        if style_node.tag_name().name() != "style"
-            || style_node.tag_name().namespace() != Some(WML_NS)
-        {
+        if !style_node.has_tag_name((WML_NS, "style")) {
             continue;
         }
 

@@ -14,7 +14,7 @@ use super::color::{
 use super::images::{extent_dimensions, parse_anchor_position};
 use super::styles::{ThemeFillStyle, ThemeFonts};
 use super::{
-    DML_NS, MC_NS_TOP, ParseContext, VML_NS, WML_NS, WPD_NS, WPS_NS, dml as find_dml,
+    DML_NS, MC_NS_TOP, OFFICE_NS, ParseContext, VML_NS, WML_NS, WPD_NS, WPS_NS, dml as find_dml,
     dml_children as find_dml_all, emu_attr, parse_pt, wps as find_wps,
 };
 
@@ -79,11 +79,8 @@ fn collect_dml_points(parent: roxmltree::Node) -> Vec<(String, String)> {
 }
 
 pub(super) fn find_sp_pr<'a>(wsp: roxmltree::Node<'a, 'a>) -> Option<roxmltree::Node<'a, 'a>> {
-    wsp.children().find(|n| {
-        n.tag_name().name() == "spPr"
-            && (n.tag_name().namespace() == Some(WPS_NS)
-                || n.tag_name().namespace() == Some(DML_NS))
-    })
+    wsp.children()
+        .find(|n| n.has_tag_name((WPS_NS, "spPr")) || n.has_tag_name((DML_NS, "spPr")))
 }
 
 fn find_wps_style_ref<'a>(
@@ -105,7 +102,7 @@ pub(super) fn parse_txbx_content_paragraphs<R: Read + std::io::Seek>(
     let opts = super::paragraph::ParagraphOptions::default();
     for p in txbx_content
         .children()
-        .filter(|n| n.tag_name().name() == "p" && n.tag_name().namespace() == Some(WML_NS))
+        .filter(|n| n.has_tag_name((WML_NS, "p")))
     {
         paragraphs.push(super::paragraph::build_paragraph(
             p,
@@ -388,7 +385,7 @@ pub(super) fn parse_textbox_from_wsp<R: Read + std::io::Seek>(
 ) -> Option<WspResult> {
     let wsp = anchor
         .descendants()
-        .find(|n| n.tag_name().name() == "wsp" && n.tag_name().namespace() == Some(WPS_NS))?;
+        .find(|n| n.has_tag_name((WPS_NS, "wsp")))?;
     parse_wsp_shape(wsp, ctx)
 }
 
@@ -480,9 +477,8 @@ pub(super) fn parse_wsp_shape<R: Read + std::io::Seek>(
 
     let paragraphs = find_wps(wsp, "txbx")
         .and_then(|txbx| {
-            txbx.children().find(|n| {
-                n.tag_name().name() == "txbxContent" && n.tag_name().namespace() == Some(WML_NS)
-            })
+            txbx.children()
+                .find(|n| n.has_tag_name((WML_NS, "txbxContent")))
         })
         .map(|tc| parse_txbx_content_paragraphs(tc, ctx))
         .unwrap_or_default();
@@ -514,7 +510,7 @@ pub(super) fn parse_connector_from_wsp(
 ) -> Option<ConnectorShape> {
     let wsp = anchor
         .descendants()
-        .find(|n| n.tag_name().name() == "wsp" && n.tag_name().namespace() == Some(WPS_NS))?;
+        .find(|n| n.has_tag_name((WPS_NS, "wsp")))?;
 
     let (h_position, _, v_pos, _) = parse_anchor_position(anchor);
     let (display_w, display_h) = extent_dimensions(anchor);
@@ -572,7 +568,7 @@ pub(super) fn parse_connector_shape_node(
             let mut adj2 = 0.0_f32;
             for gd in prst_geom
                 .descendants()
-                .filter(|n| n.tag_name().name() == "gd" && n.tag_name().namespace() == Some(DML_NS))
+                .filter(|n| n.has_tag_name((DML_NS, "gd")))
             {
                 let name = gd.attribute("name").unwrap_or("");
                 let val = gd
@@ -714,7 +710,6 @@ fn vml_spt_to_preset(spt: u32) -> Option<&'static str> {
 /// Resolve a VML shape's preset geometry from its `o:spt` attribute or its
 /// `type="#_x0000_t<N>"` reference.
 fn vml_shape_preset(shape: roxmltree::Node) -> Option<&'static str> {
-    const OFFICE_NS: &str = "urn:schemas-microsoft-com:office:office";
     let spt = shape
         .attribute((OFFICE_NS, "spt"))
         .and_then(|v| v.trim().parse::<f64>().ok().map(|f| f as u32))
@@ -805,11 +800,11 @@ pub(super) fn parse_textbox_from_vml<R: Read + std::io::Seek>(
     // VML WordArt uses v:textpath instead of v:textbox
     let Some(textbox_node) = shape
         .children()
-        .find(|n| n.tag_name().name() == "textbox" && n.tag_name().namespace() == Some(VML_NS))
+        .find(|n| n.has_tag_name((VML_NS, "textbox")))
     else {
         if let Some(tp) = shape
             .children()
-            .find(|n| n.tag_name().name() == "textpath" && n.tag_name().namespace() == Some(VML_NS))
+            .find(|n| n.has_tag_name((VML_NS, "textpath")))
         {
             return super::wordart::parse_vml_wordart(shape, tp, ctx.styles, ctx.theme);
         }
@@ -819,9 +814,9 @@ pub(super) fn parse_textbox_from_vml<R: Read + std::io::Seek>(
         // Build a paragraph-less stroked shape from the preset geometry.
         return parse_vml_geometry_shape(shape);
     };
-    let txbx_content = textbox_node.children().find(|n| {
-        n.tag_name().name() == "txbxContent" && n.tag_name().namespace() == Some(WML_NS)
-    })?;
+    let txbx_content = textbox_node
+        .children()
+        .find(|n| n.has_tag_name((WML_NS, "txbxContent")))?;
 
     let style_str = shape.attribute("style").unwrap_or("");
     let VmlBoxStyle {
@@ -896,20 +891,22 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
         let ns = child.tag_name().namespace();
         let name = child.tag_name().name();
         if ns == Some(MC_NS_TOP) && name == "AlternateContent" {
-            let choice = child.children().find(|n| {
-                n.tag_name().namespace() == Some(MC_NS_TOP) && n.tag_name().name() == "Choice"
-            });
-            let fallback = child.children().find(|n| {
-                n.tag_name().namespace() == Some(MC_NS_TOP) && n.tag_name().name() == "Fallback"
-            });
+            let choice = child
+                .children()
+                .find(|n| n.has_tag_name((MC_NS_TOP, "Choice")));
+            let fallback = child
+                .children()
+                .find(|n| n.has_tag_name((MC_NS_TOP, "Fallback")));
 
             if let Some(branch) = choice {
-                for drawing in branch.children().filter(|n| {
-                    n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "drawing"
-                }) {
-                    for container in drawing.children().filter(|n| {
-                        n.tag_name().namespace() == Some(WPD_NS) && n.tag_name().name() == "anchor"
-                    }) {
+                for drawing in branch
+                    .children()
+                    .filter(|n| n.has_tag_name((WML_NS, "drawing")))
+                {
+                    for container in drawing
+                        .children()
+                        .filter(|n| n.has_tag_name((WPD_NS, "anchor")))
+                    {
                         let (display_w, display_h) = extent_dimensions(container);
 
                         if let Some(wsp) = parse_textbox_from_wsp(container, ctx) {
@@ -957,19 +954,16 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
                     }
                 }
             } else if let Some(branch) = fallback {
-                for pict in branch.children().filter(|n| {
-                    n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "pict"
-                }) {
+                for pict in branch
+                    .children()
+                    .filter(|n| n.has_tag_name((WML_NS, "pict")))
+                {
                     if let Some(tb) = parse_textbox_from_vml(pict, ctx) {
                         textboxes.push(tb);
                     }
                 }
-                for r in branch.children().filter(|n| {
-                    n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "r"
-                }) {
-                    for pict in r.children().filter(|n| {
-                        n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "pict"
-                    }) {
+                for r in branch.children().filter(|n| n.has_tag_name((WML_NS, "r"))) {
+                    for pict in r.children().filter(|n| n.has_tag_name((WML_NS, "pict"))) {
                         if let Some(tb) = parse_textbox_from_vml(pict, ctx) {
                             textboxes.push(tb);
                         }

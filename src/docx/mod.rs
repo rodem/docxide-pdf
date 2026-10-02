@@ -51,6 +51,14 @@ pub(super) const CHART_NS: &str = "http://schemas.openxmlformats.org/drawingml/2
 pub(super) const DSP_NS: &str = "http://schemas.microsoft.com/office/drawing/2008/diagram";
 pub(super) const W14_NS: &str = "http://schemas.microsoft.com/office/word/2010/wordml";
 pub(super) const VML_NS: &str = "urn:schemas-microsoft-com:vml";
+pub(super) const W10_NS: &str = "urn:schemas-microsoft-com:office:word";
+pub(super) const OFFICE_NS: &str = "urn:schemas-microsoft-com:office:office";
+pub(super) const PIC_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+pub(super) const DIAGRAM_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/diagram";
+pub(super) const MATH_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/math";
+pub(super) const WPC_NS: &str =
+    "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas";
+pub(super) const WPG_NS: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
 
 pub(super) fn twips_to_pts(twips: f32) -> f32 {
     twips / 20.0
@@ -84,8 +92,7 @@ pub(super) fn find_child<'a>(
     name: &str,
     namespace: &str,
 ) -> Option<roxmltree::Node<'a, 'a>> {
-    node.children()
-        .find(|n| n.tag_name().name() == name && n.tag_name().namespace() == Some(namespace))
+    node.children().find(|n| n.has_tag_name((namespace, name)))
 }
 
 pub(super) fn dml<'a>(
@@ -95,13 +102,21 @@ pub(super) fn dml<'a>(
     find_child(node, name, DML_NS)
 }
 
+/// All child elements with the given name and namespace.
+pub(super) fn find_children<'a>(
+    node: roxmltree::Node<'a, 'a>,
+    name: &str,
+    namespace: &str,
+) -> impl Iterator<Item = roxmltree::Node<'a, 'a>> {
+    node.children()
+        .filter(move |n| n.has_tag_name((namespace, name)))
+}
+
 pub(super) fn dml_children<'a>(
     parent: roxmltree::Node<'a, 'a>,
     name: &str,
 ) -> impl Iterator<Item = roxmltree::Node<'a, 'a>> {
-    parent
-        .children()
-        .filter(move |n| n.tag_name().name() == name && n.tag_name().namespace() == Some(DML_NS))
+    find_children(parent, name, DML_NS)
 }
 
 pub(super) fn wpd<'a>(
@@ -140,9 +155,7 @@ pub(super) fn chart_ns_children<'a>(
     parent: roxmltree::Node<'a, 'a>,
     name: &str,
 ) -> impl Iterator<Item = roxmltree::Node<'a, 'a>> {
-    parent
-        .children()
-        .filter(move |n| n.tag_name().name() == name && n.tag_name().namespace() == Some(CHART_NS))
+    find_children(parent, name, CHART_NS)
 }
 
 pub(in crate::docx) struct ParseContext<'a, R: std::io::Read + std::io::Seek> {
@@ -271,17 +284,11 @@ pub(super) fn wml<'a>(
     node: roxmltree::Node<'a, 'a>,
     name: &str,
 ) -> Option<roxmltree::Node<'a, 'a>> {
-    node.children()
-        .find(|n| n.tag_name().name() == name && n.tag_name().namespace() == Some(WML_NS))
+    find_child(node, name, WML_NS)
 }
 
 pub(super) fn wml_attr<'a>(node: roxmltree::Node<'a, 'a>, child: &str) -> Option<&'a str> {
     wml(node, child).and_then(|n| n.attribute((WML_NS, "val")))
-}
-
-/// True when `node` is the WordprocessingML element `name`.
-pub(super) fn is_wml(node: roxmltree::Node, name: &str) -> bool {
-    node.tag_name().name() == name && node.tag_name().namespace() == Some(WML_NS)
 }
 
 pub(super) fn twips_attr(node: roxmltree::Node, attr: &str) -> Option<f32> {
@@ -442,10 +449,7 @@ pub(super) fn parse_tab_stops_with_clears(ppr: roxmltree::Node) -> (Vec<TabStop>
     };
     let mut stops = Vec::new();
     let mut clears = Vec::new();
-    for n in tabs
-        .children()
-        .filter(|n| n.tag_name().name() == "tab" && n.tag_name().namespace() == Some(WML_NS))
-    {
+    for n in tabs.children().filter(|n| n.has_tag_name((WML_NS, "tab"))) {
         let Some(pos) = twips_attr(n, "pos") else {
             continue;
         };
@@ -593,24 +597,20 @@ pub(super) fn collect_block_nodes<'a>(
 ) -> Vec<roxmltree::Node<'a, 'a>> {
     let mut nodes = Vec::new();
     for child in parent.children() {
-        if child.tag_name().name() == "sdt" && child.tag_name().namespace() == Some(WML_NS) {
+        if child.has_tag_name((WML_NS, "sdt")) {
             if let Some(content) = wml(child, "sdtContent") {
                 nodes.extend(collect_block_nodes(content));
             }
-        } else if child.tag_name().name() == "customXml"
-            && child.tag_name().namespace() == Some(WML_NS)
-        {
+        } else if child.has_tag_name((WML_NS, "customXml")) {
             // w:customXml is a transparent wrapper (block/row/cell): its children
             // ARE the content. Same descent drives tbl→tr and tr→tc unwrapping.
             nodes.extend(collect_block_nodes(child));
-        } else if child.tag_name().namespace() == Some(MC_NS_TOP)
-            && child.tag_name().name() == "AlternateContent"
-        {
+        } else if child.has_tag_name((MC_NS_TOP, "AlternateContent")) {
             // mc:AlternateContent wraps block-level content in mc:Choice/mc:Fallback.
             // Use mc:Fallback for compatibility (it avoids newer namespace requirements).
-            let fallback = child.children().find(|n| {
-                n.tag_name().namespace() == Some(MC_NS_TOP) && n.tag_name().name() == "Fallback"
-            });
+            let fallback = child
+                .children()
+                .find(|n| n.has_tag_name((MC_NS_TOP, "Fallback")));
             if let Some(fb) = fallback {
                 nodes.extend(collect_block_nodes(fb));
             }
@@ -718,42 +718,21 @@ fn parse_core_props<R: Read + std::io::Seek>(
         return (None, None, None, None);
     };
 
+    const DC_NS: &str = "http://purl.org/dc/elements/1.1/";
+    const CP_NS: &str = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties";
     let root = xml.root_element();
-
-    let mut title = None;
-    let mut author = None;
-    let mut subject = None;
-    let mut keywords = None;
-
-    for child in root.children() {
-        if child.tag_name().name() == "title"
-            && child.tag_name().namespace() == Some("http://purl.org/dc/elements/1.1/")
-        {
-            if let Some(text) = child.text() {
-                title = Some(text.to_string());
-            }
-        } else if child.tag_name().name() == "creator"
-            && child.tag_name().namespace() == Some("http://purl.org/dc/elements/1.1/")
-        {
-            if let Some(text) = child.text() {
-                author = Some(text.to_string());
-            }
-        } else if child.tag_name().name() == "subject"
-            && child.tag_name().namespace() == Some("http://purl.org/dc/elements/1.1/")
-        {
-            if let Some(text) = child.text() {
-                subject = Some(text.to_string());
-            }
-        } else if child.tag_name().name() == "keywords"
-            && child.tag_name().namespace()
-                == Some("http://schemas.openxmlformats.org/package/2006/metadata/core-properties")
-            && let Some(text) = child.text()
-        {
-            keywords = Some(text.to_string());
-        }
-    }
-
-    (title, author, subject, keywords)
+    let prop = |ns, name| {
+        find_children(root, name, ns)
+            .filter_map(|n| n.text())
+            .last()
+            .map(str::to_string)
+    };
+    (
+        prop(DC_NS, "title"),
+        prop(DC_NS, "creator"),
+        prop(DC_NS, "subject"),
+        prop(CP_NS, "keywords"),
+    )
 }
 
 fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Document, Error> {

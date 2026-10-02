@@ -243,10 +243,7 @@ fn parse_w14_gradient(grad: roxmltree::Node, theme: &ThemeFonts) -> Option<TextF
     let gs_lst = find_w14(grad, "gsLst")?;
 
     let mut stops = Vec::new();
-    for gs in gs_lst
-        .children()
-        .filter(|n| n.tag_name().name() == "gs" && n.tag_name().namespace() == Some(W14_NS))
-    {
+    for gs in gs_lst.children().filter(|n| n.has_tag_name((W14_NS, "gs"))) {
         let pos = gs
             .attribute((W14_NS, "pos"))
             .and_then(|v| v.parse::<f32>().ok())

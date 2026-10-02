@@ -17,8 +17,9 @@ use super::styles::{
 use super::textbox::parse_textbox_from_vml;
 use super::wordart::{parse_text_fill, parse_text_glow, parse_text_outline, parse_text_shadow};
 use super::{
-    MC_NS_TOP, ParseContext, REL_NS, VML_NS, WML_NS, highlight_color, parse_hex_color,
-    parse_one_border, parse_pt, parse_run_shd, parse_text_color, wml, wml_attr, wml_bool,
+    MATH_NS, MC_NS_TOP, OFFICE_NS, ParseContext, REL_NS, VML_NS, WML_NS, find_child,
+    highlight_color, parse_hex_color, parse_one_border, parse_pt, parse_run_shd, parse_text_color,
+    wml, wml_attr, wml_bool,
 };
 
 fn is_dynamic_field(instr: &str) -> bool {
@@ -636,9 +637,8 @@ fn split_run_by_script(run: Run) -> Vec<Run> {
 }
 
 fn is_comment_reference_run(node: roxmltree::Node) -> bool {
-    node.children().any(|c| {
-        c.tag_name().namespace() == Some(WML_NS) && c.tag_name().name() == "commentReference"
-    })
+    node.children()
+        .any(|c| c.has_tag_name((WML_NS, "commentReference")))
 }
 
 fn collect_run_nodes<'a>(
@@ -691,10 +691,7 @@ fn collect_run_nodes<'a>(
                     .and_then(|rid| rels.get(rid))
                     .cloned()
             };
-            for n in child
-                .children()
-                .filter(|n| n.tag_name().name() == "r" && n.tag_name().namespace() == Some(WML_NS))
-            {
+            for n in child.children().filter(|n| n.has_tag_name((WML_NS, "r"))) {
                 if is_comment_reference_run(n) {
                     continue;
                 }
@@ -721,9 +718,10 @@ fn collect_run_nodes<'a>(
             }
         } else if ns == Some(MATH_NS) && name == "oMathPara" {
             // A math paragraph wraps one or more m:oMath; emit each in order.
-            for om in child.children().filter(|n| {
-                n.tag_name().namespace() == Some(MATH_NS) && n.tag_name().name() == "oMath"
-            }) {
+            for om in child
+                .children()
+                .filter(|n| n.has_tag_name((MATH_NS, "oMath")))
+            {
                 out.push((om, None, false, active_comments.clone()));
             }
         } else if ns == Some(MATH_NS) && name == "oMath" {
@@ -853,13 +851,9 @@ fn merge_compatible_runs(runs: Vec<Run>) -> Vec<Run> {
     result
 }
 
-pub(super) const MATH_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/math";
-
 /// First math-namespace child element with the given local name.
 fn math_child<'a>(parent: roxmltree::Node<'a, 'a>, name: &str) -> Option<roxmltree::Node<'a, 'a>> {
-    parent
-        .children()
-        .find(|n| n.tag_name().namespace() == Some(MATH_NS) && n.tag_name().name() == name)
+    find_child(parent, name, MATH_NS)
 }
 
 /// Default alignment for a paragraph that contains a display-math block
@@ -870,9 +864,9 @@ fn math_child<'a>(parent: roxmltree::Node<'a, 'a>, name: &str) -> Option<roxmltr
 /// treated as display math).
 pub(super) fn display_math_alignment(para: roxmltree::Node) -> Option<crate::model::Alignment> {
     use crate::model::Alignment;
-    let omp = para.children().find(|n| {
-        n.tag_name().namespace() == Some(MATH_NS) && n.tag_name().name() == "oMathPara"
-    })?;
+    let omp = para
+        .children()
+        .find(|n| n.has_tag_name((MATH_NS, "oMathPara")))?;
     let jc = math_child(omp, "oMathParaPr")
         .and_then(|pr| math_child(pr, "jc"))
         .and_then(|j| j.attribute((MATH_NS, "val")));
@@ -913,9 +907,7 @@ fn omath_to_runs(
             "r" => {
                 let text: String = child
                     .children()
-                    .filter(|n| {
-                        n.tag_name().namespace() == Some(MATH_NS) && n.tag_name().name() == "t"
-                    })
+                    .filter(|n| n.has_tag_name((MATH_NS, "t")))
                     .filter_map(|t| t.text())
                     .collect();
                 if !text.is_empty() {
@@ -1038,8 +1030,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
     let mut field_stack: Vec<FieldFrame> = Vec::new();
 
     for (run_node, hyperlink_url, is_anchor_hyperlink, comment_ids) in run_nodes {
-        if run_node.tag_name().namespace() == Some(MATH_NS) && run_node.tag_name().name() == "oMath"
-        {
+        if run_node.has_tag_name((MATH_NS, "oMath")) {
             omath_to_runs(
                 run_node,
                 &defaults,
@@ -1072,14 +1063,15 @@ pub(super) fn parse_runs<R: Read + Seek>(
         let bare_break = (run_node.tag_name().name() == "br").then_some(run_node);
         for child in bare_break.into_iter().chain(run_node.children()) {
             let child_ns = child.tag_name().namespace();
-            if child_ns == Some(MC_NS_TOP) && child.tag_name().name() == "AlternateContent" {
-                let choice = child.children().find(|n| {
-                    n.tag_name().namespace() == Some(MC_NS_TOP) && n.tag_name().name() == "Choice"
-                });
+            if child.has_tag_name((MC_NS_TOP, "AlternateContent")) {
+                let choice = child
+                    .children()
+                    .find(|n| n.has_tag_name((MC_NS_TOP, "Choice")));
                 if let Some(branch) = choice {
-                    for drawing in branch.children().filter(|n| {
-                        n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "drawing"
-                    }) {
+                    for drawing in branch
+                        .children()
+                        .filter(|n| n.has_tag_name((WML_NS, "drawing")))
+                    {
                         let result = parse_run_drawing(drawing, ctx);
                         handle_drawing_result!(
                             result,
@@ -1092,12 +1084,14 @@ pub(super) fn parse_runs<R: Read + Seek>(
                             connectors
                         );
                     }
-                } else if let Some(branch) = child.children().find(|n| {
-                    n.tag_name().namespace() == Some(MC_NS_TOP) && n.tag_name().name() == "Fallback"
-                }) {
-                    for pict in branch.descendants().filter(|n| {
-                        n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "pict"
-                    }) {
+                } else if let Some(branch) = child
+                    .children()
+                    .find(|n| n.has_tag_name((MC_NS_TOP, "Fallback")))
+                {
+                    for pict in branch
+                        .descendants()
+                        .filter(|n| n.has_tag_name((WML_NS, "pict")))
+                    {
                         if let Some(tb) = parse_textbox_from_vml(pict, ctx) {
                             push_textbox(&floating_images, &mut textboxes, tb);
                         }
@@ -1389,8 +1383,6 @@ pub(super) fn parse_runs<R: Read + Seek>(
     }
 }
 
-const OFFICE_NS: &str = "urn:schemas-microsoft-com:office:office";
-
 fn parse_vml_horizontal_rule(pict_node: roxmltree::Node) -> Option<HorizontalRule> {
     let shape = pict_node.children().find(|n| {
         n.tag_name().namespace() == Some(VML_NS) && matches!(n.tag_name().name(), "rect" | "shape")
@@ -1489,7 +1481,7 @@ mod tests {
         let t_text = out[0]
             .0
             .children()
-            .find(|n| n.tag_name().name() == "t" && n.tag_name().namespace() == Some(WML_NS))
+            .find(|n| n.has_tag_name((WML_NS, "t")))
             .and_then(|n| n.text());
         assert_eq!(t_text, Some("OFFICIAL"));
     }

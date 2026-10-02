@@ -96,7 +96,7 @@ pub(super) fn parse_section_properties<R: Read + Seek>(
 
         let child_cols: Vec<_> = cols_node
             .children()
-            .filter(|c| c.tag_name().name() == "col" && c.tag_name().namespace() == Some(WML_NS))
+            .filter(|c| c.has_tag_name((WML_NS, "col")))
             .collect();
 
         let col_defs: Vec<ColumnDef> = if !equal_width && !child_cols.is_empty() {
@@ -227,10 +227,7 @@ fn resolve_hf<R: Read + Seek>(
     ctx: &mut ParseContext<'_, R>,
 ) -> Option<HeaderFooter> {
     let rid = sect_node.children().find_map(|child| {
-        if child.tag_name().namespace() == Some(WML_NS)
-            && child.tag_name().name() == tag
-            && child.attribute((WML_NS, "type")) == Some(hf_type)
-        {
+        if child.has_tag_name((WML_NS, tag)) && child.attribute((WML_NS, "type")) == Some(hf_type) {
             child.attribute((REL_NS, "id"))
         } else {
             None

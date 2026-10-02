@@ -86,9 +86,7 @@ pub(super) fn parse_font_table<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> 
 
         let mut embeds = Vec::new();
         for font_node in xml.root_element().children() {
-            if font_node.tag_name().name() != "font"
-                || font_node.tag_name().namespace() != Some(WML_NS)
-            {
+            if !font_node.has_tag_name((WML_NS, "font")) {
                 continue;
             }
             let Some(font_name) = font_node.attribute((WML_NS, "name")) else {

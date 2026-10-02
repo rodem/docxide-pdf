@@ -18,11 +18,7 @@ use super::images::{
     read_image_from_zip,
 };
 use super::textbox::{find_sp_pr, parse_connector_shape_node, parse_wsp_shape};
-use super::{ParseContext, WPS_NS, dml, emu_attr};
-
-const WPC_NS: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas";
-const WPG_NS: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
-const PIC_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+use super::{PIC_NS, ParseContext, WPC_NS, WPG_NS, WPS_NS, dml, emu_attr};
 
 /// Affine scale+translate mapping local shape coordinates to drawing
 /// coordinates (points, y-down, origin at the drawing's top-left).
@@ -117,11 +113,9 @@ pub(super) fn parse_canvas_or_group<R: Read + Seek>(
     is_anchor: bool,
     ctx: &mut ParseContext<'_, R>,
 ) -> Option<Vec<RunDrawingResult>> {
-    let root = container.descendants().find(|n| {
-        let tn = n.tag_name();
-        (tn.name() == "wpc" && tn.namespace() == Some(WPC_NS))
-            || (tn.name() == "wgp" && tn.namespace() == Some(WPG_NS))
-    })?;
+    let root = container
+        .descendants()
+        .find(|n| n.has_tag_name((WPC_NS, "wpc")) || n.has_tag_name((WPG_NS, "wgp")))?;
 
     let (display_w, display_h) = extent_dimensions(container);
 
@@ -214,7 +208,7 @@ pub(super) fn parse_canvas_or_group<R: Read + Seek>(
 fn find_group_xfrm(group: roxmltree::Node) -> Option<Xfrm> {
     let grp_sp_pr = group
         .children()
-        .find(|n| n.tag_name().name() == "grpSpPr" && n.tag_name().namespace() == Some(WPG_NS))?;
+        .find(|n| n.has_tag_name((WPG_NS, "grpSpPr")))?;
     read_xfrm(grp_sp_pr)
 }
 
@@ -257,9 +251,7 @@ fn emit_wsp<R: Read + Seek>(
     let (w, h) = t.scale(xfrm.ext.0, xfrm.ext.1);
 
     let prst = dml(sp_pr, "prstGeom").and_then(|g| g.attribute("prst"));
-    let has_txbx = wsp
-        .children()
-        .any(|n| n.tag_name().name() == "txbx" && n.tag_name().namespace() == Some(WPS_NS));
+    let has_txbx = wsp.children().any(|n| n.has_tag_name((WPS_NS, "txbx")));
     let is_connector = matches!(prst, Some("line" | "straightConnector1" | "arc")) && !has_txbx;
 
     if is_connector {
@@ -313,10 +305,7 @@ fn emit_pic<R: Read + Seek>(
     ctx: &mut ParseContext<'_, R>,
     out: &mut Vec<RunDrawingResult>,
 ) {
-    let Some(sp_pr) = pic
-        .children()
-        .find(|n| n.tag_name().name() == "spPr" && n.tag_name().namespace() == Some(PIC_NS))
-    else {
+    let Some(sp_pr) = pic.children().find(|n| n.has_tag_name((PIC_NS, "spPr"))) else {
         return;
     };
     let Some(xfrm) = read_xfrm(sp_pr) else { return };

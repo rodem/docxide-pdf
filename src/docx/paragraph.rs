@@ -352,9 +352,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
 
     let bookmarks: Vec<String> = if opts.resolve_bookmarks {
         node.children()
-            .filter(|n| {
-                n.tag_name().namespace() == Some(WML_NS) && n.tag_name().name() == "bookmarkStart"
-            })
+            .filter(|n| n.has_tag_name((WML_NS, "bookmarkStart")))
             .filter_map(|n| n.attribute((WML_NS, "name")).map(|s| s.to_string()))
             .collect()
     } else {
