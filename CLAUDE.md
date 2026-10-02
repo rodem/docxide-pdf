@@ -50,7 +50,7 @@ python3 tools/engine_compare.py --case case41 --case 'case2*'   # exact name or 
 python3 tools/engine_compare.py --html-only            # rebuild index.html from comparison/work/manifest.json (no re-scoring)
 tools/deploy_comparison.sh [remote] [branch]           # publish comparison/ (work/ excluded) as an orphan gh-pages commit (DRY_RUN=1 to preview)
 # CI does both on every push to main: .github/workflows/comparison.yml (fonts come from the private sverrejb/docxide-pdf-assets repo; only tracked cases/ are compared)
-# MiniPdf = the Rust crate's CLI (`cargo install minipdf-cli`), never the .NET engine; rdocx via `cargo install rdocx`; office2pdf via `cargo install office2pdf-cli`; LibreOffice via soffice
+# MiniPdf = the Rust crate's CLI (`cargo install minipdf-cli`), never the .NET engine; rdocx via `cargo install rdocx`; office2pdf via `cargo install office2pdf-cli`; jubarte-redlines via `cargo install jubarte-redlines` (binary `jubarte`); LibreOffice via soffice
 
 # Word for Mac, unattended: export .docx → .pdf with Word itself (probe documents, what-if experiments)
 python3 tools/word_export.py <file-or-dir>... [--out DIR] [--force] [--timeout S]   # stages inside Word's container, answers dialogs, FAIL per bad file; needs the sandbox off

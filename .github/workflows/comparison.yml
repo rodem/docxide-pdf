@@ -62,6 +62,17 @@ jobs:
           for g in scraped samples; do [ ! -d "assets/fixtures/$g" ] || ln -s "$PWD/assets/fixtures/$g" "tests/fixtures/$g"; done
           mkdir -p ~/.local/share && ln -s "$PWD/assets/fonts" ~/.local/share/fonts && fc-cache -f   # LibreOffice sees them via fontconfig
           python3 tools/restore_mtime.py . && python3 tools/restore_mtime.py assets
+      - name: Word fonts where jubarte looks for them
+        # jubarte reads no Linux font directory and no fontconfig. It resolves its catalogue faces (Calibri,
+        # Arial, Times New Roman, Cambria, Aptos, Verdana, Georgia, Symbol, …) from Word-for-Mac's folders
+        # by fixed file names, and cloud families from Word's per-family cache folders; anything else comes
+        # from JUBARTE_FONT_DIR, which engine_compare.py sets. Without the two links below it would draw
+        # every Calibri/Arial/Times document in its bundled Carlito/Liberation while the other engines get
+        # the real fonts. Our vendored files carry the names it expects (Calibri.ttf, times.ttf, Cambria.ttc…).
+        run: |
+          sudo mkdir -p /Library/Fonts && sudo ln -s "$PWD/assets/fonts" /Library/Fonts/Microsoft
+          mkdir -p ~/"Library/Group Containers/UBF8T346G9.Office/FontCache/4"
+          ln -s "$PWD/assets/fonts/CloudFonts" ~/"Library/Group Containers/UBF8T346G9.Office/FontCache/4/CloudFonts"
       - name: Font families the runner's own packages share with the Word fonts
         # Our discovery ranks /usr/share/fonts above DOCXSIDE_FONTS (fonts/) and ~/.local/share/fonts is the
         # same files as fonts/, so the only way a system font can shadow a Word font here is a distro package
@@ -86,11 +97,14 @@ jobs:
       - uses: taiki-e/cache-cargo-install-action@v3
         with:
           tool: office2pdf-cli   # installs `office2pdf`
+      - uses: taiki-e/cache-cargo-install-action@v3
+        with:
+          tool: jubarte-redlines   # installs `jubarte`; engine_compare.py hands it the fonts via JUBARTE_FONT_DIR
       - name: Competitor versions for the cache key
         id: ver
         # "fontdir2": competitors now get the fonts through comparison/work/fonts_flat (rdocx had none before);
         # cached PDFs from earlier keys were rendered without them and must not be reused.
-        run: echo "key=lo$(soffice --version | awk '{print $2}')-minipdf$(minipdf --version | awk '{print $NF}')-rdocx$(rdocx --version | awk '{print $NF}')-o2p$(office2pdf --version | awk '{print $NF}')-verapdf${VERAPDF}-fonts${{ hashFiles('assets/fonts/**') }}-fontdir2" >> "$GITHUB_OUTPUT"
+        run: echo "key=lo$(soffice --version | awk '{print $2}')-minipdf$(minipdf --version | awk '{print $NF}')-rdocx$(rdocx --version | awk '{print $NF}')-o2p$(office2pdf --version | awk '{print $NF}')-jub$(jubarte --version | awk '{print $NF}')-verapdf${VERAPDF}-fonts${{ hashFiles('assets/fonts/**') }}-fontdir2" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v6
         with:
           path: comparison

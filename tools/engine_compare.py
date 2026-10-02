@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Side-by-side engine comparison: Word reference | docxide-pdf | LibreOffice | MiniPdf | rdocx | office2pdf.
+"""Side-by-side engine comparison: Word reference | docxide-pdf | LibreOffice | MiniPdf | rdocx | office2pdf | jubarte-redlines.
 
 Reuses PNGs the test harness already produced under tests/output/<group>/<case>/ (reference/, and
 generated/ while its PDF is byte-identical to this run's conversion with the current binary). Conversions and
@@ -25,11 +25,14 @@ rdocx: `rdocx` on PATH (cargo install rdocx) or RDOCX_BIN.
 MiniPdf: the Rust crate's CLI, `minipdf` on PATH (cargo install minipdf-cli) or MINIPDF_BIN.
 The .NET engine is a different implementation and is deliberately not what we compare against.
 office2pdf: `office2pdf` on PATH (cargo install office2pdf-cli) or OFFICE2PDF_BIN.
+jubarte-redlines: `jubarte` on PATH (cargo install jubarte-redlines) or JUBARTE_BIN.
 Accessibility scores need verapdf and pdfinfo on PATH (brew install verapdf poppler); without them the column is empty.
 
-Fonts, so every engine sees the same Word fonts: ours reads DOCXSIDE_FONTS=fonts/; minipdf, rdocx and
-office2pdf get comparison/work/fonts_flat/, one directory of links to every file under fonts/ (rdocx takes a
-single directory and does not descend into fonts/CloudFonts/*). LibreOffice has no font flag and reads
+Fonts, so every engine sees the same Word fonts: ours reads DOCXSIDE_FONTS=fonts/; minipdf, rdocx,
+office2pdf and jubarte get comparison/work/fonts_flat/, one directory of links to every file under fonts/
+(rdocx takes a single directory and does not descend into fonts/CloudFonts/*; jubarte takes it as
+JUBARTE_FONT_DIR and scans no Linux system directory at all, so without it CI would leave it with its
+bundled Carlito/Liberation). LibreOffice has no font flag and reads
 fontconfig / the OS: CI links fonts/ into ~/.local/share/fonts, which is the same files our discovery
 already ranks first there, so nothing shifts. Do NOT do the same on macOS: a copy of fonts/ under
 ~/Library/Fonts outranks the macOS system faces our references were made with (Times New Roman,
@@ -80,6 +83,7 @@ ENGINES = [
     ("minipdf", "MiniPdf (Rust)"),
     ("rdocx", "rdocx"),
     ("office2pdf", "office2pdf"),
+    ("jubarte", "jubarte-redlines"),
 ]
 COMPETITORS = [k for k, _ in ENGINES if k != "reference"]
 
@@ -153,6 +157,14 @@ def find_office2pdf() -> Path | None:
     if env and Path(env).is_file():
         return Path(env)
     found = shutil.which("office2pdf") or str(Path.home() / ".cargo" / "bin" / "office2pdf")
+    return Path(found) if Path(found).is_file() else None
+
+
+def find_jubarte() -> Path | None:
+    env = os.environ.get("JUBARTE_BIN")
+    if env and Path(env).is_file():
+        return Path(env)
+    found = shutil.which("jubarte") or str(Path.home() / ".cargo" / "bin" / "jubarte")
     return Path(found) if Path(found).is_file() else None
 
 
@@ -245,11 +257,53 @@ def convert_libreoffice(soffice: Path, docx: Path, pdf: Path) -> bool:
     return converted(r, pdf)
 
 
-@functools.lru_cache(maxsize=None)
+def font_face_name(path: Path) -> str | None:
+    """'<family>-<subfamily>' from the font's own name table (first face of a collection), or None.
+    Stdlib only: CI has no fontTools."""
+    import struct
+    try:
+        data = path.read_bytes()
+        off = 0
+        if data[:4] == b"ttcf":
+            off = struct.unpack_from(">I", data, 12)[0]
+        num_tables = struct.unpack_from(">H", data, off + 4)[0]
+        for i in range(num_tables):
+            tag, _, toff, _ = struct.unpack_from(">4sIII", data, off + 12 + 16 * i)
+            if tag == b"name":
+                break
+        else:
+            return None
+        count, strings = struct.unpack_from(">HH", data, toff + 2)
+        names: dict[int, str] = {}
+        for i in range(count):
+            plat, enc, lang, nid, length, soff = struct.unpack_from(">HHHHHH", data, toff + 6 + 12 * i)
+            if plat == 3 and nid in (1, 2, 16, 17) and (nid not in names or lang == 0x409):
+                raw = data[toff + strings + soff: toff + strings + soff + length]
+                names[nid] = raw.decode("utf-16-be", "replace")
+        family, sub = names.get(16) or names.get(1), names.get(17) or names.get(2) or "Regular"
+        if not family:
+            return None
+        clean = lambda s: re.sub(r"[^A-Za-z0-9 ]+", "", s).strip()
+        return f"{clean(family)}-{clean(sub)}"
+    except (OSError, struct.error, IndexError):
+        return None
+
+
+_FLAT_FONT_LOCK = threading.Lock()
+
+
 def flat_font_dir() -> Path | None:
+    with _FLAT_FONT_LOCK:   # cases convert in parallel; the first caller builds, the rest wait for it
+        return _flat_font_dir()
+
+
+@functools.lru_cache(maxsize=None)
+def _flat_font_dir() -> Path | None:
     """One directory of links to every font file under fonts/, for engines that take a single font
-    directory and do not descend into fonts/CloudFonts/<family>/ (rdocx). Rebuilt per run; a name
-    that repeats across subfolders is prefixed with its folder."""
+    directory and do not descend into fonts/CloudFonts/<family>/ (rdocx, jubarte). Rebuilt per run.
+    Word's cloud-font cache names files by number (fonts/CloudFonts/Vivaldi/19672202630.ttf) and jubarte
+    finds a family by file name before it confirms it against the name table, so those links are named
+    '<family>-<subfamily>' from the font itself; a name that repeats is prefixed with its folder."""
     src = ROOT / "fonts"
     if not src.is_dir():
         return None
@@ -257,9 +311,14 @@ def flat_font_dir() -> Path | None:
     shutil.rmtree(flat, ignore_errors=True)
     flat.mkdir(parents=True)
     for f in sorted(p for p in src.rglob("*") if p.suffix.lower() in (".ttf", ".ttc", ".otf")):
-        dst = flat / f.name
+        name = f.name
+        if f.stem.isdigit():
+            face = font_face_name(f)
+            if face:
+                name = face + f.suffix.lower()
+        dst = flat / name
         if dst.exists() or dst.is_symlink():
-            dst = flat / f"{f.parent.name}__{f.name}"
+            dst = flat / f"{f.parent.name}__{name}"
         dst.symlink_to(f.resolve())
     return flat
 
@@ -295,6 +354,21 @@ def convert_office2pdf(office2pdf: Path, docx: Path, pdf: Path) -> bool:
     fonts = ["--font-path", str(flat_font_dir())] if flat_font_dir() else []
     r = subprocess.run([str(office2pdf), str(docx), "-o", str(pdf), *fonts],
                        capture_output=True, text=True, timeout=TIMEOUT, check=False)
+    return converted(r, pdf)
+
+
+def convert_jubarte(jubarte: Path, docx: Path, pdf: Path) -> bool:
+    if is_fresh(pdf, docx) and is_fresh(pdf, jubarte):
+        return True
+    pdf.parent.mkdir(parents=True, exist_ok=True)
+    # Its own font folder; the only font directory it reads on Linux (macOS adds Word's DFonts and the
+    # system folders by itself). Without it, CI renders with its bundled Carlito/Liberation.
+    env = {**os.environ}
+    if flat_font_dir():
+        env["JUBARTE_FONT_DIR"] = str(flat_font_dir())
+        env["JUBARTE_FONT_INDEX"] = "off"   # its on-disk index is keyed by the folder's path, not its contents
+    r = subprocess.run([str(jubarte), "convert", str(docx), "-o", str(pdf), "--force"],
+                       capture_output=True, text=True, env=env, timeout=TIMEOUT, check=False)
     return converted(r, pdf)
 
 
@@ -375,7 +449,7 @@ def engine_versions(tools: dict) -> dict[str, str]:
     v["generated"] = f"{m.group(1) if m else '?'} @{sha}{dirty}"
     if tools.get("soffice"):
         v["libreoffice"] = " ".join(run_out([str(tools["soffice"]), "--version"]).split()[:2])  # drop the build hash
-    for key in ("minipdf", "rdocx", "office2pdf"):
+    for key in ("minipdf", "rdocx", "office2pdf", "jubarte"):
         if tools.get(key):
             v[key] = run_out([str(tools[key]), "--version"]).split()[-1]
     return v
@@ -542,7 +616,7 @@ def process_fixture(fixture: Path, group: str, tools: dict, opts) -> dict | None
             show_conversion("libreoffice")
 
     for key, convert in (("minipdf", convert_minipdf), ("rdocx", convert_rdocx),
-                         ("office2pdf", convert_office2pdf)):
+                         ("office2pdf", convert_office2pdf), ("jubarte", convert_jubarte)):
         if tools.get(key):
             ok, times[key] = spent(f"convert {key}", timed, convert, tools[key], docx, mine / f"{key}.pdf")
             if ok:
@@ -1018,6 +1092,7 @@ def main() -> None:
     ap.add_argument("--skip-minipdf", action="store_true")
     ap.add_argument("--skip-rdocx", action="store_true")
     ap.add_argument("--skip-office2pdf", action="store_true")
+    ap.add_argument("--skip-jubarte", action="store_true")
     ap.add_argument("--no-scores", action="store_true", help="skip Jaccard scoring")
     ap.add_argument("--fresh", action="store_true",
                     help="reconvert with every engine, ignoring cached PDFs, timeouts and the test harness's PDFs")
@@ -1076,6 +1151,11 @@ def main() -> None:
         tools["office2pdf"] = find_office2pdf()
         if not tools["office2pdf"]:
             print("office2pdf not found; skipping (cargo install office2pdf-cli, or OFFICE2PDF_BIN)")
+    if not opts.skip_jubarte:
+        tools["jubarte"] = find_jubarte()
+        if not tools["jubarte"]:
+            print("jubarte not found; skipping (cargo install jubarte-redlines, or JUBARTE_BIN)")
+    flat_font_dir()   # built once here, before the worker threads start converting
     if not opts.no_scores:
         # Release: SSIM over a 205-page fixture is painfully slow unoptimized. Always rebuilt (a
         # no-op when unchanged) so an edit to the scoring code is never scored with the old binary.
