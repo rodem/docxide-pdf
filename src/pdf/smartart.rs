@@ -518,7 +518,7 @@ pub(super) fn render_smartart(
                     content
                         .set_text_rendering_mode(pdf_writer::types::TextRenderingMode::FillStroke);
                 }
-                charts::show_text_encoded(content, fpn, efs, cx, ry, &piece.text, piece.fe);
+                charts::show_text(content, fpn, efs, cx, ry, &piece.text, piece.fe);
                 if needs_synthetic_bold {
                     content.set_text_rendering_mode(pdf_writer::types::TextRenderingMode::Fill);
                 }
