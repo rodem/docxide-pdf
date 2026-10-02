@@ -306,7 +306,8 @@ unchanged.
    keeping altName-first only for non-ASCII localized names; check the Korean
    fixtures and the full suite.
 2. Route cell and footnote paragraphs through `build_paragraph` (§6).
-3. Per-line heights in table cells and headers.
+3. Per-line heights in table cells and headers. Cells done (`53764bee`, §9);
+   headers open.
 4. Legacy table-style font size rule (<compat 15 without the override flag).
 5. covid_insomnia two-column flow regressed with the squeeze (6).
 6. polish_municipal_letter floating table double bottom border; japanese_land
@@ -336,3 +337,163 @@ body 1.5pt); one 56-page document with many causes; several untriaged.
    assets repo (`59143d9`, 2026-10-02).
 7. altName fix — implemented in `f4ef46b8` (2026-10-02).
 8. Optional: `git gc --prune=now` once other sessions are idle (local only).
+
+## 9. New scraped cases round (2026-10-02)
+
+Ten new scraped fixtures (`tests/fixtures/scraped/`: chinese_asset_disposal_appraisal,
+czech_wastewater_discharge_permit, door_air_cooling_unit_spec,
+greek_history_lecture_press_release, indonesian_school_admission_checklist,
+italian_teacher_hiring_preferences, nabl_lab_preassessment_guidelines,
+pasto_city_hall_press_bulletin, sao_paulo_procurement_contract,
+welsh_palliative_care_abstract_form) plus two older ones that got their first
+reference (strategi_pengembangan_information_center_resort,
+ukrainian_municipal_heating_resolution). Fixtures committed in `e3612354`,
+scores and visual hashes accepted in `429a9a91` (regressions included, so the
+suite no longer flags them). Each low case was diagnosed by
+a read-only agent with what-if docx edits; the queue below comes from those
+reports. The last two reports are in `tests/output/pending/diagnosis-*.md`,
+which is gitignored and local only.
+
+**Scores** (Jaccard / SSIM, start → now):
+
+| fixture | J | SSIM |
+|---|---|---|
+| door_air_cooling_unit_spec | 10.7 → 79.8 | 24.8 → 85.3 |
+| greek_history_lecture_press_release | 38.7 → 79.1 | 50.4 → 89.7 |
+| sao_paulo_procurement_contract | 42.5 → 78.6 | 55.5 → 97.0 |
+| welsh_palliative_care_abstract_form | 14.1 → 74.9 | 19.8 → 91.5 |
+| indonesian_school_admission_checklist | 13.4 → 73.5 | 36.7 → 90.1 |
+| italian_teacher_hiring_preferences | 64.1 | 96.8 |
+| pasto_city_hall_press_bulletin | 60.4 | 97.2 |
+| chinese_asset_disposal_appraisal | 52.6 | 88.8 |
+| czech_wastewater_discharge_permit | 23.9 → 50.8 | 41.8 → 74.3 |
+| ukrainian_municipal_heating_resolution | 39.3 → 48.5 | 58.8 → 68.8 |
+| nabl_lab_preassessment_guidelines | 35.0 → 47.1 | 60.4 → 66.6 |
+| strategi_pengembangan_information_center_resort | 20.9 | 39.1 |
+
+Mean of the 12: 34.6 → 60.9. The other 222 fixtures: 63.99 → 64.43 (against
+`tests/baselines.json`).
+
+**Rules implemented** (one commit each, each verified by a full suite run;
+2453a6f5 and b3103351 share one run):
+
+| Commit | Rule | Evidence |
+|---|---|---|
+| 6a917b1b | A missing name that is a face's full name ("Arial Bold") resolves to its family at the run's own weight, after the altName | welsh 14.1 → 21.3 |
+| 62240f49 | Comment-pane zoom = page_w / (page_w − right margin + 279.7), tx 0.96, ty centred + 0.54; headers/footers zoomed too | door_air 10.7 → 76.1; case63/64 −0.5 (0.08pt from Word's transform) |
+| 423f59fc | An empty paragraph's trailing leading may hang past the bottom margin | sao_paulo 42.5 → 78.2, feminist +7.1, chinese_student +3.9 |
+| 26c7f39e | A non-ASCII lvlText takes the level's hAnsi font (§17.3.2.26) | welsh 21.3 → 74.9 |
+| f47b2afb | Italic in a face without one is sheared 87/256 (absolute Tm); find_font_file reports the face's own style | greek 38.7 → 79.1 |
+| 6f7be31e | A break opportunity after every breaking space, also before what UAX #14 LB13 glues (`.` `,` `/` `)`) | 20 up / 3 down, czech_wastewater +7.6, ukrainian +9.2 |
+| b4dc1f65 | A vMerge restart cell taller than its spanned rows grows the last non-exact one | indonesian SSIM 36.7 → 85.8 |
+| 80f9d345 | firstLine and hanging are one value: a direct (or closer style's) either replaces both | indonesian 17.4 → 22.5 |
+| be3ed75a | Top/bottom wrap distance = distT/distB + effectExtent t/b | indonesian +5.6, indigenous_innovation +1.2 |
+| 53764bee | Table-cell lines sized by their own runs; a line is sized at each run's own size (not small caps' 80% or sub/superscript's 0.58) | 12 up / 1 down, croatian_military +18.7, czech +10.6, russian_university +7.7 |
+| dfeffba7 | The page top is where the body starts, also below a header taller than the top margin | nabl +6.2, federal_procurement +6.1 |
+| f17df7b1 | The keepNext chain ends on an in-flow table's first row | czech 42.1 → 50.8 |
+| 2453a6f5 | An empty paragraph's mark keeps its own w:b / w:i | (with the next) |
+| b3103351 | Latin line = win box + max(0, hhea ascent + lineGap − usWinAscent); descents never count | indonesian 28.1 → 73.5, slovak_constitution 51.1 → 66.7, multi_font 22.0 → 34.9 |
+
+Regressions and what explained them:
+- 423f59fc: brazilian_logistics 64.8 → 62.1. On its page 10 the bullets sit
+  36pt left of Word's and wrap short; an empty paragraph pushed to page 11
+  used to hide that.
+- b4dc1f65: covid_insomnia −0.5. The first row a merged cell spans is already
+  1.4pt short; the merged cell now makes that up in the second row. The table
+  total equals Word's.
+- b3103351, first version: GDI's external leading, max(0, lineGap − (win sum −
+  hhea sum)), counted the descents and sent slovak_constitution to 36.2 (Book
+  Antiqua Bold, hhea descent 578, win 543). Only the ascent overshoot fits
+  every measured font.
+
+**Further work for the new cases** (gain = the agent's what-if, J):
+
+- **strategi** (20.9; #1 + #2 together → 59.1, + #3/#4 → 62.5):
+  1. Table-style pPr spacing is never parsed. Header table style `a5` (after=0,
+     line=240, no borders) gets docDefaults instead (1.15×, 10pt after), so
+     9pt header lines step 21.90 where Word steps 10.32. `tables.rs:304` uses
+     "the style has borders" as a stand-in. Fix: add before/after/line to
+     `TableStyleDef` (`styles.rs`, resolving basedOn, storing spacing-only
+     styles) and cascade docDefaults → table style → paragraph style →
+     direct. 38 table styles in the fixtures carry pPr spacing.
+  2. An empty footnote gets an extra blank line in the Normal style (page 1
+     footnote area 51pt taller in Word). Seen in education_consultant_posting
+     too; turkish_journal (footnotes with text) has none. Trigger understood,
+     reason not. Same code: paragraphs without pStyle fall back to
+     FootnoteText (Word: Normal); the separator gap is a fixed 12pt (Word: the
+     separator paragraph's line, 13.43 here).
+  3. An over-wide word glued across runs (italic + upright URL) never breaks
+     at the margin unless the line is empty (`layout.rs` ~1310/1424): carry
+     it to a new line and cut with `fitting_prefix_len`. About 15 fixtures
+     have glued words over 75 characters.
+  4. Footer page numbers take the start value of the section at the top of
+     the page (pgNumType start=20 in a section ending on page 1), not the
+     last section on the page (`pdf/mod.rs` page-number loop).
+  - Minor: a star shape in a vAlign=center cell ignores the centring and the
+    left cell margin.
+- **ukrainian** (48.5; all five → 76.5):
+  1. No justified space squeeze in paragraphs with `w:tab` (+9.0):
+     `build_tabbed_line` wraps on plain overflow. Apply the compat-15 squeeze,
+     counting only the inter-word gaps after the last tab. 24 fixtures have
+     justified tab paragraphs.
+  2. An empty paragraph whose line box overlaps a floating table is not
+     pushed below it (+6.5). The float test checks only the line top
+     (`mod.rs` float-zone test, `narrow_paragraph`). The same holds in
+     russian_university_proceedings; re-check case32/45/46 (14 fixtures have
+     floating tables).
+  3. Tab gaps get justification stretch (+6.7). Word starts text at the tab
+     stop and stretches only the spaces after the last tab: add a
+     `justify_from` chunk index. Not yet checked on other references.
+  4. Connector `relativeFrom` and `cmpd="thickThin"` are ignored (+0.3).
+  5. `w:lvlJc` is not parsed (+0.2): right-aligned "1." markers in cells
+     start at the indent instead of ending there.
+  6. Underlines merge across x gaps (`push_decoration`) (+0.2);
+     czech_crisis p4 looks like the same bug.
+- **nabl** (47.1):
+  - The row-split sliver guard `available_h > 50.0` (`table.rs`) (+8.9): Word
+    splits two-paragraph rows with 22–30pt left. victorian_universal_design
+    page 8 ends 6.1pt high, which the guard currently hides; fix that first.
+  - The last section has no headerReference; Word inherits header1 for its
+    body top (`effective_slot_top` reads `header_default` only), −11.5pt on
+    page 15.
+  - vMerge continuation cells advance list counters (we print 15/16/…, Word
+    9/10/…; 18 fixtures have `<w:vMerge/>`).
+  - A merged first-column border runs past the table bottom on split pages.
+  - A table at the page top sits 0.25pt high (Word starts the top border band
+    at the slot top).
+- **czech_wastewater** (50.8):
+  - A page break in mid-paragraph is handled as a break after it
+    (`runs.rs` has_page_break_after; spec-certain, −10.5 in its
+    leave-one-out). Only this fixture.
+  - Legacy FORMCHECKBOX fields are not drawn (−6.2): 10.08pt outer box at
+    w:size 20, 0.72pt stroke, bottom 1.3pt below the baseline.
+  - The tabbed-line breaker never wraps a word joined across runs (−1.6).
+  - Superscript size = run size × OS/2 ySuperscriptYSize/unitsPerEm, rounded
+    to 0.5pt (0.65 Arial/TNR/Calibri/Verdana, 0.60 Aptos/Palatino; ~430
+    measured). We use a flat 0.58.
+- **welsh** (74.9): highlights fill the line box (we draw y − 0.2fs, 1.15fs);
+  a highlight on the paragraph mark also covers the list label; small-caps
+  spaces are drawn at 80%.
+- **indonesian** (73.5): paragraph shading must not cover the float reserve
+  (a behindDoc box is painted over); a paragraph-relative box sits 0.3pt low
+  (offset measured before space-before?).
+- **greek** (79.1, Mac reference): Mac Word's synthetic bold has a stroke of
+  0.02·size + 0.12pt and a 1/1.02 vertical squash (6 Mac references). The
+  bundled Comic Sans MS Bold has no Greek glyphs, so Word synthesizes the
+  bold.
+- **sao_paulo** (78.6): NBSP stretching in compat-14 justified lines (3
+  samples, unresolved).
+- **door_air** (79.8): deletions in headers and footers go into balloons in
+  Word (tracked-changes roadmap step 6).
+- **chinese_asset, italian_teacher, pasto**: not diagnosed (52–64 J, SSIM ≥ 88).
+
+**Gotchas learned this round:**
+- Run the CLI with `DOCXSIDE_FONTS=fonts` for what-ifs. Outside cargo the
+  vendored fonts are missing (Symbol lost its √ glyph, which hid a cell
+  line-height change).
+- A `cargo package` leaves `target/package`, and the CLI binary then goes
+  stale. Purge it (memory: cargo-stale-binary-gotcha).
+- Fonts installed under `~/Library/Fonts` outrank the system fonts in our
+  discovery. A 324-font folder there collapsed 76 fixtures for one run.
+- Edit nothing in `src/` while a suite runs. A poll on rustc can miss the
+  gaps between test binaries.

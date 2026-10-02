@@ -1,5 +1,5 @@
 {
-  "next_id": 257,
+  "next_id": 258,
   "annotations": [
     {
       "id": 208,
@@ -32,7 +32,7 @@
       "y_pt": 677.6182,
       "note": "Too much white space above image.\n\nSYSTEMIC (triage 2026-07-03): cumulative text-width/wrap drift, not image spacing. Our glyph advances measure slightly wide, wrapping a few extra lines by page 8, so ~4 of the 7 blank spacer paragraphs before the Figura 2 caption spill onto page 9 (~82pt of the gap). after_image_boost is unrelated (floating anchor, not inline). Fix belongs to text-shaping/width accuracy.\n\nFIX (2026-10-02): resolved by the over-wide picture rule (14825af1): the figure's paragraph mark wraps to its own line as in Word; page 9 now matches the reference (J +21pp).",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 66,
@@ -120,7 +120,7 @@
       "y_pt": 794.8483,
       "note": "We start higher up here than reference for some reason.\n\nSYSTEMIC (triage 2026-07-03): 11pt TOC rows lay out ~1.4pt/row short, so the 16-empty-paragraph stack straddling pages 2-3 fits entirely on page 2 for us and the bordered box starts flush at page-3 top margin (~25pt high; ~10pt of that is page-top space_before suppression once the box lands there). Same cumulative line-height drift class. Row-split fix improved TxtBnd +7.2pp but the page-3 start remains.\n\nTRIAGE (2026-10-02): no longer reproduces after this round: page 3 now starts within 0.01pt of Word (vdiff); the remaining drift in this fixture is at the page 6/7 boundary (page 7 starts 33pt high).",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 133,
@@ -186,7 +186,7 @@
       "y_pt": 535.6599,
       "note": "all our text starts a little too high\n\nFIX (2026-10-02): the 1014pt-wide logo object left no room on its line for the paragraph mark, which Word wraps to an 11pt line of its own; page 1 now sits 3pt high instead of 13.9pt.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 190,
@@ -537,7 +537,7 @@
       "x_pt": 320.8641,
       "y_pt": 115.726746,
       "note": "Signature and date lines are too short compared to reference",
-      "fixed": false,
+      "fixed": true,
       "cleared": false
     },
     {
@@ -637,7 +637,7 @@
       "y_pt": 596.5206,
       "note": "This image should be centered.\n\nTRIAGE (2026-10-02): no longer reproduces at 48a4eba0 — the picture sits at the reference position.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 244,
@@ -648,7 +648,7 @@
       "y_pt": 285.521,
       "note": "Dotted lines should be in two columns here.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 245,
@@ -669,8 +669,8 @@
       "x_pt": 185.86977,
       "y_pt": 196.14069,
       "note": "Table breaks very differently from reference",
-      "fixed": false,
-      "cleared": false
+      "fixed": true,
+      "cleared": true
     },
     {
       "id": 247,
@@ -779,6 +779,17 @@
       "x_pt": 88.24426,
       "y_pt": 770.7291,
       "note": "Missing header",
+      "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 257,
+      "case": "scraped/czech_wastewater_discharge_permit",
+      "page": 3,
+      "source": "Generated",
+      "x_pt": 505.67105,
+      "y_pt": 392.90082,
+      "note": "Heading for next page?",
       "fixed": false,
       "cleared": false
     }
