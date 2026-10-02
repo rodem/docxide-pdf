@@ -210,10 +210,14 @@ Containers/UBF8T346G9.Office/FontCache/4/CloudFonts/`, `diff -rq` it against
   65.0 → 94.9 (release CLI + page-metrics, not yet a suite run).
 - multi_font: Copperplate Gothic Light (81 glyphs). It is in Word's cloud
   catalog (`FontCache/4/Catalog/ListAll_hier.Json`, id 36453684816), but
-  opening the document doesn't download it (Word ships Copperplate Gothic
-  Bold, so the family looks present). Picking it in Word's font menu
-  fetches it; then copy it into `fonts/CloudFonts/` and the assets repo.
-  Bodoni MT is already in `fonts/CloudFonts`.
+  neither opening the document nor Mac Word's font menu offers it, though its
+  catalog flags equal those of fonts Word did download (Algerian, Jokerman).
+  Likely cause: Word ships Copperplate Gothic Bold, so the family counts as
+  installed. The menu's "Copperplate" (Light/Regular/Bold) is Apple's
+  `Copperplate.ttc`, a different design; "Copperplate Gothic" is the shipped
+  Bold. A Windows Office machine has it as `COPRGTL.TTF`; copy it into
+  `fonts/CloudFonts/` and the assets repo. Bodoni MT is already in
+  `fonts/CloudFonts`.
 - eco_int's 14 "Helvetica,Italic" glyphs are macOS Helvetica Oblique under
   another name, not a missing file.
 
