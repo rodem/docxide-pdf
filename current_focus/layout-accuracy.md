@@ -193,8 +193,8 @@ Regressions and what explained them:
 - **Office cloud fonts:** Jokerman, Source Sans Pro, Segoe UI Black and
   Script MT Bold are in Word's cloud catalog; Word downloads them into
   `~/Library/Group Containers/UBF8T346G9.Office/FontCache/4/CloudFonts/` when a
-  document names them. Copied into `fonts/CloudFonts/` (not yet in the private
-  assets repo, so CI lacks them): corpus docs 8.8 → 92.4, 17.1 → 79.8.
+  document names them. Copied into `fonts/CloudFonts/` and the private
+  assets repo (`59143d9`, 2026-10-02): corpus docs 8.8 → 92.4, 17.1 → 79.8.
 - **fontTable altName order:** we try `w:altName` before the requested name
   (since fcb84c7e, for a Korean localized name "바탕"). Word uses altName only
   when the font is missing: a Source Sans Pro doc with altName Corbel is drawn
@@ -332,7 +332,7 @@ body 1.5pt); one 56-page document with many causes; several untriaged.
    is the default is open. Comparing two documents into a tracked-changes
    .docx is a separate tool, out of scope.
 5. Mac-only system fonts — yes, done (43).
-6. Cloud fonts — copied into `fonts/CloudFonts/`; adding them to the private
-   assets repo for CI needs the user's OK (it is a push).
+6. Cloud fonts — copied into `fonts/CloudFonts/` and committed to the private
+   assets repo (`59143d9`, 2026-10-02).
 7. altName fix — recorded, not yet approved to implement.
 8. Optional: `git gc --prune=now` once other sessions are idle (local only).

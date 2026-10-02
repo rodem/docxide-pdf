@@ -453,11 +453,12 @@ count now matches), construction_bathroom_accessories_spec.
 references against the PostScript names of all indexed font files: only
 three fixtures use faces we lack. croatian_thesis_topic_approval_form is set
 in Merriweather (Regular + Bold, 340 glyphs) and we fit it on one page where
-Word needs two (J 23.1): Merriweather is OFL, but Word's machine had the
-static v1 face, and today's Google Fonts build is variable with different
-metrics, so match the reference's widths before vendoring. multi_font
-(round 4, `96fbce99`) needs Copperplate Gothic Light (Office font, assets
-repo; 81 glyphs); its Bodoni MT is already in `fonts/CloudFonts`.
+Word needs two (J 23.1). **Done 2026-10-02:** Word's cloud font cache had
+the static Merriweather 2.002, whose widths match the reference exactly; now
+in `fonts/CloudFonts` and the assets repo (`59143d9`): 2 pages, J 34.1,
+SSIM 94.9. multi_font (round 4, `96fbce99`) needs Copperplate Gothic Light
+(81 glyphs; in Word's cloud catalog, not downloaded yet: pick it in Word's
+font menu); its Bodoni MT is already in `fonts/CloudFonts`.
 korean_japanese needs HY헤드라인M and New Gulim (55 glyphs; Hancom/Windows
 fonts, low value). eco_int's 14 "Helvetica,Italic" glyphs are macOS
 Helvetica Oblique under another name.
@@ -482,8 +483,7 @@ Helvetica Oblique under another name.
    `render_endnotes_inline`).
 8. The conference forms' 7pt shortfall at the title → table transition,
    measured on east_asia_conference_form.
-9. Vendor Merriweather (matching static version) and Copperplate Gothic
-   Light.
+9. ~~Vendor Merriweather~~ (done 2026-10-02) and Copperplate Gothic Light.
 
 ## Annotation Fixes 2026-10-02 (one commit each, worktree `annot/wp-n`)
 
@@ -638,7 +638,7 @@ Findings left for later:
   `overflows` / `extra_per_gap.max(0.0)`). Corpus-wide effect on justified
   text; the shrink limit needs calibration before touching it.
 - **#233** needs Merriweather in the assets repo (underscore 0.835em vs Arial
-  0.556em); nothing to do in code.
+  0.556em); nothing to do in code. Vendored 2026-10-02 (assets `59143d9`).
 - streamnet p1 agenda table rows +0.43/+0.68pt each (table cell line height).
 - dental_amalgam gained +22pp J with a max-descent rule but +10pp with the
   measured ascent-only rule — worth a look at what its markers are.

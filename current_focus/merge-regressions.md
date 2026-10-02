@@ -199,14 +199,21 @@ Mean Jaccard went 51.2 → 63.4 and SSIM 70.9 → 80.5 over the merge.
 ### 9. Font files
 
 Census of every face Word drew per glyph in the 223 references against all
-indexed font files: only two fixtures use faces we lack.
-- croatian_thesis_topic_approval_form: Merriweather Regular + Bold (68
-  `w:rFonts` entries, nearly the whole document; 340 glyphs). We fit it on one page, Word on two
-  (J 23.1). OFL, but Word's machine had the static v1 face; current Google
-  Fonts Merriweather is variable with different metrics. Compare widths with
-  the reference before vendoring.
-- multi_font: Copperplate Gothic Light (81 glyphs; Office font, belongs in the
-  private assets repo). Bodoni MT is already in `fonts/CloudFonts`.
+indexed font files: only two fixtures use faces we lack. Look in Word's
+cloud font cache first (`~/Library/Group
+Containers/UBF8T346G9.Office/FontCache/4/CloudFonts/`, `diff -rq` it against
+`fonts/CloudFonts/`).
+- croatian_thesis_topic_approval_form: **done 2026-10-02.** Word's cloud
+  cache held the static Merriweather 2.002 (Regular, Bold, Bold Italic); all
+  42 widths in the reference match it. Copied into `fonts/CloudFonts/` and
+  the assets repo (`59143d9`): 1 → 2 pages like Word, J 23.1 → 34.1, SSIM
+  65.0 → 94.9 (release CLI + page-metrics, not yet a suite run).
+- multi_font: Copperplate Gothic Light (81 glyphs). It is in Word's cloud
+  catalog (`FontCache/4/Catalog/ListAll_hier.Json`, id 36453684816), but
+  opening the document doesn't download it (Word ships Copperplate Gothic
+  Bold, so the family looks present). Picking it in Word's font menu
+  fetches it; then copy it into `fonts/CloudFonts/` and the assets repo.
+  Bodoni MT is already in `fonts/CloudFonts`.
 - eco_int's 14 "Helvetica,Italic" glyphs are macOS Helvetica Oblique under
   another name, not a missing file.
 
