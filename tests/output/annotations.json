@@ -30,8 +30,8 @@
       "source": "Generated",
       "x_pt": 167.81552,
       "y_pt": 677.6182,
-      "note": "Too much white space above image.\n\nSYSTEMIC (triage 2026-07-03): cumulative text-width/wrap drift, not image spacing. Our glyph advances measure slightly wide, wrapping a few extra lines by page 8, so ~4 of the 7 blank spacer paragraphs before the Figura 2 caption spill onto page 9 (~82pt of the gap). after_image_boost is unrelated (floating anchor, not inline). Fix belongs to text-shaping/width accuracy.",
-      "fixed": false,
+      "note": "Too much white space above image.\n\nSYSTEMIC (triage 2026-07-03): cumulative text-width/wrap drift, not image spacing. Our glyph advances measure slightly wide, wrapping a few extra lines by page 8, so ~4 of the 7 blank spacer paragraphs before the Figura 2 caption spill onto page 9 (~82pt of the gap). after_image_boost is unrelated (floating anchor, not inline). Fix belongs to text-shaping/width accuracy.\n\nFIX (2026-10-02): resolved by the over-wide picture rule (14825af1): the figure's paragraph mark wraps to its own line as in Word; page 9 now matches the reference (J +21pp).",
+      "fixed": true,
       "cleared": false
     },
     {
@@ -118,8 +118,8 @@
       "source": "Generated",
       "x_pt": 75.68638,
       "y_pt": 794.8483,
-      "note": "We start higher up here than reference for some reason.\n\nSYSTEMIC (triage 2026-07-03): 11pt TOC rows lay out ~1.4pt/row short, so the 16-empty-paragraph stack straddling pages 2-3 fits entirely on page 2 for us and the bordered box starts flush at page-3 top margin (~25pt high; ~10pt of that is page-top space_before suppression once the box lands there). Same cumulative line-height drift class. Row-split fix improved TxtBnd +7.2pp but the page-3 start remains.",
-      "fixed": false,
+      "note": "We start higher up here than reference for some reason.\n\nSYSTEMIC (triage 2026-07-03): 11pt TOC rows lay out ~1.4pt/row short, so the 16-empty-paragraph stack straddling pages 2-3 fits entirely on page 2 for us and the bordered box starts flush at page-3 top margin (~25pt high; ~10pt of that is page-top space_before suppression once the box lands there). Same cumulative line-height drift class. Row-split fix improved TxtBnd +7.2pp but the page-3 start remains.\n\nTRIAGE (2026-10-02): no longer reproduces after this round: page 3 now starts within 0.01pt of Word (vdiff); the remaining drift in this fixture is at the page 6/7 boundary (page 7 starts 33pt high).",
+      "fixed": true,
       "cleared": false
     },
     {

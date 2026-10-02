@@ -450,7 +450,12 @@ reproduced at the baseline and were marked fixed without a code change.
    paragraph's indents do not count; ukrainian_municipal's 35pt object adds
    nothing). alfies J +3.1 / SSIM +10.0 (page 1 now 3.2pt high, likely the
    picture's descent); brazilian_logistics J +21.1 / SSIM +20.4 (its wide
-   figure had the same missing line). No other fixture changed.
+   figure had the same missing line). No other fixture changed. That also
+   closed #59 (brazilian p9 "white space above image": the page matches
+   Word now), and #124 (english_town_council page 3 start) no longer
+   reproduced after the round: page 3 starts within 0.01pt of Word, the
+   fixture's residual drift is at its page 6/7 boundary (page 7 starts 33pt
+   high).
 
 Findings left for later:
 - A hyphen at the start of a word (" -5") now also breaks before the digit;
