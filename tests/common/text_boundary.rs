@@ -9,7 +9,7 @@ use std::process::Command;
 /// concatenated, so this is the same tokenisation as one run per page at a fraction of the cost:
 /// mutool parses the PDF once instead of once per page (on a 200-page document the per-page
 /// spawns were two thirds of the metric's time).
-pub fn extract_all_pages(pdf: &Path) -> Vec<Vec<String>> {
+fn extract_all_pages(pdf: &Path) -> Vec<Vec<String>> {
     let output = Command::new("mutool")
         .args(["draw", "-F", "text", pdf.to_str().unwrap()])
         .output()
@@ -27,7 +27,7 @@ pub fn extract_all_pages(pdf: &Path) -> Vec<Vec<String>> {
 
 /// Text lines per page from one `mutool draw -F stext` run over the whole document, each page
 /// parsed by [`stext_lines`].
-pub fn extract_all_page_lines(pdf: &Path) -> Vec<Vec<String>> {
+fn extract_all_page_lines(pdf: &Path) -> Vec<Vec<String>> {
     let output = Command::new("mutool")
         .args(["draw", "-F", "stext", pdf.to_str().unwrap()])
         .output()
@@ -100,7 +100,7 @@ fn stext_lines(xml_lines: Vec<&str>) -> Vec<String> {
         .collect()
 }
 
-pub fn break_positions(pages: &[Vec<String>]) -> Vec<usize> {
+fn break_positions(pages: &[Vec<String>]) -> Vec<usize> {
     let mut pos = Vec::with_capacity(pages.len());
     let mut cumulative = 0;
     for page in pages {
@@ -111,7 +111,7 @@ pub fn break_positions(pages: &[Vec<String>]) -> Vec<usize> {
 }
 
 /// Replace tab-leader dots (runs of 3+) with a space so comparison focuses on text content.
-pub fn normalize_leaders(s: &str) -> String {
+fn normalize_leaders(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut dots = 0usize;
     for c in s.chars() {
@@ -137,12 +137,12 @@ pub fn normalize_leaders(s: &str) -> String {
     out
 }
 
-pub fn first_word(s: &str) -> String {
+fn first_word(s: &str) -> String {
     let n = normalize_leaders(s);
     n.split_whitespace().next().unwrap_or_default().to_string()
 }
 
-pub fn last_word(s: &str) -> String {
+fn last_word(s: &str) -> String {
     let n = normalize_leaders(s);
     n.split_whitespace().last().unwrap_or_default().to_string()
 }

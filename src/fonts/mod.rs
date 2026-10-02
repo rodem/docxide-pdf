@@ -158,34 +158,52 @@ pub(crate) fn font_key(run: &Run) -> String {
 
 pub(crate) type EmbeddedFonts = HashMap<(String, bool, bool), Vec<u8>>;
 
+/// What a font is resolved against: the document's embedded fonts and
+/// fontTable, the characters the font has to cover, and whether it is for Word
+/// text (DrawingML text with no fontTable entry keeps the last resort).
+pub(crate) struct FontContext<'a> {
+    pub(crate) embedded_fonts: &'a EmbeddedFonts,
+    pub(crate) font_table: &'a FontTable,
+    pub(crate) used_chars: &'a HashSet<char>,
+    pub(crate) word_text: bool,
+}
+
+/// The object numbers one font occupies, allocated before resolution so every
+/// candidate writes to the same slots.
+#[derive(Clone, Copy)]
+struct FontRefs {
+    font: Ref,
+    descriptor: Ref,
+    data: Ref,
+}
+
 fn try_font(
     pdf: &mut Pdf,
     candidate: &str,
     bold: bool,
     italic: bool,
-    font_ref: Ref,
-    descriptor_ref: Ref,
-    data_ref: Ref,
+    refs: FontRefs,
     alloc: &mut impl FnMut() -> Ref,
-    embedded_fonts: &EmbeddedFonts,
-    used_chars: &HashSet<char>,
+    ctx: &FontContext,
 ) -> Option<ResolvedFont> {
     let mut embed = |data: &[u8], face_index: u32| {
         embed::embed_truetype(
             pdf,
-            font_ref,
-            descriptor_ref,
-            data_ref,
+            refs,
             candidate,
             data,
             face_index,
-            used_chars,
+            ctx.used_chars,
             alloc,
         )
     };
 
     let embedded_key = (candidate.to_lowercase(), bold, italic);
-    if let Some(metrics) = embedded_fonts.get(&embedded_key).and_then(|d| embed(d, 0)) {
+    if let Some(metrics) = ctx
+        .embedded_fonts
+        .get(&embedded_key)
+        .and_then(|d| embed(d, 0))
+    {
         return Some(ResolvedFont {
             metrics,
             synthetic_bold: false,
@@ -284,7 +302,7 @@ fn has_cjk_chars(chars: &HashSet<char>) -> bool {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub(crate) enum CjkScript {
+enum CjkScript {
     Unknown,
     SimplifiedChinese,
     TraditionalChinese,
@@ -293,7 +311,7 @@ pub(crate) enum CjkScript {
 }
 
 /// Korean if any Hangul, Japanese if any kana; Han alone is ambiguous → Unknown.
-pub(crate) fn script_of_chars(chars: impl Iterator<Item = char>) -> CjkScript {
+fn script_of_chars(chars: impl Iterator<Item = char>) -> CjkScript {
     let mut script = CjkScript::Unknown;
     for c in chars {
         match c as u32 {
@@ -307,7 +325,7 @@ pub(crate) fn script_of_chars(chars: impl Iterator<Item = char>) -> CjkScript {
 
 /// Script of a missing CJK font: the fontTable charset first (what Word itself
 /// keys substitution on), then the font name, then the text it has to render.
-pub(crate) fn classify_cjk_script(
+fn classify_cjk_script(
     primary: &str,
     charset: Option<u8>,
     used_chars: &HashSet<char>,
@@ -409,7 +427,7 @@ pub(crate) fn classify_cjk_script(
 /// trailing, and the lookup skips what is absent. `serif` (fontTable family
 /// roman) picks Batang over Malgun Gothic and so on, as Word does. Evidence per
 /// row: roadmap, "CJK Rendering Polish".
-pub(crate) fn cjk_fallback_fonts(script: CjkScript, serif: bool) -> &'static [&'static str] {
+fn cjk_fallback_fonts(script: CjkScript, serif: bool) -> &'static [&'static str] {
     use CjkScript::*;
     match (script, serif) {
         (Korean, true) => &[
@@ -570,40 +588,26 @@ pub(crate) fn register_font(
     italic: bool,
     pdf_name: String,
     alloc: &mut impl FnMut() -> Ref,
-    embedded_fonts: &EmbeddedFonts,
-    used_chars: &HashSet<char>,
-    font_table: &FontTable,
-    word_text: bool,
+    ctx: &FontContext,
 ) -> FontEntry {
     let t0 = Instant::now();
-    let font_ref = alloc();
-    let descriptor_ref = alloc();
-    let data_ref = alloc();
+    let refs = FontRefs {
+        font: alloc(),
+        descriptor: alloc(),
+        data: alloc(),
+    };
 
     let primary = primary_font_name(font_name);
 
-    let mut try_candidate = |name: &str| {
-        try_font(
-            pdf,
-            name,
-            bold,
-            italic,
-            font_ref,
-            descriptor_ref,
-            data_ref,
-            alloc,
-            embedded_fonts,
-            used_chars,
-        )
-    };
+    let mut try_candidate = |name: &str| try_font(pdf, name, bold, italic, refs, alloc, ctx);
 
     // Word looks the run's whole name up: "Archivo;sans-serif" has no entry
     // even when "Archivo" has one.
-    let table_entry = lookup_font_table(font_table, font_name.trim());
-    let script = classify_cjk_script(primary, table_entry.and_then(|e| e.charset), used_chars);
+    let table_entry = lookup_font_table(ctx.font_table, font_name.trim());
+    let script = classify_cjk_script(primary, table_entry.and_then(|e| e.charset), ctx.used_chars);
     // The declared script, not the sampled text, decides whether this is a CJK
     // slot: an empty Korean paragraph's mark font still resolves to Batang.
-    let needs_cjk = script != CjkScript::Unknown || has_cjk_chars(used_chars);
+    let needs_cjk = script != CjkScript::Unknown || has_cjk_chars(ctx.used_chars);
     let serif = table_entry.is_some_and(|e| e.family == FontFamily::Roman);
     let substituted = std::cell::Cell::new(false);
     // List order, not glyph coverage: Word substitutes the whole run by script and
@@ -676,7 +680,7 @@ pub(crate) fn register_font(
         .or_else(|| {
             // DrawingML text (SmartArt) with no fontTable entry keeps the last
             // resort: case60's "Futura Medium" is Arial in Word's export.
-            if table_entry.is_none() && !word_text {
+            if table_entry.is_none() && !ctx.word_text {
                 return None;
             }
             let family = table_entry.map(|e| e.family);
@@ -694,7 +698,7 @@ pub(crate) fn register_font(
     // Compute which CJK chars are missing from the resolved font
     let missing_cjk = if needs_cjk {
         let covered = result.as_ref().map(|r| &r.metrics.char_to_gid);
-        used_chars
+        ctx.used_chars
             .iter()
             .copied()
             .filter(|ch| {
@@ -709,7 +713,7 @@ pub(crate) fn register_font(
     let entry = match result {
         Some(r) => FontEntry {
             pdf_name,
-            font_ref,
+            font_ref: refs.font,
             widths_1000: r.metrics.widths_1000,
             line_h_ratio: Some(r.metrics.line_h_ratio),
             ascender_ratio: Some(r.metrics.ascender_ratio),
@@ -746,12 +750,12 @@ pub(crate) fn register_font(
                 "Font not found: {font_name} bold={bold} italic={italic} — using {}",
                 String::from_utf8_lossy(base_font)
             );
-            pdf.type1_font(font_ref)
+            pdf.type1_font(refs.font)
                 .base_font(Name(base_font))
                 .encoding_predefined(Name(b"WinAnsiEncoding"));
             FontEntry {
                 pdf_name,
-                font_ref,
+                font_ref: refs.font,
                 widths_1000: encoding::helvetica_widths(),
                 line_h_ratio: None,
                 ascender_ratio: None,
@@ -859,6 +863,12 @@ mod tests {
                 Ref::new(next)
             };
             let chars: HashSet<char> = "Ab".chars().collect();
+            let ctx = FontContext {
+                embedded_fonts: &EmbeddedFonts::new(),
+                font_table: &table,
+                used_chars: &chars,
+                word_text: true,
+            };
             let entry = register_font(
                 &mut Pdf::new(),
                 run,
@@ -866,10 +876,7 @@ mod tests {
                 false,
                 "F1".into(),
                 &mut alloc,
-                &EmbeddedFonts::new(),
-                &chars,
-                &table,
-                true,
+                &ctx,
             );
             let path = entry.font_path.expect("resolved to a file");
             path.file_name().unwrap().to_string_lossy().to_lowercase()

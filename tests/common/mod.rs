@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, io};
 
 pub mod a11y;
@@ -92,7 +93,7 @@ fn natural_cmp(a: &Path, b: &Path) -> std::cmp::Ordering {
         .then_with(|| a_name.cmp(b_name))
 }
 
-/// Discover fixtures. Filter with DOCXSIDE_CASE (case name) and DOCXSIDE_GROUP (folder name).
+/// Discover fixtures. Filter with DOCXIDE_CASE (case name) and DOCXSIDE_GROUP (folder name).
 pub fn discover_fixtures() -> io::Result<Vec<PathBuf>> {
     let fixtures_dir = Path::new("tests/fixtures");
     let case_filter = std::env::var("DOCXIDE_CASE").ok();
@@ -189,9 +190,13 @@ pub fn write_latest_scores(updates: &HashMap<String, Baselines>) {
     fs::write(path, json + "\n").expect("Failed to write latest_scores.json");
 }
 
+pub fn mtime(p: &Path) -> Option<SystemTime> {
+    fs::metadata(p).and_then(|m| m.modified()).ok()
+}
+
 /// Returns the newest mtime of any file found by recursively walking `dir`.
-fn dir_newest_mtime(dir: &Path) -> std::time::SystemTime {
-    let mut newest = std::time::SystemTime::UNIX_EPOCH;
+fn dir_newest_mtime(dir: &Path) -> SystemTime {
+    let mut newest = UNIX_EPOCH;
     let Ok(entries) = fs::read_dir(dir) else {
         return newest;
     };
@@ -202,7 +207,7 @@ fn dir_newest_mtime(dir: &Path) -> std::time::SystemTime {
             if sub > newest {
                 newest = sub;
             }
-        } else if let Ok(mtime) = fs::metadata(&path).and_then(|m| m.modified())
+        } else if let Some(mtime) = mtime(&path)
             && mtime > newest
         {
             newest = mtime;
@@ -212,9 +217,17 @@ fn dir_newest_mtime(dir: &Path) -> std::time::SystemTime {
 }
 
 /// The newest mtime of any file under `src/`, cached for the process lifetime.
-fn src_newest_mtime() -> std::time::SystemTime {
-    static SRC_MTIME: std::sync::OnceLock<std::time::SystemTime> = std::sync::OnceLock::new();
+fn src_newest_mtime() -> SystemTime {
+    static SRC_MTIME: std::sync::OnceLock<SystemTime> = std::sync::OnceLock::new();
     *SRC_MTIME.get_or_init(|| dir_newest_mtime(Path::new("src")))
+}
+
+/// Convert `input` to `output`, turning a conversion panic into an error.
+pub fn convert(input: &Path, output: &Path) -> Result<(), String> {
+    match std::panic::catch_unwind(|| docxide_pdf::convert_docx_to_pdf(input, output)) {
+        Ok(r) => r.map_err(|e| e.to_string()),
+        Err(_) => Err("conversion panicked".to_string()),
+    }
 }
 
 /// Convert DOCX→PDF only if the generated PDF is missing or older than input.docx or src/.
@@ -231,37 +244,21 @@ pub fn ensure_generated_pdf(fixture_dir: &Path) -> Result<PathBuf, String> {
     let generated_pdf = out.join("generated.pdf");
     let stamp = out.join("generated.stamp");
 
-    let mtime = |p: &Path| {
-        fs::metadata(p)
-            .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-    };
-    let newest_input = mtime(&input_docx).max(src_newest_mtime());
+    let mtime_or_epoch = |p: &Path| mtime(p).unwrap_or(UNIX_EPOCH);
+    let newest_input = mtime_or_epoch(&input_docx).max(src_newest_mtime());
     let stamp_value = format!(
         "{:?}",
-        newest_input
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
+        newest_input.duration_since(UNIX_EPOCH).unwrap_or_default()
     );
     let up_to_date = generated_pdf.exists()
-        && (mtime(&generated_pdf) >= newest_input
+        && (mtime_or_epoch(&generated_pdf) >= newest_input
             || fs::read_to_string(&stamp).is_ok_and(|s| s == stamp_value));
 
     if !up_to_date {
         let tmp = out.join("generated.tmp.pdf");
-        let (input, output) = (input_docx.clone(), tmp.clone());
-        let result =
-            std::panic::catch_unwind(move || docxide_pdf::convert_docx_to_pdf(&input, &output));
-        match result {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => {
-                let _ = fs::remove_file(&tmp);
-                return Err(e.to_string());
-            }
-            Err(_) => {
-                let _ = fs::remove_file(&tmp);
-                return Err("conversion panicked".to_string());
-            }
+        if let Err(e) = convert(&input_docx, &tmp) {
+            let _ = fs::remove_file(&tmp);
+            return Err(e);
         }
         let new_bytes = fs::read(&tmp).map_err(|e| e.to_string())?;
         let unchanged = fs::read(&generated_pdf).is_ok_and(|old| old == new_bytes);
@@ -274,6 +271,47 @@ pub fn ensure_generated_pdf(fixture_dir: &Path) -> Result<PathBuf, String> {
     }
 
     Ok(generated_pdf)
+}
+
+/// `ensure_generated_pdf` for a test that prints a `[SKIP]` row and drops the fixture
+/// when the conversion fails.
+pub fn generated_pdf_or_skip(fixture_dir: &Path, name: &str) -> Option<PathBuf> {
+    match ensure_generated_pdf(fixture_dir) {
+        Ok(p) => Some(p),
+        Err(e) => {
+            println!("  [SKIP] {name}: {e}");
+            None
+        }
+    }
+}
+
+/// Column width for a table of case names: the longest name, at least `min`.
+pub fn name_width<'a>(names: impl IntoIterator<Item = &'a str>, min: usize) -> usize {
+    names.into_iter().map(str::len).fold(min, usize::max)
+}
+
+/// ANSI color gradient from red (0%) to green (100%).
+pub fn color_score(score: f64, text: &str) -> String {
+    let t = score.clamp(0.0, 1.0);
+    let r = (220.0 * (1.0 - t) + 80.0 * t) as u8;
+    let g = (40.0 * (1.0 - t) + 200.0 * t) as u8;
+    let b = (40.0 * (1.0 - t) + 80.0 * t) as u8;
+    format!("\x1b[38;2;{r};{g};{b}m{text}\x1b[0m")
+}
+
+/// The cases whose score fell more than `REGRESSION_SLACK` below their baseline.
+pub fn regressions<'a>(
+    scores: impl IntoIterator<Item = (&'a str, f64)>,
+    prev: &HashMap<String, f64>,
+) -> Vec<&'a str> {
+    scores
+        .into_iter()
+        .filter(|(name, score)| {
+            prev.get(*name)
+                .is_some_and(|&p| *score < p - REGRESSION_SLACK)
+        })
+        .map(|(name, _)| name)
+        .collect()
 }
 
 pub fn delta_str(current: f64, previous: Option<f64>) -> String {
@@ -328,12 +366,17 @@ pub fn write_latest_hashes(hashes: &BTreeMap<String, Vec<String>>) {
 
 pub const MUTOOL_DPI: &str = "150";
 
-pub fn pdf_page_count(pdf: &Path) -> Result<usize, String> {
+/// The output of `mutool info` for a PDF.
+pub fn mutool_info(pdf: &Path) -> Result<String, String> {
     let output = Command::new("mutool")
         .args(["info", pdf.to_str().unwrap()])
         .output()
         .map_err(|e| format!("Failed to run mutool info: {e}"))?;
-    let text = String::from_utf8_lossy(&output.stdout);
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+pub fn pdf_page_count(pdf: &Path) -> Result<usize, String> {
+    let text = mutool_info(pdf)?;
     for line in text.lines() {
         if let Some(rest) = line.strip_prefix("Pages:")
             && let Ok(n) = rest.trim().parse::<usize>()
@@ -390,13 +433,20 @@ pub fn collect_page_pngs(dir: &Path) -> io::Result<Vec<PathBuf>> {
     Ok(pages)
 }
 
+/// Rasterize `pdf` into `dir` unless the PNGs there are newer than it. Returns
+/// whether the cached pages were kept.
+pub fn ensure_screenshots(pdf: &Path, dir: &Path) -> Result<bool, String> {
+    if pngs_fresh(pdf, dir) {
+        return Ok(true);
+    }
+    let _ = fs::remove_dir_all(dir);
+    screenshot_pdf(pdf, dir).map(|()| false)
+}
+
 /// True if `screenshot_dir` contains PNGs all newer than `pdf` — i.e. the
 /// cached rasterization is still valid for the current PDF.
 pub fn pngs_fresh(pdf: &Path, screenshot_dir: &Path) -> bool {
-    let Ok(pdf_meta) = fs::metadata(pdf) else {
-        return false;
-    };
-    let Ok(pdf_mtime) = pdf_meta.modified() else {
+    let Some(pdf_mtime) = mtime(pdf) else {
         return false;
     };
     let Ok(entries) = fs::read_dir(screenshot_dir) else {
@@ -420,13 +470,23 @@ pub fn is_ink_luma(r: u8, g: u8, b: u8) -> bool {
     (r as u32 * 299 + g as u32 * 587 + b as u32 * 114) < 200_000
 }
 
+/// Diff image palette: gray=both, blue=ref-only, red=gen-only, white=neither.
+pub fn diff_pixel(ref_ink: bool, gen_ink: bool) -> [u8; 4] {
+    match (ref_ink, gen_ink) {
+        (true, true) => [80, 80, 80, 255],
+        (true, false) => [0, 80, 220, 255],
+        (false, true) => [220, 40, 40, 255],
+        (false, false) => [255, 255, 255, 255],
+    }
+}
+
 pub struct PageResult {
     pub jaccard: f64,
     pub diff_img: ImageBuffer<Rgba<u8>, Vec<u8>>,
 }
 
 /// Jaccard similarity on ink pixels (luma < ~200). Also produces a color-coded
-/// diff image: gray=both, blue=ref-only, red=gen-only, white=neither.
+/// diff image (`diff_pixel`).
 pub fn compare_and_diff(
     img_ref: &DynamicImage,
     img_gen: &DynamicImage,
@@ -469,13 +529,7 @@ pub fn compare_and_diff(
             if ref_ink && gen_ink {
                 intersection += 1;
             }
-            let pixel = match (ref_ink, gen_ink) {
-                (true, true) => [80, 80, 80, 255],
-                (true, false) => [0, 80, 220, 255],
-                (false, true) => [220, 40, 40, 255],
-                (false, false) => [255, 255, 255, 255],
-            };
-            diff_row[ri..ri + 4].copy_from_slice(&pixel);
+            diff_row[ri..ri + 4].copy_from_slice(&diff_pixel(ref_ink, gen_ink));
         }
     }
 
@@ -634,15 +688,8 @@ pub fn ensure_libreoffice_pdf(fixture_dir: &Path, soffice: &Path) -> Result<Path
     fs::create_dir_all(&out).map_err(|e| e.to_string())?;
     let lo_pdf = out.join("libreoffice.pdf");
 
-    let needs_convert = !lo_pdf.exists() || {
-        let docx_mtime = fs::metadata(&input_docx)
-            .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-        let pdf_mtime = fs::metadata(&lo_pdf)
-            .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-        pdf_mtime < docx_mtime
-    };
+    let needs_convert = !lo_pdf.exists()
+        || mtime(&lo_pdf).unwrap_or(UNIX_EPOCH) < mtime(&input_docx).unwrap_or(UNIX_EPOCH);
     if !needs_convert {
         return Ok(lo_pdf);
     }

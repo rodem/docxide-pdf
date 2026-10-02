@@ -5,15 +5,10 @@ use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::io::Read;
 use std::path::Path;
-use std::process::Command;
 
 /// Extract unique font family names from a PDF using `mutool info`.
 fn extract_pdf_fonts(pdf: &Path) -> Result<BTreeSet<String>, String> {
-    let output = Command::new("mutool")
-        .args(["info", pdf.to_str().unwrap()])
-        .output()
-        .map_err(|e| format!("Failed to run mutool info: {e}"))?;
-    let text = String::from_utf8_lossy(&output.stdout);
+    let text = common::mutool_info(pdf)?;
 
     let mut families = BTreeSet::new();
     for line in text.lines() {
@@ -544,13 +539,7 @@ fn analyze_fixture(fixture_dir: &Path) -> Option<FixtureResult> {
         return None;
     }
 
-    let generated_pdf = match common::ensure_generated_pdf(fixture_dir) {
-        Ok(p) => p,
-        Err(e) => {
-            println!("  [SKIP] {name}: {e}");
-            return None;
-        }
-    };
+    let generated_pdf = common::generated_pdf_or_skip(fixture_dir, &name)?;
 
     let docx_fonts = match extract_docx_fonts(&input_docx) {
         Ok(f) => f,
@@ -614,12 +603,7 @@ fn font_families_match_docx() {
         .collect();
     results.sort_by(|a, b| a.name.cmp(&b.name));
 
-    let name_w = results
-        .iter()
-        .map(|r| r.name.len())
-        .max()
-        .unwrap_or(4)
-        .max(4);
+    let name_w = common::name_width(results.iter().map(|r| r.name.as_str()), 4);
 
     struct RowDisplay {
         matched: String,

@@ -22,13 +22,7 @@ fn analyze_fixture(fixture_dir: &Path) -> Option<SizeResult> {
         return None;
     }
 
-    let generated_pdf = match common::ensure_generated_pdf(fixture_dir) {
-        Ok(p) => p,
-        Err(e) => {
-            println!("  [SKIP] {name}: {e}");
-            return None;
-        }
-    };
+    let generated_pdf = common::generated_pdf_or_skip(fixture_dir, &name)?;
 
     let gen_bytes = fs::metadata(&generated_pdf).map(|m| m.len()).unwrap_or(0);
     let ref_bytes = fs::metadata(&reference_pdf).map(|m| m.len()).unwrap_or(0);
@@ -81,12 +75,7 @@ fn file_size_within_threshold() {
         .collect();
     results.sort_by(|a, b| a.name.cmp(&b.name));
 
-    let name_w = results
-        .iter()
-        .map(|r| r.name.len())
-        .max()
-        .unwrap_or(4)
-        .max(4);
+    let name_w = common::name_width(results.iter().map(|r| r.name.as_str()), 4);
 
     println!(
         "\n  {:<name_w$}  Pass  {:<9}  {:<9}  Ratio",

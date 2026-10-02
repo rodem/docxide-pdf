@@ -82,13 +82,7 @@ fn score_fixture(fixture_dir: &std::path::Path, soffice: &std::path::Path) -> Op
     let gen_dir = out_base.join("generated");
     let lo_dir = out_base.join("libreoffice");
 
-    let ours_pdf = match common::ensure_generated_pdf(fixture_dir) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("  [SKIP] {name}: docxside conversion failed: {e}");
-            return None;
-        }
-    };
+    let ours_pdf = common::generated_pdf_or_skip(fixture_dir, &name)?;
     let lo_pdf = match common::ensure_libreoffice_pdf(fixture_dir, soffice) {
         Ok(p) => p,
         Err(e) => {
@@ -97,18 +91,9 @@ fn score_fixture(fixture_dir: &std::path::Path, soffice: &std::path::Path) -> Op
         }
     };
 
-    if !common::pngs_fresh(&reference_pdf, &ref_dir) {
-        let _ = fs::remove_dir_all(&ref_dir);
-        common::screenshot_pdf(&reference_pdf, &ref_dir).ok()?;
-    }
-    if !common::pngs_fresh(&ours_pdf, &gen_dir) {
-        let _ = fs::remove_dir_all(&gen_dir);
-        common::screenshot_pdf(&ours_pdf, &gen_dir).ok()?;
-    }
-    if !common::pngs_fresh(&lo_pdf, &lo_dir) {
-        let _ = fs::remove_dir_all(&lo_dir);
-        common::screenshot_pdf(&lo_pdf, &lo_dir).ok()?;
-    }
+    common::ensure_screenshots(&reference_pdf, &ref_dir).ok()?;
+    common::ensure_screenshots(&ours_pdf, &gen_dir).ok()?;
+    common::ensure_screenshots(&lo_pdf, &lo_dir).ok()?;
 
     let ref_pages = common::collect_page_pngs(&ref_dir).ok()?;
     let gen_pages = common::collect_page_pngs(&gen_dir).ok()?;
@@ -183,19 +168,15 @@ fn score_fixture(fixture_dir: &std::path::Path, soffice: &std::path::Path) -> Op
 }
 
 fn print_report(rows: &[Row], elapsed_s: f64) {
-    let name_w = rows
-        .iter()
-        .map(|r| r.name.len())
-        .max()
-        .unwrap_or(20)
-        .max(20);
+    let name_w = common::name_width(rows.iter().map(|r| r.name.as_str()), 20);
+    let pct = |v: f64| format!("{:>10}", format!("{:.1}%", v * 100.0));
 
     println!(
-        "\n  docxside-pdf vs LibreOffice — accuracy against MS Word reference ({} fixtures, {:.1}s)",
+        "\n  docxide-pdf vs LibreOffice — accuracy against MS Word reference ({} fixtures, {:.1}s)",
         rows.len(),
         elapsed_s
     );
-    println!("  (higher is better; Δ = docxside-pdf − LibreOffice, in percentage points)\n");
+    println!("  (higher is better; Δ = docxide-pdf − LibreOffice, in percentage points)\n");
 
     println!(
         "  {:<name_w$}  {:>5}  {:>10}  {:>10}  {:>8}    {:>10}  {:>10}  {:>8}",
@@ -221,11 +202,11 @@ fn print_report(rows: &[Row], elapsed_s: f64) {
             "  {:<name_w$}  {:>5}  {:>10}  {:>10}  {}    {:>10}  {:>10}  {}",
             r.name,
             r.pages,
-            color_score(r.ours_jaccard, &format!("{:.1}%", r.ours_jaccard * 100.0)),
-            color_score(r.lo_jaccard, &format!("{:.1}%", r.lo_jaccard * 100.0)),
+            common::color_score(r.ours_jaccard, &pct(r.ours_jaccard)),
+            common::color_score(r.lo_jaccard, &pct(r.lo_jaccard)),
             color_delta(dj),
-            color_score(r.ours_ssim, &format!("{:.1}%", r.ours_ssim * 100.0)),
-            color_score(r.lo_ssim, &format!("{:.1}%", r.lo_ssim * 100.0)),
+            common::color_score(r.ours_ssim, &pct(r.ours_ssim)),
+            common::color_score(r.lo_ssim, &pct(r.lo_ssim)),
             color_delta(ds),
         );
     }
@@ -243,11 +224,11 @@ fn print_report(rows: &[Row], elapsed_s: f64) {
         "  {:<name_w$}  {:>5}  {:>10}  {:>10}  {}    {:>10}  {:>10}  {}",
         "Mean",
         "",
-        color_score(mean_oj, &format!("{:.1}%", mean_oj * 100.0)),
-        color_score(mean_lj, &format!("{:.1}%", mean_lj * 100.0)),
+        common::color_score(mean_oj, &pct(mean_oj)),
+        common::color_score(mean_lj, &pct(mean_lj)),
         color_delta((mean_oj - mean_lj) * 100.0),
-        color_score(mean_os, &format!("{:.1}%", mean_os * 100.0)),
-        color_score(mean_ls, &format!("{:.1}%", mean_ls * 100.0)),
+        common::color_score(mean_os, &pct(mean_os)),
+        common::color_score(mean_ls, &pct(mean_ls)),
         color_delta((mean_os - mean_ls) * 100.0),
     );
 
@@ -255,18 +236,10 @@ fn print_report(rows: &[Row], elapsed_s: f64) {
     let jp = jacc_wins as f64 / total as f64 * 100.0;
     let sp = ssim_wins as f64 / total as f64 * 100.0;
     println!(
-        "\n  docxside-pdf wins:  Jaccard {jacc_wins}/{total} ({jp:.0}%)   \
+        "\n  docxide-pdf wins:  Jaccard {jacc_wins}/{total} ({jp:.0}%)   \
          SSIM {ssim_wins}/{total} ({sp:.0}%)"
     );
     println!("  Diff images: tests/output/<group>/<case>/libreoffice_diff/");
-}
-
-fn color_score(score: f64, text: &str) -> String {
-    let t = score.clamp(0.0, 1.0);
-    let r = (220.0 * (1.0 - t) + 80.0 * t) as u8;
-    let g = (40.0 * (1.0 - t) + 200.0 * t) as u8;
-    let b = (40.0 * (1.0 - t) + 80.0 * t) as u8;
-    format!("\x1b[38;2;{r};{g};{b}m{text:>10}\x1b[0m")
 }
 
 fn color_delta(pp: f64) -> String {

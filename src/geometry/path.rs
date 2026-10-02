@@ -1,34 +1,37 @@
-use super::formulas::GuideEnv;
+use super::formulas::{GuideEnv, ang_to_rad};
+use crate::model::CustomPathCommand;
 
-#[derive(Clone, Debug)]
-pub enum PathCommandDef {
+/// A path command whose arguments are guide names or literals: `&'static str`
+/// in the preset tables, borrowed from the document for custom geometry.
+#[derive(Clone, Copy, Debug)]
+pub enum PathCommandDef<S = &'static str> {
     MoveTo {
-        x: &'static str,
-        y: &'static str,
+        x: S,
+        y: S,
     },
     LineTo {
-        x: &'static str,
-        y: &'static str,
+        x: S,
+        y: S,
     },
     ArcTo {
-        wr: &'static str,
-        hr: &'static str,
-        st_ang: &'static str,
-        sw_ang: &'static str,
+        wr: S,
+        hr: S,
+        st_ang: S,
+        sw_ang: S,
     },
     CubicBezTo {
-        x1: &'static str,
-        y1: &'static str,
-        x2: &'static str,
-        y2: &'static str,
-        x3: &'static str,
-        y3: &'static str,
+        x1: S,
+        y1: S,
+        x2: S,
+        y2: S,
+        x3: S,
+        y3: S,
     },
     QuadBezTo {
-        x1: &'static str,
-        y1: &'static str,
-        x2: &'static str,
-        y2: &'static str,
+        x1: S,
+        y1: S,
+        x2: S,
+        y2: S,
     },
     Close,
 }
@@ -37,13 +40,6 @@ pub enum PathCommandDef {
 pub enum PathFill {
     Norm,
     None,
-}
-
-impl PathFill {
-    #[allow(dead_code)]
-    pub fn is_filled(self) -> bool {
-        self != PathFill::None
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -70,62 +66,30 @@ pub enum ResolvedCommand {
     Close,
 }
 
-enum Cmd<'a> {
-    MoveTo {
-        x: &'a str,
-        y: &'a str,
-    },
-    LineTo {
-        x: &'a str,
-        y: &'a str,
-    },
-    ArcTo {
-        wr: &'a str,
-        hr: &'a str,
-        st_ang: &'a str,
-        sw_ang: &'a str,
-    },
-    CubicBezTo {
-        x1: &'a str,
-        y1: &'a str,
-        x2: &'a str,
-        y2: &'a str,
-        x3: &'a str,
-        y3: &'a str,
-    },
-    QuadBezTo {
-        x1: &'a str,
-        y1: &'a str,
-        x2: &'a str,
-        y2: &'a str,
-    },
-    Close,
-}
-
-impl PathCommandDef {
-    fn as_cmd(&self) -> Cmd<'_> {
-        match self {
-            Self::MoveTo { x, y } => Cmd::MoveTo { x, y },
-            Self::LineTo { x, y } => Cmd::LineTo { x, y },
-            Self::ArcTo {
+impl<'a> From<&'a CustomPathCommand> for PathCommandDef<&'a str> {
+    fn from(c: &'a CustomPathCommand) -> Self {
+        match c {
+            CustomPathCommand::MoveTo { x, y } => Self::MoveTo { x, y },
+            CustomPathCommand::LineTo { x, y } => Self::LineTo { x, y },
+            CustomPathCommand::ArcTo {
                 wr,
                 hr,
                 st_ang,
                 sw_ang,
-            } => Cmd::ArcTo {
+            } => Self::ArcTo {
                 wr,
                 hr,
                 st_ang,
                 sw_ang,
             },
-            Self::CubicBezTo {
+            CustomPathCommand::CubicBezTo {
                 x1,
                 y1,
                 x2,
                 y2,
                 x3,
                 y3,
-            } => Cmd::CubicBezTo {
+            } => Self::CubicBezTo {
                 x1,
                 y1,
                 x2,
@@ -133,98 +97,20 @@ impl PathCommandDef {
                 x3,
                 y3,
             },
-            Self::QuadBezTo { x1, y1, x2, y2 } => Cmd::QuadBezTo { x1, y1, x2, y2 },
-            Self::Close => Cmd::Close,
+            CustomPathCommand::QuadBezTo { x1, y1, x2, y2 } => Self::QuadBezTo { x1, y1, x2, y2 },
+            CustomPathCommand::Close => Self::Close,
         }
     }
 }
 
-impl crate::model::CustomPathCommand {
-    fn as_cmd(&self) -> Cmd<'_> {
-        match self {
-            Self::MoveTo { x, y } => Cmd::MoveTo { x, y },
-            Self::LineTo { x, y } => Cmd::LineTo { x, y },
-            Self::ArcTo {
-                wr,
-                hr,
-                st_ang,
-                sw_ang,
-            } => Cmd::ArcTo {
-                wr,
-                hr,
-                st_ang,
-                sw_ang,
-            },
-            Self::CubicBezTo {
-                x1,
-                y1,
-                x2,
-                y2,
-                x3,
-                y3,
-            } => Cmd::CubicBezTo {
-                x1,
-                y1,
-                x2,
-                y2,
-                x3,
-                y3,
-            },
-            Self::QuadBezTo { x1, y1, x2, y2 } => Cmd::QuadBezTo { x1, y1, x2, y2 },
-            Self::Close => Cmd::Close,
-        }
-    }
-}
-
-/// Resolve a path definition into concrete commands.
+/// Resolve a path's commands into concrete ones.
 ///
 /// Coordinates are transformed: OOXML y-down -> PDF y-up via `pdf_y = shape_h - ooxml_y`.
-/// Guide values are in the `coord_w`/`coord_h` coordinate space (typically EMU-scaled),
-/// which gets mapped to the `shape_w`/`shape_h` output space (points).
-/// If the path defines its own w/h, those override the coordinate space dimensions.
-pub fn resolve_path(
-    def: &PathDef,
-    env: &GuideEnv,
-    shape_w: f64,
-    shape_h: f64,
-    coord_w: i64,
-    coord_h: i64,
-) -> Vec<ResolvedCommand> {
-    let path_w = def.w.unwrap_or(coord_w) as f64;
-    let path_h = def.h.unwrap_or(coord_h) as f64;
-    resolve_commands(
-        def.commands.iter().map(|c| c.as_cmd()),
-        env,
-        shape_w,
-        shape_h,
-        path_w,
-        path_h,
-    )
-}
-
-/// Resolve a custom geometry path (owned String fields) into concrete commands.
-pub fn resolve_custom_path(
-    path: &crate::model::CustomPathDef,
-    env: &GuideEnv,
-    shape_w: f64,
-    shape_h: f64,
-    coord_w: i64,
-    coord_h: i64,
-) -> Vec<ResolvedCommand> {
-    let path_w = path.w.unwrap_or(coord_w) as f64;
-    let path_h = path.h.unwrap_or(coord_h) as f64;
-    resolve_commands(
-        path.commands.iter().map(|c| c.as_cmd()),
-        env,
-        shape_w,
-        shape_h,
-        path_w,
-        path_h,
-    )
-}
-
-fn resolve_commands<'a>(
-    commands: impl Iterator<Item = Cmd<'a>>,
+/// Guide values are in the `path_w`/`path_h` coordinate space (the path's own, or the
+/// shape's EMU-scaled one), which gets mapped to the `shape_w`/`shape_h` output space
+/// (points).
+pub fn resolve_path<'a>(
+    commands: impl Iterator<Item = PathCommandDef<&'a str>>,
     env: &GuideEnv,
     shape_w: f64,
     shape_h: f64,
@@ -255,17 +141,17 @@ fn resolve_commands<'a>(
 
     for cmd in commands {
         match cmd {
-            Cmd::MoveTo { x, y } => {
+            PathCommandDef::MoveTo { x, y } => {
                 cur_x = rx(x);
                 cur_y = ry(y);
                 result.push(ResolvedCommand::MoveTo(cur_x, cur_y));
             }
-            Cmd::LineTo { x, y } => {
+            PathCommandDef::LineTo { x, y } => {
                 cur_x = rx(x);
                 cur_y = ry(y);
                 result.push(ResolvedCommand::LineTo(cur_x, cur_y));
             }
-            Cmd::CubicBezTo {
+            PathCommandDef::CubicBezTo {
                 x1,
                 y1,
                 x2,
@@ -287,14 +173,14 @@ fn resolve_commands<'a>(
                 }
                 result.push(cmd);
             }
-            Cmd::QuadBezTo { x1, y1, x2, y2 } => {
+            PathCommandDef::QuadBezTo { x1, y1, x2, y2 } => {
                 let (qx, qy) = (rx(x1), ry(y1));
                 let (ex, ey) = (rx(x2), ry(y2));
                 result.push(quad_to_cubic(cur_x, cur_y, qx, qy, ex, ey));
                 cur_x = ex;
                 cur_y = ey;
             }
-            Cmd::ArcTo {
+            PathCommandDef::ArcTo {
                 wr,
                 hr,
                 st_ang,
@@ -311,7 +197,7 @@ fn resolve_commands<'a>(
                 let sw = env.resolve(sw_ang) as f64;
                 arc_to_cubics(&mut result, &mut cur_x, &mut cur_y, wr_val, hr_val, st, sw);
             }
-            Cmd::Close => {
+            PathCommandDef::Close => {
                 result.push(ResolvedCommand::Close);
             }
         }
@@ -349,13 +235,11 @@ fn arc_to_cubics(
     st_ang_60k: f64,
     sw_ang_60k: f64,
 ) {
-    use std::f64::consts::{FRAC_PI_2, PI};
+    use std::f64::consts::FRAC_PI_2;
 
     if wr < 0.001 || hr < 0.001 || sw_ang_60k.abs() < 1.0 {
         return;
     }
-
-    let ang_to_rad = |a: f64| a / (60000.0 * 180.0) * PI;
 
     let st_rad = ang_to_rad(-st_ang_60k);
     let sw_rad = ang_to_rad(-sw_ang_60k);
@@ -417,14 +301,7 @@ mod tests {
                 y2: "0",
             },
         ];
-        let def = PathDef {
-            commands: CMDS,
-            w: None,
-            h: None,
-            fill: PathFill::Norm,
-            stroke: false,
-        };
-        let resolved = resolve_path(&def, &env, 100.0, 100.0, 100, 100);
+        let resolved = resolve_path(CMDS.iter().copied(), &env, 100.0, 100.0, 100.0, 100.0);
         assert_eq!(resolved.len(), 2);
         // MoveTo(0, 100) — y-flipped from (0,0)
         assert!(
@@ -449,14 +326,7 @@ mod tests {
             PathCommandDef::LineTo { x: "l", y: "b" },
             PathCommandDef::Close,
         ];
-        let def = PathDef {
-            commands: CMDS,
-            w: None,
-            h: None,
-            fill: PathFill::Norm,
-            stroke: false,
-        };
-        let resolved = resolve_path(&def, &env, 200.0, 100.0, 200, 100);
+        let resolved = resolve_path(CMDS.iter().copied(), &env, 200.0, 100.0, 200.0, 100.0);
         assert_eq!(resolved.len(), 5);
         // (l,t) = (0,0) -> PDF (0, 100)
         assert!(matches!(&resolved[0], ResolvedCommand::MoveTo(x, y) if *x == 0.0 && *y == 100.0));
@@ -481,14 +351,7 @@ mod tests {
             PathCommandDef::LineTo { x: "1", y: "2" },
             PathCommandDef::Close,
         ];
-        let def = PathDef {
-            commands: CMDS,
-            w: Some(2),
-            h: Some(2),
-            fill: PathFill::Norm,
-            stroke: false,
-        };
-        let resolved = resolve_path(&def, &env, 100.0, 50.0, 2, 2);
+        let resolved = resolve_path(CMDS.iter().copied(), &env, 100.0, 50.0, 2.0, 2.0);
         // (0,0) -> scaled (0,0) -> y-flip (0, 50)
         assert!(matches!(&resolved[0], ResolvedCommand::MoveTo(x, y) if *x == 0.0 && *y == 50.0));
         // (2,0) -> scaled (100,0) -> y-flip (100, 50)
@@ -519,14 +382,14 @@ mod tests {
                 sw_ang: "cd4",
             },
         ];
-        let def = PathDef {
-            commands: CMDS,
-            w: None,
-            h: None,
-            fill: PathFill::Norm,
-            stroke: false,
-        };
-        let resolved = resolve_path(&def, &env, 100.0, 100.0, 1_000_000, 1_000_000);
+        let resolved = resolve_path(
+            CMDS.iter().copied(),
+            &env,
+            100.0,
+            100.0,
+            1_000_000.0,
+            1_000_000.0,
+        );
         // Should have MoveTo + at least one CubicTo
         assert!(resolved.len() >= 2);
         assert!(matches!(resolved[0], ResolvedCommand::MoveTo(..)));
