@@ -440,8 +440,22 @@ reproduced at the baseline and were marked fixed without a code change.
    +1.9, hyphenation/italian +0.9, covid +0.5, education_consultant +0.3; 19
    more changed hash only. #246 itself remains: its table pagination differs
    through cumulative line-height drift on page 2.
+7. **#186 alfies_arc page 1 too high**: a 1014pt-wide OLE logo strip
+   (`w:object`, a paragraph-level picture) in a 468pt column leaves no room on
+   its line for the paragraph mark, which Word wraps onto an 11pt line of its
+   own; Word's `" "` lines for the empty paragraphs (y 194.6 / 216.0 / 249.4)
+   gave the object line box away. The block-picture height adds a line when
+   the picture is wider than the *column* (learning_cultures keeps the mark
+   beside a column-wide picture in a right-indented paragraph, so the
+   paragraph's indents do not count; ukrainian_municipal's 35pt object adds
+   nothing). alfies J +3.1 / SSIM +10.0 (page 1 now 3.2pt high, likely the
+   picture's descent); brazilian_logistics J +21.1 / SSIM +20.4 (its wide
+   figure had the same missing line). No other fixture changed.
 
 Findings left for later:
+- A hyphen at the start of a word (" -5") now also breaks before the digit;
+  the 13 measured cases all had an alphanumeric before the hyphen. Scan the
+  references for `\s-$` line ends before widening or narrowing.
 - `wp:effectExtent` is not part of an inline picture's line height; ut_koer's
   0.75pt bottom extent is the residual on its header rule.
 - Two adjacent `w:noBreakHyphen` (parsed to plain `-`, `docx/runs.rs`) now

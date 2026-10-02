@@ -184,8 +184,8 @@
       "source": "Generated",
       "x_pt": 462.30698,
       "y_pt": 535.6599,
-      "note": "all our text starts a little too high",
-      "fixed": false,
+      "note": "all our text starts a little too high\n\nFIX (2026-10-02): the 1014pt-wide logo object left no room on its line for the paragraph mark, which Word wraps to an 11pt line of its own; page 1 now sits 3pt high instead of 13.9pt.",
+      "fixed": true,
       "cleared": false
     },
     {

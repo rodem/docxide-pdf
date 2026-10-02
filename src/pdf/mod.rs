@@ -1886,17 +1886,23 @@ fn render_paragraph_block(
 
     let mut content_h = if para.inline_chart.is_some() {
         para.content_height
-    } else if para.image.is_some() {
+    } else if let Some(img) = &para.image {
         // A picture taller than the text line takes its paragraph's own
         // line-spacing leading below it, sized by the paragraph mark
         // (dental_amalgam: a 68.25pt logo under Normal's 1.15 lines is
         // 70.1pt tall in Word although the next paragraph is single-spaced).
         let leading = (line_h - font_size * tallest_lhr.unwrap_or(1.2)).max(0.0);
-        if para.content_height > line_h {
+        let picture_h = if para.content_height > line_h {
             para.content_height + leading
         } else {
             para.content_height
-        }
+        };
+        // A picture wider than the column leaves its line no room for the
+        // paragraph mark, which wraps onto a line of its own (alfies_arc: an
+        // 11pt line follows a 1014pt-wide OLE logo strip, annotation #186).
+        // The paragraph's own indents do not count: learning_cultures keeps
+        // the mark beside a column-wide picture in a right-indented paragraph.
+        if img.layout_size().0 > col_w { picture_h + line_h } else { picture_h }
     } else if max_inline_img_h > 0.0 {
         lines_height(&lines, line_h, para_metrics)
     } else if text_empty {
