@@ -5,14 +5,12 @@ use pdf_writer::{Filter, Name, Pdf, Rect, Ref, Str};
 use ttf_parser::Face;
 use ttf_parser::gpos::{PairAdjustment, PositioningSubtable};
 
-use super::FontMetrics;
 use super::encoding::winansi_to_char;
+use super::{FontMetrics, FontRefs};
 
 pub(super) fn embed_truetype(
     pdf: &mut Pdf,
-    font_ref: Ref,
-    descriptor_ref: Ref,
-    data_ref: Ref,
+    refs: FontRefs,
     font_name: &str,
     font_data: &[u8],
     face_index: u32,
@@ -75,8 +73,8 @@ pub(super) fn embed_truetype(
         .filter_map(|(&ch, &new_gid)| face.glyph_index(ch).map(|orig| (orig, new_gid)))
         .collect();
 
-    extract_kern_pairs(&face, &char_gids, units, &mut kern_pairs);
-    extract_gpos_pairs(&face, &char_gids, units, &mut kern_pairs);
+    extract_kern_pairs(&face, &char_gids, &to_1000, &mut kern_pairs);
+    extract_gpos_pairs(&face, &char_gids, &to_1000, &mut kern_pairs);
 
     if !kern_pairs.is_empty() {
         log::info!(
@@ -94,7 +92,7 @@ pub(super) fn embed_truetype(
     let data_len = i32::try_from(subset_data.len()).ok()?;
     let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&subset_data, 6);
     {
-        let mut stream = pdf.stream(data_ref, &compressed);
+        let mut stream = pdf.stream(refs.data, &compressed);
         stream.filter(Filter::FlateDecode);
         stream.pair(Name(b"Length1"), data_len);
     }
@@ -107,7 +105,7 @@ pub(super) fn embed_truetype(
         supplement: 0,
     };
 
-    pdf.font_descriptor(descriptor_ref)
+    pdf.font_descriptor(refs.descriptor)
         .name(ps_name_ref)
         .flags(FontFlags::NON_SYMBOLIC)
         .bbox(bbox)
@@ -116,7 +114,7 @@ pub(super) fn embed_truetype(
         .descent(descent)
         .cap_height(cap_height)
         .stem_v(80.0)
-        .font_file2(data_ref);
+        .font_file2(refs.data);
 
     let cid_font_ref = alloc();
     {
@@ -124,17 +122,16 @@ pub(super) fn embed_truetype(
         cid.subtype(CidFontType::Type2);
         cid.base_font(ps_name_ref);
         cid.system_info(system_info);
-        cid.font_descriptor(descriptor_ref);
+        cid.font_descriptor(refs.descriptor);
         cid.default_width(0.0);
         cid.cid_to_gid_map_predefined(Name(b"Identity"));
 
+        // The width of the glyph each character maps to (`resolve_glyph`): a
+        // symbol font's character missing here got /DW 0 while drawn at its
+        // real width (7.21.5).
         let mut gid_widths: Vec<(u16, f32)> = char_to_gid
             .iter()
-            .filter_map(|(&ch, &new_gid)| {
-                // Same lookup as the glyph itself: a symbol font's character
-                // missing here got /DW 0 while drawn at its real width (7.21.5).
-                resolve_glyph(&face, ch).map(|gid| (new_gid, advance_1000(gid)))
-            })
+            .map(|(&ch, &new_gid)| (new_gid, char_widths_1000[&ch]))
             .collect();
         gid_widths.sort_by_key(|&(gid, _)| gid);
         if !gid_widths.is_empty() {
@@ -171,7 +168,7 @@ pub(super) fn embed_truetype(
     }
     pdf.stream(tounicode_ref, cmap.finish().as_slice());
 
-    pdf.type0_font(font_ref)
+    pdf.type0_font(refs.font)
         .base_font(ps_name_ref)
         .encoding_predefined(Name(b"Identity-H"))
         .descendant_font(cid_font_ref)
@@ -295,7 +292,7 @@ fn resolve_glyph(face: &Face, ch: char) -> Option<ttf_parser::GlyphId> {
 fn extract_kern_pairs(
     face: &Face,
     char_gids: &[(ttf_parser::GlyphId, u16)],
-    units: f32,
+    to_1000: &impl Fn(f32) -> f32,
     kern_pairs: &mut HashMap<(u16, u16), f32>,
 ) {
     let Some(kern) = face.tables().kern else {
@@ -313,7 +310,7 @@ fn extract_kern_pairs(
                 .filter_map(|st| st.glyphs_kerning(l_orig, r_orig))
                 .sum();
             if total != 0 {
-                kern_pairs.insert((l_new, r_new), total as f32 / units * 1000.0);
+                kern_pairs.insert((l_new, r_new), to_1000(total as f32));
             }
         }
     }
@@ -322,7 +319,7 @@ fn extract_kern_pairs(
 fn extract_gpos_pairs(
     face: &Face,
     char_gids: &[(ttf_parser::GlyphId, u16)],
-    units: f32,
+    to_1000: &impl Fn(f32) -> f32,
     kern_pairs: &mut HashMap<(u16, u16), f32>,
 ) {
     let Some(gpos) = face.tables().gpos else {
@@ -353,7 +350,7 @@ fn extract_gpos_pairs(
                             {
                                 kern_pairs
                                     .entry((l_new, r_new))
-                                    .or_insert(val1.x_advance as f32 / units * 1000.0);
+                                    .or_insert(to_1000(val1.x_advance as f32));
                             }
                         }
                     }
@@ -375,7 +372,7 @@ fn extract_gpos_pairs(
                             {
                                 kern_pairs
                                     .entry((l_new, r_new))
-                                    .or_insert(val1.x_advance as f32 / units * 1000.0);
+                                    .or_insert(to_1000(val1.x_advance as f32));
                             }
                         }
                     }
