@@ -14,8 +14,9 @@ use super::color::{
 use super::images::{extent_dimensions, parse_anchor_position};
 use super::styles::{ThemeFillStyle, ThemeFonts};
 use super::{
-    DML_NS, MC_NS_TOP, OFFICE_NS, ParseContext, VML_NS, WML_NS, WPD_NS, WPS_NS, dml as find_dml,
-    dml_children as find_dml_all, emu_attr, parse_pt, wps as find_wps,
+    DML_NS, MC_NS_TOP, OFFICE_NS, ParseContext, VML_NS, WML_NS, WPD_NS, WPS_NS, angle_attr,
+    dml as find_dml, dml_children as find_dml_all, emu_attr, emu_attr_opt, frac_attr, parse_pt,
+    wps as find_wps,
 };
 
 struct VmlBoxStyle {
@@ -122,11 +123,7 @@ fn parse_gradient_fill(sp_pr: roxmltree::Node, theme: &ThemeFonts) -> Option<Sha
 
     let stops: Vec<([u8; 3], f32)> = find_dml_all(gs_lst, "gs")
         .filter_map(|gs| {
-            let pos = gs
-                .attribute("pos")
-                .and_then(|v| v.parse::<f32>().ok())
-                .map(|v| v / 100_000.0)
-                .unwrap_or(0.0);
+            let pos = frac_attr(gs, "pos").unwrap_or(0.0);
             resolve_dml_color(gs, theme).map(|color| (color, pos))
         })
         .collect();
@@ -136,9 +133,7 @@ fn parse_gradient_fill(sp_pr: roxmltree::Node, theme: &ThemeFonts) -> Option<Sha
 
     // OOXML a:lin @ang is in 60,000ths of a degree
     let angle_deg = find_dml(grad_fill, "lin")
-        .and_then(|lin| lin.attribute("ang"))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(|v| v / 60_000.0)
+        .and_then(|lin| angle_attr(lin, "ang"))
         .unwrap_or(0.0);
 
     Some(ShapeFill::LinearGradient { stops, angle_deg })
@@ -336,12 +331,7 @@ fn parse_body_margins(wsp: roxmltree::Node) -> (f32, f32, f32, f32) {
     let Some(bp) = find_wps(wsp, "bodyPr") else {
         return (3.6, 7.2, 3.6, 7.2); // Word defaults: 0.05" top/bottom, 0.1" left/right
     };
-    let emu_to_pt = |attr: &str, default: f32| -> f32 {
-        bp.attribute(attr)
-            .and_then(|v| v.parse::<f32>().ok())
-            .map(super::emu_to_pts)
-            .unwrap_or(default)
-    };
+    let emu_to_pt = |attr: &str, default: f32| -> f32 { emu_attr_opt(bp, attr).unwrap_or(default) };
     (
         emu_to_pt("tIns", 3.6),
         emu_to_pt("lIns", 7.2),
@@ -424,10 +414,7 @@ pub(super) fn parse_wsp_shape<R: Read + std::io::Seek>(
 
     let ln_node = sp_pr.and_then(|sp| find_dml(sp, "ln"));
     let ln_no_fill = ln_node.is_some_and(|ln| find_dml(ln, "noFill").is_some());
-    let explicit_ln_width = ln_node
-        .and_then(|ln| ln.attribute("w"))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(super::emu_to_pts);
+    let explicit_ln_width = ln_node.and_then(|ln| emu_attr_opt(ln, "w"));
     let (stroke_color, stroke_width) = if ln_no_fill {
         (None, 0.0)
     } else if let Some((color, width)) = ln_node.and_then(|ln| parse_line_stroke(ln, ctx.theme)) {
@@ -558,11 +545,7 @@ pub(super) fn parse_connector_shape_node(
             ConnectorType::Line { flip_h, flip_v }
         }
         "arc" => {
-            let rotation = xfrm
-                .and_then(|x| x.attribute("rot"))
-                .and_then(|v| v.parse::<f32>().ok())
-                .unwrap_or(0.0)
-                / 60000.0;
+            let rotation = xfrm.and_then(|x| angle_attr(x, "rot")).unwrap_or(0.0);
 
             let mut adj1 = 0.0_f32;
             let mut adj2 = 0.0_f32;
@@ -601,9 +584,7 @@ pub(super) fn parse_connector_shape_node(
         .or_else(|| parse_style_stroke(wsp, theme))
         .unwrap_or([0, 0, 0]);
     let stroke_width = ln_node
-        .and_then(|ln| ln.attribute("w"))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(super::emu_to_pts)
+        .and_then(|ln| emu_attr_opt(ln, "w"))
         .unwrap_or_else(|| parse_style_stroke_width(wsp));
 
     let (head_end, tail_end) = ln_node
@@ -912,12 +893,8 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
                         if let Some(wsp) = parse_textbox_from_wsp(container, ctx) {
                             let (h_position, h_relative, v_pos, v_relative) =
                                 parse_anchor_position(container);
-                            let v_offset = match v_pos {
-                                VerticalPosition::Offset(o) => o,
-                                _ => 0.0,
-                            };
                             let (wrap_type, _, _) = super::images::parse_wrap_type(container);
-                            let behind_doc = container.attribute("behindDoc") == Some("1");
+                            let (behind_doc, z_index) = super::images::anchor_z_order(container);
                             let dist_bottom = emu_attr(container, "distB");
                             textboxes.push(Textbox {
                                 paragraphs: wsp.paragraphs,
@@ -925,7 +902,7 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
                                 height_pt: display_h,
                                 h_position,
                                 h_relative_from: h_relative,
-                                v_offset_pt: v_offset,
+                                v_offset_pt: v_pos.offset_or_zero(),
                                 v_position: v_pos,
                                 v_relative_from: v_relative,
                                 fill: wsp.fill,
@@ -943,10 +920,7 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
                                 no_text_wrap: wsp.no_text_wrap,
                                 text_warp: wsp.text_warp,
                                 auto_fit: wsp.auto_fit,
-                                z_index: container
-                                    .attribute("relativeHeight")
-                                    .and_then(|v| v.parse::<u32>().ok())
-                                    .unwrap_or(0),
+                                z_index,
                                 anchor_seq: 0,
                                 indent_relative: false,
                             });

@@ -1,6 +1,6 @@
 use std::io::{Read, Seek};
 
-use super::{WML_NS, read_zip_text, twips_to_pts, wml, wml_attr, wml_bool};
+use super::{WML_NS, read_zip_text, twips_attr, wml, wml_attr, wml_bool};
 
 pub(super) struct DocumentSettings {
     pub even_and_odd_headers: bool,
@@ -52,9 +52,8 @@ pub(super) fn parse_settings<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> Do
     };
     let root = doc.root_element();
 
-    let default_tab_stop = wml_attr(root, "defaultTabStop")
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(twips_to_pts)
+    let default_tab_stop = wml(root, "defaultTabStop")
+        .and_then(|n| twips_attr(n, "val"))
         .unwrap_or(36.0);
 
     let theme_font_lang = wml(root, "themeFontLang");

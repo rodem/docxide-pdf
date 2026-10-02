@@ -256,12 +256,32 @@ pub enum HorizontalPosition {
     AlignRight,
 }
 
+impl HorizontalPosition {
+    /// The explicit offset; 0 for the alignment variants.
+    pub fn offset_or_zero(self) -> f32 {
+        match self {
+            Self::Offset(o) => o,
+            _ => 0.0,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum VerticalPosition {
     Offset(f32),
     AlignTop,
     AlignCenter,
     AlignBottom,
+}
+
+impl VerticalPosition {
+    /// The explicit offset; 0 for the alignment variants.
+    pub fn offset_or_zero(self) -> f32 {
+        match self {
+            Self::Offset(o) => o,
+            _ => 0.0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

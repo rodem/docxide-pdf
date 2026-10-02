@@ -7,7 +7,7 @@ use super::color::{parse_line_stroke, parse_solid_fill, resolve_dml_color};
 use super::images::{find_blip_embed, read_image_from_zip};
 use super::styles::ThemeFonts;
 use super::textbox::parse_shape_geometry;
-use super::{DIAGRAM_NS, DML_NS, DSP_NS, dml, dsp, emu_attr, read_zip_text};
+use super::{DIAGRAM_NS, DML_NS, DSP_NS, dml, dsp, emu_attr, frac_attr, part_path, read_zip_text};
 
 /// Load the OPC relationship file for a given part and resolve relative targets
 /// to full zip paths (e.g. `../media/image1.jpg` relative to `word/diagrams/`
@@ -93,10 +93,7 @@ pub(super) fn parse_smartart_drawing<R: Read + Seek>(
             .cloned()
     });
     if let Some(target) = drawing_target {
-        let zip_path = target
-            .strip_prefix('/')
-            .map(String::from)
-            .unwrap_or_else(|| format!("word/{}", target));
+        let zip_path = part_path(&target);
 
         let diagram_rels = load_part_rels(zip, &zip_path);
 
@@ -340,9 +337,7 @@ fn parse_dsp_text(sp: roxmltree::Node, theme: &ThemeFonts) -> DspTextProps {
         let line_spacing_pct = ppr
             .and_then(|pp| dml(pp, "lnSpc"))
             .and_then(|ls| dml(ls, "spcPct"))
-            .and_then(|sp| sp.attribute("val"))
-            .and_then(|v| v.parse::<f32>().ok())
-            .map(|v| v / 100_000.0)
+            .and_then(|sp| frac_attr(sp, "val"))
             .unwrap_or(0.0);
 
         if !runs.is_empty() {

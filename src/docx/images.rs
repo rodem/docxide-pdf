@@ -11,12 +11,13 @@ use super::charts::parse_chart_from_zip;
 use super::smartart::{has_diagram_ref, parse_smartart_drawing};
 use super::textbox::{parse_connector_from_wsp, parse_textbox_from_wsp};
 use super::{
-    CHART_NS, DML_NS, PIC_NS, ParseContext, REL_NS, VML_NS, W10_NS, WML_NS, WPD_NS, dml, emu_attr,
-    emu_to_pts, parse_hex_color, parse_on_off, parse_pt, twips_attr, wml, wpd,
+    CHART_NS, DML_NS, PIC_NS, ParseContext, REL_NS, VML_NS, W10_NS, WML_NS, WPD_NS, angle_attr,
+    dml, emu_attr, emu_attr_opt, emu_to_pts, f32_attr, frac_attr, parse_hex_color, parse_on_off,
+    parse_pt, part_path, read_zip_bytes, twips_attr, wml, wpd,
 };
 
-fn parse_emu_text(text: Option<&str>) -> f32 {
-    emu_to_pts(text.unwrap_or("0").parse::<f32>().unwrap_or(0.0))
+fn parse_emu_text(text: &str) -> f32 {
+    emu_to_pts(text.parse::<f32>().unwrap_or(0.0))
 }
 
 fn wpd_child_text<'a>(parent: Option<roxmltree::Node<'a, 'a>>, name: &str) -> Option<&'a str> {
@@ -38,16 +39,18 @@ fn inline_extra_height(container: roxmltree::Node) -> (f32, f32) {
 }
 
 pub(super) fn extent_dimensions(container: roxmltree::Node) -> (f32, f32) {
-    let extent = wpd(container, "extent");
-    let cx = extent
-        .and_then(|n| n.attribute("cx"))
-        .and_then(|v| v.parse::<f32>().ok())
-        .unwrap_or(0.0);
-    let cy = extent
-        .and_then(|n| n.attribute("cy"))
-        .and_then(|v| v.parse::<f32>().ok())
-        .unwrap_or(0.0);
-    (emu_to_pts(cx), emu_to_pts(cy))
+    wpd(container, "extent").map_or((0.0, 0.0), |e| (emu_attr(e, "cx"), emu_attr(e, "cy")))
+}
+
+/// `wp:anchor` z-order: (behindDoc, relativeHeight).
+pub(super) fn anchor_z_order(anchor: roxmltree::Node) -> (bool, u32) {
+    (
+        anchor.attribute("behindDoc") == Some("1"),
+        anchor
+            .attribute("relativeHeight")
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(0),
+    )
 }
 
 /// GIF and TIFF pictures are re-encoded as PNG for the PDF writer.
@@ -129,7 +132,7 @@ fn find_pic_sp_pr<'a>(container: roxmltree::Node<'a, 'a>) -> Option<roxmltree::N
 /// kept: they pad the frame with blank space.
 fn parse_src_rect(container: roxmltree::Node) -> Option<[f32; 4]> {
     let rect = dml(find_blip(container)?.parent()?, "srcRect")?;
-    let frac = |name| frac_attr(rect, name);
+    let frac = |name| frac_attr(rect, name).unwrap_or(0.0);
     let r = [frac("l"), frac("t"), frac("r"), frac("b")];
     let visible_w = 1.0 - r[0] - r[2];
     let visible_h = 1.0 - r[1] - r[3];
@@ -176,16 +179,11 @@ fn apply_pic_props(img: &mut EmbeddedImage, container: roxmltree::Node) {
 /// (italian_evaluation_minutes p7, annotation #229).
 fn parse_lum(container: roxmltree::Node) -> Option<(f32, f32)> {
     let lum = dml(find_blip(container)?, "lum")?;
-    let (bright, contrast) = (frac_attr(lum, "bright"), frac_attr(lum, "contrast"));
+    let (bright, contrast) = (
+        frac_attr(lum, "bright").unwrap_or(0.0),
+        frac_attr(lum, "contrast").unwrap_or(0.0),
+    );
     (bright != 0.0 || contrast != 0.0).then_some((bright, contrast))
-}
-
-/// A DrawingML percentage attribute stored as 1/1000 of a percent (`ST_Percentage`
-/// in its integer form), as a fraction; 0.0 when absent.
-fn frac_attr(node: roxmltree::Node, name: &str) -> f32 {
-    node.attribute(name)
-        .and_then(|v| v.parse::<f32>().ok())
-        .map_or(0.0, |v| v / 100_000.0)
 }
 
 /// Read in-plane rotation (clockwise degrees) for a floating picture. Prefers the
@@ -197,9 +195,7 @@ fn parse_image_rotation(sp_pr: Option<roxmltree::Node>) -> f32 {
     let Some(sp_pr) = sp_pr else {
         return 0.0;
     };
-    if let Some(rot) = dml(sp_pr, "xfrm")
-        .and_then(|x| x.attribute("rot"))
-        .and_then(|v| v.parse::<f32>().ok())
+    if let Some(rot) = dml(sp_pr, "xfrm").and_then(|x| f32_attr(x, "rot"))
         && rot.abs() > f32::EPSILON
     {
         return rot / 60000.0;
@@ -207,9 +203,8 @@ fn parse_image_rotation(sp_pr: Option<roxmltree::Node>) -> f32 {
     dml(sp_pr, "scene3d")
         .and_then(|s| dml(s, "camera"))
         .and_then(|c| dml(c, "rot"))
-        .and_then(|r| r.attribute("rev"))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(|rev| -rev / 60000.0)
+        .and_then(|r| angle_attr(r, "rev"))
+        .map(|rev| -rev)
         .unwrap_or(0.0)
 }
 
@@ -219,11 +214,7 @@ fn parse_pic_outline(sp_pr: Option<roxmltree::Node>) -> (Option<[u8; 3]>, f32) {
     let Some(ln) = ln else {
         return (None, 0.0);
     };
-    let width = ln
-        .attribute("w")
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(emu_to_pts)
-        .unwrap_or(0.75); // default 0.75pt
+    let width = emu_attr_opt(ln, "w").unwrap_or(0.75); // default 0.75pt
     let color = ln
         .descendants()
         .find(|n| n.has_tag_name((DML_NS, "srgbClr")))
@@ -251,25 +242,15 @@ fn parse_dml_color_alpha(node: roxmltree::Node) -> ([u8; 3], f32) {
         .unwrap_or([0, 0, 0]);
     let alpha = color_node
         .and_then(|n| n.children().find(|c| c.has_tag_name((DML_NS, "alpha"))))
-        .and_then(|a| a.attribute("val"))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(|v| v / 100000.0)
+        .and_then(|a| frac_attr(a, "val"))
         .unwrap_or(1.0);
     (rgb, alpha)
 }
 
 /// Parse dist+dir attributes (common to outerShdw, innerShdw) into (offset_x, offset_y).
 fn parse_dist_dir(node: roxmltree::Node) -> (f32, f32) {
-    let dist = node
-        .attribute("dist")
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(emu_to_pts)
-        .unwrap_or(0.0);
-    let dir_deg = node
-        .attribute("dir")
-        .and_then(|v| v.parse::<f32>().ok())
-        .unwrap_or(0.0)
-        / 60000.0;
+    let dist = emu_attr(node, "dist");
+    let dir_deg = angle_attr(node, "dir").unwrap_or(0.0);
     let dir_rad = dir_deg.to_radians();
     (dist * dir_rad.cos(), dist * dir_rad.sin())
 }
@@ -307,11 +288,7 @@ fn parse_pic_effects(sp_pr: Option<roxmltree::Node>) -> PicEffects {
     {
         match child.tag_name().name() {
             "outerShdw" => {
-                let blur_radius = child
-                    .attribute("blurRad")
-                    .and_then(|v| v.parse::<f32>().ok())
-                    .map(emu_to_pts)
-                    .unwrap_or(0.0);
+                let blur_radius = emu_attr_opt(child, "blurRad").unwrap_or(0.0);
                 let (offset_x, offset_y) = parse_dist_dir(child);
                 let (color, alpha) = parse_dml_color_alpha(child);
                 fx.shadow = Some(ImageShadow {
@@ -323,21 +300,13 @@ fn parse_pic_effects(sp_pr: Option<roxmltree::Node>) -> PicEffects {
                 });
             }
             "softEdge" => {
-                let radius = child
-                    .attribute("rad")
-                    .and_then(|v| v.parse::<f32>().ok())
-                    .map(emu_to_pts)
-                    .unwrap_or(0.0);
+                let radius = emu_attr_opt(child, "rad").unwrap_or(0.0);
                 if radius > 0.0 {
                     fx.soft_edge = Some(SoftEdge { radius });
                 }
             }
             "glow" => {
-                let radius = child
-                    .attribute("rad")
-                    .and_then(|v| v.parse::<f32>().ok())
-                    .map(emu_to_pts)
-                    .unwrap_or(0.0);
+                let radius = emu_attr_opt(child, "rad").unwrap_or(0.0);
                 let (color, alpha) = parse_dml_color_alpha(child);
                 if radius > 0.0 {
                     fx.glow = Some(ImageGlow {
@@ -348,11 +317,7 @@ fn parse_pic_effects(sp_pr: Option<roxmltree::Node>) -> PicEffects {
                 }
             }
             "innerShdw" => {
-                let blur_radius = child
-                    .attribute("blurRad")
-                    .and_then(|v| v.parse::<f32>().ok())
-                    .map(emu_to_pts)
-                    .unwrap_or(0.0);
+                let blur_radius = emu_attr_opt(child, "blurRad").unwrap_or(0.0);
                 let (offset_x, offset_y) = parse_dist_dir(child);
                 let (color, alpha) = parse_dml_color_alpha(child);
                 fx.inner_shadow = Some(InnerShadow {
@@ -364,26 +329,10 @@ fn parse_pic_effects(sp_pr: Option<roxmltree::Node>) -> PicEffects {
                 });
             }
             "reflection" => {
-                let start_alpha = child
-                    .attribute("stA")
-                    .and_then(|v| v.parse::<f32>().ok())
-                    .map(|v| v / 100000.0)
-                    .unwrap_or(0.5);
-                let end_alpha = child
-                    .attribute("endA")
-                    .and_then(|v| v.parse::<f32>().ok())
-                    .map(|v| v / 100000.0)
-                    .unwrap_or(0.0);
-                let distance = child
-                    .attribute("dist")
-                    .and_then(|v| v.parse::<f32>().ok())
-                    .map(emu_to_pts)
-                    .unwrap_or(0.0);
-                let end_pos = child
-                    .attribute("endPos")
-                    .and_then(|v| v.parse::<f32>().ok())
-                    .map(|v| v / 100000.0)
-                    .unwrap_or(1.0);
+                let start_alpha = frac_attr(child, "stA").unwrap_or(0.5);
+                let end_alpha = frac_attr(child, "endA").unwrap_or(0.0);
+                let distance = emu_attr_opt(child, "dist").unwrap_or(0.0);
+                let end_pos = frac_attr(child, "endPos").unwrap_or(1.0);
                 fx.reflection = Some(ImageReflection {
                     start_alpha,
                     end_alpha,
@@ -416,14 +365,7 @@ pub(super) fn read_image_from_zip_extra<R: Read + Seek>(
     layout_extra_height: f32,
     layout_extra_top: f32,
 ) -> Option<EmbeddedImage> {
-    let target = rels.get(embed_id)?;
-    let zip_path = target
-        .strip_prefix('/')
-        .map(String::from)
-        .unwrap_or_else(|| format!("word/{}", target));
-    let mut entry = zip.by_name(&zip_path).ok()?;
-    let mut data = Vec::new();
-    entry.read_to_end(&mut data).ok()?;
+    let mut data = read_zip_bytes(zip, &part_path(rels.get(embed_id)?))?;
     if super::wmf::is_wmf(&data) {
         data = super::wmf::wmf_to_raster(&data)?;
     } else if let Some(bmp) = super::emf::emf_to_raster(&data) {
@@ -494,7 +436,7 @@ pub(super) fn parse_anchor_position(
             _ => HorizontalPosition::AlignLeft,
         }
     } else if let Some(text) = wpd_child_text(pos_h, "posOffset") {
-        HorizontalPosition::Offset(parse_emu_text(Some(text)))
+        HorizontalPosition::Offset(parse_emu_text(text))
     } else {
         HorizontalPosition::AlignLeft
     };
@@ -513,7 +455,7 @@ pub(super) fn parse_anchor_position(
             _ => VerticalPosition::AlignTop,
         }
     } else if let Some(text) = wpd_child_text(pos_v, "posOffset") {
-        VerticalPosition::Offset(parse_emu_text(Some(text)))
+        VerticalPosition::Offset(parse_emu_text(text))
     } else {
         VerticalPosition::Offset(0.0)
     };
@@ -627,23 +569,15 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
         if is_anchor {
             if let Some(wsp) = parse_textbox_from_wsp(container, ctx) {
                 let (h_position, h_relative, v_pos, v_relative) = parse_anchor_position(container);
-                let v_offset = match v_pos {
-                    VerticalPosition::Offset(o) => o,
-                    _ => 0.0,
-                };
                 let (wrap_type, _, _) = parse_wrap_type(container);
-                let behind_doc = container.attribute("behindDoc") == Some("1");
-                let z_index = container
-                    .attribute("relativeHeight")
-                    .and_then(|v| v.parse::<u32>().ok())
-                    .unwrap_or(0);
+                let (behind_doc, z_index) = anchor_z_order(container);
                 return Some(RunDrawingResult::TextBox(Textbox {
                     paragraphs: wsp.paragraphs,
                     width_pt: display_w,
                     height_pt: display_h,
                     h_position,
                     h_relative_from: h_relative,
-                    v_offset_pt: v_offset,
+                    v_offset_pt: v_pos.offset_or_zero(),
                     v_position: v_pos,
                     v_relative_from: v_relative,
                     fill: wsp.fill,
@@ -677,11 +611,7 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
                 let (h_position, h_relative, v_position, v_relative) =
                     parse_anchor_position(container);
                 let (wrap_type, wrap_text, wrap_polygon) = parse_wrap_type(container);
-                let behind_doc = container.attribute("behindDoc") == Some("1");
-                let z_index = container
-                    .attribute("relativeHeight")
-                    .and_then(|v| v.parse::<u32>().ok())
-                    .unwrap_or(0);
+                let (behind_doc, z_index) = anchor_z_order(container);
                 return Some(RunDrawingResult::Floating(FloatingImage {
                     image: img,
                     h_position,

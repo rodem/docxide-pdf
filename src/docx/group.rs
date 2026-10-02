@@ -14,7 +14,7 @@ use crate::model::{
 };
 
 use super::images::{
-    RunDrawingResult, extent_dimensions, find_blip_embed, parse_anchor_position,
+    RunDrawingResult, anchor_z_order, extent_dimensions, find_blip_embed, parse_anchor_position,
     read_image_from_zip,
 };
 use super::textbox::{find_sp_pr, parse_connector_shape_node, parse_wsp_shape};
@@ -121,22 +121,14 @@ pub(super) fn parse_canvas_or_group<R: Read + Seek>(
 
     let base = if is_anchor {
         let (h_pos, h_rel, v_pos, v_rel) = parse_anchor_position(container);
+        let (behind_doc, z_index) = anchor_z_order(container);
         BaseAnchor {
-            x: match h_pos {
-                HorizontalPosition::Offset(v) => v,
-                _ => 0.0,
-            },
-            y: match v_pos {
-                VerticalPosition::Offset(v) => v,
-                _ => 0.0,
-            },
+            x: h_pos.offset_or_zero(),
+            y: v_pos.offset_or_zero(),
             h_rel,
             v_rel,
-            behind_doc: container.attribute("behindDoc") == Some("1"),
-            z_index: container
-                .attribute("relativeHeight")
-                .and_then(|v| v.parse::<u32>().ok())
-                .unwrap_or(0),
+            behind_doc,
+            z_index,
             indent_relative: false,
         }
     } else {

@@ -9,10 +9,11 @@ use crate::model::{
 pub(super) use super::color::{ColorTransforms, parse_color_transforms};
 use super::wordart::{parse_text_fill, parse_text_glow, parse_text_outline, parse_text_shadow};
 use super::{
-    DML_NS, WML_NS, dml, extract_indents, highlight_color, merge_tab_stops, parse_cell_border,
-    parse_cell_border_left, parse_cell_border_right, parse_hex_color, parse_on_off,
-    parse_one_border, parse_paragraph_borders, parse_run_shd, parse_tab_stops_with_clears,
-    parse_text_color, read_zip_text, twips_attr, twips_to_pts, wml, wml_attr, wml_bool,
+    DML_NS, WML_NS, angle_attr, dml, extract_indents, frac_attr, highlight_color, merge_tab_stops,
+    parse_cell_border, parse_cell_border_left, parse_cell_border_right, parse_hex_color,
+    parse_on_off, parse_one_border, parse_paragraph_borders, parse_run_shd,
+    parse_tab_stops_with_clears, parse_text_color, read_zip_text, twips_attr, twips_to_pts, wml,
+    wml_attr, wml_bool,
 };
 
 fn dml_typeface<'a>(node: roxmltree::Node<'a, 'a>, element: &str) -> Option<&'a str> {
@@ -334,9 +335,7 @@ fn parse_double_underline(rpr: roxmltree::Node) -> Option<bool> {
 }
 
 pub(super) fn parse_char_spacing(rpr: roxmltree::Node) -> Option<f32> {
-    wml_attr(rpr, "spacing")
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(twips_to_pts)
+    wml(rpr, "spacing").and_then(|n| twips_attr(n, "val"))
 }
 
 pub(super) fn parse_theme<R: Read + Seek>(
@@ -413,9 +412,7 @@ pub(super) fn parse_theme<R: Read + Seek>(
                                 if let Some(gs_lst) = dml(child, "gsLst") {
                                     let stops = parse_theme_gradient_stops(gs_lst);
                                     let angle_deg = dml(child, "lin")
-                                        .and_then(|lin| lin.attribute("ang"))
-                                        .and_then(|v| v.parse::<f32>().ok())
-                                        .map(|v| v / 60_000.0)
+                                        .and_then(|lin| angle_attr(lin, "ang"))
                                         .unwrap_or(0.0);
                                     fill_styles.push(ThemeFillStyle::Gradient { stops, angle_deg });
                                 }
@@ -446,11 +443,7 @@ fn parse_theme_gradient_stops(gs_lst: roxmltree::Node) -> Vec<ThemeGradientStop>
         .children()
         .filter(|n| n.has_tag_name((DML_NS, "gs")))
         .map(|gs| {
-            let position = gs
-                .attribute("pos")
-                .and_then(|v| v.parse::<f32>().ok())
-                .map(|v| v / 100_000.0)
-                .unwrap_or(0.0);
+            let position = frac_attr(gs, "pos").unwrap_or(0.0);
             let transforms = gs
                 .descendants()
                 .find(|n| n.has_tag_name((DML_NS, "schemeClr")))

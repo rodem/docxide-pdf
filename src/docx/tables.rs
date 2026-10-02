@@ -13,8 +13,7 @@ use super::styles::{TableBordersDef, parse_alignment};
 use super::{
     ParseContext, WML_NS, collect_block_nodes, extract_indents, merge_tab_stops, parse_cell_border,
     parse_cell_border_left, parse_cell_border_right, parse_hex_color, parse_on_off,
-    parse_paragraph_spacing, parse_tab_stops_with_clears, twips_attr, twips_to_pts, wml, wml_attr,
-    wml_bool,
+    parse_paragraph_spacing, parse_tab_stops_with_clears, twips_attr, wml, wml_attr, wml_bool,
 };
 
 /// Approximate a `w:shd` stripe/cross pattern as a solid color for render
@@ -242,44 +241,20 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
             Some("margin") => "margin",
             _ => "column",
         };
-        let v_offset_pt = tblp
-            .attribute((WML_NS, "tblpY"))
-            .and_then(|v| v.parse::<f32>().ok())
-            .map(twips_to_pts)
-            .unwrap_or(0.0);
+        let v_offset_pt = twips_attr(tblp, "tblpY").unwrap_or(0.0);
         let h_position = match tblp.attribute((WML_NS, "tblpXSpec")) {
             Some("center") => HorizontalPosition::AlignCenter,
             Some("right") => HorizontalPosition::AlignRight,
             Some(_) => HorizontalPosition::AlignLeft,
             None => {
-                let offset = tblp
-                    .attribute((WML_NS, "tblpX"))
-                    .and_then(|v| v.parse::<f32>().ok())
-                    .map(twips_to_pts)
-                    .unwrap_or(0.0);
+                let offset = twips_attr(tblp, "tblpX").unwrap_or(0.0);
                 HorizontalPosition::Offset(offset)
             }
         };
-        let top_from_text = tblp
-            .attribute((WML_NS, "topFromText"))
-            .and_then(|v| v.parse::<f32>().ok())
-            .map(twips_to_pts)
-            .unwrap_or(0.0);
-        let bottom_from_text = tblp
-            .attribute((WML_NS, "bottomFromText"))
-            .and_then(|v| v.parse::<f32>().ok())
-            .map(twips_to_pts)
-            .unwrap_or(0.0);
-        let left_from_text = tblp
-            .attribute((WML_NS, "leftFromText"))
-            .and_then(|v| v.parse::<f32>().ok())
-            .map(twips_to_pts)
-            .unwrap_or(0.0);
-        let right_from_text = tblp
-            .attribute((WML_NS, "rightFromText"))
-            .and_then(|v| v.parse::<f32>().ok())
-            .map(twips_to_pts)
-            .unwrap_or(0.0);
+        let top_from_text = twips_attr(tblp, "topFromText").unwrap_or(0.0);
+        let bottom_from_text = twips_attr(tblp, "bottomFromText").unwrap_or(0.0);
+        let left_from_text = twips_attr(tblp, "leftFromText").unwrap_or(0.0);
+        let right_from_text = twips_attr(tblp, "rightFromText").unwrap_or(0.0);
         TablePosition {
             h_position,
             h_anchor,

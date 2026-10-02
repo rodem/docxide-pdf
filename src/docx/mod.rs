@@ -68,11 +68,42 @@ pub(super) fn emu_to_pts(emu: f32) -> f32 {
     emu / 12700.0
 }
 
+/// A numeric attribute; `None` when absent or unparsable.
+pub(super) fn f32_attr<'n, 'm>(
+    node: roxmltree::Node,
+    attr: impl Into<roxmltree::ExpandedName<'n, 'm>>,
+) -> Option<f32> {
+    node.attribute(attr).and_then(|v| v.parse::<f32>().ok())
+}
+
+/// An EMU attribute in points; `None` when absent.
+pub(super) fn emu_attr_opt<'n, 'm>(
+    node: roxmltree::Node,
+    attr: impl Into<roxmltree::ExpandedName<'n, 'm>>,
+) -> Option<f32> {
+    f32_attr(node, attr).map(emu_to_pts)
+}
+
+/// An EMU attribute in points; 0 when absent.
 pub(super) fn emu_attr(node: roxmltree::Node, attr: &str) -> f32 {
-    node.attribute(attr)
-        .and_then(|v| v.parse::<f32>().ok())
-        .unwrap_or(0.0)
-        / 12700.0
+    emu_attr_opt(node, attr).unwrap_or(0.0)
+}
+
+/// A DrawingML angle attribute (60000ths of a degree) in degrees.
+pub(super) fn angle_attr<'n, 'm>(
+    node: roxmltree::Node,
+    attr: impl Into<roxmltree::ExpandedName<'n, 'm>>,
+) -> Option<f32> {
+    f32_attr(node, attr).map(|v| v / 60_000.0)
+}
+
+/// A DrawingML percentage attribute (`ST_Percentage` as 1/1000 of a percent)
+/// as a fraction.
+pub(super) fn frac_attr<'n, 'm>(
+    node: roxmltree::Node,
+    attr: impl Into<roxmltree::ExpandedName<'n, 'm>>,
+) -> Option<f32> {
+    f32_attr(node, attr).map(|v| v / 100_000.0)
 }
 
 /// ST_OnOff truthiness (§17.17.4): "1", "true", and "on" all mean on.
@@ -291,10 +322,9 @@ pub(super) fn wml_attr<'a>(node: roxmltree::Node<'a, 'a>, child: &str) -> Option
     wml(node, child).and_then(|n| n.attribute((WML_NS, "val")))
 }
 
+/// A WordprocessingML twips attribute in points.
 pub(super) fn twips_attr(node: roxmltree::Node, attr: &str) -> Option<f32> {
-    node.attribute((WML_NS, attr))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(twips_to_pts)
+    f32_attr(node, (WML_NS, attr)).map(twips_to_pts)
 }
 
 pub(super) fn parse_one_border(node: roxmltree::Node) -> Option<ParagraphBorder> {
@@ -402,17 +432,16 @@ pub(super) fn parse_frame_props(ppr: roxmltree::Node) -> Option<FrameProperties>
             _ => HorizontalPosition::AlignLeft,
         }
     } else {
-        let x_twips: f32 = attr("x").and_then(|v| v.parse().ok()).unwrap_or(0.0);
-        HorizontalPosition::Offset(twips_to_pts(x_twips))
+        HorizontalPosition::Offset(twips_attr(fp, "x").unwrap_or(0.0))
     };
     let v_anchor = match attr("vAnchor").unwrap_or("text") {
         "margin" => VRelativeFrom::Margin,
         "page" => VRelativeFrom::Page,
         _ => VRelativeFrom::Paragraph,
     };
-    let y_pts = twips_to_pts(attr("y").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0));
-    let width = twips_to_pts(attr("w").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0));
-    let height = twips_to_pts(attr("h").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0));
+    let y_pts = twips_attr(fp, "y").unwrap_or(0.0);
+    let width = twips_attr(fp, "w").unwrap_or(0.0);
+    let height = twips_attr(fp, "h").unwrap_or(0.0);
     Some(FrameProperties {
         h_relative_from: h_anchor,
         h_position,
@@ -628,6 +657,24 @@ pub(super) fn read_zip_text<R: Read + std::io::Seek>(
     let mut content = String::new();
     zip.by_name(name).ok()?.read_to_string(&mut content).ok()?;
     Some(content)
+}
+
+pub(super) fn read_zip_bytes<R: Read + std::io::Seek>(
+    zip: &mut zip::ZipArchive<R>,
+    name: &str,
+) -> Option<Vec<u8>> {
+    let mut data = Vec::new();
+    zip.by_name(name).ok()?.read_to_end(&mut data).ok()?;
+    Some(data)
+}
+
+/// Zip path of a relationship target: absolute (`/word/media/x.png`) as is,
+/// otherwise relative to `word/`.
+pub(super) fn part_path(target: &str) -> String {
+    match target.strip_prefix('/') {
+        Some(absolute) => absolute.to_string(),
+        None => format!("word/{target}"),
+    }
 }
 
 mod relationships {

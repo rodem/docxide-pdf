@@ -8,7 +8,7 @@ use crate::model::{
 
 use super::{
     chart_ns as chart_child, chart_ns_attr as chart_attr, chart_ns_children as chart_children,
-    dml as dml_child, parse_hex_color, read_zip_text,
+    dml as dml_child, frac_attr, parse_hex_color, part_path, read_zip_text,
 };
 
 fn find_srgb_clr<'a>(sp_pr: roxmltree::Node<'a, 'a>) -> Option<roxmltree::Node<'a, 'a>> {
@@ -23,8 +23,7 @@ fn extract_srgb_fill(sp_pr: roxmltree::Node) -> Option<[u8; 3]> {
 
 fn extract_fill_alpha(sp_pr: roxmltree::Node) -> Option<f32> {
     let alpha_node = dml_child(find_srgb_clr(sp_pr)?, "alpha")?;
-    let val = alpha_node.attribute("val")?.parse::<f32>().ok()?;
-    Some(val / 100_000.0)
+    frac_attr(alpha_node, "val")
 }
 
 fn extract_line_color(sp_pr: roxmltree::Node) -> Option<[u8; 3]> {
@@ -315,12 +314,7 @@ pub(super) fn parse_chart_from_zip<R: Read + Seek>(
     display_h: f32,
     accent_colors: Vec<[u8; 3]>,
 ) -> Option<InlineChart> {
-    let target = rels.get(r_id)?;
-    let zip_path = target
-        .strip_prefix('/')
-        .map(String::from)
-        .unwrap_or_else(|| format!("word/{}", target));
-    let xml_content = read_zip_text(zip, &zip_path)?;
+    let xml_content = read_zip_text(zip, &part_path(rels.get(r_id)?))?;
     let chart = parse_chart_space(&xml_content, accent_colors)?;
     Some(InlineChart {
         chart,

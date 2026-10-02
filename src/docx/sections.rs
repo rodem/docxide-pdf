@@ -8,8 +8,8 @@ use crate::model::{
 use super::headers_footers::parse_header_footer_xml;
 use super::relationships::parse_part_relationships;
 use super::{
-    ParseContext, REL_NS, WML_NS, parse_on_off, parse_one_border, read_zip_text, twips_attr,
-    twips_to_pts, wml, wml_attr, wml_bool,
+    ParseContext, REL_NS, WML_NS, parse_on_off, parse_one_border, part_path, read_zip_text,
+    twips_attr, wml, wml_attr, wml_bool,
 };
 
 pub(super) fn parse_section_properties<R: Read + Seek>(
@@ -108,11 +108,7 @@ pub(super) fn parse_section_properties<R: Read + Seek>(
                 })
                 .collect()
         } else if num > 1 {
-            let default_space = cols_node
-                .attribute((WML_NS, "space"))
-                .and_then(|v| v.parse::<f32>().ok())
-                .map(twips_to_pts)
-                .unwrap_or(36.0);
+            let default_space = twips_attr(cols_node, "space").unwrap_or(36.0);
             let col_width = (available - (num - 1) as f32 * default_space) / num as f32;
             (0..num)
                 .map(|i| ColumnDef {
@@ -233,12 +229,7 @@ fn resolve_hf<R: Read + Seek>(
             None
         }
     })?;
-    let target = ctx.rels.get(rid)?;
-    let zip_path = if let Some(stripped) = target.strip_prefix('/') {
-        stripped.to_string()
-    } else {
-        format!("word/{}", target)
-    };
+    let zip_path = part_path(ctx.rels.get(rid)?);
     let part_rels = parse_part_relationships(ctx.zip, &zip_path);
     let xml_text = read_zip_text(ctx.zip, &zip_path)?;
     let mut hf_ctx = ParseContext {

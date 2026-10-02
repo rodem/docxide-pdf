@@ -7,8 +7,8 @@ use super::color::{apply_color_transforms, parse_color_transforms, resolve_dml_c
 use super::styles::{StylesInfo, ThemeFonts};
 use super::textbox::parse_avlst;
 use super::{
-    W14_NS, dml as find_dml, find_child, parse_hex_color, parse_on_off, parse_pt,
-    resolve_theme_color_key,
+    W14_NS, angle_attr, dml as find_dml, emu_attr_opt, find_child, frac_attr, parse_hex_color,
+    parse_on_off, parse_pt, resolve_theme_color_key,
 };
 
 fn find_w14<'a>(parent: roxmltree::Node<'a, 'a>, name: &str) -> Option<roxmltree::Node<'a, 'a>> {
@@ -54,11 +54,7 @@ pub(super) fn parse_wordart_body_pr(body_pr: roxmltree::Node) -> WordArtBodyProp
 pub(super) fn parse_text_outline(rpr: roxmltree::Node, theme: &ThemeFonts) -> Option<TextOutline> {
     let outline = find_w14(rpr, "textOutline")?;
 
-    let width_pt = outline
-        .attribute((W14_NS, "w"))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(super::emu_to_pts)
-        .unwrap_or(0.75);
+    let width_pt = emu_attr_opt(outline, (W14_NS, "w")).unwrap_or(0.75);
 
     let color = find_w14_solid_fill_color(outline, theme)?;
     Some(TextOutline { width_pt, color })
@@ -90,30 +86,16 @@ pub(super) fn parse_text_shadow(rpr: roxmltree::Node, theme: &ThemeFonts) -> Opt
 
     let color = find_w14_solid_fill_color(shadow, theme).unwrap_or([128, 128, 128]);
 
-    let blur_rad = shadow
-        .attribute((W14_NS, "blurRad"))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(super::emu_to_pts)
-        .unwrap_or(0.0);
+    let blur_rad = emu_attr_opt(shadow, (W14_NS, "blurRad")).unwrap_or(0.0);
 
-    let dist = shadow
-        .attribute((W14_NS, "dist"))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(super::emu_to_pts)
-        .unwrap_or(blur_rad.max(1.5));
+    let dist = emu_attr_opt(shadow, (W14_NS, "dist")).unwrap_or(blur_rad.max(1.5));
 
     // Direction in 60000ths of a degree, clockwise from right
-    let dir = shadow
-        .attribute((W14_NS, "dir"))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(|v| v / 60_000.0)
-        .unwrap_or(225.0);
+    let dir = angle_attr(shadow, (W14_NS, "dir")).unwrap_or(225.0);
 
     let alpha = find_w14(shadow, "srgbClr")
         .and_then(|srgb| find_w14(srgb, "alpha"))
-        .and_then(|a| a.attribute((W14_NS, "val")))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(|v| v / 100_000.0)
+        .and_then(|a| frac_attr(a, (W14_NS, "val")))
         .unwrap_or(0.6);
 
     // Convert polar (dist, dir) to cartesian offsets
@@ -133,11 +115,7 @@ pub(super) fn parse_text_shadow(rpr: roxmltree::Node, theme: &ThemeFonts) -> Opt
 pub(super) fn parse_text_glow(rpr: roxmltree::Node, theme: &ThemeFonts) -> Option<TextGlow> {
     let glow = find_w14(rpr, "glow")?;
 
-    let radius_pt = glow
-        .attribute((W14_NS, "rad"))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(super::emu_to_pts)
-        .unwrap_or(0.0);
+    let radius_pt = emu_attr_opt(glow, (W14_NS, "rad")).unwrap_or(0.0);
 
     if radius_pt <= 0.0 {
         return None;
@@ -244,11 +222,7 @@ fn parse_w14_gradient(grad: roxmltree::Node, theme: &ThemeFonts) -> Option<TextF
 
     let mut stops = Vec::new();
     for gs in gs_lst.children().filter(|n| n.has_tag_name((W14_NS, "gs"))) {
-        let pos = gs
-            .attribute((W14_NS, "pos"))
-            .and_then(|v| v.parse::<f32>().ok())
-            .map(|v| v / 100_000.0)
-            .unwrap_or(0.0);
+        let pos = frac_attr(gs, (W14_NS, "pos")).unwrap_or(0.0);
         if let Some(color) = resolve_w14_color(gs, theme) {
             stops.push((color, pos));
         }
@@ -259,9 +233,7 @@ fn parse_w14_gradient(grad: roxmltree::Node, theme: &ThemeFonts) -> Option<TextF
     }
 
     let angle_deg = find_w14(grad, "lin")
-        .and_then(|lin| lin.attribute((W14_NS, "ang")))
-        .and_then(|v| v.parse::<f32>().ok())
-        .map(|v| v / 60_000.0)
+        .and_then(|lin| angle_attr(lin, (W14_NS, "ang")))
         .unwrap_or(0.0);
 
     Some(TextFill::Gradient { stops, angle_deg })

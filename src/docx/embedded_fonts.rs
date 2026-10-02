@@ -4,7 +4,7 @@ use std::io::{Read, Seek};
 use crate::model::{FontFamily, FontTable, FontTableEntry};
 
 use super::relationships::parse_part_relationships;
-use super::{REL_NS, WML_NS, read_zip_text, wml, wml_attr};
+use super::{REL_NS, WML_NS, part_path, read_zip_bytes, read_zip_text, wml, wml_attr};
 
 const EMBED_VARIANTS: &[(&str, bool, bool)] = &[
     ("embedRegular", false, false),
@@ -143,20 +143,9 @@ pub(super) fn parse_font_table<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> 
             continue;
         };
 
-        let zip_path = match target.strip_prefix('/') {
-            Some(absolute) => absolute.to_string(),
-            None => format!("word/{}", target),
+        let Some(mut data) = read_zip_bytes(zip, &part_path(target)) else {
+            continue;
         };
-
-        let mut data = Vec::new();
-        {
-            let Ok(mut entry) = zip.by_name(&zip_path) else {
-                continue;
-            };
-            if entry.read_to_end(&mut data).is_err() {
-                continue;
-            }
-        }
 
         if let Some(ref guid_str) = info.font_key
             && let Some(key) = parse_guid_to_bytes(guid_str)
