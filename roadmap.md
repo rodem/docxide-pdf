@@ -374,7 +374,8 @@ before, traced to its commit: the CLI built at each of fixes 1–34, each
 fixture scored with `page-metrics`, then vdiff before/after the culprit. The
 merge itself caused none (each renders exactly as on the branch). Baselines
 for all of it were accepted in `bc6d9ded`. Four real bugs below; the rest are
-correct rules that exposed older errors, or metric artifacts.
+correct rules that exposed older errors, or metric artifacts. Handover with code
+locations and the measuring method: `current_focus/merge-regressions.md`.
 
 **Real bugs:**
 1. **Character styles ignore `w:basedOn`** (`docx/styles.rs`, the
@@ -397,7 +398,7 @@ correct rules that exposed older errors, or metric artifacts.
    Segoe UI (`fonts/CloudFonts`) are both available: this is a rule, not a
    missing file.
 3. **East Asian leading stacks with another run's descent** (fix 11,
-   `271baa31`). usep_handbook's checkbox lines (☐ in MS Gothic, text in
+   `5e613494`). usep_handbook's checkbox lines (☐ in MS Gothic, text in
    Calibri) are 1.53pt taller each than Word's: we put Calibri's win descent
    (3.22) under MS Gothic's ascent, which already carries all of the 1.3× East
    Asian leading (13.91). Word's 21.6pt pitch is MS Gothic's full 15.6pt line
