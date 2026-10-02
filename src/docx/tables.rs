@@ -455,6 +455,17 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                 .and_then(|pr| wml_bool(pr, "hideMark"))
                 .unwrap_or(false);
 
+            // Word shows only a vertically merged cell's first part; the
+            // numbered paragraphs of its continuations don't count either:
+            // nabl's checklist numbers its sections 13, 14, … though every
+            // row's merged first cell carries a numbered paragraph.
+            let mut hidden_lists = ListCounters::default();
+            let cell_lists: &mut ListCounters = if v_merge == VMerge::Continue {
+                &mut hidden_lists
+            } else {
+                &mut *lists
+            };
+
             let span_end = ci + grid_span as usize;
 
             // Base style borders (position-aware: outer vs inner)
@@ -729,7 +740,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         Some(para_style_id),
                         &ctx.styles.paragraph_styles,
                         ctx.numbering,
-                        lists,
+                        cell_lists,
                     );
                     let mut indent_first_line = 0.0;
                     let mut indent_right = 0.0;
@@ -791,7 +802,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         ..Paragraph::default()
                     }));
                 } else if n.has_tag_name((WML_NS, "tbl")) {
-                    let nested = parse_table_node(*n, ctx, lists);
+                    let nested = parse_table_node(*n, ctx, cell_lists);
                     cell_blocks.push(Block::Table(nested));
                 }
             }
