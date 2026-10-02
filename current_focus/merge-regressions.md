@@ -167,10 +167,35 @@ Mean Jaccard went 51.2 → 63.4 and SSIM 70.9 → 80.5 over the merge.
   read off the PDF's font list (ArialMT comes from its explicit Arial runs).
   bosch (theme Calibri → Calibri) and three Calibri-theme fixtures still
   support the rule. Correct the comment in the commit that changes the rule.
-- **Do:** census every run font that resolves nowhere (fixtures and the
-  external corpus in `accuracy_push_local/`, see `layout-accuracy.md`) against
-  the face Word drew per glyph, with fontTable altName/family/panose/charset
-  for each; derive the rule; then change `register_font`.
+- **Census (2026-10-02, the 223 fixtures; the 258-document corpus is no
+  longer on disk):** every substitution our CLI logs (`RUST_LOG=info`), with
+  the faces Word drew for words we draw in only one face.
+  - altName for a *missing* font: Word uses it (Museo Sans 300 → Calibri,
+    Liberation Sans → Arial, MS Sans Serif → Times New Roman, Carlito →
+    Calibri, …).
+  - altName for an *installed* font: Word draws the requested font. Fixed in
+    `f4ef46b8` (branch `font-rules`): requested name first, altName as the
+    fallback, except that a macOS-only face (`discovery::is_mac_only_family`)
+    yields to an altName. chinese_student_union J 18.2 → 32.8.
+  - **The `;` names explain both LibreOffice cases.** The run asks for "Open
+    Sans;Arial" / "Archivo;sans-serif", the fontTable entry is "Open Sans" /
+    "Archivo". Word takes the run's name literally, finds no entry (no
+    altName, no family) and uses its default for an unknown font. We split on
+    `;` and use the entry of the first name.
+  - **Export path matters.** `Creator(Microsoft Word)` references come from
+    Mac Word's online export (Windows Word on Microsoft's servers);
+    `Producer(... Quartz PDFContext)` from the local Mac renderer. Unknown
+    font → Cambria in german_mezzo (online), Segoe UI in sample500kB (local).
+    In eco_int (online) "Helvetica" and "Helvetica,Italic" embed **Arial**
+    (Windows maps Helvetica → Arial), not macOS Helvetica.
+- **Next:** `tests/fixtures/fonts/missing_font_substitution` (uncommitted in
+  the `font-rules` worktree until its references exist): 24 rows, one
+  condition each (no entry, family only, family + panose, altName, `X;Arial`,
+  replicas of the two LibreOffice cases), theme Verdana / Trebuchet MS so a
+  theme fallback is visible. The user exports it twice: `reference.pdf`
+  (local) and `reference_online.pdf` (online); Word's Font Substitution dialog
+  (Preferences → Compatibility) lists Mac Word's own choices. Then derive the
+  rule and change `register_font`.
 
 ### 6. Per-line heights in headers
 
@@ -218,8 +243,9 @@ Containers/UBF8T346G9.Office/FontCache/4/CloudFonts/`, `diff -rq` it against
   Bold. A Windows Office machine has it as `COPRGTL.TTF`; copy it into
   `fonts/CloudFonts/` and the assets repo. Bodoni MT is already in
   `fonts/CloudFonts`.
-- eco_int's 14 "Helvetica,Italic" glyphs are macOS Helvetica Oblique under
-  another name, not a missing file.
+- eco_int's 14 "Helvetica,Italic" glyphs are Arial Italic (online export,
+  Windows maps Helvetica → Arial), drawn in Arial by us too; not a missing
+  file.
 
 ## Known, not planned here
 

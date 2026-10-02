@@ -351,13 +351,13 @@ Open findings (not done):
   the paragraph's joined text (a URL split across runs can still break after
   a `/` at the boundary); one table-left-x function for body, header and
   nested tables (nested tables miss the compat-15 rule).
-- **fontTable altName order (TODO)**: we try a font's `w:altName` BEFORE the
-  requested name (since fcb84c7e, for a Korean localized name, "바탕"). Word
-  uses the altName only when the font is missing (the spec's meaning too): a
-  document asking for Source Sans Pro, altName Corbel, is drawn in Source
-  Sans Pro by Word and in Corbel by us. Fix: requested name first, altName
-  as the fallback, keeping altName-first only for non-ASCII localized names;
-  check the Korean fixtures and the full suite.
+- **fontTable altName order (done 2026-10-02, `f4ef46b8`)**: Word uses the
+  altName only when the font is missing: Source Sans Pro (altName Corbel)
+  and chinese_student_union's Calibri (altName DejaVu Sans) are drawn as
+  requested. Requested name first now; localized names (바탕, ＭＳ 明朝)
+  resolve to the same files either way. A macOS-only face still yields to an
+  altName: eco_int's Helvetica (altName Arial) is Arial in Word's online
+  export.
 - Below compat 15 without `overrideTableStyleFontSizeAndJustification`, a
   table style's font size beats Normal's (unless it is 10pt); we always let
   Normal win.
@@ -396,7 +396,12 @@ locations and the measuring method: `current_focus/merge-regressions.md`.
    was read off the PDF's font list (its explicit Arial runs), not the Archivo
    glyphs; bosch and the Calibri-theme fixtures still support it. Cambria and
    Segoe UI (`fonts/CloudFonts`) are both available: this is a rule, not a
-   missing file.
+   missing file. **2026-10-02:** Word takes the run's "Open Sans;Arial"
+   literally and finds no fontTable entry (that is "Open Sans"), so neither
+   altName nor family applies; the face is Word's default for an unknown
+   font, which differs between the online export (Cambria) and local Mac Word
+   (Segoe UI). Fixture `fonts/missing_font_substitution` awaits Word's
+   references to pin the rule down (`merge-regressions.md` item 5).
 3. **East Asian leading stacks with another run's descent** (fix 11,
    `5e613494`). usep_handbook's checkbox lines (☐ in MS Gothic, text in
    Calibri) are 1.53pt taller each than Word's: we put Calibri's win descent
@@ -460,8 +465,8 @@ SSIM 94.9. multi_font (round 4, `96fbce99`) needs Copperplate Gothic Light
 (81 glyphs; in Word's cloud catalog, not downloaded yet: pick it in Word's
 font menu); its Bodoni MT is already in `fonts/CloudFonts`.
 korean_japanese needs HY헤드라인M and New Gulim (55 glyphs; Hancom/Windows
-fonts, low value). eco_int's 14 "Helvetica,Italic" glyphs are macOS
-Helvetica Oblique under another name.
+fonts, low value). eco_int's 14 "Helvetica,Italic" glyphs are Arial Italic
+under another name (online export; Windows maps Helvetica → Arial).
 
 **Fix plan** (one commit each, full suite per fix, in this order):
 1. Character styles inherit through `basedOn` (bug 1): resolve the chain

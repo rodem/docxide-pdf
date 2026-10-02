@@ -198,7 +198,7 @@ Regressions and what explained them:
 - **fontTable altName order:** we try `w:altName` before the requested name
   (since fcb84c7e, for a Korean localized name "바탕"). Word uses altName only
   when the font is missing: a Source Sans Pro doc with altName Corbel is drawn
-  in Source Sans Pro by Word, in Corbel by us. Fix pending (§7).
+  in Source Sans Pro by Word, in Corbel by us. Fixed in `f4ef46b8` (§7).
 - **romanian_quality header row:** Word makes it 67.5pt = trHeight 60.2 + both
   3.6pt cell margins, though the content is shorter (we give it 60.2). One
   sample; the usual reading is that an at-least height includes the margins.
@@ -302,7 +302,7 @@ unchanged.
 | cases/case46 | 52.3 | – |
 
 **Pending fixes**
-1. fontTable altName order: requested name first, altName as the fallback,
+1. **Done** (`f4ef46b8`, 2026-10-02). fontTable altName order: requested name first, altName as the fallback,
    keeping altName-first only for non-ASCII localized names; check the Korean
    fixtures and the full suite.
 2. Route cell and footnote paragraphs through `build_paragraph` (§6).
@@ -334,5 +334,5 @@ body 1.5pt); one 56-page document with many causes; several untriaged.
 5. Mac-only system fonts — yes, done (43).
 6. Cloud fonts — copied into `fonts/CloudFonts/` and committed to the private
    assets repo (`59143d9`, 2026-10-02).
-7. altName fix — recorded, not yet approved to implement.
+7. altName fix — implemented in `f4ef46b8` (2026-10-02).
 8. Optional: `git gc --prune=now` once other sessions are idle (local only).
