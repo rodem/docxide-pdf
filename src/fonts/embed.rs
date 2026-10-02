@@ -431,7 +431,7 @@ fn compute_line_metrics(face: &Face, units: f32) -> LineMetrics {
             } else {
                 (os2.windows_ascender(), os2.windows_descender())
             };
-            let gap = if typo || east_asian.is_some() { 0 } else { face.line_gap() };
+            let gap = if typo || east_asian.is_some() { 0 } else { external_leading(face, os2) };
             ((asc + desc) as f32 / 2.0 + gap as f32) / units
         }
         None => (face.ascender() + face.descender()) as f32 / 2.0 / units,
@@ -445,6 +445,17 @@ fn compute_line_metrics(face: &Face, units: f32) -> LineMetrics {
         grid_baseline_shift,
         east_asian: east_asian.is_some(),
     }
+}
+
+/// The leading Word adds above the win box: what the hhea ascent plus lineGap
+/// reaches past usWinAscent. Candara and Consolas (win box over hhea + lineGap
+/// 452/350) get none, so multi_font's lines are no longer 2-3pt too tall; Arial
+/// Narrow's taller hhea ascent adds 28 units (1.5-spaced 11pt lines step 18.94 in
+/// indonesian_school_admission_checklist). The descents never count: Book Antiqua
+/// Bold (hhea descent 578, win 543) steps like the win box in slovak_constitution.
+fn external_leading(face: &Face, os2: ttf_parser::os2::Table) -> i16 {
+    let above = face.ascender() as i32 + face.line_gap() as i32 - os2.windows_ascender() as i32;
+    above.max(0) as i16
 }
 
 /// Returns (line_h_ratio, ascender_ratio, typo_line_ratio) by the Latin rules.
@@ -462,7 +473,7 @@ fn plain_line_metrics(face: &Face, units: f32) -> (f32, f32, Option<f32>) {
         // usWinAscent/Descent define glyph clipping bounds; hhea lineGap
         // provides external leading that Word includes in both line spacing
         // and baseline positioning (ascender offset from slot top)
-        let gap = face.line_gap() as f32;
+        let gap = external_leading(face, os2) as f32;
         return (
             (win_asc - win_desc + gap) / units,
             (win_asc + gap) / units,
