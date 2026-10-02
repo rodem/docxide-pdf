@@ -574,11 +574,12 @@ fn collect_run_nodes<'a>(
                 }
                 out.push((n, url.clone(), is_anchor_only, active_comments.clone()));
             }
-        } else if is_wml && matches!(name, "ins" | "smartTag" | "customXml") {
+        } else if is_wml && matches!(name, "ins" | "moveTo" | "smartTag" | "customXml") {
             // w:customXml inline-wraps runs transparently, like w:smartTag.
+            // Final mode shows moved text at its destination (moveTo).
             collect_run_nodes(child, rels, out, active_comments);
-        } else if is_wml && name == "del" {
-            // Final mode: skip deleted content entirely
+        } else if is_wml && matches!(name, "del" | "moveFrom") {
+            // Final mode: skip deleted content and the source of moved text
         } else if is_wml && name == "sdt" {
             if let Some(content) = wml(child, "sdtContent") {
                 collect_run_nodes(content, rels, out, active_comments);
@@ -1361,6 +1362,31 @@ mod tests {
             .find(|n| n.has_tag_name((WML_NS, "t")))
             .and_then(|n| n.text());
         assert_eq!(t_text, Some("OFFICIAL"));
+    }
+
+    #[test]
+    fn collect_run_nodes_keeps_moved_text_at_its_destination() {
+        let ns = WML_NS;
+        let xml = format!(
+            r#"<w:p xmlns:w="{ns}">
+              <w:moveFrom w:id="1" w:author="a"><w:r><w:t>old</w:t></w:r></w:moveFrom>
+              <w:moveTo w:id="2" w:author="a"><w:r><w:t>new</w:t></w:r></w:moveTo>
+            </w:p>"#
+        );
+        let doc = roxmltree::Document::parse(&xml).unwrap();
+        let mut out = Vec::new();
+        collect_run_nodes(
+            doc.root_element(),
+            &HashMap::new(),
+            &mut out,
+            &mut Vec::new(),
+        );
+        let texts: Vec<_> = out
+            .iter()
+            .filter_map(|(r, ..)| r.descendants().find(|n| n.has_tag_name((WML_NS, "t"))))
+            .filter_map(|t| t.text())
+            .collect();
+        assert_eq!(texts, ["new"]);
     }
 
     #[test]
