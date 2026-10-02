@@ -1125,11 +1125,15 @@ pub(super) fn item_chunk_height(item: &CellContentItem, l0: usize, l1: Option<us
     }
 }
 
-/// The paragraph's space_before as charged inside a split chunk: only when
-/// it is not the chunk's first item (a continuation never repeats it).
-pub(super) fn chunk_space_before(item: &CellContentItem, first_in_chunk: bool) -> f32 {
+/// The paragraph's space_before as charged inside a chunk starting at
+/// `start`: a continuation's first item never repeats it, but the chunk that
+/// opens the cell keeps it like an unsplit row (croatian_grant's floating
+/// "Važno!" box starts 6pt below its top border in Word).
+pub(super) fn chunk_space_before(item: &CellContentItem, pi: usize, start: CellCursor) -> f32 {
     match item {
-        CellContentItem::Paragraph(p) if !first_in_chunk => p.space_before,
+        CellContentItem::Paragraph(p) if pi != start.item || start == CellCursor::default() => {
+            p.space_before
+        }
         _ => 0.0,
     }
 }
@@ -1158,7 +1162,7 @@ pub(super) fn find_cell_split(
         let first = pi == start.item;
         let l0 = if first { start.line } else { 0 };
         let item = &cell.items[pi];
-        let sb = chunk_space_before(item, first);
+        let sb = chunk_space_before(item, pi, start);
         let item_h = sb + item_chunk_height(item, l0, None);
         if h + item_h <= available_h {
             h += item_h;
@@ -1221,8 +1225,9 @@ mod tests {
         let split = |start, avail| find_cell_split(&cell, start, avail, &cm);
         let at = |item, line| CellCursor { item, line };
 
-        // heading (10) + space_before (5) + four of the ten lines
-        assert_eq!(split(at(0, 0), 55.0), at(1, 4));
+        // the heading's own space_before (5, the cell opens with it) + heading
+        // (10) + space_before (5) + four of the ten lines
+        assert_eq!(split(at(0, 0), 60.0), at(1, 4));
         // the remaining six lines fit, no space_before on a continuation
         assert_eq!(split(at(1, 4), 60.0), at(2, 0));
         // room for one line only: the paragraph moves whole

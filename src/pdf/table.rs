@@ -935,11 +935,7 @@ fn render_partial_cell_content(
     for (pi, l0, l1) in cursor_chunks(items, start, end) {
         match &items[pi] {
             CellContentItem::Paragraph(para) => {
-                let sb = if pi == start.item {
-                    0.0
-                } else {
-                    para.space_before
-                };
+                let sb = chunk_space_before(&items[pi], pi, start);
 
                 let cell_nodes = tagger
                     .as_mut()
@@ -1338,7 +1334,7 @@ fn render_partial_row(
         let mut h = cm.top + cm.bottom;
         for (pi, l0, l1) in cursor_chunks(&cell_layout.items, start, end) {
             let item = &cell_layout.items[pi];
-            h += chunk_space_before(item, pi == start.item) + item_chunk_height(item, l0, l1);
+            h += chunk_space_before(item, pi, start) + item_chunk_height(item, l0, l1);
         }
         max_h = max_h.max(h);
     }
