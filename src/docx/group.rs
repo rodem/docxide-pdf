@@ -9,8 +9,8 @@
 use std::io::{Read, Seek};
 
 use crate::model::{
-    AutoFit, FloatingImage, HRelativeFrom, HorizontalPosition, ShapeGeometry, TextAnchor, Textbox,
-    VRelativeFrom, VerticalPosition, WrapText, WrapType,
+    FloatingImage, HRelativeFrom, HorizontalPosition, Textbox, VRelativeFrom, VerticalPosition,
+    WrapText, WrapType,
 };
 
 use super::images::{
@@ -165,32 +165,12 @@ pub(super) fn parse_canvas_or_group<R: Read + Seek>(
         // extent with an invisible TopAndBottom textbox, then place the
         // children relative to the same paragraph without wrapping.
         out.push(RunDrawingResult::TextBox(Textbox {
-            paragraphs: Vec::new(),
             width_pt: display_w,
             height_pt: display_h,
-            h_position: HorizontalPosition::Offset(0.0),
-            h_relative_from: HRelativeFrom::Column,
-            v_offset_pt: 0.0,
-            v_position: VerticalPosition::Offset(0.0),
-            v_relative_from: VRelativeFrom::Paragraph,
-            fill: None,
-            shape_type: ShapeGeometry::default(),
-            stroke_color: None,
-            stroke_width: 0.0,
-            text_anchor: TextAnchor::Top,
-            margin_left: 0.0,
-            margin_right: 0.0,
-            margin_top: 0.0,
-            margin_bottom: 0.0,
             wrap_type: WrapType::TopAndBottom,
-            dist_bottom: 0.0,
-            behind_doc: false,
             no_text_wrap: true,
-            text_warp: None,
-            auto_fit: AutoFit::None,
-            z_index: 0,
-            anchor_seq: 0,
             indent_relative: true,
+            ..Textbox::default()
         }));
     }
     out.extend(shapes);
@@ -260,7 +240,6 @@ fn emit_wsp<R: Read + Seek>(
 
     if let Some(shape) = parse_wsp_shape(wsp, ctx) {
         out.push(RunDrawingResult::TextBox(Textbox {
-            paragraphs: shape.paragraphs,
             width_pt: w,
             height_pt: h,
             h_position: HorizontalPosition::Offset(base.x + x),
@@ -268,24 +247,10 @@ fn emit_wsp<R: Read + Seek>(
             v_offset_pt: base.y + y,
             v_position: VerticalPosition::Offset(base.y + y),
             v_relative_from: base.v_rel,
-            fill: shape.fill,
-            shape_type: shape.shape_type,
-            stroke_color: shape.stroke_color,
-            stroke_width: shape.stroke_width,
-            text_anchor: shape.text_anchor,
-            margin_left: shape.margin_left,
-            margin_right: shape.margin_right,
-            margin_top: shape.margin_top,
-            margin_bottom: shape.margin_bottom,
-            wrap_type: WrapType::None,
-            dist_bottom: 0.0,
             behind_doc: base.behind_doc,
-            no_text_wrap: shape.no_text_wrap,
-            text_warp: shape.text_warp,
-            auto_fit: shape.auto_fit,
             z_index: base.z_index,
-            anchor_seq: 0,
             indent_relative: base.indent_relative,
+            ..Textbox::from(shape)
         }));
     }
 }

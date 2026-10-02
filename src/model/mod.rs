@@ -256,6 +256,12 @@ pub enum HorizontalPosition {
     AlignRight,
 }
 
+impl Default for HorizontalPosition {
+    fn default() -> Self {
+        Self::Offset(0.0)
+    }
+}
+
 impl HorizontalPosition {
     /// The explicit offset; 0 for the alignment variants.
     pub fn offset_or_zero(self) -> f32 {
@@ -274,6 +280,12 @@ pub enum VerticalPosition {
     AlignBottom,
 }
 
+impl Default for VerticalPosition {
+    fn default() -> Self {
+        Self::Offset(0.0)
+    }
+}
+
 impl VerticalPosition {
     /// The explicit offset; 0 for the alignment variants.
     pub fn offset_or_zero(self) -> f32 {
@@ -284,23 +296,26 @@ impl VerticalPosition {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum HRelativeFrom {
     Page,
     Margin,
+    #[default]
     Column,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum VRelativeFrom {
     Page,
     Margin,
     TopMargin,
+    #[default]
     Paragraph,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum WrapType {
+    #[default]
     None,
     Square,
     Tight,
@@ -308,8 +323,9 @@ pub enum WrapType {
     TopAndBottom,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum WrapText {
+    #[default]
     BothSides,
     Left,
     Right,

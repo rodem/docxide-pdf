@@ -4,7 +4,7 @@ use crate::geometry::{FormulaOp, PathFill};
 use crate::model::{
     ArrowEnd, AutoFit, ConnectorShape, ConnectorType, CustomGeometry, CustomGuideDef,
     CustomPathCommand, CustomPathDef, HRelativeFrom, HorizontalPosition, Paragraph, ShapeFill,
-    ShapeGeometry, TextAnchor, TextWarp, Textbox, VRelativeFrom, VerticalPosition, WrapType,
+    ShapeGeometry, TextAnchor, TextWarp, Textbox, VRelativeFrom, VerticalPosition,
 };
 
 use super::color::{
@@ -357,6 +357,29 @@ pub(super) struct WspResult {
     pub(super) no_text_wrap: bool,
     pub(super) text_warp: Option<TextWarp>,
     pub(super) auto_fit: AutoFit,
+}
+
+/// The shape's own properties; size, anchoring and wrapping stay at their
+/// defaults for the caller to fill in.
+impl From<WspResult> for Textbox {
+    fn from(wsp: WspResult) -> Textbox {
+        Textbox {
+            paragraphs: wsp.paragraphs,
+            fill: wsp.fill,
+            shape_type: wsp.shape_type,
+            stroke_color: wsp.stroke_color,
+            stroke_width: wsp.stroke_width,
+            text_anchor: wsp.text_anchor,
+            margin_left: wsp.margin_left,
+            margin_right: wsp.margin_right,
+            margin_top: wsp.margin_top,
+            margin_bottom: wsp.margin_bottom,
+            no_text_wrap: wsp.no_text_wrap,
+            text_warp: wsp.text_warp,
+            auto_fit: wsp.auto_fit,
+            ..Textbox::default()
+        }
+    }
 }
 
 pub(super) fn parse_textbox_from_wsp<R: Read + std::io::Seek>(
@@ -727,7 +750,6 @@ fn parse_vml_geometry_shape(shape: roxmltree::Node) -> Option<Textbox> {
     }
 
     Some(Textbox {
-        paragraphs: Vec::new(),
         width_pt: width,
         height_pt: height,
         h_position: HorizontalPosition::Offset(margin_left),
@@ -735,7 +757,6 @@ fn parse_vml_geometry_shape(shape: roxmltree::Node) -> Option<Textbox> {
         v_offset_pt: margin_top,
         v_position: VerticalPosition::Offset(margin_top),
         v_relative_from: v_relative,
-        fill: None,
         shape_type: ShapeGeometry {
             preset: Some(preset.to_string()),
             adjustments: Vec::new(),
@@ -743,20 +764,8 @@ fn parse_vml_geometry_shape(shape: roxmltree::Node) -> Option<Textbox> {
         },
         stroke_color: Some(stroke_color),
         stroke_width,
-        text_anchor: TextAnchor::Top,
-        margin_left: 0.0,
-        margin_right: 0.0,
-        margin_top: 0.0,
-        margin_bottom: 0.0,
-        wrap_type: WrapType::None,
-        dist_bottom: 0.0,
-        behind_doc: false,
         no_text_wrap: true,
-        text_warp: None,
-        auto_fit: AutoFit::None,
-        z_index: 0,
-        anchor_seq: 0,
-        indent_relative: false,
+        ..Textbox::default()
     })
 }
 
@@ -831,24 +840,13 @@ pub(super) fn parse_textbox_from_vml<R: Read + std::io::Seek>(
         v_offset_pt: margin_top,
         v_position: VerticalPosition::Offset(margin_top),
         v_relative_from: v_relative,
-        fill: None,
-        shape_type: ShapeGeometry::default(),
         stroke_color,
         stroke_width,
-        text_anchor: TextAnchor::Top,
         margin_left: 7.2,
         margin_right: 7.2,
         margin_top: 3.6,
         margin_bottom: 3.6,
-        wrap_type: WrapType::None,
-        dist_bottom: 0.0,
-        behind_doc: false,
-        no_text_wrap: false,
-        text_warp: None,
-        auto_fit: AutoFit::None,
-        z_index: 0,
-        anchor_seq: 0,
-        indent_relative: false,
+        ..Textbox::default()
     })
 }
 
@@ -887,7 +885,6 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
                             let (behind_doc, z_index) = super::images::anchor_z_order(container);
                             let dist_bottom = emu_attr(container, "distB");
                             textboxes.push(Textbox {
-                                paragraphs: wsp.paragraphs,
                                 width_pt: display_w,
                                 height_pt: display_h,
                                 h_position,
@@ -895,24 +892,11 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
                                 v_offset_pt: v_pos.offset_or_zero(),
                                 v_position: v_pos,
                                 v_relative_from: v_relative,
-                                fill: wsp.fill,
-                                shape_type: wsp.shape_type,
-                                stroke_color: wsp.stroke_color,
-                                stroke_width: wsp.stroke_width,
-                                text_anchor: wsp.text_anchor,
-                                margin_left: wsp.margin_left,
-                                margin_right: wsp.margin_right,
-                                margin_top: wsp.margin_top,
-                                margin_bottom: wsp.margin_bottom,
                                 wrap_type,
                                 dist_bottom,
                                 behind_doc,
-                                no_text_wrap: wsp.no_text_wrap,
-                                text_warp: wsp.text_warp,
-                                auto_fit: wsp.auto_fit,
                                 z_index,
-                                anchor_seq: 0,
-                                indent_relative: false,
+                                ..Textbox::from(wsp)
                             });
                         }
                     }

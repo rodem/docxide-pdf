@@ -1,6 +1,6 @@
 use crate::model::{
-    Alignment, AutoFit, HRelativeFrom, HorizontalPosition, Paragraph, Run, TextFill, TextGlow,
-    TextOutline, TextShadow, TextWarp, Textbox, VRelativeFrom, VerticalPosition, WrapType,
+    Alignment, AutoFit, Paragraph, Run, TextFill, TextGlow, TextOutline, TextShadow, TextWarp,
+    Textbox,
 };
 
 use super::color::{apply_color_transforms, parse_color_transforms, resolve_dml_color};
@@ -167,29 +167,9 @@ pub(super) fn parse_vml_wordart(
         paragraphs: vec![para],
         width_pt: width,
         height_pt: height,
-        h_position: HorizontalPosition::Offset(0.0),
-        h_relative_from: HRelativeFrom::Column,
-        v_offset_pt: 0.0,
-        v_position: VerticalPosition::Offset(0.0),
-        v_relative_from: VRelativeFrom::Paragraph,
-        fill: None,
-        shape_type: Default::default(),
-        stroke_color: None,
-        stroke_width: 0.0,
-        text_anchor: Default::default(),
-        margin_left: 0.0,
-        margin_right: 0.0,
-        margin_top: 0.0,
-        margin_bottom: 0.0,
-        wrap_type: WrapType::None,
-        dist_bottom: 0.0,
-        behind_doc: false,
         no_text_wrap: true,
-        text_warp: None,
         auto_fit: AutoFit::Shape,
-        z_index: 0,
-        anchor_seq: 0,
-        indent_relative: false,
+        ..Textbox::default()
     })
 }
 

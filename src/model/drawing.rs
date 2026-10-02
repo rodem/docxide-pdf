@@ -356,6 +356,7 @@ pub enum AutoFit {
     Shape,
 }
 
+#[derive(Default)]
 pub struct Textbox {
     pub paragraphs: Vec<Paragraph>,
     pub width_pt: f32,

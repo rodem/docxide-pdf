@@ -572,7 +572,6 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
                 let (wrap_type, _, _) = parse_wrap_type(container);
                 let (behind_doc, z_index) = anchor_z_order(container);
                 return Some(RunDrawingResult::TextBox(Textbox {
-                    paragraphs: wsp.paragraphs,
                     width_pt: display_w,
                     height_pt: display_h,
                     h_position,
@@ -580,24 +579,11 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
                     v_offset_pt: v_pos.offset_or_zero(),
                     v_position: v_pos,
                     v_relative_from: v_relative,
-                    fill: wsp.fill,
-                    shape_type: wsp.shape_type,
-                    stroke_color: wsp.stroke_color,
-                    stroke_width: wsp.stroke_width,
-                    text_anchor: wsp.text_anchor,
-                    margin_left: wsp.margin_left,
-                    margin_right: wsp.margin_right,
-                    margin_top: wsp.margin_top,
-                    margin_bottom: wsp.margin_bottom,
                     wrap_type,
                     dist_bottom: emu_attr(container, "distB"),
                     behind_doc,
-                    no_text_wrap: wsp.no_text_wrap,
-                    text_warp: wsp.text_warp,
-                    auto_fit: wsp.auto_fit,
                     z_index,
-                    anchor_seq: 0,
-                    indent_relative: false,
+                    ..Textbox::from(wsp)
                 }));
             }
             if let Some(conn) = parse_connector_from_wsp(container, ctx.theme) {
@@ -645,32 +631,10 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
             // Treat inline textbox as a floating textbox at paragraph position
             // with TopAndBottom wrap so it acts as a block element
             return Some(RunDrawingResult::TextBox(Textbox {
-                paragraphs: wsp.paragraphs,
                 width_pt: display_w,
                 height_pt: display_h,
-                h_position: HorizontalPosition::Offset(0.0),
-                h_relative_from: HRelativeFrom::Column,
-                v_offset_pt: 0.0,
-                v_position: VerticalPosition::Offset(0.0),
-                v_relative_from: VRelativeFrom::Paragraph,
-                fill: wsp.fill,
-                shape_type: wsp.shape_type,
-                stroke_color: wsp.stroke_color,
-                stroke_width: wsp.stroke_width,
-                text_anchor: wsp.text_anchor,
-                margin_left: wsp.margin_left,
-                margin_right: wsp.margin_right,
-                margin_top: wsp.margin_top,
-                margin_bottom: wsp.margin_bottom,
                 wrap_type: WrapType::TopAndBottom,
-                dist_bottom: 0.0,
-                behind_doc: false,
-                no_text_wrap: wsp.no_text_wrap,
-                text_warp: wsp.text_warp,
-                auto_fit: wsp.auto_fit,
-                z_index: 0,
-                anchor_seq: 0,
-                indent_relative: false,
+                ..Textbox::from(wsp)
             }));
         }
 
