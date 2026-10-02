@@ -530,7 +530,7 @@ pub(super) fn compute_row_layouts(
     hf_sub: Option<&HfSubstitution>,
 ) -> Vec<RowLayout> {
     let cm = &table.cell_margins;
-    table
+    let mut layouts: Vec<RowLayout> = table
         .rows
         .iter()
         .map(|row| {
@@ -967,7 +967,32 @@ pub(super) fn compute_row_layouts(
 
             RowLayout { height, cells }
         })
-        .collect()
+        .collect();
+
+    // A merged cell taller than the rows it spans grows the last of them:
+    // indonesian_school_admission_checklist's "NO." header (49.7pt of content)
+    // makes the second row 29.28pt where its at-least trHeight asks 24.15.
+    for (ri, row) in table.rows.iter().enumerate() {
+        for (ci, (grid_col, _, cell)) in row.grid_cells().enumerate() {
+            if cell.v_merge != VMerge::Restart {
+                continue;
+            }
+            let mut last = ri;
+            while table.rows.get(last + 1).is_some_and(|next| {
+                next.grid_cells().any(|(c, _, n)| c == grid_col && n.v_merge == VMerge::Continue)
+            }) {
+                last += 1;
+            }
+            let spanned: f32 = layouts[ri..=last].iter().map(|l| l.height).sum();
+            let overflow = layouts[ri].cells[ci].total_height - spanned;
+            if overflow > 0.0
+                && let Some(r) = (ri..=last).rev().find(|&r| !table.rows[r].height_exact)
+            {
+                layouts[r].height += overflow;
+            }
+        }
+    }
+    layouts
 }
 
 /// Pre-compute how much extra height each vMerge Restart cell spans beyond its own row.
