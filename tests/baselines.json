@@ -985,8 +985,8 @@
     "a11y_text": 0.9727
   },
   "scraped/chinese_student_..": {
-    "jaccard": 0.1817,
-    "ssim": 0.4291,
+    "jaccard": 0.3275,
+    "ssim": 0.5249,
     "text_boundary": 0.8033,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -1045,8 +1045,8 @@
     "ua_fail": 2
   },
   "scraped/croatian_thesis_..": {
-    "jaccard": 0.2306,
-    "ssim": 0.6504,
+    "jaccard": 0.3414,
+    "ssim": 0.9487,
     "text_boundary": 0.5385,
     "ua_fail": 2,
     "ua_deficit": 0,
