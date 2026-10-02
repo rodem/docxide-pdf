@@ -108,7 +108,11 @@ pub(super) fn compute_footnote_height(
         };
         prev_para = Some(para);
     }
-    total
+    // Word puts a note's last space-after before the next note (erasmus_plus
+    // endnotes 5pt, master_thesis footnotes 3pt). ponytail: the last note is
+    // charged too, so a bottom-anchored block ends that far above the margin;
+    // the next note's space-before is untested.
+    total + prev_space_after
 }
 
 pub(super) fn render_page_footnotes(
@@ -304,6 +308,8 @@ fn render_notes_downward(
             };
             prev_para = Some(para);
         }
+        // The note's trailing space, as `compute_footnote_height` charges it.
+        fn_y -= prev_space_after;
     }
     tops
 }

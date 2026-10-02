@@ -420,6 +420,16 @@ reproduced at the baseline and were marked fixed without a code change.
    carbon_farming header rule 98.65 → 100.40 (Word 100.53). ut_koer J +20.9
    / SSIM +8.2, bush_fires J +3.7 / SSIM +4.5, carbon_farming J +3.0, covid
    J +0.7; western_australia and croatian_grant hash only.
+5. **#185 erasmus_plus endnotes**: consecutive footnotes/endnotes were packed;
+   Word puts a note's last paragraph's space-after before the next note
+   (erasmus endnotes 5pt from `after=100`, master_thesis footnotes 3pt from
+   `after=60`, both now matched to 0.1pt per boundary). `compute_footnote_height`
+   charges the note its trailing space and `render_notes_downward` advances
+   past it. erasmus scores J −1.3 / SSIM −3.5 anyway: its body already sat
+   30pt below Word's by page 3 (cumulative drift), so the endnote block, 30pt
+   taller now, runs past the bottom margin (inline endnotes are not paginated,
+   see the `ponytail:` note in `render_endnotes_inline`). master_thesis and
+   croatian_grant changed hash only.
 
 Findings left for later:
 - `wp:effectExtent` is not part of an inline picture's line height; ut_koer's

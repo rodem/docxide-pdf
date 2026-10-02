@@ -173,8 +173,8 @@
       "source": "Generated",
       "x_pt": 189.81116,
       "y_pt": 224.97614,
-      "note": "This is not accurate yet, but close.",
-      "fixed": false,
+      "note": "This is not accurate yet, but close.\n\nFIX (2026-10-02): the gaps between endnotes were missing (a note's last paragraph space-after, 5pt here); now matched. The block still sits ~30pt below Word's because the body drifts by page 3.",
+      "fixed": true,
       "cleared": false
     },
     {
