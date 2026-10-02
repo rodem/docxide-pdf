@@ -192,17 +192,14 @@ Mean Jaccard went 51.2 → 63.4 and SSIM 70.9 → 80.5 over the merge.
 
 ### 8. Conference forms: 7pt short above the table
 
-- korean_japanese_conference_form and east_asia_conference_form (same
-  template): every table row is within 0.015pt of Word, but the gap from the
-  title block into the table is ~7pt short, and both fit on one page where
-  Word has two. Measure on **east_asia** (a Word export whose substitutes,
-  Malgun Gothic and Batang, we have); korean_japanese's reference is a macOS
-  print-path PDF made with HY헤드라인M and New Gulim installed.
+- east_asia_conference_form: every table row is within 0.015pt of Word, but
+  the gap from the title block into the table is ~7pt short, and it fits on
+  one page where Word has two.
 
 ### 9. Font files
 
 Census of every face Word drew per glyph in the 223 references against all
-indexed font files: only three fixtures use faces we lack.
+indexed font files: only two fixtures use faces we lack.
 - croatian_thesis_topic_approval_form: Merriweather Regular + Bold (68
   `w:rFonts` entries, nearly the whole document; 340 glyphs). We fit it on one page, Word on two
   (J 23.1). OFL, but Word's machine had the static v1 face; current Google
@@ -210,8 +207,6 @@ indexed font files: only three fixtures use faces we lack.
   the reference before vendoring.
 - multi_font: Copperplate Gothic Light (81 glyphs; Office font, belongs in the
   private assets repo). Bodoni MT is already in `fonts/CloudFonts`.
-- korean_japanese_conference_form: HY헤드라인M and New Gulim (55 glyphs,
-  Hancom/Windows fonts). Low value.
 - eco_int's 14 "Helvetica,Italic" glyphs are macOS Helvetica Oblique under
   another name, not a missing file.
 

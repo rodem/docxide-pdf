@@ -1379,16 +1379,6 @@
     "a11y_struct": 0.7826,
     "a11y_text": 1.0
   },
-  "scraped/korean_japanese_..": {
-    "jaccard": 0.2049,
-    "ssim": 0.4839,
-    "text_boundary": 0.8571,
-    "convert_ms": 18.4,
-    "ua_fail": 2,
-    "ua_deficit": 0,
-    "a11y_struct": 1.0,
-    "a11y_text": 1.0
-  },
   "scraped/learning_culture..": {
     "jaccard": 0.6122,
     "ssim": 0.7575,

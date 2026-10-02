@@ -596,17 +596,6 @@
       "cleared": true
     },
     {
-      "id": 239,
-      "case": "scraped/korean_japanese_conference_form",
-      "page": 0,
-      "source": "Generated",
-      "x_pt": 326.30557,
-      "y_pt": 127.81036,
-      "note": "There should be a page break here before the last line for some reason? Maybe just vertical size of everything else pushes it down naturally?",
-      "fixed": false,
-      "cleared": false
-    },
-    {
       "id": 240,
       "case": "case41",
       "page": 5,
