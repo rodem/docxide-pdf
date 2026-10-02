@@ -2246,13 +2246,22 @@ fn render_paragraph_block(
         if line_h > 0.0 {
             let mut fn_acc = 0.0f32;
             // Line i fits when the advances of the lines above it plus its own
-            // text height fit (its trailing leading may hang past the margin).
+            // text height fit (its trailing leading may hang past the margin),
+            // but not past a footnote area: there the whole line must fit
+            // (environmental_law_clinic's double-spaced lines stop a line
+            // earlier above the footnotes on every page in Word).
             let mut above = 0.0f32;
             for (i, fn_extra) in line_fn_extra.iter().enumerate() {
                 fn_acc += fn_extra;
                 let room = available - fn_acc;
                 let own_pitch = lines.get(i).and_then(|l| l.pitch);
-                if above + own_pitch.map_or(first_line_h, |p| p.min(first_line_h)) > room {
+                let above_footnotes = !state.pb.footnote_ids.is_empty() || fn_acc > 0.0;
+                let own_h = if above_footnotes {
+                    own_pitch.unwrap_or(line_h)
+                } else {
+                    own_pitch.map_or(first_line_h, |p| p.min(first_line_h))
+                };
+                if above + own_h > room {
                     break;
                 }
                 lines_that_fit = i + 1;
