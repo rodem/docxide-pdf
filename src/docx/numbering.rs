@@ -12,7 +12,6 @@ pub(super) struct LevelDef {
     pub(super) indent_hanging: f32,
     pub(super) tab_stop: Option<f32>,
     pub(super) start: u32,
-    pub(super) bullet_font: Option<String>,
     pub(super) label_font_size: Option<f32>,
     pub(super) label_bold: bool,
     pub(super) label_color: Option<[u8; 3]>,
@@ -44,6 +43,19 @@ pub(super) struct ListLabelInfo {
     /// `ilvl` and abstract list id of a numbered/bulleted item (None when the
     /// paragraph shows no label).
     pub(super) item: Option<(u8, u32)>,
+}
+
+/// List numbering state carried across one story's paragraphs (body,
+/// header, endnotes…), keyed by abstract list id so every numId sharing an
+/// abstract definition shares one counter stream.
+#[derive(Default)]
+pub(super) struct ListCounters {
+    /// Current value per (abstract list, level).
+    pub(super) counters: HashMap<(u32, u8), u32>,
+    /// Level most recently used per abstract list.
+    pub(super) last_seen_level: HashMap<u32, u8>,
+    /// (numId, level) startOverrides already applied.
+    pub(super) applied_overrides: HashSet<(u32, u8)>,
 }
 
 #[derive(Default)]
@@ -107,7 +119,6 @@ fn parse_level_def(lvl: roxmltree::Node) -> Option<(u8, LevelDef)> {
             indent_hanging,
             tab_stop,
             start,
-            bullet_font: rpr_font.clone(),
             label_font_size,
             label_bold,
             label_color,
@@ -356,10 +367,13 @@ pub(super) fn parse_list_info(
     effective_style_id: Option<&str>,
     paragraph_styles: &HashMap<String, ParagraphStyle>,
     numbering: &NumberingInfo,
-    counters: &mut HashMap<(u32, u8), u32>,
-    last_seen_level: &mut HashMap<u32, u8>,
-    applied_overrides: &mut HashSet<(u32, u8)>,
+    lists: &mut ListCounters,
 ) -> ListLabelInfo {
+    let ListCounters {
+        counters,
+        last_seen_level,
+        applied_overrides,
+    } = lists;
     let (num_id, ilvl) = if let Some(np) = num_pr {
         let nid = wml_attr(np, "numId");
         let il = wml_attr(np, "ilvl")
@@ -468,7 +482,7 @@ pub(super) fn parse_list_info(
             .chars()
             .any(|c| (0xF000..=0xF0FF).contains(&(c as u32)));
     let label = if is_bullet {
-        if original_had_pua && def.bullet_font.is_some() {
+        if original_had_pua && def.label_font.is_some() {
             // Keep PUA chars for symbol fonts — their cmaps expect PUA encoding
             def.lvl_text.clone()
         } else {
@@ -510,7 +524,7 @@ pub(super) fn parse_list_info(
         tab_stop: def.tab_stop,
         label,
         font: if is_bullet {
-            def.bullet_font.clone()
+            def.label_font.clone()
         } else if def.suff == "nothing" {
             // suff=nothing: label flows inline with text and needs
             // its own font for the synthetic Run we prepend.
@@ -659,7 +673,6 @@ mod tests {
             indent_hanging: 18.0,
             tab_stop: None,
             start: 1,
-            bullet_font: None,
             label_font_size: None,
             label_bold: false,
             label_color: None,
@@ -684,9 +697,7 @@ mod tests {
             .level_overrides
             .insert("5".into(), HashMap::from([(0u8, override_def)]));
 
-        let mut counters = HashMap::new();
-        let mut last_seen = HashMap::new();
-        let mut applied = HashSet::new();
+        let mut lists = ListCounters::default();
         let info = parse_list_info(
             None,
             Some("5"),
@@ -694,9 +705,7 @@ mod tests {
             None,
             &HashMap::new(),
             &numbering,
-            &mut counters,
-            &mut last_seen,
-            &mut applied,
+            &mut lists,
         );
         assert_eq!(info.label, "A)");
         assert_eq!(info.indent_left, 10.0);
@@ -722,9 +731,7 @@ mod tests {
             .insert("0".into(), HashMap::from([(0u8, lvl0), (1u8, lvl1)]));
         numbering.num_to_abstract.insert("100".into(), "0".into());
 
-        let mut counters = HashMap::new();
-        let mut last_seen = HashMap::new();
-        let mut applied = HashSet::new();
+        let mut lists = ListCounters::default();
         let lvl0_info = parse_list_info(
             None,
             Some("100"),
@@ -732,9 +739,7 @@ mod tests {
             None,
             &HashMap::new(),
             &numbering,
-            &mut counters,
-            &mut last_seen,
-            &mut applied,
+            &mut lists,
         );
         assert_eq!(lvl0_info.label, "I.");
         let lvl1_info = parse_list_info(
@@ -744,9 +749,7 @@ mod tests {
             None,
             &HashMap::new(),
             &numbering,
-            &mut counters,
-            &mut last_seen,
-            &mut applied,
+            &mut lists,
         );
         // Without isLgl this would be "I.1."; isLgl forces %1 to decimal.
         assert_eq!(lvl1_info.label, "1.1.");
@@ -771,9 +774,7 @@ mod tests {
             .insert("0".into(), HashMap::from([(0u8, lvl0), (1u8, lvl1)]));
         numbering.num_to_abstract.insert("100".into(), "0".into());
 
-        let mut counters = HashMap::new();
-        let mut last_seen = HashMap::new();
-        let mut applied = HashSet::new();
+        let mut lists = ListCounters::default();
         let mut label = |ilvl: u8| {
             parse_list_info(
                 None,
@@ -782,9 +783,7 @@ mod tests {
                 None,
                 &HashMap::new(),
                 &numbering,
-                &mut counters,
-                &mut last_seen,
-                &mut applied,
+                &mut lists,
             )
             .label
         };
@@ -812,9 +811,7 @@ mod tests {
             .insert("100".into(), HashMap::from([(0u8, parse_lvl(&lvl0_xml).1)]));
         numbering.num_to_abstract.insert("100".into(), "100".into());
 
-        let mut counters = HashMap::new();
-        let mut last_seen = HashMap::new();
-        let mut applied = HashSet::new();
+        let mut lists = ListCounters::default();
         let mut label = |style: &str| {
             parse_list_info(
                 None,
@@ -823,9 +820,7 @@ mod tests {
                 Some(style),
                 &HashMap::new(),
                 &numbering,
-                &mut counters,
-                &mut last_seen,
-                &mut applied,
+                &mut lists,
             )
         };
         // Owning style numbers.
@@ -855,13 +850,13 @@ mod tests {
         numbering.num_to_abstract.insert("1".into(), "0".into());
 
         let mut styles: HashMap<String, ParagraphStyle> = HashMap::new();
-        let mut derived = ParagraphStyle::default();
-        derived.based_on = Some("HeadBase".into());
+        let derived = ParagraphStyle {
+            based_on: Some("HeadBase".into()),
+            ..ParagraphStyle::default()
+        };
         styles.insert("HeadDerived".into(), derived);
 
-        let mut counters = HashMap::new();
-        let mut last_seen = HashMap::new();
-        let mut applied = HashSet::new();
+        let mut lists = ListCounters::default();
         // Derived style numbers like its base, advancing the shared counter.
         let d1 = parse_list_info(
             None,
@@ -870,9 +865,7 @@ mod tests {
             Some("HeadDerived"),
             &styles,
             &numbering,
-            &mut counters,
-            &mut last_seen,
-            &mut applied,
+            &mut lists,
         );
         assert_eq!(d1.label, "1.");
         let b2 = parse_list_info(
@@ -882,9 +875,7 @@ mod tests {
             Some("HeadBase"),
             &styles,
             &numbering,
-            &mut counters,
-            &mut last_seen,
-            &mut applied,
+            &mut lists,
         );
         assert_eq!(b2.label, "2.");
     }

@@ -1,9 +1,7 @@
-use std::collections::{HashMap, HashSet};
-
 use crate::model::{Paragraph, Run, TabAlignment, TabStop};
 
 use super::images::compute_drawing_info;
-use super::numbering::{ListLabelInfo, parse_list_info};
+use super::numbering::{ListCounters, ListLabelInfo, parse_list_info};
 use super::runs::{parse_runs, push_textbox};
 use super::styles::{parse_alignment, parse_font_size, resolve_font_from_node_opt};
 use super::textbox::collect_textboxes_from_paragraph;
@@ -33,9 +31,7 @@ pub(super) struct ParagraphOptions {
 pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
     node: roxmltree::Node,
     ctx: &mut ParseContext<'_, R>,
-    counters: &mut HashMap<(u32, u8), u32>,
-    last_seen_level: &mut HashMap<u32, u8>,
-    applied_overrides: &mut HashSet<(u32, u8)>,
+    lists: &mut ListCounters,
     opts: &ParagraphOptions,
 ) -> Paragraph {
     let ppr = wml(node, "pPr");
@@ -143,9 +139,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         Some(para_style_id),
         &ctx.styles.paragraph_styles,
         ctx.numbering,
-        counters,
-        last_seen_level,
-        applied_overrides,
+        lists,
     );
     // Paragraph-level `<w:tab val="num" pos="..."/>` overrides the numbering
     // level's num tab (paired with a `clear` of the inherited value when

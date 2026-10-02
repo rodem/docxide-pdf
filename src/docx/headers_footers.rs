@@ -1,9 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::{Read, Seek};
 
 use crate::model::{Alignment, Block, Footnote, HeaderFooter, LineSpacing, Paragraph, Run};
 
-use super::numbering::NumberingInfo;
+use super::numbering::{ListCounters, NumberingInfo};
 use super::parse_table_node;
 use super::relationships::parse_part_relationships;
 use super::runs::parse_runs;
@@ -33,9 +33,7 @@ pub(super) fn parse_header_footer_xml<R: Read + Seek>(
 
     let top_nodes = collect_block_nodes(root);
 
-    let mut counters = HashMap::new();
-    let mut last_seen_level = HashMap::new();
-    let mut applied_overrides = HashSet::new();
+    let mut lists = ListCounters::default();
 
     for node in top_nodes {
         if node.tag_name().namespace() != Some(WML_NS) {
@@ -43,22 +41,14 @@ pub(super) fn parse_header_footer_xml<R: Read + Seek>(
         }
         match node.tag_name().name() {
             "tbl" => {
-                let table = parse_table_node(
-                    node,
-                    ctx,
-                    &mut counters,
-                    &mut last_seen_level,
-                    &mut applied_overrides,
-                );
+                let table = parse_table_node(node, ctx, &mut lists);
                 blocks.push(Block::Table(table));
             }
             "p" => {
                 let mut para = super::paragraph::build_paragraph(
                     node,
                     ctx,
-                    &mut counters,
-                    &mut last_seen_level,
-                    &mut applied_overrides,
+                    &mut lists,
                     &super::paragraph::ParagraphOptions::default(),
                 );
                 // Auto spacing opens no story, as at the top of the body
@@ -284,9 +274,7 @@ fn parse_notes_rich<R: Read + Seek>(
         numbering,
     };
 
-    let mut counters = HashMap::new();
-    let mut last_seen_level = HashMap::new();
-    let mut applied_overrides = HashSet::new();
+    let mut lists = ListCounters::default();
 
     for node in root.children() {
         if !node.has_tag_name((WML_NS, element_name)) {
@@ -307,9 +295,7 @@ fn parse_notes_rich<R: Read + Seek>(
             let mut para = super::paragraph::build_paragraph(
                 p,
                 &mut fn_ctx,
-                &mut counters,
-                &mut last_seen_level,
-                &mut applied_overrides,
+                &mut lists,
                 &super::paragraph::ParagraphOptions::default(),
             );
             // Match the simple-path default so endnote line-heights stay

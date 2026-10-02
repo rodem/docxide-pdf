@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::io::{Read, Seek};
 
 use crate::model::{
@@ -7,7 +6,7 @@ use crate::model::{
     TableRow, TextDirection, VMerge,
 };
 
-use super::numbering::{ListLabelInfo, parse_list_info};
+use super::numbering::{ListCounters, ListLabelInfo, parse_list_info};
 use super::runs::parse_runs;
 use super::styles::{TableBordersDef, parse_alignment};
 use super::{
@@ -149,9 +148,7 @@ fn resolve_h_border(upper_bottom: CellBorder, lower_top: CellBorder) -> CellBord
 pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
     node: roxmltree::Node,
     ctx: &mut ParseContext<'_, R>,
-    counters: &mut HashMap<(u32, u8), u32>,
-    last_seen_level: &mut HashMap<u32, u8>,
-    applied_overrides: &mut HashSet<(u32, u8)>,
+    lists: &mut ListCounters,
 ) -> Table {
     let mut col_widths: Vec<f32> = wml(node, "tblGrid")
         .into_iter()
@@ -851,9 +848,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         Some(para_style_id),
                         &ctx.styles.paragraph_styles,
                         ctx.numbering,
-                        counters,
-                        last_seen_level,
-                        applied_overrides,
+                        lists,
                     );
                     let mut indent_first_line = 0.0;
                     let mut indent_right = 0.0;
@@ -915,8 +910,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         ..Paragraph::default()
                     }));
                 } else if n.has_tag_name((WML_NS, "tbl")) {
-                    let nested =
-                        parse_table_node(*n, ctx, counters, last_seen_level, applied_overrides);
+                    let nested = parse_table_node(*n, ctx, lists);
                     cell_blocks.push(Block::Table(nested));
                 }
             }

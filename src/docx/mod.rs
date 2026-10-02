@@ -19,7 +19,7 @@ mod textbox;
 mod wmf;
 mod wordart;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::Read;
 
 use crate::error::Error;
@@ -821,9 +821,7 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
 
     let mut sections: Vec<Section> = Vec::new();
     let mut blocks = Vec::new();
-    let mut counters: HashMap<(u32, u8), u32> = HashMap::new();
-    let mut last_seen_level: HashMap<u32, u8> = HashMap::new();
-    let mut applied_overrides: HashSet<(u32, u8)> = HashSet::new();
+    let mut lists = numbering::ListCounters::default();
     // numId of the previous body block when it was a list paragraph.
     let mut prev_list_num_id: Option<String> = None;
 
@@ -833,13 +831,7 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
         }
         match node.tag_name().name() {
             "tbl" => {
-                let table = parse_table_node(
-                    node,
-                    &mut ctx,
-                    &mut counters,
-                    &mut last_seen_level,
-                    &mut applied_overrides,
-                );
+                let table = parse_table_node(node, &mut ctx, &mut lists);
                 blocks.push(Block::Table(table));
                 prev_list_num_id = None;
             }
@@ -858,14 +850,7 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
                     style_num_id: para_style.and_then(|s| s.num_id.clone()),
                     style_num_ilvl: para_style.and_then(|s| s.num_ilvl),
                 };
-                let mut para = paragraph::build_paragraph(
-                    node,
-                    &mut ctx,
-                    &mut counters,
-                    &mut last_seen_level,
-                    &mut applied_overrides,
-                    &opts,
-                );
+                let mut para = paragraph::build_paragraph(node, &mut ctx, &mut lists, &opts);
 
                 // HTML auto spacing never opens the document, and it drops
                 // between items of one list: russian_university's auto-spaced
