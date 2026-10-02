@@ -924,8 +924,8 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
                             };
                             let (wrap_type, _, _) = super::images::parse_wrap_type(container);
                             let behind_doc = container.attribute("behindDoc") == Some("1");
-                            let dist_top = emu_attr(container, "distT");
-                            let dist_bottom = emu_attr(container, "distB");
+                            let (dist_top, dist_bottom) =
+                                super::images::wrap_dist_top_bottom(container);
                             textboxes.push(Textbox {
                                 paragraphs: wsp.paragraphs,
                                 width_pt: display_w,

@@ -38,6 +38,17 @@ fn inline_extra_height(container: roxmltree::Node) -> (f32, f32) {
     (ee_t + ee_b + dist_t + dist_b, ee_t + dist_t)
 }
 
+/// An anchor's (top, bottom) wrap distances: distT/distB plus the effectExtent
+/// its effects add. indonesian's "Format 12" box (effectExtent b=23495) pushes
+/// the next paragraph 1.85pt further than distB alone; indigenous_innovation's
+/// three boxes 1.05pt each.
+pub(super) fn wrap_dist_top_bottom(container: roxmltree::Node) -> (f32, f32) {
+    let ee = wpd(container, "effectExtent");
+    let ee_t = ee.map(|n| emu_attr(n, "t")).unwrap_or(0.0);
+    let ee_b = ee.map(|n| emu_attr(n, "b")).unwrap_or(0.0);
+    (emu_attr(container, "distT") + ee_t, emu_attr(container, "distB") + ee_b)
+}
+
 pub(super) fn extent_dimensions(container: roxmltree::Node) -> (f32, f32) {
     let extent = wpd(container, "extent");
     let cx = extent
@@ -611,8 +622,8 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
                     margin_top: wsp.margin_top,
                     margin_bottom: wsp.margin_bottom,
                     wrap_type,
-                    dist_top: emu_attr(container, "distT"),
-                    dist_bottom: emu_attr(container, "distB"),
+                    dist_top: wrap_dist_top_bottom(container).0,
+                    dist_bottom: wrap_dist_top_bottom(container).1,
                     behind_doc,
                     no_text_wrap: wsp.no_text_wrap,
                     is_wordart: wsp.is_wordart,
@@ -647,8 +658,8 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
                         wrap_text,
                         wrap_polygon,
                         behind_doc,
-                        dist_top: emu_attr(container, "distT"),
-                        dist_bottom: emu_attr(container, "distB"),
+                        dist_top: wrap_dist_top_bottom(container).0,
+                        dist_bottom: wrap_dist_top_bottom(container).1,
                         dist_left: emu_attr(container, "distL"),
                         dist_right: emu_attr(container, "distR"),
                         z_index,
