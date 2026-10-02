@@ -264,16 +264,16 @@ pub(super) fn probe_face<T>(path: &Path, face_index: u32, f: impl FnOnce(&Face) 
 
 /// Look up a font file by family name and style using the OS/2 table metadata index.
 /// Falls back to the regular variant if the requested bold/italic is not available.
-/// Returns `(path, face_index, exact_style_match)`.
+/// Returns `(path, face_index, face_bold, face_italic)`.
 pub(super) fn find_font_file(
     font_name: &str,
     bold: bool,
     italic: bool,
-) -> Option<(PathBuf, u32, bool)> {
+) -> Option<(PathBuf, u32, bool, bool)> {
     let index = get_font_index();
     let key = font_name.to_lowercase();
     if let Some((path, face_index)) = index.get(&(key.clone(), bold, italic)) {
-        return Some((path.clone(), *face_index, true));
+        return Some((path.clone(), *face_index, bold, italic));
     }
     // A plain regular request that misses falls through to a generic family
     // fallback rather than borrowing this family's bold/italic face, which would
@@ -289,7 +289,7 @@ pub(super) fn find_font_file(
     // or bold variant, so "Vivaldi bold" only resolves once we try (regular,italic).
     for (b, i) in [(bold, !italic), (!bold, italic), (!bold, !italic)] {
         if let Some((path, face_index)) = index.get(&(key.clone(), b, i)) {
-            return Some((path.clone(), *face_index, false));
+            return Some((path.clone(), *face_index, b, i));
         }
     }
     None

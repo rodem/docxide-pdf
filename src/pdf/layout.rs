@@ -239,6 +239,7 @@ pub(super) struct WordChunk {
     pub(super) inline_image_alt: Option<String>,
     pub(super) inline_image_decorative: bool,
     pub(super) synthetic_bold: bool,
+    pub(super) synthetic_italic: bool,
     pub(super) text_outline: Option<TextOutline>,
     pub(super) text_fill: Option<TextFill>,
     /// Legacy w:shadow/emboss/imprint drop-shadow: drawn as an offset gray copy
@@ -336,6 +337,7 @@ impl WordChunk {
             inline_image_decorative: false,
             punct_compressed: 0.0,
             synthetic_bold: entry.synthetic_bold,
+            synthetic_italic: entry.synthetic_italic,
             text_outline: run.text_outline.clone(),
             text_fill: run.text_fill.clone(),
             text_shadow: run.text_shadow.clone(),
@@ -390,6 +392,7 @@ impl WordChunk {
             punct_compressed: 0.0,
             is_math: false,
             synthetic_bold: false,
+            synthetic_italic: false,
             text_outline: None,
             text_fill: None,
             text_shadow: None,
@@ -443,6 +446,7 @@ impl WordChunk {
             punct_compressed: 0.0,
             is_math: false,
             synthetic_bold: false,
+            synthetic_italic: false,
             text_outline: None,
             text_fill: None,
             text_shadow: None,
@@ -501,6 +505,7 @@ impl WordChunk {
             punct_compressed: 0.0,
             is_math: false,
             synthetic_bold: false,
+            synthetic_italic: false,
             text_outline: None,
             text_fill: None,
             text_shadow: None,
@@ -2423,6 +2428,7 @@ pub(super) fn render_paragraph_lines(
             content.begin_text();
             let mut td_x = 0.0_f32;
             let mut td_y = 0.0_f32;
+            let mut cur_shear = 0.0_f32;
 
             for (chunk_idx, chunk) in line.chunks.iter().enumerate() {
                 if chunk.inline_image_name.is_some() {
@@ -2554,12 +2560,24 @@ pub(super) fn render_paragraph_lines(
                 // glyphs behind the main text, then fall through to draw the real
                 // glyphs on top. ponytail: single offset, no highlight pass, and
                 // CJK-fallback chars use the primary font in the shadow copy.
+                // Word draws italic in a face that has none (macOS Comic Sans
+                // MS, Tahoma) sheared 87/256 about the baseline:
+                // greek_history_lecture_press_release, door_air_cooling_unit_spec.
+                // A Td under a sheared line matrix would shift x by shear × dy,
+                // so every move in or out of a sheared chunk is an absolute Tm.
+                let shear = if chunk.synthetic_italic { 87.0 / 256.0 } else { 0.0 };
+                let mut move_to = |content: &mut Content, mx: f32, my: f32| {
+                    if shear != 0.0 || cur_shear != 0.0 {
+                        content.set_text_matrix([1.0, 0.0, shear, 1.0, mx, my]);
+                        cur_shear = shear;
+                    } else {
+                        content.next_line(mx - td_x, my - td_y);
+                    }
+                    td_x = mx;
+                    td_y = my;
+                };
                 if let Some(ref sh) = chunk.text_shadow {
-                    let sx = x + sh.offset_x;
-                    let sy = cy + sh.offset_y;
-                    content.next_line(sx - td_x, sy - td_y);
-                    td_x = sx;
-                    td_y = sy;
+                    move_to(content, x + sh.offset_x, cy + sh.offset_y);
                     fill_color_or_black(content, Some(sh.color));
                     let bytes =
                         encode_text_for_pdf(&chunk.text, &chunk.pdf_font, &pdf_name_to_entry);
@@ -2567,9 +2585,7 @@ pub(super) fn render_paragraph_lines(
                     fill_color_or_black(content, current_color);
                 }
 
-                content.next_line(x - td_x, cy - td_y);
-                td_x = x;
-                td_y = cy;
+                move_to(content, x, cy);
 
                 // Per-character font fallback: if some chars are missing
                 // from the primary font, split into segments and render
@@ -3260,6 +3276,7 @@ mod tests {
             char_widths_1000: None,
             kern_pairs: None,
             synthetic_bold: false,
+            synthetic_italic: false,
             is_substituted: false,
             missing_cjk_chars: Default::default(),
             drew_notdef: Default::default(),

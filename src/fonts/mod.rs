@@ -35,6 +35,7 @@ pub(crate) struct FontMetrics {
 struct ResolvedFont {
     metrics: FontMetrics,
     synthetic_bold: bool,
+    synthetic_italic: bool,
     font_path: Option<PathBuf>,
     face_index: u32,
 }
@@ -59,6 +60,8 @@ pub(crate) struct FontEntry {
     pub(crate) char_widths_1000: Option<HashMap<char, f32>>,
     pub(crate) kern_pairs: Option<HashMap<(u16, u16), f32>>,
     pub(crate) synthetic_bold: bool,
+    /// The face found has no italic: Word shears it (`pdf::layout`).
+    pub(crate) synthetic_italic: bool,
     /// True when the requested font was missing and a metric-changing fallback
     /// (CJK/family/standard-14) was used — altName/alias mappings don't count.
     pub(crate) is_substituted: bool,
@@ -189,17 +192,20 @@ fn try_font(
         return Some(ResolvedFont {
             metrics,
             synthetic_bold: false,
+            synthetic_italic: false,
             font_path: None,
             face_index: 0,
         });
     }
 
-    let (path, face_index, exact_match) = discovery::find_font_file(candidate, bold, italic)?;
+    let (path, face_index, face_bold, face_italic) =
+        discovery::find_font_file(candidate, bold, italic)?;
     let data = std::fs::read(&path).ok()?;
     let metrics = embed(&data, face_index)?;
     Some(ResolvedFont {
         metrics,
-        synthetic_bold: bold && !exact_match,
+        synthetic_bold: bold && !face_bold,
+        synthetic_italic: italic && !face_italic,
         font_path: Some(path),
         face_index,
     })
@@ -427,7 +433,7 @@ pub(crate) fn cjk_fallback_fonts(script: CjkScript, serif: bool) -> &'static [&'
 
 /// How many of `chars` the named font has glyphs for; 0 when it is not installed.
 fn glyph_coverage(name: &str, chars: &HashSet<char>) -> usize {
-    let Some((path, face_index, _)) = discovery::find_font_file(name, false, false) else {
+    let Some((path, face_index, ..)) = discovery::find_font_file(name, false, false) else {
         return 0;
     };
     discovery::probe_face(&path, face_index, |face| {
@@ -626,6 +632,7 @@ pub(crate) fn register_font(
                 Some(r.metrics.kern_pairs)
             },
             synthetic_bold: r.synthetic_bold,
+            synthetic_italic: r.synthetic_italic,
             is_substituted: substituted.get(),
             missing_cjk_chars: missing_cjk,
             drew_notdef: Default::default(),
@@ -664,6 +671,7 @@ pub(crate) fn register_font(
                 char_widths_1000: None,
                 kern_pairs: None,
                 synthetic_bold: false,
+                synthetic_italic: false,
                 is_substituted: true,
                 missing_cjk_chars: missing_cjk,
                 drew_notdef: Default::default(),

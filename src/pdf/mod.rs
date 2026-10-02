@@ -3630,6 +3630,7 @@ mod tests {
             char_widths_1000: None,
             kern_pairs: None,
             synthetic_bold: false,
+            synthetic_italic: false,
             is_substituted: false,
             missing_cjk_chars: Default::default(),
             drew_notdef: Default::default(),
