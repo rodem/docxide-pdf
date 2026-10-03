@@ -128,6 +128,11 @@ fn word_pair_rule(a: char, b: char) -> Option<bool> {
     if is_break_space(a) && !is_break_space(b) {
         return Some(true);
     }
+    // UAX #14 breaks after a solidus, Word doesn't: croatian_grant keeps
+    // "troškova/izdataka" whole and wraps before it.
+    if a == '/' && b.is_alphanumeric() {
+        return Some(false);
+    }
     // Class IN allows a break after an ellipsis before digits, but Word keeps
     // tokens like TOC dot-leaders typed as "…………45" unbreakable.
     if matches!(a, '\u{2024}' | '\u{2025}' | '\u{2026}') && !b.is_whitespace() {
