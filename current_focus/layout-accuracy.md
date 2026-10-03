@@ -409,14 +409,14 @@ Regressions and what explained them:
 **Further work for the new cases** (gain = the agent's what-if, J):
 
 - **strategi** (20.9; #1 + #2 together → 59.1, + #3/#4 → 62.5):
-  1. Table-style pPr spacing is never parsed. Header table style `a5` (after=0,
+  1. **Done** (`7c4a1e02`, §10). Table-style pPr spacing is never parsed. Header table style `a5` (after=0,
      line=240, no borders) gets docDefaults instead (1.15×, 10pt after), so
      9pt header lines step 21.90 where Word steps 10.32. `tables.rs:304` uses
      "the style has borders" as a stand-in. Fix: add before/after/line to
      `TableStyleDef` (`styles.rs`, resolving basedOn, storing spacing-only
      styles) and cascade docDefaults → table style → paragraph style →
      direct. 38 table styles in the fixtures carry pPr spacing.
-  2. An empty footnote gets an extra blank line in the Normal style (page 1
+  2. **Reference artifact** (§10): an empty footnote gets an extra blank line in the Normal style (page 1
      footnote area 51pt taller in Word). Seen in education_consultant_posting
      too; turkish_journal (footnotes with text) has none. Trigger understood,
      reason not. Same code: paragraphs without pStyle fall back to
@@ -450,25 +450,25 @@ Regressions and what explained them:
   6. Underlines merge across x gaps (`push_decoration`) (+0.2);
      czech_crisis p4 looks like the same bug.
 - **nabl** (47.1):
-  - The row-split sliver guard `available_h > 50.0` (`table.rs`) (+8.9): Word
+  - **Done** (`87f8d863`, guard 14pt). The row-split sliver guard `available_h > 50.0` (`table.rs`) (+8.9): Word
     splits two-paragraph rows with 22–30pt left. victorian_universal_design
     page 8 ends 6.1pt high, which the guard currently hides; fix that first.
   - The last section has no headerReference; Word inherits header1 for its
     body top (`effective_slot_top` reads `header_default` only), −11.5pt on
     page 15.
-  - vMerge continuation cells advance list counters (we print 15/16/…, Word
+  - **Done** (`ddcf1e59`). vMerge continuation cells advance list counters (we print 15/16/…, Word
     9/10/…; 18 fixtures have `<w:vMerge/>`).
   - A merged first-column border runs past the table bottom on split pages.
   - A table at the page top sits 0.25pt high (Word starts the top border band
     at the slot top).
 - **czech_wastewater** (50.8):
-  - A page break in mid-paragraph is handled as a break after it
+  - **Done** (`9bdab4af`). A page break in mid-paragraph is handled as a break after it
     (`runs.rs` has_page_break_after; spec-certain, −10.5 in its
     leave-one-out). Only this fixture.
   - Legacy FORMCHECKBOX fields are not drawn (−6.2): 10.08pt outer box at
     w:size 20, 0.72pt stroke, bottom 1.3pt below the baseline.
   - The tabbed-line breaker never wraps a word joined across runs (−1.6).
-  - Superscript size = run size × OS/2 ySuperscriptYSize/unitsPerEm, rounded
+  - **Done** (`f40c709e`). Superscript size = run size × OS/2 ySuperscriptYSize/unitsPerEm, rounded
     to 0.5pt (0.65 Arial/TNR/Calibri/Verdana, 0.60 Aptos/Palatino; ~430
     measured). We use a flat 0.58.
 - **welsh** (74.9): highlights fill the line box (we draw y − 0.2fs, 1.15fs);
@@ -497,3 +497,95 @@ Regressions and what explained them:
   discovery. A 324-font folder there collapsed 76 fixtures for one run.
 - Edit nothing in `src/` while a suite runs. A poll on rustc can miss the
   gaps between test binaries.
+
+## 10. New-case accuracy round (2026-10-03, branch `accuracy-oct3`)
+
+Ten more scraped fixtures (bulgarian_road_safety_program,
+estonian_community_development_grant, radiographer_interventional_job_desc,
+wa_child_services_regulations, massachusetts_community_sanitation,
+chinese_costume_design_course, and four more in `cbf0773b`), references
+exported unattended with `tools/word_export.py` (`ffe83298`). Rules came from
+those references and from **Word probe documents**: python-docx files that
+isolate one behaviour, exported by Word for Mac and compared with our render
+(probe scripts in the job scratch dir; easy to rebuild). One commit per rule,
+each verified by a full suite run; nothing below regressed a fixture unless
+noted.
+
+**Scores** (Jaccard, `main-pre-spring` snapshot → end of round): the 138
+pre-existing scraped fixtures 58.92 → **60.51**, cases 74.30 → 74.37,
+hyphenation 63.48 → 63.71. Biggest movers: croatian_thesis 38.2 → 88.2,
+air_pollution 13.2 → 38.6, croatian_grant 14.2 → 28.2. New fixtures now:
+estonian 34.3, bulgarian 34.1, radiographer 24.9, wa_child 20.4, chinese_costume
+11.3, massachusetts 8.2. strategi 20.9 → 15.5 is a reference artifact (below).
+
+**Rules implemented:**
+
+| Commit | Rule | Evidence |
+|---|---|---|
+| ce713644 | `w:moveTo` text kept, `w:moveFrom` dropped | |
+| 9bdab4af | A mid-paragraph page break splits the paragraph (continuation: no label, no first-line indent, no space before) | czech_wastewater |
+| 9e02a22b | `w:position` raises/lowers a run and grows the line on that side only | |
+| 97a240d6 | Cell picture paragraphs indent like text; a picture wider than the cell is clipped | |
+| ddcf1e59 | vMerge continuation cells don't advance list counters | nabl |
+| 60c87819 | A skipped empty sectPr paragraph's space after collapses with the next section's space before | |
+| f40c709e | Super/subscript size = size × OS/2 script ratio (default 0.65), rounded to 0.5pt | |
+| 87f8d863 | Row split guard 14pt (Word splits with one line of room) | nabl |
+| 4bde195e | A split row's first part keeps the cell's opening space before | croatian_grant "Važno!" box |
+| 5055470a | A hyperlink nested in a hyperlink keeps its text | |
+| a15cefbc | A body line must fit whole above a footnote area | |
+| 9a25fee1 | Cell lines snap to the docGrid only under `adjustLineHeightInTable` and auto spacing | chinese_student, physical_therapy unharmed |
+| 2e91966e | compressPunctuation also squeezes opening brackets and `・`; no autoSpaceDE gap beside U+3000 | japanese_medical |
+| 7c4a1e02 | Table-style `tblCellMar` and pPr spacing apply to cells, resolved along basedOn | estonian, strategi (vs a clean export) |
+| af32080e | A line that wrapped tabs start keeps its (empty) line | |
+| 34cb65c0 | contextualSpacing compares with a following table's first cell paragraph | |
+| c44b853a | A cell's nested table splits between its rows across pages | radiographer +1.9 |
+| 31c57c99 | **Odd/even section breaks** (15 probes): filler page iff the continuing number has the wrong parity and (no restart, or evenAndOddHeaders/mirrorMargins); a restart with wrong parity shows start+1; filler pages carry no header/footer; first/even header variants inherit only from the same variant, else none (§17.10.5) | croatian_thesis +50, wa_child +8.6 |
+| 168f3916 | Autofit minimum width breaks CJK words after each ideograph | chinese_costume columns now match Word |
+| 3340170a | Before compat 15, tables always outdent by the cell margin (also an explicit tblInd 0) | 6 fixtures +3–6 |
+| 48b1e3d8 | **Grid + auto multiple** (40 probes): line = max(cells(glyphs), m × pitch); supersedes 42's cells × m | case79 unchanged |
+| a26dfddd | PAGEREF prints its cached result | wa_child TOC |
+| bda52988 | A text box's first paragraph drops auto space before | air_pollution +25.4 |
+| c82e802e / bfffabed | Footnote list paragraphs (inline or style numbering) keep their numbering | croatian_grant bullets |
+| ef29618f | A row taller than a page starts where each cell's first paragraph (two lines of a long one) fits | croatian_grant +10.6 |
+| 86b5d3b6 | **No break after `/` before a letter or digit** (probe: 138 margin crossings, all wrapped whole) | 13 fixtures up to +4.2 |
+| d029dd30 | Cell paragraphs carry their auto-spacing flags, so the cell-edge drop (13) runs | bulgarian J +0.1, SSIM −0.6 (later drift) |
+| 4f5b1070 | Header/footer tables snap to their own section's grid pitch | no change |
+| eb42536c | The row-split fit check counts the opening space before | no change |
+| 86dd058d | Autofit measures words at line layout's break opportunities | no change |
+
+Cleanup pass `a6a9605a` (`/simplify`, four reviewers): one first-chunk fit
+check, a `successors` basedOn walk, `parse_line_spacing` reads `@line`,
+`HfVariant` enum, `SectionProperties::line_grid_pitch`, no score change. It
+closes part of §6's "cells built by hand" item (auto spacing).
+
+**Findings:**
+- **Reference artifacts.** Some fixtures trip Word's "unreadable content —
+  recover?" prompt although the zip and XML are valid; re-zipping the same
+  parts opens cleanly, so the trigger is in the container. Their references
+  show the *repaired* layout: strategi (15.5 vs ours, 59.5 vs a re-zipped
+  export, which also explains its "extra footnote line"), dutch_government
+  (17.6 vs 20.4). Re-exporting the other 11 refs of batch `e3612354`
+  reproduced them exactly. Replacing strategi's reference awaits the user.
+- References made before the staging fix print `<stem>_<hex>.docx` in FILENAME
+  fields (massachusetts' footer); `word_export.py` now keeps the file name.
+- Word for Mac never breaks after `/`; older references that do
+  (education_consultant "Partners/", romanian "septembrie/") come from
+  another Word build.
+- Word floors auto-multiple grid lines to 0.24pt steps (19.44 where we give
+  19.50); CJK fallback inside a Latin-font run raises a grid line in Word.
+- `word_export.py`'s watchdog cannot answer dialogs without macOS
+  Accessibility access; a repair prompt then blocks every later export until
+  the tool recycles Word. It now rejects broken zips up front.
+
+**Open:**
+- massachusetts: page-anchored body frames (`framePr vAnchor=page`); only
+  fixture using them.
+- dutch_government: a page-anchored floating table moves the next body table
+  2.4pt down in Word (not to the float's bottom); two 1pt paragraphs 0.7pt
+  short.
+- croatian_grant (71 vs 65 pages): page 28 starts with an extra line in Word.
+- radiographer: Word also splits inside a nested row, between its lines.
+- chinese_costume, wa_child: remaining drift not diagnosed.
+- Not done from the cleanup review: cache a split nested table's layout
+  across pages (relaid per page now), resolve table-style basedOn at parse
+  time, drop the derivable `NestedTable.height`.
