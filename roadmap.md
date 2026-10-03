@@ -44,25 +44,35 @@ Diagram→Figure, CommentAnchor→Span), `/Tabs /S` on pages, headers/footers as
 a Title in 157/174, TH without `/Scope`, Figure `/Alt` copied verbatim from
 `wp:docPr/@descr` (41/140 figures).
 
-**Deferred: 48 untagged references** are macOS Quartz print-path PDFs (not
-the accessibility export README.md claims) and score N/A until re-exported:
-cases/case17 case18 case19 case20 case36 case63 case64; scraped/alfies_arc_adult_safeguarding_policy
+**Deferred: 61 untagged references** (of 234, as of 2026-10-03) are macOS
+Quartz print-path PDFs ("Best for printing", not the accessibility export) and
+score N/A until re-exported: cases/case17 case18 case19 case20 case36 case63
+case64; fonts/missing_font_substitution; samples/double-underline run-borders
+sample500kB; scraped/alfies_arc_adult_safeguarding_policy
 alpharetta_school_governance_council americas_counter_terrorism_agenda
 arizona_physical_education_standards bosch_software_ai_announcement
-czech_census_2021_instructions dutch_council_member_resignation
-family_kinship_lesson_plan japanese_land_development_sign_form
-lithuanian_railway_transport_code romanian_quality_evaluation_strategy
-russian_chess_pawn_lesson russian_regional_spatial_development
-turkish_chemistry_course_plan; samples/double-underline run-borders
-sample500kB; scraped/classroom_weekly_newsletter croatian_regulations_altchunk
-czech_expert_witness_law east_asia_conference_form education_consultant_posting
-federal_procurement_terms feminist_voice_dissertation go_math_grade4_guide
-indonesian_benchmarking_guide italian_evaluation_minutes italian_project_proposal
-learning_cultures_dissertation lithuanian_ethics_law lithuanian_food_quality_order
-mandated_reporter_child_abuse polish_archery_range_plan
-russian_university_proceedings seminary_hill_board_meeting
-slovak_misdemeanor_amendment stem_partnerships_guide transition_to_work_deed
-usep_handbook vaccines_history_chapter waste_management_request.
+chinese_asset_disposal_appraisal classroom_weekly_newsletter
+croatian_regulations_altchunk czech_census_2021_instructions
+czech_expert_witness_law czech_wastewater_discharge_permit
+door_air_cooling_unit_spec dutch_council_member_resignation
+east_asia_conference_form education_consultant_posting
+family_kinship_lesson_plan federal_procurement_terms feminist_voice_dissertation
+go_math_grade4_guide greek_history_lecture_press_release
+indonesian_benchmarking_guide indonesian_school_admission_checklist
+italian_evaluation_minutes italian_project_proposal
+italian_teacher_hiring_preferences japanese_land_development_sign_form
+learning_cultures_dissertation lithuanian_ethics_law
+lithuanian_food_quality_order lithuanian_railway_transport_code
+mandated_reporter_child_abuse nabl_lab_preassessment_guidelines
+pasto_city_hall_press_bulletin polish_archery_range_plan
+romanian_quality_evaluation_strategy russian_chess_pawn_lesson
+russian_regional_spatial_development russian_university_proceedings
+sao_paulo_procurement_contract seminary_hill_board_meeting
+slovak_misdemeanor_amendment stem_partnerships_guide
+strategi_pengembangan_information_center_resort transition_to_work_deed
+turkish_chemistry_course_plan ukrainian_municipal_heating_resolution
+usep_handbook vaccines_history_chapter waste_management_request
+welsh_palliative_care_abstract_form.
 Their print path may also lay out differently from the online converter, so
 re-exporting can shift visual scores.
 
@@ -164,7 +174,8 @@ scratchpad; rebuild them from `tests/common/a11y.rs` if needed):**
    textboxes and floats stay artifacts; WordArt / text on a path has no text.
 2. slovak_eu_directive: we emit 9 table rows where Word has 14 (table model).
 3. Links in headers/footers and footnote text are still dropped; link rects and
-   outline destinations ignore `BODY_SCALE`/vAlign (`assembly.rs`).
+   outline destinations ignore the comment-pane zoom (`comments::page_zoom`)
+   and vAlign (`assembly.rs`).
 4. `/ListNumbering` on L (not checked by UA-1; Word writes Disc/Decimal/…;
    needs numFmt + lvlText threaded to `Tags::list_item`, ~10 sites);
    Wingdings 2/3 and Webdings still extract as private-use code points;
@@ -195,7 +206,10 @@ paren.
 
 ## Deterministic Output (DONE — 2026-10-01, `6f64723a`)
 
-All 226 fixtures convert to identical bytes across runs (three renders + `cmp`).
+All 226 fixtures (as of 2026-10-01) converted to identical bytes across runs
+(three renders + `cmp`). **Regressed:** on 2026-10-03
+scraped/door_air_cooling_unit_spec gave two different PDFs over three runs of
+the same binary (J 79.85 vs 79.82); not investigated yet.
 Three hash-order sources: `embed_truetype` fed `used_chars` (a `HashSet`) into the
 glyph remapper; `collect_and_register_fonts` registered fonts seen outside runs
 (SmartArt etc.) in `HashMap` order, shuffling F-names and font objects; and the
@@ -330,8 +344,8 @@ Open findings (not done):
 - Some table rows run slightly short (slovak_eu_directive: ~0.03pt per row)
   and a vMerge/colspan test table gets a far too narrow column; fix 41 lost
   the offset that used to hide both.
-- Table cells don't use per-line heights yet (`table_layout` sums
-  `lines × line_h`).
+- ~~Table cells don't use per-line heights yet~~ (done in `53764bee`,
+  2026-10-02).
 - A whitespace-only run between bold and italic runs (slovak_constitution)
   does not set the line's ascent in Word; whether it counts for anything is
   open (counting it as text made the line too low).
@@ -345,7 +359,8 @@ Open findings (not done):
   use the full builder). Route both through `build_paragraph` with options for
   the table-style and note defaults.
 - Structural follow-ups found by a cleanup review: one per-line height model
-  shared by body, cells and headers (cells still sum `lines × line_h`); one
+  shared by body, cells and headers (cells have per-line heights since
+  `53764bee`, headers not yet); one
   widow/orphan split helper for the body split, keep-with-next and cell splits
   (cells assume widow control on); run-boundary breaks taken from UAX #14 over
   the paragraph's joined text (a URL split across runs can still break after
@@ -402,8 +417,8 @@ locations and the measuring method: `current_focus/merge-regressions.md`.
    font. Fixture `fonts/missing_font_substitution` (42 rows, local and online
    exports) pinned the rule down: missing with no usable altName → Cambria
    (roman family or no entry) or Calibri (any other family); panose, pitch and
-   the theme play no part; Helvetica → Arial online. Implemented on
-   `font-rules`; german_mezzo J 50.3 → 69.0. Open: the `;` rule, Open Sans →
+   the theme play no part; Helvetica → Arial online. Implemented in
+   `ed5e495c` (on main); german_mezzo J 50.3 → 69.0. Open: the `;` rule, Open Sans →
    Segoe UI (`merge-regressions.md` item 5).
 3. **East Asian leading stacks with another run's descent** (fix 11,
    `5e613494`). usep_handbook's checkbox lines (☐ in MS Gothic, text in
@@ -482,9 +497,8 @@ under another name (online export; Windows maps Helvetica → Arial).
 4. Mixed East Asian + Latin line height (bug 3): candidate line = max(Latin
    max-ascent + max-descent, each East Asian run's 1.3× box); verify on
    case79 and the CJK fixtures before changing `run_line_metrics`.
-5. Missing-font census (bug 2): per run font that resolves nowhere, the face
-   Word drew (per-glyph stext), over fixtures and the external corpus; derive
-   the rule, then change `register_font`.
+5. ~~Missing-font census (bug 2)~~ (done, `ed5e495c`: Cambria or Calibri by
+   family class).
 6. Per-line heights in headers (japanese_land; also the layout round's
    pending item 3).
 7. Paginate inline endnotes (erasmus; the `ponytail:` note in
@@ -619,9 +633,9 @@ run — a stash pop mid-run bumps mtimes and the harness silently reuses PDFs).
 3. **#158 #195 bosch**: (a) Word substitutes the *theme body font* for a
    missing `w:family="auto"` font — bosch (theme Calibri) → Calibri,
    german_mezzo "Archivo" (theme Arial) → Arial, three more fixtures agree;
-   a plain "always Calibri" broke german_mezzo (1 → 2 pages). `register_font`
-   takes `theme_body_font`; `try_candidate` writes the font, so it is called
-   once. (b) A header `framePr` with `w:wrap="notBeside"` and `w:h` pushes each
+   a plain "always Calibri" broke german_mezzo (1 → 2 pages). (Superseded by
+   `ed5e495c`: the measured rule is Cambria or Calibri by family class, the
+   theme plays no part, and `theme_body_font` is gone.) (b) A header `framePr` with `w:wrap="notBeside"` and `w:h` pushes each
    in-flow header *line* that would overlap its band below the frame (per
    line: bosch's first two 14.75pt lines fit above the 33–139pt band, the
    third lands at 139 → body at 153.75 like Word). bosch SSIM +21pp,
@@ -715,7 +729,7 @@ Passing: streamnet_steering (J 54%), zimbabwe_broadcasting (J 53%). Fix round re
 
 ## Hyphenation (PARKED — Word's online converter doesn't hyphenate)
 
-`w:autoHyphenation` and `w:suppressAutoHyphens` are parsed from DOCX. `w:lang` is parsed on runs. However, **Word's online PDF converter does not perform syllable-break hyphenation** for any language, even when `autoHyphenation` is set. Every line-ending hyphen in reference PDFs comes from pre-existing hyphens in compound words (verified across 8 language-specific fixtures and all scraped fixtures).
+`w:autoHyphenation` and `w:suppressAutoHyphens` are not parsed (the unused parse was removed in `3ead74c4`); `w:lang` is parsed on runs. However, **Word's online PDF converter does not perform syllable-break hyphenation** for any language, even when `autoHyphenation` is set. Every line-ending hyphen in reference PDFs comes from pre-existing hyphens in compound words (verified across 8 language-specific fixtures and all scraped fixtures).
 
 The `hyphenation` crate (Knuth-Liang algorithm) was tested with 8 languages but its dictionaries don't match Word's — enabling it caused 40-50pp regressions across all languages because line breaks diverged. Removed for now.
 
@@ -776,7 +790,9 @@ a cluster of cases, i.e. we get the *structure* wrong, not just glyph placement:
 | scraped/school_meal_assistance_faq | 6/17/35 | 19/83/100 |
 
 TB near 0 with LO at 100 means our line breaks or pagination diverge from page
-one onward. These are the highest-value targets in the corpus; open
+one onward. (Snapshot of 2026-09-04. As of 2026-10-03 ours J/SSIM: brazilian
+62/78, russian_sports 65/79, candidate_reference 30/52, family_kinship 91/97,
+slovak_pedagogical 35/87, school_meal 71/91; case13 is in SKIPLIST.) Open
 `comparison/index.html`, pick the case, and use the overlay to see where the
 flow first departs.
 
@@ -811,12 +827,16 @@ was intended is unverified.
 - **3D effects** (`a:scene3d`, `a:sp3d`) — bevel, metal frame, perspective rotation. Would require 3D lighting simulation. case58 has test fixtures ready.
 - **Preset shadows** (`a:prstShdw`) — 20 built-in shadow presets. Need mapping table from preset names to parameters.
 - **Theme color resolution in effects** — inner shadow with `a:schemeClr` falls back to black instead of resolving the theme accent color.
+- **Header/footer pictures** — their effect XObjects are embedded but never drawn, so shadows and glows on header/footer images are missing (spring-cleaning finding 3).
+- **Shapes and text boxes** — effects are parsed for pictures only (`parse_pic_effects`).
+
+Also done: `a:lum` brightness/contrast (`da43eadf`).
 
 ## CJK Rendering Polish (TODO — MEDIUM IMPACT)
 
-Core CJK support is implemented: CIDFont/Identity-H/ToUnicode encoding, platform-specific font fallback chains (Hiragino/Noto/Yu Gothic), per-character font fallback at render time, script-based run splitting via `w:rFonts @eastAsia`, and vertical text rendering. CJK fixtures render readable output but score low (4-9% Jaccard) due to spacing/positioning precision issues:
+Core CJK support is implemented: CIDFont/Identity-H/ToUnicode encoding, Word-compatible substitution by fontTable charset and family (one platform-independent list, `cjk_fallback_fonts`), per-character font fallback at render time, script-based run splitting via `w:rFonts @eastAsia`, and vertical text in table cells. Remaining spacing/positioning issues:
 
-1. **`w:firstLineChars`** (MEDIUM) — character-based indent (e.g. `firstLineChars="100"` = 1 character width). Not parsed; we only handle `w:firstLine` (twip-based). In practice, twip fallback is always present alongside firstLineChars.
+1. **`w:firstLineChars`** (DONE — `15a1bc3f`, 2026-04-13) — `leftChars`, `hangingChars` and `firstLineChars` are parsed (`docx/mod.rs`).
 2. **Vertical text centering** — `render_vertical_cjk_cell` uses a simplistic height calculation (chars x font_size) that doesn't account for paragraph spacing, causing vertical misalignment in merged cells.
 3. **East Asian line height is 1.3× the font's Windows metrics** (DONE
    2026-09-14, was "Fallback line-height fidelity", annotation #8) — the ~1.73
@@ -863,7 +883,7 @@ Core CJK support is implemented: CIDFont/Identity-H/ToUnicode encoding, platform
 
 ## Bundled Fallback Fonts (TODO — MEDIUM IMPACT)
 
-We rely entirely on system fonts and fall back to Helvetica Type1 as a last resort. This produces inconsistent output across environments (servers, Docker, CI). Should bundle metric-compatible open fonts behind a feature flag:
+We rely entirely on installed fonts (tests and CI use the private assets repo's `fonts/` via `DOCXSIDE_FONTS`); a font that resolves nowhere gets Arial, Liberation Sans, Arimo, Helvetica or DejaVu Sans, then Type1 Helvetica as a last resort. This produces inconsistent output across environments (servers, Docker, CI). Should bundle metric-compatible open fonts behind a feature flag:
 - **Carlito** — metric-compatible with Calibri (the most common Word font)
 - **Caladea** — metric-compatible with Cambria
 - **Liberation Sans/Serif/Mono** — metric-compatible with Arial/Times New Roman/Courier New
@@ -954,7 +974,12 @@ appended in `annotations.json`):
   across one table). Belongs with Bundled Fallback Fonts / CJK metrics, not
   Latin width correction.
 
-## Table Row Height Deficit (TODO — MEDIUM IMPACT, discovered 2026-07)
+## Table Row Height Deficit (LARGELY DONE — 2026-10-02)
+
+Border bands (layout fixes 4 and 14) and per-line cell heights (`53764bee`)
+closed most of this; case51 now has Word's 2 pages (J 61.3, SSIM 85.6).
+Residuals are in the layout round's open findings (slovak_eu ~0.03pt/row,
+romanian's at-least row). Original notes:
 
 Our table rows run ~0.5–0.9pt shorter than Word's, compounding down a page of
 stacked tables (case51: −6.5pt accumulated over 3 tables, measured via stext
@@ -1179,46 +1204,28 @@ blocks so footnote tables keep their geometry.
   samtale +2.9pp SSIM, +40pp text-boundary; case16 +6.5pp, family_kinship +5.5pp SSIM.
 - **#214 / #218**: see their sections (vAlign center, clear="all").
 
-## Unimplemented Run Properties
+## Run Properties
 
-### `w:emboss` / `w:imprint` / `w:shadow` (TODO — MEDIUM IMPACT)
+### `w:emboss` / `w:imprint` / `w:shadow` / legacy `w:outline` (DONE — `a07f232b`, 2026-06-19)
 
-636 hits across fixtures, 1 failing fixture. These are WML text effects (mutually exclusive per spec):
-- **`w:emboss`** — raised/embossed appearance (highlight color on top-left, shadow on bottom-right)
-- **`w:imprint`** — engraved/debossed appearance (inverse of emboss)
-- **`w:shadow`** — drop shadow on text (offset copy in shadow color)
+Parsed in `runs.rs` (`legacy_text_shadow`), drawn as an offset grey copy
+(an approximation, see the `ponytail:` note in `layout.rs`); `w:outline` maps to
+a text outline with no fill.
 
-Not parsed, not rendered. Trivially implementable: parsing is `wml_bool`, rendering is offset/color-shift drawing passes.
+### `w:shd` on runs (DONE — `07a7198a`, 2026-04-20)
 
-### `w:outline` (legacy) (TODO — LOW IMPACT)
+`parse_run_shd` (`docx/mod.rs`); layout fix 19 covers `solid`/`pctNN` patterns.
 
-The legacy WML `w:rPr/w:outline` element (hollow text, no fill) is not parsed. We handle the modern `w14:textOutline` but not the pre-Word 2010 equivalent.
+## Paragraph / Layout Features
 
-### `w:shd` on runs (TODO — LOW IMPACT)
-
-Run-level shading (`w:rPr/w:shd`) is not parsed. We handle paragraph-level and cell-level `w:shd` but not run-level. Different from `w:highlight` (named colors) — `w:shd` supports arbitrary hex fill colors and patterns.
-
-## Unimplemented Paragraph / Layout Features
-
-### `w:jc val="distribute"` (TODO — MEDIUM IMPACT)
-
-Distribute alignment (equal spacing including edges, different from justify). Currently silently treated as left-align — should at minimum fall back to justify.
+`w:jc="distribute"` (see "Distributed Alignment"), `w:gutter` (`552c09cc`, incl.
+`gutterAtTop`/`rtlGutter`), `w:pgBorders` and sectPr `w:vAlign` (`79b7f850`) are
+done.
 
 ### `w:mirrorMargins` (TODO — MEDIUM IMPACT)
 
-Parsed from `word/settings.xml` and stored in `DocumentSettings.mirror_margins`, but **never applied to layout**. Fix: swap `margin_left`/`margin_right` on even-numbered pages.
-
-### `w:gutter` (TODO — LOW IMPACT)
-
-Gutter margin (`w:pgMar @gutter`) is not parsed. Adds extra space on the binding side for printed documents.
-
-### `w:pgBorders` (TODO — LOW IMPACT)
-
-Page borders (decorative borders around entire page) are not parsed or rendered. Defined in `w:sectPr/w:pgBorders` with per-side border definitions.
-
-### `w:vAlign` on `sectPr` (TODO — LOW IMPACT)
-
-Vertical alignment of text on the page (top/center/bottom/both). Not parsed from section properties. Mainly affects title pages and short documents.
+Not parsed (the unused parse was removed in `3ead74c4`). Fix: parse it in
+`settings.rs` and swap left/right margins (and the gutter side) on even pages.
 
 ### `w:textAlignment` (TODO — LOW IMPACT)
 
@@ -1228,7 +1235,7 @@ Vertical alignment of runs within a line (top/center/baseline/bottom/auto). Only
 
 `w:bidi` (paragraph-level) and `w:rtl` (run-level) right-to-left support is completely absent. Requires implementing the Unicode BiDi algorithm (UAX #9) for correct visual reordering. Architecturally complex — affects line building, text rendering, and alignment.
 
-## Unimplemented Table Features
+## Table Features
 
 ### Cell paragraph `indent_right` in render pass (DONE — 2026-07-02, annotations #215/#217)
 
@@ -1248,9 +1255,9 @@ leading — but only when the font is a metric-changing substitution
 japanese_land_development_sign_form) the full-line-box centering already
 matches Word, and subtracting regressed it −2.9pp. chinese_student_union +2.6pp SSIM.
 
-### `w:tblLook` / `w:tblStylePr` (TODO — MEDIUM IMPACT)
+### `w:tblLook` / `w:tblStylePr` (DONE)
 
-Table conditional formatting (firstRow, lastRow, firstCol, lastCol, banded rows/cols). The table style is resolved for default borders but conditional formatting overrides (bold headers, alternating row shading, etc.) are not applied.
+Table conditional formatting (firstRow, lastRow, firstCol, lastCol, banded rows/cols): flags parsed in `tables.rs`, overrides from `styles.rs`, accumulated in one struct since `f9d8268d`.
 
 ### Table auto-fit vs `tblW` (NO IMPACT — corpus check 2026-05)
 
@@ -1262,7 +1269,7 @@ Our `auto_fit_columns` uses `gridCol` widths from `tblGrid`, ignoring the specif
 
 `twips_attr` reads `w:w` as twips regardless of the `w:type` attribute. For `type="pct"` the value is in fiftieths of a percent (5000 = 100%). **Implemented**: `Table.width_pct` is parsed from `tblW type="pct"` and `apply_pct_width` scales columns to pct × content width — but ONLY for tables whose `tblGrid` is missing (grid inferred from row `tcW` values, which preserves pct proportions). When a real tblGrid exists, Word renders the grid widths as-is even when the pct width disagrees (observed: arizona 115%, zimbabwe 100% vs grid at 102% of content — scaling them regressed scores). **Remaining**: `tcW type="pct"` is still mis-read as twips for per-cell preferred widths; harmless today because grid widths dominate, but would matter for Word's full preferred-width algorithm (§17.18.87).
 
-## Unimplemented Document Features
+## Document Features
 
 ### Footnote pagination of split paragraphs (DONE — 2026-09-09, annotation #221)
 
@@ -1270,9 +1277,17 @@ Word puts a footnote in the footnote area of the page where its reference mark i
 
 **Remaining deviation**: when a reference line fits but its footnote does not, Word splits the footnote across pages with a continuation separator; we push the line to the next page instead (no overlap, rarely hit). Table rows (`table.rs` `row_fn_extra`) still reserve per row, which is right because rows are atomic.
 
-### Endnotes (TODO — MEDIUM IMPACT)
+### Endnotes (DONE — `703b4497`, 2026-05-12)
 
-`w:endnoteReference` is completely unimplemented. Footnotes already work — the plumbing (reference parsing, content parsing, rendering at page bottom) exists and could be adapted. Endnotes collect at the end of a section or document rather than at the page bottom.
+Endnotes flow at the document end (`render_endnotes_inline`). Remaining: they
+are not paginated (merge fix plan item 7) and `endnotePr pos="sectEnd"`
+(section-end placement) is not supported.
+
+### Moved text `w:moveTo` (TODO — found 2026-10-03)
+
+`collect_run_nodes` (`runs.rs`) has no arm for `w:moveTo`, so moved-in text is
+dropped; Word's final view shows it. Deleted paragraph marks
+(`w:pPr/w:rPr/w:del`) don't merge paragraphs either.
 
 ### Additional Field Codes (TODO — LOW IMPACT)
 
@@ -1301,18 +1316,16 @@ Only PAGE, NUMPAGES, STYLEREF, and PAGEREF field codes are supported. Others (DA
   flipH/flipV and arc sweeps; regressed vaccines_history letters when lnRef strokes made the
   textbox parse succeed).
 
+**Done since:** floating images take part in z-order (`5682de3c`, 2026-06-17);
+text in preset shapes uses the shape's text rectangle (`1d41a24f`, `shape_text_rect`).
+
 **Remaining:**
-- **Floating images don't participate in z-order** — they still paint inline at their anchor
-  paragraph; e.g. lenten's white bird icon is covered by the purple band (icon z=251658243 >
-  band 251658241). Same deferral treatment as textboxes/connectors would fix it.
 - **behindDoc shapes from later paragraphs** can still paint over earlier paragraphs' text
   (needs pre-pass/paginator).
 - **Group flips/rotation** — group-level flipH/flipV and rot are ignored (rare); leaf connector
   flips work.
 - **Canvas/group inside paragraph-level mc:AlternateContent** — only the run-level path
   flattens groups; `collect_textboxes_from_paragraph` still grabs the first wsp.
-- **Text in preset shapes placement** (case35 annotations) — text inside rightArrow etc. is
-  positioned with plain rect insets, not the shape's text rectangle.
 
 ## Floating Image Positioning (TODO — MEDIUM IMPACT)
 
@@ -1322,7 +1335,7 @@ Additionally, truncated/corrupt PNG images in DOCX files cause the `image` crate
 
 ## `w:smallCaps` Rendering Accuracy (DONE — verified 2026-05)
 
-`smallcaps_segments()` in `src/pdf/layout.rs:349` already applies the per-character rule correctly: only originally-lowercase characters are uppercased and rendered at `font_size - 2pt`; originally-uppercase characters render at full size. Unit tests at `src/pdf/layout.rs:1824+` cover mixed/upper/lower/non-letter cases.
+`smallcaps_segments()` in `src/pdf/layout.rs` applies the per-character rule: only originally-lowercase characters are uppercased and rendered at 80% of the size (layout fix 39); originally-uppercase characters render at full size. Unit tests in the same file cover mixed/upper/lower/non-letter cases.
 
 ## SmartArt Remaining Work
 
@@ -1337,16 +1350,16 @@ Basic fallback rendering via pre-flattened `dsp:drawing` shape trees is done, wi
 
 All 8 chart types are supported (bar, line, pie, area, doughnut, radar, scatter, bubble). Remaining:
 
-- **3D charts**: `c:bar3DChart`, `c:line3DChart`, `c:area3DChart`, `c:surface3DChart` — not parsed
+- **3D charts**: `c:bar3DChart`, `c:line3DChart`, `c:area3DChart`, `c:surface3DChart` — not parsed (`c:pie3DChart` is drawn as a flat pie)
 - **Stock charts**: `c:stockChart` — not parsed
-- **Combo charts**: two chart types overlaid on the same plot area — not handled
-- **Stacked bar rendering**: parsed but rendering treats as clustered
+- **Combo charts**: two chart types overlaid on the same plot area — only the first is drawn
 - **Data labels**: not parsed or rendered
 - **Chart title**: not parsed or rendered
-- **Secondary axes**: not handled
-- **Chart label positioning**: axis labels still have small offsets vs Word. `text_width_approx` (len x fs x 0.5) is crude — real font metrics would help.
+- **Secondary axes**: not handled (only the first `catAx`/`valAx`)
+- **Chart label positioning**: axis labels still have small offsets vs Word (real font widths are used when the font is present, `62eed970`; `text_width_approx` is only the fallback).
 - **Legend placement fine-tuning**: small positional offsets vs Word. Centering formula and spacing need per-chart-type calibration.
-- **Font selection in chart labels**: picks arbitrary font from seen_fonts, not theme font
+
+Done: stacked/percent-stacked bars (`7c2b9238`), theme minor font for labels.
 
 ## Tracked-Changes (Redline) Rendering (TODO — HIGH IMPACT for documents with revisions)
 
@@ -1394,11 +1407,17 @@ Levels 1-4 are done (flat rendering, text effects, envelope warping, text-on-a-p
 
 ## Image Drop Shadow Quality (TODO — LOW IMPACT)
 
-Basic drop shadow rendering is implemented (`a:effectLst/a:outerShdw`): offset, color, alpha, and directional soft edge via layered transparent rectangles. Current limitations:
-- **No real gaussian blur** — approximated with 10 stepped layers, visible banding at close zoom
-- **Fallback paths lack alpha** — inline images in text lines, floating images, table/header images use pre-blended solid color instead of PDF ExtGState transparency (only body-level paragraph images get proper alpha)
+Mostly superseded by "Picture Effects": shadows are a rasterized blur SMask
+(`box_blur_3pass`, `embed_shadow`) drawn by `color::draw_image_shadow` at every
+site. What remains: header/footer pictures, whose effect XObjects are never
+drawn, fall back to the pre-blended rectangle.
 
-## Bullet Line-Height Drift on macOS (TODO — font-metric blocked, found 2026-06)
+## Bullet Line-Height Drift on macOS (DONE — superseded)
+
+Fixed by annotation #66 (2026-09-18): `label_boosted_line_h` now takes the
+marker's ascent plus the text's descent, and the vendored Microsoft Symbol
+(`fonts/symbol.ttf`) outranks the macOS one (layout fix 43). case33 J 78.5,
+SSIM 95.5. Original notes:
 
 case33 annotation #66: bulleted list paragraphs drift ~0.5pt LOWER per bullet vs the
 Word reference (text above the list aligns perfectly; drift starts at the first bullet
@@ -1422,9 +1441,8 @@ Revisit alongside bundled fallback fonts (ship metric-stable Symbol metrics).
 
 ## Partially Implemented
 
-- **Line spacing** — Auto and Exact work. AtLeast parsed but may not enforce minimum correctly.
-- **Tab stops** — basic left/center/right tabs work but decimal alignment has precision issues.
-- **Panose font matching** — fontTable.xml contains panose classification bytes; could use for more precise font substitution.
+- **Tab stops** — left/center/right/decimal work (decimal precision not verified); bar tabs act as left stops and draw no line; `middleDot`/`heavy` leaders draw nothing.
+- **Underlines** — only single and double; dotted/dash/wave/thick draw single, underline color is ignored.
 
 ## Floating Image Wrapping — Remaining
 
@@ -1432,8 +1450,8 @@ Revisit alongside bundled fallback fonts (ship metric-stable Symbol metrics).
 - **`w:br type="textWrapping" clear="all"` (DONE — 2026-07-02, annotation #111; refined 2026-07-03, annotation #218)**: parsed into `Paragraph.clears_floats`; block loop drops the cursor to the float-zone bottom after such a paragraph. 2026-07-03: the cursor now drops one line height *below* the float bottom — the line following the break (the break paragraph's mark line) still occupies its full line height there, matching Word's ~16pt gap on indonesian_benchmarking_guide p7. Approximation: clear applies after the whole paragraph, not mid-paragraph (fine when the break is alone in its ¶, the common Word idiom).
 - **Multiple floats per paragraph (PARTIALLY DONE — 2026-06)**: When one paragraph anchors 2+ wrapping floats (e.g. a logo on each side of a centered title, `pendulum_mechanics_oscillation_lab`), per-line geometry now subtracts every float's exclusion span and places text in the widest gap. Limitation: the page-level `float_zone` for *subsequent* paragraphs still tracks only the first float, so a following paragraph that overlaps only the second float won't wrap around it.
 - **Remaining y-shift (page 2 only)**: Word places page 2's image (180x144pt) 14.8pt higher than all other images, despite identical `posOffset=0`. Pages 1,3,4,5,7 match perfectly (delta <0.02pt). Pages 2 and 6 (both cy=1828800/144pt) are the outliers. Likely Word snapping to grid/text boundaries based on image dimensions.
-- **Look-back wrapping (TODO — MEDIUM IMPACT)**: Paragraphs BEFORE the image anchor cannot wrap beside the image because the float zone isn't set until the anchor paragraph renders. In Word, text from preceding paragraphs also wraps (e.g. case41 page 3 — the first paragraph's lower lines should wrap beside the centered image). Requires either a paginator or a two-pass layout with look-back.
-- **Image in text paragraph**: Case41 page 6 — last line of text paragraph overlaps the image. Look-ahead only fires for the NEXT block, not same-paragraph floats.
+- **Look-back wrapping (DONE — #152, 2026-09-16)**: the paragraph directly before a float's anchor wraps beside it (`pending_float_anchor`); further back still needs a paginator or two-pass layout.
+- **Image in text paragraph (DONE — #240, 2026-09-18)**: case41 page 6 now J 93.4.
 - **Tight vs Through distinction**: Both currently use convex-hull polygon scanline. For Through wrapping, text should fill polygon concavities. Requires returning per-line interval segments instead of hull bounds. Rare in practice.
 - **Word-break precision**: BothSides wrapping produces correct structure but slightly different word breaks from Word, causing ~2pp Jaccard differences on case41.
 - **Polygon wrap text distribution**: Case42 (wrapTight + BothSides + complex 53-vertex polygon around Mario) scores ~46% Jaccard. Zone overlap detection is correct but line breaks differ from Word — likely font metric differences for Times New Roman causing different left/right text distribution. Text near concave polygon areas (Mario's arm) appears visually close to the image despite respecting the 9pt distL margin.
@@ -1447,7 +1465,8 @@ for the full findings. All 30 verified survivors landed across 11 commits with
 zero rendering regressions (208/208 scores unchanged). Highlights:
 
 - **Shared parse helpers** in `docx/mod.rs`: `parse_on_off` (ST_OnOff), `parse_pt`
-  (VML/CSS lengths), `is_wml` (namespace predicate), `merge_tab_stops`; plus
+  (VML/CSS lengths), `is_wml` (namespace predicate, since replaced by roxmltree's
+  `has_tag_name` in PR #9), `merge_tab_stops`; plus
   `styles::{parse_font_size, parse_char_spacing, rfonts_ascii_name}` and
   `color::{resolve_dml_color reuse, parse_line_stroke}` now shared instead of
   re-inlined across runs/styles/paragraph/numbering/sections/tables/wordart/etc.
@@ -1464,9 +1483,16 @@ Deliberately NOT touched (see audit "leave alone"): the long-but-cohesive
 god-functions (`render_paragraph_block`, `parse_table_node`, `render()`), the
 generated geometry data tables, and the 3 intentionally-distinct path-command enums.
 
-### Refactor `pdf/mod.rs` `render()` (see "Paginator Extraction")
+### Spring cleaning (DONE — PR #9, merged 2026-10-02)
 
-The `render()` function in `pdf/mod.rs` is ~2400 lines with many closures and shared mutable state. The right fix is the paginator extraction described above. (Smaller in-file extractions are already done: `embed_single_image` is a free fn in `pdf/images.rs`; `label_for_paragraph` lives in `pdf/list_label.rs`.)
+Dead code, shared helpers, one `w:rPr` parser, rustfmt; see
+`current_focus/spring_cleaning.md`. `render()` in `pdf/mod.rs` is now ~850
+lines; the long one is `render_paragraph_block` (~1650 lines, 20 args).
+`PageBuilder` and `LayoutState` exist. Next rounds ("Not done" in that file):
+parameter bundling (local branch `worktree-agent-a69249f7b055f3538`),
+`PageBuilder` → `Vec<FinishedPage>`, the 4× textbox layout, 5× picture
+effects, the triplicated `table.rs` row renderers; the paginator extraction
+above remains the bigger goal.
 
 ### Image-embedding cleanups (LOW IMPACT — deferred from textbox-image work)
 
@@ -1480,11 +1506,13 @@ Small consistency / efficiency wins in `pdf/images.rs` that were considered but 
 
 ### Known Bottlenecks
 
-- **Double font reads** — scan reads each font file for indexing, then `register_font` reads again for embedding. Keep the data from the first read.
 - **Repeated WinAnsi conversion** — same text is converted in line-building, rendering, and table auto-fit. Pre-compute once and store in `WordChunk`.
-- **String allocations** — `font_key()` allocates on every call; `WordChunk` clones font name strings per word. Use indices or interning.
+- **String allocations** — the allocating `font_key()` is still used at 9 sites (an allocation-free `font_key_buf` exists); `WordChunk` clones font name strings per word. Use indices or interning.
+- (Font scanning is memory-mapped and disk-cached, so the old "double font reads" item is moot.)
 
 ### Parallelism (rayon)
+
+Not started: rayon is only a dev-dependency (tests and `page-metrics`); the library is single-threaded. Candidates:
 
 - Font directory scanning — embarrassingly parallel, biggest win
 - Font metric computation — parse face, compute widths per font independently
@@ -1493,18 +1521,11 @@ Small consistency / efficiency wins in `pdf/images.rs` that were considered but 
 
 ### Other
 
-- Compress font file streams with FlateDecode (currently uncompressed)
 - Memory usage for large DOCX files with many images
 
 ## Scraped Fixture Status
 
-32 passing, 16 failing, 0 skipped out of 48 scraped fixtures. Breakdown of 16 failures by dominant issue:
-- **text/layout only**: 8 fixtures
-- **anchored images**: 4 fixtures
-- **floating tables**: 3 fixtures
-- **structured doc tags**: 2 fixtures (SDT content is extracted but wrapping may cause layout shifts)
-
-Run `./tools/target/debug/analyze-fixtures --failing` for current breakdown.
+As of 2026-10-02, 39 of 138 scraped fixtures fall below the Jaccard 20.5% or SSIM 75% labels. Run `./tools/target/debug/analyze-fixtures --failing` for the current breakdown.
 
 ## Test Harness: Surface Conversion Panics Loudly (TODO — HIGH PRIORITY, found 2026-06)
 
@@ -1521,7 +1542,6 @@ Fixes:
 
 ## Test Corpus Expansion
 
-- Deep style inheritance (3+ level chains with run vs style vs paragraph conflicts) — **case50** (awaiting reference PDF)
-- Nested tables (tables inside table cells, 2-level and 3-level nesting) — **case51** (awaiting reference PDF)
-- Stacked bar chart rendering (stacked + percentStacked, vertical + horizontal) — **case52** (awaiting reference PDF)
-- Charts with extreme data (50 categories, small/large/mixed-range values) — **case53** (awaiting reference PDF)
+case50–53 (deep style inheritance, nested tables, stacked bar charts, extreme
+chart data) have their reference PDFs. Only case58 (3D effects) and case65 still
+lack one.

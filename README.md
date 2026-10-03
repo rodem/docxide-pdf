@@ -12,7 +12,7 @@ Library and CLI for converting DOCX files to PDF, matching Microsoft Word's outp
 
 **🤏 Small files:** Output PDFs should be the same size or smaller than Word's export.
 
-Reference PDFs are generated using Microsoft Word for Mac (16.106.1) with the "Best for electronic distribution and accessibility (uses Microsoft online service)" export option.
+Reference PDFs are generated using Microsoft Word for Mac (16.106.1 and later). Most (173 of 234) use the "Best for electronic distribution and accessibility (uses Microsoft online service)" export option; the other 61 were made with "Best for printing", macOS's untagged print path.
 
 ## ⚠️ Work in progress.
 
@@ -30,7 +30,8 @@ Every fixture in the test corpus rendered side by side by Word (the reference) a
 * LibreOffice
 * [MiniPdf](https://github.com/mini-software/MiniPdf)'s Rust crate
 * [rdocx](https://crates.io/crates/rdocx)
-* [office2pdf](https://github.com/developer0hye/office2pdf).
+* [office2pdf](https://github.com/developer0hye/office2pdf)
+* [jubarte-redlines](https://crates.io/crates/jubarte-redlines).
 
 Each engine is scored against the Word reference with the same three metrics the test
 suite uses:
@@ -53,13 +54,13 @@ While the idea, architecture, testing strategy and validation of output are all 
 
 ## Supported features
 
-- **Text**: font embedding (TTF/OTF/TTC), bold, italic, underline, strikethrough, double strikethrough, font size, text color, superscript/subscript, small caps, all caps, character spacing, text expansion/compression (`w:w`), hidden text (`w:vanish`), kerning (legacy kern table + GPOS PairAdjustment), vertical text (CJK), run borders with color/width/spacing, legacy text-effect toggles (`w:outline`, `w:shadow`, `w:emboss`, `w:imprint`), UAX #14 line breaking
-- **Paragraphs**: left/center/right/justify/distributed alignment (`distribute`), space before/after, line spacing (auto, exact, at-least), first-line and hanging indentation, left/right indentation, contextual spacing, keep-next, keep-lines, paragraph borders (top/bottom/left/right/between) with color, paragraph shading, run highlighting
+- **Text**: font embedding (TTF/OTF/TTC), bold, italic (sheared when the face has no italic), single and double underline, strikethrough, double strikethrough, font size, text color, superscript/subscript, small caps, all caps, character spacing, text expansion/compression (`w:w`), hidden text (`w:vanish`), kerning (legacy kern table + GPOS PairAdjustment), run borders with color/width/spacing, run shading (`w:shd`) and highlighting, legacy text-effect toggles (`w:outline`, `w:shadow`, `w:emboss`, `w:imprint`), Word 2010 text effects (`w14:glow`, `w14:shadow`, `w14:textOutline`, gradient `w14:textFill`), symbols (`w:sym`), positional tabs (`w:ptab`), non-breaking hyphens, UAX #14 line breaking
+- **Paragraphs**: left/center/right/justify/distributed alignment (`distribute`), space before/after, line spacing (auto, exact, at-least), first-line and hanging indentation, left/right indentation, contextual spacing, keep-next, keep-lines, paragraph borders (top/bottom/left/right/between) with color, paragraph shading, text frames (`w:framePr`)
 - **Styles**: paragraph and run style inheritance (`basedOn` chains), document defaults from `docDefaults` (all run properties: bold, italic, caps, smallCaps, vanish, strikethrough, dstrike, underline, color, char_spacing), theme fonts and colors
-- **Lists**: bullet and numbered lists with multi-level nesting, custom number formats (incl. CJK: `decimalEnclosedCircle`, `decimalFullWidth`, `aiueoFullWidth`), list style inheritance, `w:lvlRestart`, `w:pStyle` level association
-- **Tables**: column widths with auto-fit, merged cells (horizontal `gridSpan` and vertical `vMerge`), row heights (exact and minimum), per-cell borders with color/width, inline `w:tblBorders`, cell shading, pattern/hatch shading, vertical alignment, cell text direction (rotated cells), cell margins, floating/positioned tables (`tblpPr`), nested tables, conditional formatting (`tblLook`/`tblStylePr` — banded rows/columns, first/last row and column), Word-compatible row splitting across pages
-- **CJK text**: CIDFont/Identity-H/ToUnicode encoding, platform-specific font fallback chains (Hiragino/Noto/Yu Gothic), per-character font fallback at render time, script-based run splitting via `w:rFonts @eastAsia`
-- **Images**: inline JPEG/PNG embedding with sizing and alpha transparency, grayscale and CMYK JPEG support, EMF/WMF vector translation to PDF form XObjects, anchored/floating images with wrap modes (square, tight, through, topAndBottom), floating image positioning relative to page/margin/column, rotation, clipping to shape geometry, behind-document z-ordering
+- **Lists**: bullet and numbered lists with multi-level nesting, custom number formats (incl. CJK: `decimalEnclosedCircle`, `decimalFullWidth`, `aiueoFullWidth`), list style inheritance, `w:lvlRestart`, `w:lvlOverride`/`w:startOverride`, `w:isLgl`, `w:suff`, `w:pStyle` level association
+- **Tables**: column widths with auto-fit, merged cells (horizontal `gridSpan` and vertical `vMerge`), row heights (exact and minimum), per-cell borders with color/width, inline `w:tblBorders`, cell shading, pattern/hatch shading, vertical alignment, cell text direction (rotated cells, vertical CJK), cell margins, floating/positioned tables (`tblpPr`), nested tables, conditional formatting (`tblLook`/`tblStylePr` — banded rows/columns, first/last row and column), repeated header rows (`tblHeader`), `cantSplit`, Word-compatible row splitting across pages
+- **CJK text**: CIDFont/Identity-H/ToUnicode encoding, Word-compatible substitution of missing CJK fonts by fontTable charset and family (Batang/Malgun Gothic/MS Mincho/SimSun/…, then Apple and Noto faces), per-character font fallback at render time, script-based run splitting via `w:rFonts @eastAsia`, Word's East Asian line height, `compressPunctuation`, `autoSpaceDE`/`autoSpaceDN`
+- **Images**: inline JPEG/PNG/BMP/GIF/TIFF embedding with sizing and alpha transparency, grayscale and CMYK JPEG support, cropping (`a:srcRect`), EMF/WMF vector translation to PDF form XObjects, anchored/floating images with wrap modes (square, tight, through, topAndBottom), floating image positioning relative to page/margin/column, rotation, clipping to shape geometry, behind-document z-ordering, OLE objects (`w:object`) drawn from their preview picture
 - **Picture effects**: outer shadow (`a:outerShdw`), inner shadow, glow, soft edges, reflection — rasterized blur masks via SMask
 - **Text boxes**: DrawingML textboxes (`wps:txbx`) and VML fallback (`v:textbox`), shape fills (solid color with theme color support including lumMod/lumOff, linear gradients with multiple color stops), textbox body margins
 - **WordArt**: modern DrawingML WordArt with all 40 `prstTxWarp` presets — two-path envelope warping (wave, slant, inflate, etc.) and single-path text-on-a-path (arch, circle), text outlines, shadows, glow effects, bold/italic font variant selection, VML WordArt fallback
@@ -72,30 +73,33 @@ While the idea, architecture, testing strategy and validation of output are all 
 - **Headers/footers**: default, first-page, and even/odd variants, per-section headers/footers, STYLEREF field resolution (spec-compliant backward search), page number and page count fields, images in headers/footers, correct z-ordering (behind body content)
 - **Footnotes & endnotes**: footnote references and page-bottom rendering with separator line, endnotes flowed at document end, per-section mark numbering formats, shading on reference marks
 - **Comments**: `word/comments.xml` rendered in Word's right-hand review pane with callouts and body scaling
-- **Fields**: PAGE, NUMPAGES, PAGEREF, STYLEREF (with spec-compliant search order), field code cached results for non-dynamic fields
-- **Hyperlinks**: clickable links in PDF output (URI link annotations)
-- **Tab stops**: left, center, right, decimal with leader dots
+- **Fields**: PAGE, NUMPAGES, PAGEREF, STYLEREF (with spec-compliant search order) in complex `w:fldChar` fields, cached results for every other field (and for `w:fldSimple`)
+- **Hyperlinks**: clickable external links (URI link annotations) and internal links (bookmarks, footnote marks)
+- **Tab stops**: left, center, right, decimal; dot, hyphen and underscore leaders
 - **Track changes**: final mode (insertions included, deletions removed — matches Word's PDF export)
 - **SmartArt**: rendering via pre-flattened drawing shapes (`dsp:drawing`) with full geometry engine support — all 187 preset shapes, custom geometry, fills (solid, gradient, image), strokes, and text
-- **Document settings**: `word/settings.xml` parsing — even/odd headers, default tab stop interval, mirror margins
+- **Document settings**: `word/settings.xml` parsing — even/odd headers, default tab stop interval, `gutterAtTop`, `themeFontLang`, `characterSpacingControl`, `compatibilityMode`, `linkStyles`, `doNotExpandShiftReturn`
 - **Compatibility**: `mc:AlternateContent` fallback, structured document tag (`w:sdt`) content extraction, `w:customXml` transparent wrappers, `altChunk` HTML content parsing, smart tag handling, VML fallbacks for shapes, textboxes, WordArt and `w:object` embeds
-- **Fonts**: cross-platform font search (macOS/Linux/Windows), embedded DOCX font extraction and deobfuscation, font subsetting (CIDFont/Type0), disk-cached font index, font substitution via `fontTable.xml` altName and family-class fallback
-- **Output optimization**: font subsetting, content stream compression
+- **Fonts**: cross-platform font search (macOS/Linux/Windows), embedded DOCX font extraction and deobfuscation, font subsetting (CIDFont/Type0), disk-cached font index, Word's missing-font substitution (`fontTable.xml` altName, then Cambria or Calibri by family class)
+- **Accessibility**: tagged PDF structure tree (headings, lists, tables, figures with alt text, links, notes, TOC), document and per-run language, XMP metadata, bookmarks from headings, PDF/UA-1 claimed when the document allows it
+- **Output optimization**: font subsetting, content stream compression, compressed object streams
 
 ### Not yet supported
 
-- **Text**: text shaping/ligatures (fi, fl), complex script shaping (Arabic, Devanagari, etc.), automatic hyphenation (parked — Word's online converter doesn't hyphenate either)
-- **Images**: look-back text wrapping (text before a float anchor wrapping beside the image), tight vs through wrapping distinction
-- **Layout**: mirror margins (parsed but not applied to even pages), right-to-left (bidi) text, kashida justification (`mediumKashida`/`highKashida`/`lowKashida` render as plain justify — glyph elongation needs Arabic shaping)
-- **Charts**: 3D charts, stock charts, combo charts, data labels, chart titles, secondary axes
-- **Shape effects**: 3D bevel/rotation (`a:scene3d`, `a:sp3d`), preset shadows (`a:prstShdw`), radial/path gradient fills (axial only)
+- **Text**: text shaping/ligatures (fi, fl), complex script shaping (Arabic, Devanagari, etc.), automatic hyphenation (parked — Word's online converter doesn't hyphenate either), underline styles other than single/double, underline color, raised/lowered text (`w:position`), emphasis marks, `w:fitText`, ruby, drop caps, vertical text outside table cells
+- **Images**: wrapping around floats anchored more than one paragraph below the text, more than one wrapping float at a time, tight vs through wrapping distinction
+- **Layout**: mirror margins (`w:mirrorMargins`, not parsed), right-to-left (bidi) text, kashida justification (`mediumKashida`/`highKashida`/`lowKashida` render as plain justify — glyph elongation needs Arabic shaping), `w:textAlignment`, page background color
+- **Tab stops**: bar tabs, middle-dot and heavy leaders
+- **Track changes**: moved text (`w:moveTo`) is dropped
+- **Charts**: 3D charts (3D pie is drawn flat), stock charts, combo charts (first chart type only), data labels, chart titles, secondary axes
+- **Shape effects**: shadow/glow/soft edges on shapes and text boxes (pictures only), dashed outlines (`a:prstDash`), 3D bevel/rotation (`a:scene3d`, `a:sp3d`), preset shadows (`a:prstShdw`), radial/path gradient fills (drawn as linear)
 - **SmartArt**: no layout engine for documents missing the `dsp:drawing` fallback (see roadmap)
-- **Features**: table of contents generation, OLE objects
-- **Fonts**: bundled fallback fonts, text shaping via rustybuzz (ligatures, complex scripts)
+- **Features**: table of contents generation (cached TOC results are drawn), embedded OLE object data (only the preview picture is drawn)
+- **Fonts**: bundled fallback fonts (without the document's fonts installed, Arial/Liberation Sans/DejaVu Sans or Helvetica stand in)
 
 ## Examples
 
-Every test case rendered as a Word reference and with docxide-pdf on the[comparison page](https://sverrejb.github.io/docxide-pdf/).
+Every test case rendered as a Word reference and with docxide-pdf on the [comparison page](https://sverrejb.github.io/docxide-pdf/).
 
 ## Installation
 
@@ -115,6 +119,8 @@ docxide-pdf input.docx
 # Specify output path (defaults to input.pdf)
 docxide-pdf input.docx output.pdf
 ```
+
+The CLI never overwrites: if the output exists it writes `output(2).pdf`, `output(3).pdf` and so on. `RUST_LOG=info` prints timings.
 
 ### Library
 
@@ -165,7 +171,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 | Variable | Description |
 |---|---|
-| `DOCXSIDE_FONTS` | Additional font directories to search, colon-separated (`;` on Windows). Searched before system font directories. |
+| `DOCXSIDE_FONTS` | Additional font directories to search, colon-separated (`;` on Windows). Lowest priority: used for families the system font directories don't provide. |
 | `DOCXSIDE_NO_FONT_CACHE` | Set to any value to disable the font index disk cache. Forces a full font scan on every conversion. Useful for debugging font resolution issues. |
 
 Font scanning results are cached to disk (per-directory, invalidated by mtime). The cache is stored at:
@@ -183,12 +189,14 @@ apt install mupdf-tools   # Debian/Ubuntu
 ```
 
 ```bash
-# Run all tests
-cargo test -- --nocapture
+# Run all tests with a compact report of what changed
+./tools/run-tests.sh
 
 # Run only the visual comparison (Jaccard and SSIM)
-cargo test visual_comparison -- --nocapture
+./tools/run-tests.sh --test visual_comparison
 ```
+
+`.cargo/config.toml` points `DOCXSIDE_FONTS` at a `fonts/` directory that isn't in the repository (the fixtures' fonts can't be redistributed). Without those fonts many fixtures fall back to substitutes and score lower. The accessibility test also needs veraPDF and Poppler (`brew install verapdf poppler`) and skips without them.
 
 [SCORING.md](SCORING.md) explains every score: the visual metrics, the accessibility metrics and what fails the suite.
 
@@ -214,6 +222,12 @@ Then run from the project root:
 
 # Full fixture diff
 ./tools/target/debug/case-diff case1
+
+# Browse reference vs generated pages per fixture, with notes
+./tools/target/debug/case-browser
+
+# Fixture features and scores, e.g. only the failing ones
+./tools/target/debug/analyze-fixtures --failing
 ```
 
 ## Contributing
