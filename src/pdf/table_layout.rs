@@ -264,18 +264,9 @@ pub(super) fn auto_fit_columns(
                         std::borrow::Cow::Borrowed(&run.text)
                     };
                     let fs = run.font_size;
-                    // A CJK sentence holds no spaces but may wrap after any ideograph.
-                    // Latin words stay whole as before; whether Word's minimum also
-                    // breaks them at hyphens is untested.
-                    let words = text.split_whitespace().flat_map(|w| {
-                        let cjk = w.chars().any(crate::docx::is_east_asian_char);
-                        let parts = if cjk {
-                            super::layout::split_preserving_spaces(w)
-                        } else {
-                            Vec::new()
-                        };
-                        parts.into_iter().map(|(_, s)| s).chain((!cjk).then_some(w))
-                    });
+                    // Same break opportunities as line layout: a CJK sentence holds
+                    // no spaces but may wrap after any ideograph.
+                    let words = super::layout::split_preserving_spaces(&text).into_iter().map(|(_, w)| w);
                     for word in words {
                         let ww = if run.small_caps {
                             super::layout::smallcaps_segments(word, fs)
