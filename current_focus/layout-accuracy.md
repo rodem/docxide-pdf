@@ -583,6 +583,9 @@ closes part of §6's "cells built by hand" item (auto spacing).
   usep_handbook, alpharetta, east_asia, russian_university; refs kept. The
   74 online (tagged) references are untested: that needs Word's online
   export preset, set by hand.
+  The bytes came from docxcorp.us (the manifest hashes include them; the
+  site now serves the same files without them), so all 110 inputs were
+  re-downloaded (2026-10-03); references unchanged, suite output identical.
 - References made before the staging fix print `<stem>_<hex>.docx` in FILENAME
   fields (massachusetts' footer); `word_export.py` now keeps the file name.
 - Word for Mac never breaks after `/`; older references that do
