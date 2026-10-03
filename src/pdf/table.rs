@@ -318,7 +318,7 @@ fn cell_content_h_for_valign(items: &[CellContentItem]) -> f32 {
         .iter()
         .map(|item| match item {
             CellContentItem::Paragraph(p) => p.space_before + para_block_height(p),
-            CellContentItem::NestedTable { height } => *height,
+            CellContentItem::NestedTable { height, .. } => *height,
         })
         .sum();
     // Word includes the last paragraph's space_after in the content block height
@@ -346,7 +346,7 @@ fn cell_content_h_for_valign(items: &[CellContentItem]) -> f32 {
 fn cell_has_visible_content(items: &[CellContentItem]) -> bool {
     items.iter().any(|item| match item {
         CellContentItem::Paragraph(p) => para_has_visible_content(p),
-        CellContentItem::NestedTable { height } => *height > 0.0,
+        CellContentItem::NestedTable { height, .. } => *height > 0.0,
     })
 }
 
@@ -565,7 +565,7 @@ fn render_cell_content(
                     );
                 }
             }
-            CellContentItem::NestedTable { height } => {
+            CellContentItem::NestedTable { height, .. } => {
                 // Find the corresponding Block::Table
                 let table = loop {
                     if block_idx >= blocks.len() {
@@ -588,6 +588,7 @@ fn render_cell_content(
                         gradient_specs,
                         links,
                         &mut tagger,
+                        0..usize::MAX,
                     );
                 } else {
                     cursor_y -= height;
@@ -747,9 +748,13 @@ fn render_table_rows(
     // (tags, this table's structure, page) for a nested table in a tagged
     // cell; header/footer tables stay artifacts.
     mut tag: Option<(&mut Tags, &mut TableTags, usize)>,
+    rows: std::ops::Range<usize>,
 ) {
     let cm = &table.cell_margins;
     for (ri, (row, layout)) in table.rows.iter().zip(row_layouts.iter()).enumerate() {
+        if !rows.contains(&ri) {
+            continue;
+        }
         let row_h = layout.height;
         let row_top = *cursor_y;
         let row_bottom = row_top - row_h;
@@ -853,6 +858,8 @@ fn render_nested_table(
     links: &mut Vec<LinkAnnotation>,
     // The parent cell's tagger: the nested table is tagged inside that cell.
     tagger: &mut Option<CellTagger<'_>>,
+    // The rows to draw: all of them, or one part of a row split.
+    rows: std::ops::Range<usize>,
 ) {
     let mut col_widths = auto_fit_columns(table, ctx.fonts, Some(available_w), None);
     apply_pct_width(table, &mut col_widths, available_w);
@@ -883,6 +890,7 @@ fn render_nested_table(
         gradient_specs,
         links,
         tag,
+        rows,
     );
     if let (Some(t), Some(n)) = (tagger.as_mut(), nested) {
         n.finish(t.tags);
@@ -1024,7 +1032,8 @@ fn render_partial_cell_content(
 
                 cursor_y -= super::table_layout::cell_lines_h(para, l0..l1);
             }
-            CellContentItem::NestedTable { height } => {
+            CellContentItem::NestedTable { .. } => {
+                let height = super::table_layout::item_chunk_height(&items[pi], l0, l1);
                 let bi = item_to_block.get(pi).copied().unwrap_or(0);
                 if let Some(Block::Table(table)) = blocks.get(bi) {
                     render_nested_table(
@@ -1037,6 +1046,7 @@ fn render_partial_cell_content(
                         gradient_specs,
                         links,
                         &mut tagger,
+                        l0..l1.unwrap_or(usize::MAX),
                     );
                 } else {
                     cursor_y -= height;
@@ -1382,7 +1392,7 @@ fn render_partial_row(
         let has_content = cursor_chunks(&cell_layout.items, start, end).any(|(pi, _, _)| {
             match &cell_layout.items[pi] {
                 CellContentItem::Paragraph(p) => para_has_visible_content(p),
-                CellContentItem::NestedTable { height } => *height > 0.0,
+                CellContentItem::NestedTable { height, .. } => *height > 0.0,
             }
         });
 
@@ -1786,15 +1796,19 @@ pub(super) fn render_table(
         // instead).
         let any_cell_multi_item = layout.cells.iter().any(|c| {
             c.items.len() > 1
-                || c.items
-                    .iter()
-                    .any(|it| matches!(it, CellContentItem::Paragraph(p) if p.lines.len() >= 4))
+                || c.items.iter().any(|it| match it {
+                    CellContentItem::Paragraph(p) => p.lines.len() >= 4,
+                    CellContentItem::NestedTable { row_heights, .. } => row_heights.len() >= 2,
+                })
         });
         let first_chunk_fits = layout.cells.iter().all(|c| {
             c.items.first().is_none_or(|it| {
                 let item_h = match it {
                     CellContentItem::Paragraph(p) => para_block_height(p),
-                    CellContentItem::NestedTable { height } => *height,
+                    CellContentItem::NestedTable {
+                        height,
+                        row_heights,
+                    } => row_heights.first().copied().unwrap_or(*height),
                 };
                 cm.top + cm.bottom + item_h <= available_h
             })
@@ -2027,5 +2041,6 @@ pub(super) fn render_header_footer_table(
         gradient_specs,
         &mut Vec::new(),
         None,
+        0..usize::MAX,
     );
 }

@@ -529,7 +529,12 @@ pub(super) struct CellParagraphLayout {
 
 pub(super) enum CellContentItem {
     Paragraph(CellParagraphLayout),
-    NestedTable { height: f32 },
+    /// A table inside the cell; `row_heights` let a row split break between
+    /// its rows (the cursor's `line` counts nested rows).
+    NestedTable {
+        height: f32,
+        row_heights: Vec<f32>,
+    },
 }
 
 pub(super) struct CellLayout {
@@ -972,7 +977,10 @@ pub(super) fn compute_row_layouts(
                                 let nested_h: f32 =
                                     nested_layouts.iter().map(|rl| rl.height).sum();
                                 total_h += nested_h;
-                                items.push(CellContentItem::NestedTable { height: nested_h });
+                                items.push(CellContentItem::NestedTable {
+                                    height: nested_h,
+                                    row_heights: nested_layouts.iter().map(|rl| rl.height).collect(),
+                                });
                                 prev_space_after = 0.0;
                                 prev_was_nested_table = true;
                                 para_idx += 1;
@@ -1141,7 +1149,10 @@ pub(super) fn item_chunk_height(item: &CellContentItem, l0: usize, l1: Option<us
             cell_lines_h(p, l0..l1.unwrap_or(p.lines.len()))
         }
         CellContentItem::Paragraph(p) => para_block_height(p),
-        CellContentItem::NestedTable { height } => *height,
+        CellContentItem::NestedTable { row_heights, .. } => {
+            let end = l1.unwrap_or(row_heights.len()).min(row_heights.len());
+            row_heights[l0.min(end)..end].iter().sum()
+        }
     }
 }
 
@@ -1200,6 +1211,24 @@ pub(super) fn find_cell_split(
                 .count();
             let fit = room.min(remaining.saturating_sub(2));
             if fit >= 2 {
+                return CellCursor {
+                    item: pi,
+                    line: l0 + fit,
+                };
+            }
+        }
+        // Word breaks a nested table between its rows (radiographer's
+        // "Internal / External to the Trust" table starts on page 1).
+        if let CellContentItem::NestedTable { row_heights, .. } = item {
+            let mut used = h + sb;
+            let fit = row_heights[l0.min(row_heights.len())..]
+                .iter()
+                .take_while(|rh| {
+                    used += **rh;
+                    used <= available_h
+                })
+                .count();
+            if fit >= 1 && l0 + fit < row_heights.len() {
                 return CellCursor {
                     item: pi,
                     line: l0 + fit,
