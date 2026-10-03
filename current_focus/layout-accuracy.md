@@ -586,6 +586,20 @@ closes part of §6's "cells built by hand" item (auto spacing).
   The bytes came from docxcorp.us (the manifest hashes include them; the
   site now serves the same files without them), so all 110 inputs were
   re-downloaded (2026-10-03); references unchanged, suite output identical.
+- **All references online (2026-10-03).** Every reference except
+  fonts/missing_font_substitution is now Word's online, tagged export
+  (802b1d93, dc0fc19f, de03ae5d; `word_export.py --preset online`). That
+  fixture is held back: it records missing-font substitution, and the
+  online service picks from a different font set. Against the 38 scraped
+  references that were local before, mean J fell 65.9 -> 56.0. Two causes:
+  - Online Word places glyphs with rounded (hinted-looking) advances: Calibri
+    'o'/'d' 6.003pt at 11.5pt where the font gives 6.06, 'e' exact; local
+    Word and we use exact widths, so lines drift ~0.4pt (0.06pt vs local).
+    Open: derive the rounding rule from many online refs (fonts, sizes).
+  - Layout rules (fixed, probes in tests/output/probe_kn): a keep-with-next
+    chain ends at a paragraph opening with a page break (a9746f5f, usep
+    41.1 -> 79.5); a page break ending a section's last paragraph is dropped
+    (8e7d5782, stem_partnerships 23.9 -> 66.6).
 - References made before the staging fix print `<stem>_<hex>.docx` in FILENAME
   fields (massachusetts' footer); `word_export.py` now keeps the file name.
 - Word for Mac never breaks after `/`; older references that do
