@@ -277,7 +277,10 @@ fn pick_font<'a>(
             return Some((c.to_string(), e));
         }
     }
-    seen.iter().next().map(|(k, v)| (k.clone(), v))
+    // The smallest key, not HashMap order: the same document must give the same bytes.
+    seen.iter()
+        .min_by_key(|(k, _)| k.as_str())
+        .map(|(k, v)| (k.clone(), v))
 }
 
 fn draw_rounded_rect(content: &mut Content, x: f32, y: f32, w: f32, h: f32, r: f32) {
