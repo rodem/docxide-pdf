@@ -118,7 +118,8 @@ pub(super) fn load_font_data(
         .or_else(|| {
             seen_fonts
                 .iter()
-                .find(|(k, e)| k.starts_with(font_name) && e.font_path.is_some())
+                .filter(|(k, e)| k.starts_with(font_name) && e.font_path.is_some())
+                .min_by_key(|(k, _)| k.as_str())
                 .map(|(_, e)| e)
         })?;
     let path = entry.font_path.as_ref()?;
