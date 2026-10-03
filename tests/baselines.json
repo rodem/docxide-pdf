@@ -952,8 +952,8 @@
     "a11y_text": 0.9928
   },
   "scraped/bulgarian_road_s..": {
-    "jaccard": 0.3405,
-    "ssim": 0.4843,
+    "jaccard": 0.3339,
+    "ssim": 0.4777,
     "ua_fail": 2
   },
   "scraped/bush_fires_act_c..": {
@@ -976,8 +976,8 @@
     "a11y_text": 1.0
   },
   "scraped/carbon_farming_i..": {
-    "jaccard": 0.3203,
-    "ssim": 0.5486,
+    "jaccard": 0.3205,
+    "ssim": 0.5488,
     "text_boundary": 0.4458,
     "ua_fail": 3,
     "ua_deficit": 0,
@@ -1049,8 +1049,8 @@
     "a11y_text": 0.9895
   },
   "scraped/croatian_grant_g..": {
-    "jaccard": 0.2817,
-    "ssim": 0.4511,
+    "jaccard": 0.2819,
+    "ssim": 0.4516,
     "text_boundary": 0.0129,
     "convert_ms": 270.5,
     "ua_fail": 2,
@@ -1231,15 +1231,15 @@
     "a11y_text": 1.0
   },
   "scraped/education_consul..": {
-    "jaccard": 0.3263,
-    "ssim": 0.5891,
+    "jaccard": 0.3249,
+    "ssim": 0.5848,
     "text_boundary": 0.2899,
     "convert_ms": 47.1,
     "ua_fail": 2
   },
   "scraped/english_town_cou..": {
-    "jaccard": 0.7464,
-    "ssim": 0.809,
+    "jaccard": 0.7478,
+    "ssim": 0.8094,
     "text_boundary": 0.7628,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -1378,8 +1378,8 @@
     "a11y_text": 0.9811
   },
   "scraped/isla_language_le..": {
-    "jaccard": 0.5367,
-    "ssim": 0.8705,
+    "jaccard": 0.5598,
+    "ssim": 0.8711,
     "text_boundary": 0.7744,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -1494,8 +1494,8 @@
     "ua_fail": 2
   },
   "scraped/mandated_reporte..": {
-    "jaccard": 0.7918,
-    "ssim": 0.97,
+    "jaccard": 0.7941,
+    "ssim": 0.9699,
     "text_boundary": 0.7368,
     "convert_ms": 43.3,
     "ua_fail": 2
@@ -1525,8 +1525,8 @@
     "a11y_text": 1.0
   },
   "scraped/nabl_lab_preasse..": {
-    "jaccard": 0.4922,
-    "ssim": 0.6946,
+    "jaccard": 0.652,
+    "ssim": 0.8643,
     "ua_fail": 3
   },
   "scraped/old_blue_truck_g..": {
@@ -1813,7 +1813,7 @@
   },
   "scraped/slovak_pedagogic..": {
     "jaccard": 0.3455,
-    "ssim": 0.8725,
+    "ssim": 0.8736,
     "text_boundary": 0.1379,
     "ua_fail": 2,
     "ua_deficit": 0,
@@ -1830,8 +1830,8 @@
     "a11y_text": 1.0
   },
   "scraped/stem_partnership..": {
-    "jaccard": 0.4944,
-    "ssim": 0.5731,
+    "jaccard": 0.5015,
+    "ssim": 0.5759,
     "text_boundary": 0.3098,
     "convert_ms": 32.2,
     "ua_fail": 0
@@ -1846,8 +1846,8 @@
     "a11y_text": 1.0
   },
   "scraped/strategi_pengemb..": {
-    "jaccard": 0.1548,
-    "ssim": 0.3084,
+    "jaccard": 0.6319,
+    "ssim": 0.9235,
     "ua_fail": 2
   },
   "scraped/streamnet_steeri..": {
@@ -1888,8 +1888,8 @@
     "a11y_text": 1.0
   },
   "scraped/transition_to_wo..": {
-    "jaccard": 0.414,
-    "ssim": 0.5249,
+    "jaccard": 0.4138,
+    "ssim": 0.5247,
     "text_boundary": 0.3971,
     "convert_ms": 493.0,
     "ua_fail": 2
@@ -1988,7 +1988,7 @@
   },
   "scraped/wa_child_service..": {
     "jaccard": 0.2041,
-    "ssim": 0.3749,
+    "ssim": 0.3745,
     "ua_fail": 2
   },
   "scraped/waste_management..": {
