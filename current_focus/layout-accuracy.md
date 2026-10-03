@@ -422,13 +422,17 @@ Regressions and what explained them:
      reason not. Same code: paragraphs without pStyle fall back to
      FootnoteText (Word: Normal); the separator gap is a fixed 12pt (Word: the
      separator paragraph's line, 13.43 here).
-  3. An over-wide word glued across runs (italic + upright URL) never breaks
-     at the margin unless the line is empty (`layout.rs` ~1310/1424): carry
-     it to a new line and cut with `fitting_prefix_len`. About 15 fixtures
-     have glued words over 75 characters.
-  4. Footer page numbers take the start value of the section at the top of
-     the page (pgNumType start=20 in a section ending on page 1), not the
-     last section on the page (`pdf/mod.rs` page-number loop).
+  3. **Done** (uncommitted, 2026-10-03). A word glued across runs that is wider
+     than a fresh line is carried there anyway and this run's part is cut at the
+     margin with `fitting_prefix_len` (`layout.rs`, continuation carry); the rest
+     re-enters as the next word. Page 12's URLs now break like Word's.
+  4. **Done** (uncommitted, 2026-10-03, 4 Word probes). A page shows the number
+     of the section at its top; a restart in a section beginning further down
+     counts that page as its start, so the next page shows start + 1 (probe:
+     restart 50 mid-page 1 → 1, 51, 52). `page_numbers` in `pdf/mod.rs`.
+     Against the clean export: J 59.5 → 63.2, SSIM 87.4 → 92.3. Elsewhere
+     only bush_fires p105 (a blank filler page in Word, we draw its
+     header/footer) and wa_child p56 (our surplus page) changed.
   - Minor: a star shape in a vAlign=center cell ignores the centring and the
     left cell margin.
 - **ukrainian** (48.5; all five → 76.5):

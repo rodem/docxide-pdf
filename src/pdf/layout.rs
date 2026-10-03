@@ -1600,16 +1600,16 @@ pub(super) fn build_paragraph_lines(
             }
 
             // A word split over several runs wraps as a whole: carry the part
-            // already placed to the next line, as long as it fits there.
+            // already placed to the next line. One wider than that line breaks
+            // at its margin, character by character, like a single-run word.
             if is_continuation
                 && overflows
-                && word_start > 0
                 && word_start < current_chunks.len()
                 && !in_right_region
                 && right_region_for(lines.len()).is_none()
             {
                 let dx = current_chunks[word_start].x_offset;
-                if current_x - dx + ww <= left_max(lines.len() + 1) + 0.05 {
+                if word_start > 0 {
                     let carried: Vec<WordChunk> = current_chunks.drain(word_start..).collect();
                     lines.push(finish_dual_line(
                         &mut current_chunks,
@@ -1622,21 +1622,40 @@ pub(super) fn build_paragraph_lines(
                     }));
                     current_x -= dx;
                     word_start = 0;
-                    push_word_chunks(
-                        &mut current_chunks,
-                        entry,
-                        run,
-                        word,
-                        original,
-                        eff_fs,
-                        cs,
-                        y_off,
-                        current_x,
-                        ww,
-                    );
-                    current_x += ww;
-                    continue;
                 }
+                let room = left_max(lines.len()) - current_x;
+                if ww > room + 0.05 {
+                    let cut = fitting_prefix_len(source, room, |w| width(&caps_word(run, w)))
+                        .filter(|&c| width(&caps_word(run, &source[..c])) <= room + 0.05);
+                    if let Some(cut) = cut {
+                        words.push_front((0, &source[cut..]));
+                        source = &source[..cut];
+                        shown = caps_word(run, source);
+                        word = &shown;
+                        original = run.caps.then_some(source);
+                        ww = width(word);
+                        prev_last_char = word.chars().last();
+                    } else {
+                        // Not one more character fits: the rest goes on as the
+                        // next word and wraps there.
+                        words.push_front((0, source));
+                        continue;
+                    }
+                }
+                push_word_chunks(
+                    &mut current_chunks,
+                    entry,
+                    run,
+                    word,
+                    original,
+                    eff_fs,
+                    cs,
+                    y_off,
+                    current_x,
+                    ww,
+                );
+                current_x += ww;
+                continue;
             }
 
             // For the first word on a line, also overflow if the

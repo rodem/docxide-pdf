@@ -3827,11 +3827,14 @@ mod tests {
 /// Logical page number of each page: a section with `w:pgNumType @start` restarts,
 /// others continue. A restart after an odd/even section break with the wrong
 /// parity takes the next number instead (Word skips a number, not a sheet).
+/// A page shows the number of the section at its top; a restart in a section
+/// that begins further down counts that page as its start, so the next page
+/// shows start + 1 (Word probes, 2026-10-03).
 fn page_numbers(doc: &Document, page_section_indices: &[(usize, bool, usize)]) -> Vec<usize> {
     let mut numbers = Vec::with_capacity(page_section_indices.len());
     let mut running = 0;
     let mut prev_si = None;
-    for &(_, _, si) in page_section_indices {
+    for &(si, _, last_si) in page_section_indices {
         let sp = &doc.sections[si].properties;
         running = match sp.page_num_start {
             Some(start) if prev_si != Some(si) => {
@@ -3847,7 +3850,13 @@ fn page_numbers(doc: &Document, page_section_indices: &[(usize, bool, usize)]) -
             _ => running + 1,
         };
         numbers.push(running);
-        prev_si = Some(si);
+        if let Some(start) = (si + 1..=last_si)
+            .filter_map(|s| doc.sections[s].properties.page_num_start)
+            .last()
+        {
+            running = start as usize;
+        }
+        prev_si = Some(last_si);
     }
     numbers
 }
