@@ -303,6 +303,9 @@ pub(super) struct WordChunk {
     pub(super) space_after: bool,
     /// From an Office Math run: its tall operator metrics never size a line.
     pub(super) is_math: bool,
+    /// Pair kerning is on for this run at this size (`w:kern`); `width` already
+    /// includes it, so the glyphs are drawn kerned too.
+    pub(super) kern: bool,
 }
 
 /// Pale-pink highlight color Word uses for comment-anchored text spans.
@@ -389,6 +392,7 @@ impl WordChunk {
             lang: chunk_lang(run, word),
             space_after: false,
             is_math: run.is_math,
+            kern: run.kerns_at(eff_fs),
         }
     }
 
@@ -434,6 +438,7 @@ impl WordChunk {
             inline_image_decorative: img.decorative,
             punct_compressed: 0.0,
             is_math: false,
+            kern: false,
             synthetic_bold: false,
             synthetic_italic: false,
             text_outline: None,
@@ -490,6 +495,7 @@ impl WordChunk {
             inline_image_decorative: false,
             punct_compressed: 0.0,
             is_math: false,
+            kern: false,
             synthetic_bold: false,
             synthetic_italic: false,
             text_outline: None,
@@ -551,6 +557,7 @@ impl WordChunk {
             inline_image_decorative: false,
             punct_compressed: 0.0,
             is_math: false,
+            kern: false,
             synthetic_bold: false,
             synthetic_italic: false,
             text_outline: None,
@@ -2332,6 +2339,32 @@ pub(super) fn build_tabbed_line(
     result_lines
 }
 
+/// Draws `text` with the font's pair kerning as TJ adjustments, the same pairs
+/// the word's width was measured with: Word kerns inside words too (Aptos
+/// Display "Te" 1.6pt tighter at 20pt, case3), so plain Tj left every glyph
+/// after a kerned pair out of place.
+fn show_kerned(content: &mut Content, entry: &FontEntry, text: &str, boundary_space: bool) {
+    let mut tj = content.show_positioned();
+    let mut items = tj.items();
+    let mut run = String::new();
+    let mut prev: Option<char> = None;
+    for ch in text.chars() {
+        let k = prev.map_or(0.0, |p| entry.kern_1000(p, ch));
+        if k != 0.0 {
+            items.show(Str(&entry.encode(&run)));
+            run.clear();
+            // TJ subtracts: a negative kern (tighter) is a positive adjustment.
+            items.adjust(-k);
+        }
+        run.push(ch);
+        prev = Some(ch);
+    }
+    if boundary_space {
+        run.push(' ');
+    }
+    items.show(Str(&entry.encode(&run)));
+}
+
 pub(super) fn encode_text_for_pdf(
     text: &str,
     pdf_font: &str,
@@ -3006,6 +3039,11 @@ pub(super) fn render_paragraph_lines(
                             &pdf_name_to_entry,
                         )));
                     }
+                } else if let Some(entry) = pdf_name_to_entry
+                    .get(chunk.pdf_font.as_str())
+                    .filter(|e| chunk.kern && e.kern_pairs.is_some())
+                {
+                    show_kerned(content, entry, &chunk.text, boundary_space);
                 } else {
                     let mut text_bytes =
                         encode_text_for_pdf(&chunk.text, &chunk.pdf_font, &pdf_name_to_entry);
