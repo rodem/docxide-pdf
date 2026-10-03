@@ -1540,21 +1540,14 @@ pub(super) fn render_table(
         let left = match table.alignment {
             TableAlignment::Center => area_left + (area_width - table_total_w) / 2.0,
             TableAlignment::Right => area_left + area_width - table_total_w,
-            // When tblInd is explicitly set AND significantly different
-            // from the cell margin, it positions the table edge directly.
-            // When absent, or when tblInd ≈ cm.left (common in
-            // LibreOffice-generated DOCX), legacy behavior subtracts
-            // cm.left so first-cell text aligns with the page margin.
-            // Word 2013+ layout (compat 15) never outdents: the border
-            // sits at the margin and the text inside it.
+            // Before Word 2013 layout, tblInd positions the first cell's text, so
+            // the edge sits one cell margin further out, even for an explicit
+            // tblInd of 0 (chinese_costume). Word 2013+ (compat 15) never outdents:
+            // the border sits at the margin and the text inside it.
             TableAlignment::Left => {
                 let ind = table.table_indent;
-                let explicit_real_indent =
-                    table.table_indent_explicit && (ind - cm.left).abs() > 1.0;
                 if ctx.compat_mode >= 15 {
                     area_left + ind + word2013_border_shift(table)
-                } else if explicit_real_indent {
-                    area_left + ind
                 } else {
                     area_left + ind - cm.left
                 }
