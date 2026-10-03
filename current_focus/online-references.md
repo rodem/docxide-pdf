@@ -26,8 +26,13 @@ handful of fonts). Baselines have **not** been accepted since the switch.
 | `2cc66a38` | Notes in `layout-accuracy.md` |
 
 - Every `reference.pdf` is now Word's online "Best for electronic distribution
-  and accessibility" export (tagged, Creator "Microsoft Word") **except
-  `fonts/missing_font_substitution`**, held back on purpose (§6).
+  and accessibility" export (tagged, Creator "Microsoft Word") **except**:
+  - `fonts/missing_font_substitution`, held back on purpose (§6);
+  - **`cases/case63`, `cases/case64`, `scraped/door_air_cooling_unit_spec`:
+    local exports by decision** (user, 2026-10-03). The online export prints
+    without the comment/markup pane, and these fixtures exist to test it
+    (§4b). Restored byte-for-byte from `de03ae5d~1`. Keep them local in any
+    future bulk re-conversion (`word_export.py --preset print`).
 - **Baselines are stale.** `tests/baselines.json` / `visual_hashes.json` still
   hold scores against the old references, so the suite reports ~60
   regressions and fails `visual_comparison`. Nothing is broken; accepting needs
@@ -49,9 +54,9 @@ Biggest movers (baseline → now, J):
 
 | fixture | J | cause (§4) |
 |---|---|---|
-| door_air_cooling_unit_spec | 82.4 → 5.2 | markup pane |
-| cases/case64 | 74.9 → 2.7 | markup pane |
-| cases/case63 | 35.1 → 1.0 | markup pane |
+| door_air_cooling_unit_spec | 82.4 → 5.2 | markup pane (now local again: 82.4) |
+| cases/case64 | 74.9 → 2.7 | markup pane (now local again: 74.9) |
+| cases/case63 | 35.1 → 1.0 | markup pane (now local again: 35.1) |
 | indonesian_school_admission_checklist | 73.5 → 26.2 | not investigated |
 | dutch_council_member_resignation | 94.7 → 58.2 | glyph widths |
 | slovak_misdemeanor_amendment | 88.3 → 57.5 | glyph widths |
@@ -167,8 +172,10 @@ Biggest movers (baseline → now, J):
   our renderer, rule `62240f49` measured on local exports) draws the scaled
   page plus the pane. That is the whole of door_air_cooling (82.4 → 5.2),
   case63 (35.1 → 1.0) and case64 (74.9 → 2.7).
-- Side by side: `tests/output/dig/hand/*_side.png`. Decision needed: drop the
-  pane to match online (and keep the code behind a switch?), or keep it.
+- Side by side: `tests/output/dig/hand/*_side.png`.
+- **Decided: keep the pane.** The three fixtures keep local references (§1).
+  bush_fires_act_comparison has tracked changes but no comments; it was online
+  all along and we draw no pane for it.
 
 ### 4c. Fonts (open)
 
@@ -226,6 +233,5 @@ Probes in `tests/output/probe_kn/` (generator `mk.py`, exported online):
    font Word substitutes for missing ones; online picks from Microsoft's font
    set (e.g. Times/Sylfaen where local chose Helvetica Neue), so the fixture
    would test a different thing.
-3. Markup pane: match online (no pane) or keep it?
-4. Next accuracy target: glyph widths (biggest, affects every online
+3. Next accuracy target: glyph widths (biggest, affects every online
    reference) vs the smaller items above.
