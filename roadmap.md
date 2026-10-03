@@ -217,8 +217,9 @@ probe documents; each fix is one commit on the branch.
 - massachusetts: page-anchored body frames (`framePr vAnchor=page`) not implemented — only fixture using them
 - dutch_government: a page-anchored floating table moves the following body table
   down 2.4pt in Word (not to the float's bottom; cause unknown), and two 1pt
-  `in-table` paragraphs come out 0.7pt short. Word refuses to reopen the original
-  file via automation (re-zipped variants open fine)
+  `in-table` paragraphs come out 0.7pt short. Word reports "unreadable content" in
+  the original fixture (valid zip; re-zipped variants open fine), so its reference
+  came from a Word-repaired copy
 - strategi: Word gives two empty footnotes ~26pt each; we give almost nothing
 - radiographer: Word also splits *inside* a nested row (between its lines)
 - Word floors auto-multiple grid lines to 0.24pt steps (19.44 vs our 19.50)
