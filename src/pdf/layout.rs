@@ -677,6 +677,13 @@ impl<'a> LinkTagger<'a> {
         self.tags.begin(content, self.page, self.open());
     }
 
+    /// Back to the open Span, Link or paragraph after an artifact drawn
+    /// inside a word (a text shadow), keeping the Span.
+    fn reopen(&mut self, content: &mut Content) {
+        let node = self.span.as_ref().map_or_else(|| self.open(), |s| s.0);
+        self.tags.begin(content, self.page, node);
+    }
+
     /// Draw something that isn't the paragraph's content (outside a text
     /// object) as an artifact.
     fn artifact(&mut self, content: &mut Content, draw: impl FnOnce(&mut Content)) {
@@ -950,24 +957,14 @@ fn push_word_chunks(
                 _ => *source,
             };
             chunk.actual_text = actual(seg_text, source);
-            chunks.push(read_shadow_once(chunk));
+            chunks.push(chunk);
             seg_x += seg_w;
         }
     } else {
         let mut chunk = WordChunk::text(entry, run, word, eff_fs, cs, y_off, x_start, total_ww);
         chunk.actual_text = original.and_then(|o| actual(word, o));
-        chunks.push(read_shadow_once(chunk));
+        chunks.push(chunk);
     }
-}
-
-/// The legacy text shadow draws a gray copy of the glyphs before them: one
-/// `/ActualText` over both (the caps Span) keeps a screen reader from reading
-/// the word twice.
-fn read_shadow_once(mut chunk: WordChunk) -> WordChunk {
-    if chunk.text_shadow.is_some() && chunk.actual_text.is_none() {
-        chunk.actual_text = Some(chunk.text.clone());
-    }
-    chunk
 }
 
 fn vert_y_offset(run: &Run) -> f32 {
@@ -2897,6 +2894,29 @@ pub(super) fn render_paragraph_lines(
                 } else {
                     0.0
                 };
+                if let Some(ref sh) = chunk.text_shadow {
+                    // The gray copy is an artifact in a text object of its own,
+                    // so the word is read, searched and copied once.
+                    if link_tags.is_some() {
+                        content.end_text();
+                        super::tagging::Tags::end(content);
+                        content.begin_text();
+                    }
+                    let (sx, sy) = (x + sh.offset_x, cy + sh.offset_y);
+                    content.set_text_matrix([1.0, 0.0, shear, 1.0, sx, sy]);
+                    (td_x, td_y, cur_shear) = (sx, sy, shear);
+                    fill_color_or_black(content, Some(sh.color));
+                    let bytes =
+                        encode_text_for_pdf(&chunk.text, &chunk.pdf_font, &pdf_name_to_entry);
+                    content.show(Str(&bytes));
+                    fill_color_or_black(content, current_color);
+                    if let Some(lt) = link_tags.as_mut() {
+                        content.end_text();
+                        lt.reopen(content);
+                        content.begin_text();
+                        (td_x, td_y, cur_shear) = (0.0, 0.0, 0.0);
+                    }
+                }
                 let mut move_to = |content: &mut Content, mx: f32, my: f32| {
                     if shear != 0.0 || cur_shear != 0.0 {
                         content.set_text_matrix([1.0, 0.0, shear, 1.0, mx, my]);
@@ -2907,14 +2927,6 @@ pub(super) fn render_paragraph_lines(
                     td_x = mx;
                     td_y = my;
                 };
-                if let Some(ref sh) = chunk.text_shadow {
-                    move_to(content, x + sh.offset_x, cy + sh.offset_y);
-                    fill_color_or_black(content, Some(sh.color));
-                    let bytes =
-                        encode_text_for_pdf(&chunk.text, &chunk.pdf_font, &pdf_name_to_entry);
-                    content.show(Str(&bytes));
-                    fill_color_or_black(content, current_color);
-                }
 
                 move_to(content, x, cy);
 
@@ -3839,19 +3851,6 @@ mod tests {
         assert_eq!(
             chunks_for(&Run::default(), "plain", None),
             [("plain".into(), None)]
-        );
-        let shadowed = Run {
-            text_shadow: Some(crate::model::TextShadow {
-                color: [128; 3],
-                offset_x: 1.0,
-                offset_y: -1.0,
-                alpha: 1.0,
-            }),
-            ..Run::default()
-        };
-        assert_eq!(
-            chunks_for(&shadowed, "Shadow", None),
-            [("Shadow".into(), Some("Shadow".into()))]
         );
     }
 
