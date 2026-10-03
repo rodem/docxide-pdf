@@ -819,6 +819,17 @@ was intended is unverified.
 - `libreoffice_convert_rust` 0.1.0: a wrapper that shells out to `soffice`;
   its output is LibreOffice's.
 
+**The published site understated every Times New Roman document (fixed
+2026-10-03).** Site vs MacBook, same binary: identical on 109 of 208 cases,
+55 cases 20+ points lower on the site, 52 of them set in Times New Roman
+(case48 65.7 → 9.7, slovak_misdemeanor 88.3 → 4.6). The references were made
+with Apple's Times New Roman 5.01 (hhea lineGap 87, 13.80pt per 12pt line);
+the Ubuntu runner only had Word's bundled 7.00 (lineGap 0, 13.29pt), so every
+line sat half a point too tight. Reproduced in a Linux container to the
+decimal, and restored by adding Apple's faces. The assets repo now carries
+Apple's four Times New Roman faces instead of Word's, so CI and the laptop
+draw the same font; every engine on the site was affected the same way.
+
 ## Picture Effects (PARTIALLY DONE)
 
 **Done:** Smooth outer shadow (rasterized Gaussian blur mask via SMask), soft edge (edge-fade SMask on image), glow (centered blur), inner shadow (inverted blur mask), reflection (flipped image with gradient SMask). All use the same rasterized mask + SMask XObject infrastructure. Test fixtures: case56 (shadow variations), case57 (2D effects), case58 (3D effects — deferred).
