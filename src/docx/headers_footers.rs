@@ -70,15 +70,16 @@ pub(super) fn parse_footnotes<R: Read + Seek>(
     zip: &mut zip::ZipArchive<R>,
     styles: &StylesInfo,
     theme: &ThemeFonts,
-    _numbering: &NumberingInfo,
+    numbering: &NumberingInfo,
 ) -> HashMap<u32, Footnote> {
     // Footnotes use the simple paragraph builder for backwards compatibility
-    // with rendering tuned against the existing corpus. Bullets/lists inside
-    // footnotes are not exercised by current fixtures.
+    // with rendering tuned against the existing corpus; only list paragraphs
+    // take the full builder.
     parse_notes_simple(
         zip,
         styles,
         theme,
+        numbering,
         "word/footnotes.xml",
         "footnote",
         "FootnoteText",
@@ -101,12 +102,14 @@ pub(super) fn parse_endnotes<R: Read + Seek>(
     )
 }
 
-/// Simple parsing: paragraph runs and indents only, no list-numbering.
-/// Matches the original footnote rendering behavior.
+/// Simple parsing: paragraph runs and indents only, except that list
+/// paragraphs take the full builder for their numbering (croatian_grant's
+/// bulleted footnote). Matches the original footnote rendering behavior.
 fn parse_notes_simple<R: Read + Seek>(
     zip: &mut zip::ZipArchive<R>,
     styles: &StylesInfo,
     theme: &ThemeFonts,
+    numbering: &NumberingInfo,
     zip_path: &str,
     element_name: &str,
     default_style_id: &str,
@@ -120,15 +123,14 @@ fn parse_notes_simple<R: Read + Seek>(
     };
     let root = xml.root_element();
     let empty_rels = HashMap::new();
-    let numbering = NumberingInfo::default();
-
     let mut fn_ctx = ParseContext {
         styles,
         theme,
         rels: &empty_rels,
         zip,
-        numbering: &numbering,
+        numbering,
     };
+    let mut lists = ListCounters::default();
 
     for node in root.children() {
         if !node.has_tag_name((WML_NS, element_name)) {
@@ -144,8 +146,19 @@ fn parse_notes_simple<R: Read + Seek>(
             continue;
         };
 
-        let parse_para = |p: roxmltree::Node, fn_ctx: &mut ParseContext<'_, R>| -> Paragraph {
+        let mut parse_para = |p: roxmltree::Node, fn_ctx: &mut ParseContext<'_, R>| -> Paragraph {
             let ppr = wml(p, "pPr");
+            if ppr.is_some_and(|ppr| wml(ppr, "numPr").is_some()) {
+                let mut para = super::paragraph::build_paragraph(
+                    p,
+                    fn_ctx,
+                    &mut lists,
+                    &super::paragraph::ParagraphOptions::default(),
+                );
+                para.line_spacing = para.line_spacing.or(Some(LineSpacing::Auto(1.0)));
+                para.snap_to_grid = true;
+                return para;
+            }
             let para_style_id = ppr
                 .and_then(|ppr| wml_attr(ppr, "pStyle"))
                 .unwrap_or(default_style_id);
