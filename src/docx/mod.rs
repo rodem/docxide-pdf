@@ -881,6 +881,11 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
                 if let Some(sect_node) = ppr.and_then(|ppr| wml(ppr, "sectPr")) {
                     if let Some(Block::Paragraph(last_para)) = blocks.last_mut() {
                         last_para.is_section_break = true;
+                        // A page break ending the section's last paragraph is dropped:
+                        // the section break alone decides (online export probes,
+                        // 2026-10-03: no new page before a continuous section, one
+                        // before a next-page section; stem_partnerships' cover).
+                        last_para.page_break_after = false;
                     }
                     let props = parse_section_properties(
                         sect_node,
