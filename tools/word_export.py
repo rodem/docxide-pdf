@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Export .docx files to PDF with Microsoft Word for Mac, unattended.
 
-    tools/word_export.py FILE_OR_DIR... [--out DIR] [--force] [--timeout S] [--keep-word]
+    tools/word_export.py FILE_OR_DIR... [--out DIR] [--force] [--timeout S] [--keep-word] [--preset online|print]
     tools/word_export.py --check            # preflight only, converts nothing
 
 Writes <stem>.pdf beside each input (or into --out). Exit code 1 if any file failed.
@@ -21,12 +21,17 @@ Why it needs no human at the keyboard:
 
 One-time human steps (macOS, per terminal app): the first run asks whether the
 terminal may control "Microsoft Word" (Automation) and "System Events"
-(Accessibility, needed only by the watchdog). Word's PDF "Optimize for" preset
-is inherited from the last manual Save As; set "Best for printing" once by hand.
+(Accessibility, needed only by the watchdog).
+
+Word's PDF "Optimize for" choice (the Save As radio button) lives in Office's
+settings database, not in the AppleScript call. --preset (default online, the
+tagged "Best for electronic distribution and accessibility" export of the
+fixture references) is written there only when it differs, with Word closed.
 """
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import shutil
 import subprocess
 import sys
@@ -38,6 +43,11 @@ from pathlib import Path
 
 CONTAINER_TMP = Path.home() / "Library/Containers/com.microsoft.Word/Data/tmp"
 WORD_APP = Path("/Applications/Microsoft Word.app")
+REGISTRY_DIR = Path.home() / "Library/Group Containers/UBF8T346G9.Office/MicrosoftRegistrationDB"
+WORD_OPTIONS = ("Software", "Microsoft", "Office", "16.0", "Word", "Options")
+# 1 = "Best for electronic distribution and accessibility" (Microsoft's online
+# conversion service, tagged PDF), 0 = "Best for printing" (local, untagged).
+ONLINE_PDF = "Use BCS Service to create tagged PDF"
 
 # `display alerts` takes Word's VBA constants: 0 = wdAlertsNone.
 EXPORT = """
@@ -113,6 +123,40 @@ def word_running() -> bool:
     # pgrep, not System Events: a hung System Events (AppleEvent timeout -1712)
     # must not stop the export, it only costs the dialog watchdog.
     return subprocess.run(["pgrep", "-xq", "Microsoft Word"]).returncode == 0
+
+
+def registry_db() -> Path:
+    dbs = sorted(REGISTRY_DIR.glob("MicrosoftRegistrationDB_*.reg"))
+    if len(dbs) != 1:
+        raise RuntimeError(f"expected one Office settings database in {REGISTRY_DIR}, found {len(dbs)}")
+    return dbs[0]
+
+
+def word_options_node(db: sqlite3.Connection) -> int:
+    node = -1
+    for name in WORD_OPTIONS:
+        row = db.execute("SELECT node_id FROM HKEY_CURRENT_USER WHERE parent_id = ? AND name = ?",
+                         (node, name)).fetchone()
+        if row is None:
+            raise RuntimeError("Word options key missing from the Office settings database: "
+                               "save one PDF from Word by hand first")
+        node = row[0]
+    return node
+
+
+def pdf_online() -> bool | None:
+    """Word's current PDF preset: True online, False print, None never chosen."""
+    with sqlite3.connect(f"file:{registry_db()}?mode=ro", uri=True) as db:
+        row = db.execute("SELECT value FROM HKEY_CURRENT_USER_values WHERE node_id = ? AND name = ?",
+                         (word_options_node(db), ONLINE_PDF)).fetchone()
+    return None if row is None else bool(row[0])
+
+
+def set_pdf_online(online: bool) -> None:
+    with sqlite3.connect(registry_db()) as db:
+        # type 4 = REG_DWORD, as Word writes it
+        db.execute("INSERT OR REPLACE INTO HKEY_CURRENT_USER_values (node_id, name, type, value) "
+                   "VALUES (?, ?, 4, ?)", (word_options_node(db), ONLINE_PDF, int(online)))
 
 
 def preflight() -> list[str]:
@@ -225,6 +269,8 @@ def main() -> int:
     ap.add_argument("--timeout", type=float, default=120, help="seconds per document (default 120)")
     ap.add_argument("--keep-word", action="store_true", help="leave Word running afterwards")
     ap.add_argument("--check", action="store_true", help="preflight only (starts Word if it is not running)")
+    ap.add_argument("--preset", choices=("online", "print"), default="online",
+                    help="PDF \"Optimize for\": online = tagged, via Microsoft's service (default); print = local")
     a = ap.parse_args()
 
     problems = preflight()
@@ -247,6 +293,15 @@ def main() -> int:
         jobs.append((src, dst))
     if not jobs:
         return 0
+
+    online = a.preset == "online"
+    if pdf_online() != online:
+        # Word may only read the setting at launch; quitting it here could lose the user's documents
+        if word_running():
+            print(f"preset: Word's PDF preset is not '{a.preset}'; quit Word and run again", file=sys.stderr)
+            return 1
+        set_pdf_online(online)
+        print(f"preset: Word's PDF preset set to '{a.preset}'")
 
     launched = not word_running()
     warm()

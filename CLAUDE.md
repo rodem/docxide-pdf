@@ -53,7 +53,7 @@ tools/deploy_comparison.sh [remote] [branch]           # publish comparison/ (wo
 # MiniPdf = the Rust crate's CLI (`cargo install minipdf-cli`), never the .NET engine; rdocx via `cargo install rdocx`; office2pdf via `cargo install office2pdf-cli`; jubarte-redlines via `cargo install jubarte-redlines` (binary `jubarte`); LibreOffice via soffice
 
 # Word for Mac, unattended: export .docx → .pdf with Word itself (probe documents, what-if experiments)
-python3 tools/word_export.py <file-or-dir>... [--out DIR] [--force] [--timeout S]   # stages inside Word's container, answers dialogs, FAIL per bad file; needs the sandbox off
+python3 tools/word_export.py <file-or-dir>... [--out DIR] [--force] [--timeout S] [--preset online|print]   # default online = tagged refs; stages inside Word's container, answers dialogs; needs the sandbox off
 python3 tools/word_export.py --check                   # preflight: Word present, Automation granted
 
 # Accuracy work: verify each rule change on all fixtures and, where available, an external corpus
