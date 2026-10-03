@@ -28,8 +28,8 @@ use pdf_writer::{Content, Name, Pdf, Ref};
 use crate::error::Error;
 use crate::fonts::FontEntry;
 use crate::model::{
-    Block, Document, FieldCode, HRelativeFrom, LineSpacing, PageVerticalAlign,
-    Paragraph, ParagraphBorder, Run, SectionBreakType, SectionProperties, ShapeFill, ShapeGeometry,
+    Block, Document, FieldCode, HRelativeFrom, LineSpacing, PageVerticalAlign, Paragraph,
+    ParagraphBorder, Run, SectionBreakType, SectionProperties, ShapeFill, ShapeGeometry,
     VRelativeFrom, VerticalPosition, WrapText, WrapType,
 };
 
@@ -3456,6 +3456,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 tags: &mut state.pb.tags,
                 page: page_idx,
                 endnote: false,
+                links: &mut state.pb.all_links[page_idx],
             },
         );
         for (id, y) in tops {
@@ -3478,6 +3479,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                     tags: &mut state.pb.tags,
                     page: page_idx,
                     endnote: true,
+                    links: &mut state.pb.all_links[page_idx],
                 },
             );
             for (id, y) in tops {

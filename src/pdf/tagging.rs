@@ -257,6 +257,8 @@ pub(super) struct NoteTagger<'a> {
     pub(super) tags: &'a mut Tags,
     pub(super) page: usize,
     pub(super) endnote: bool,
+    /// The page's link annotations, for links in the note text.
+    pub(super) links: &'a mut Vec<super::layout::LinkAnnotation>,
 }
 
 /// The language part of a language tag ("en" of "en-GB").
