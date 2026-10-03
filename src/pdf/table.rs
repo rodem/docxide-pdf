@@ -751,10 +751,14 @@ fn render_table_rows(
     rows: std::ops::Range<usize>,
 ) {
     let cm = &table.cell_margins;
-    for (ri, (row, layout)) in table.rows.iter().zip(row_layouts.iter()).enumerate() {
-        if !rows.contains(&ri) {
-            continue;
-        }
+    for (ri, (row, layout)) in table
+        .rows
+        .iter()
+        .zip(row_layouts.iter())
+        .enumerate()
+        .skip(rows.start)
+        .take(rows.len())
+    {
         let row_h = layout.height;
         let row_top = *cursor_y;
         let row_bottom = row_top - row_h;
@@ -1794,18 +1798,20 @@ pub(super) fn render_table(
                     CellContentItem::NestedTable { row_heights, .. } => row_heights.len() >= 2,
                 })
         });
-        let first_chunk_fits = layout.cells.iter().all(|c| {
-            c.items.first().is_none_or(|it| {
-                let item_h = match it {
-                    CellContentItem::Paragraph(p) => para_block_height(p),
-                    CellContentItem::NestedTable {
-                        height,
-                        row_heights,
-                    } => row_heights.first().copied().unwrap_or(*height),
-                };
-                cm.top + cm.bottom + item_h <= available_h
+        // Whether every cell's first chunk fits in the room left: its first
+        // paragraph (with `widow`, two lines of a long one) or first nested row.
+        let first_fits = |widow: bool| {
+            layout.cells.iter().all(|c| {
+                c.items.first().is_none_or(|it| {
+                    let end = match it {
+                        CellContentItem::Paragraph(p) if widow && p.lines.len() >= 4 => Some(2),
+                        CellContentItem::Paragraph(_) => None,
+                        CellContentItem::NestedTable { .. } => Some(1),
+                    };
+                    cm.top + cm.bottom + item_chunk_height(it, 0, end) <= available_h
+                })
             })
-        });
+        };
         // Word splits with one line of room: nabl's "Remarks" row breaks
         // between its paragraphs with 30pt left. ponytail: 14pt (a line) guard
         // so a near-boundary rounding error can't split off nothing; drop it
@@ -1815,29 +1821,16 @@ pub(super) fn render_table(
             && any_cell_multi_item
             && !at_page_top
             && available_h > 14.0
-            && first_chunk_fits;
+            && first_fits(false);
 
         // A row taller than a page must split, but not where its cells can't
         // start: away from the page top each cell needs its first paragraph,
         // or two lines of a long one (widow control), in the room left —
         // croatian_grant's 776pt row starts on the next page rather than in
         // the 28pt above a footnote.
-        let first_lines_fit = layout.cells.iter().all(|c| {
-            c.items.first().is_none_or(|it| {
-                let item_h = match it {
-                    CellContentItem::Paragraph(p) if p.lines.len() >= 4 => super::table_layout::cell_lines_h(p, 0..2),
-                    CellContentItem::Paragraph(p) => para_block_height(p),
-                    CellContentItem::NestedTable {
-                        height,
-                        row_heights,
-                    } => row_heights.first().copied().unwrap_or(*height),
-                };
-                cm.top + cm.bottom + item_h <= available_h
-            })
-        });
         let must_split = (row_h > page_content_h || keep_with_anchor)
             && !row.cant_split
-            && (at_page_top || first_lines_fit);
+            && (at_page_top || first_fits(true));
         if row_h > available_h && (must_split || can_meaningfully_split) {
             split_row_across_pages(
                 row,

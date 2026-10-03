@@ -1059,13 +1059,20 @@ pub(super) fn render_header_footer(
 /// Which header/footer variant a page shows. A section that lacks that variant
 /// inherits it from earlier sections, and shows none if no section defines it
 /// (§17.10.5) — it never falls back to the default variant.
-fn hf_variant(doc: &Document, section_idx: usize, is_first_page: bool, page_num: usize) -> u8 {
+#[derive(Clone, Copy)]
+enum HfVariant {
+    Default,
+    First,
+    Even,
+}
+
+fn hf_variant(doc: &Document, section_idx: usize, is_first_page: bool, page_num: usize) -> HfVariant {
     if is_first_page && doc.sections[section_idx].properties.different_first_page {
-        1
+        HfVariant::First
     } else if doc.even_and_odd_headers && page_num.is_multiple_of(2) {
-        2
+        HfVariant::Even
     } else {
-        0
+        HfVariant::Default
     }
 }
 
@@ -1078,10 +1085,18 @@ pub(super) fn resolve_header_for_page(
     page_num: usize,
 ) -> (Option<&HeaderFooter>, u8, usize) {
     let variant = hf_variant(doc, section_idx, is_first_page, page_num);
-    let t = [0u8, 1, 4][variant as usize];
+    let t = match variant {
+        HfVariant::Default => 0,
+        HfVariant::First => 1,
+        HfVariant::Even => 4,
+    };
     for idx in (0..=section_idx).rev() {
         let s = &doc.sections[idx].properties;
-        let h = [&s.header_default, &s.header_first, &s.header_even][variant as usize];
+        let h = match variant {
+            HfVariant::Default => &s.header_default,
+            HfVariant::First => &s.header_first,
+            HfVariant::Even => &s.header_even,
+        };
         if h.is_some() {
             return (h.as_ref(), t, idx);
         }
@@ -1098,10 +1113,18 @@ pub(super) fn resolve_footer_for_page(
     page_num: usize,
 ) -> (Option<&HeaderFooter>, u8, usize) {
     let variant = hf_variant(doc, section_idx, is_first_page, page_num);
-    let t = [2u8, 3, 5][variant as usize];
+    let t = match variant {
+        HfVariant::Default => 2,
+        HfVariant::First => 3,
+        HfVariant::Even => 5,
+    };
     for idx in (0..=section_idx).rev() {
         let s = &doc.sections[idx].properties;
-        let f = [&s.footer_default, &s.footer_first, &s.footer_even][variant as usize];
+        let f = match variant {
+            HfVariant::Default => &s.footer_default,
+            HfVariant::First => &s.footer_first,
+            HfVariant::Even => &s.footer_even,
+        };
         if f.is_some() {
             return (f.as_ref(), t, idx);
         }

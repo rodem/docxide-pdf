@@ -49,7 +49,7 @@ fn hatch_kind(val: &str) -> Option<crate::model::HatchKind> {
     })
 }
 
-fn margin_twips(mar: roxmltree::Node, primary: &str, fallback: &str) -> Option<f32> {
+pub(super) fn margin_twips(mar: roxmltree::Node, primary: &str, fallback: &str) -> Option<f32> {
     wml(mar, primary)
         .or_else(|| wml(mar, fallback))
         .and_then(|n| twips_attr(n, "w"))
@@ -254,20 +254,14 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
     let tbl_style = tbl_pr
         .and_then(|pr| wml_attr(pr, "tblStyle"))
         .and_then(|id| ctx.styles.table_styles.get(id));
-    // A table-style property, the nearest along the style's basedOn chain.
-    let style_chain = |f: &dyn Fn(&TableStyleDef) -> Option<f32>| -> Option<f32> {
-        let mut style = tbl_style;
-        for _ in 0..8 {
-            let s = style?;
-            if let Some(v) = f(s) {
-                return Some(v);
-            }
-            style = s
-                .based_on
+    // The table style and its basedOn ancestors, nearest first.
+    let style_chain = || {
+        std::iter::successors(tbl_style, |s| {
+            s.based_on
                 .as_deref()
-                .and_then(|id| ctx.styles.table_styles.get(id));
-        }
-        None
+                .and_then(|id| ctx.styles.table_styles.get(id))
+        })
+        .take(8)
     };
     // Each side: the table's own, then its style's (estonian_community's
     // TableGrid zeroes them), then Word's default.
@@ -275,7 +269,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
     let side = |i: usize, a: &str, b: &str, default: f32| {
         own_mar
             .and_then(|mar| margin_twips(mar, a, b))
-            .or_else(|| style_chain(&|s: &TableStyleDef| s.cell_margins[i]))
+            .or_else(|| style_chain().find_map(|s| s.cell_margins[i]))
             .unwrap_or(default)
     };
     let cell_margins = CellMargins {
@@ -284,24 +278,9 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
         bottom: side(2, "bottom", "bottom", 0.0),
         right: side(3, "right", "end", 5.4),
     };
-    let style_space_before = style_chain(&|s: &TableStyleDef| s.space_before);
-    let style_space_after = style_chain(&|s: &TableStyleDef| s.space_after);
-    let style_line_spacing = {
-        let mut style = tbl_style;
-        let mut found = None;
-        for _ in 0..8 {
-            let Some(s) = style else { break };
-            if s.line_spacing.is_some() {
-                found = s.line_spacing;
-                break;
-            }
-            style = s
-                .based_on
-                .as_deref()
-                .and_then(|id| ctx.styles.table_styles.get(id));
-        }
-        found
-    };
+    let style_space_before = style_chain().find_map(|s| s.space_before);
+    let style_space_after = style_chain().find_map(|s| s.space_after);
+    let style_line_spacing = style_chain().find_map(|s| s.line_spacing);
 
     let table_position = tbl_pr.and_then(|pr| wml(pr, "tblpPr")).map(|tblp| {
         let v_anchor = match tblp.attribute((WML_NS, "vertAnchor")) {

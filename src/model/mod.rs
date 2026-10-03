@@ -140,6 +140,15 @@ impl SectionProperties {
     pub fn text_width(&self) -> f32 {
         self.page_width - self.margin_left - self.margin_right
     }
+
+    /// The docGrid line pitch when the grid snaps lines, else None.
+    pub fn line_grid_pitch(&self) -> Option<f32> {
+        (matches!(
+            self.grid_type,
+            DocGridType::Lines | DocGridType::LinesAndChars | DocGridType::SnapToChars
+        ) && self.line_pitch > 0.0)
+            .then_some(self.line_pitch)
+    }
 }
 
 /// §17.6.8 `w:lnNumType` — line numbers shown in the margin (legal/contract docs).

@@ -28,7 +28,7 @@ use pdf_writer::{Content, Name, Pdf, Ref};
 use crate::error::Error;
 use crate::fonts::FontEntry;
 use crate::model::{
-    Block, DocGridType, Document, FieldCode, HRelativeFrom, LineSpacing, PageVerticalAlign,
+    Block, Document, FieldCode, HRelativeFrom, LineSpacing, PageVerticalAlign,
     Paragraph, ParagraphBorder, Run, SectionBreakType, SectionProperties, ShapeFill, ShapeGeometry,
     VRelativeFrom, VerticalPosition, WrapText, WrapType,
 };
@@ -1211,14 +1211,8 @@ fn compute_bookmark_positions(
                     let effective_ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
                     let line_h = resolve_line_h(effective_ls, font_size, tallest_lhr);
                     let line_h = if para.snap_to_grid
-                        && matches!(
-                            sp.grid_type,
-                            DocGridType::Lines
-                                | DocGridType::LinesAndChars
-                                | DocGridType::SnapToChars
-                        )
+                        && sp.line_grid_pitch().is_some()
                         && !matches!(effective_ls, LineSpacing::Exact(_))
-                        && sp.line_pitch > 0.0
                     {
                         grid_snapped_line_h(
                             &para.runs,
@@ -1449,12 +1443,8 @@ fn render_paragraph_block(
     let effective_ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
     let line_h = resolve_line_h(effective_ls, font_size, tallest_lhr);
     let grid_snapped = para.snap_to_grid
-        && matches!(
-            sp.grid_type,
-            DocGridType::Lines | DocGridType::LinesAndChars | DocGridType::SnapToChars
-        )
-        && !matches!(effective_ls, LineSpacing::Exact(_))
-        && sp.line_pitch > 0.0;
+        && sp.line_grid_pitch().is_some()
+        && !matches!(effective_ls, LineSpacing::Exact(_));
     let line_h = if grid_snapped {
         grid_snapped_line_h(&para.runs, ctx.fonts, effective_ls, line_h, sp.line_pitch)
     } else {
@@ -3108,16 +3098,9 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
     for (sect_idx, section) in doc.sections.iter().enumerate() {
         let sp = &section.properties;
         ctx.cell_grid_pitch.set(
-            if doc.adjust_line_height_in_table
-                && matches!(
-                    sp.grid_type,
-                    DocGridType::Lines | DocGridType::LinesAndChars | DocGridType::SnapToChars
-                )
-            {
-                sp.line_pitch
-            } else {
-                0.0
-            },
+            sp.line_grid_pitch()
+                .filter(|_| doc.adjust_line_height_in_table)
+                .unwrap_or(0.0),
         );
 
         // Section break handling (not for the first section)
@@ -3153,13 +3136,16 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                             // continuing. A restarted section skips it (and bumps its own start
                             // instead, see page_numbers) unless evenAndOddHeaders/mirrorMargins
                             // ask for print-ready sheets (measured with Word probes, 2026-10-03).
-                            let continuing = page_numbers(doc, &state.pb.page_section_indices)
-                                .last()
-                                .map_or(1, |n| n + 1);
-                            (continuing % 2 == 1) != need_odd
-                                && (sp.page_num_start.is_none()
-                                    || doc.even_and_odd_headers
-                                    || doc.mirror_margins)
+                            (sp.page_num_start.is_none()
+                                || doc.even_and_odd_headers
+                                || doc.mirror_margins)
+                                && {
+                                    let continuing =
+                                        page_numbers(doc, &state.pb.page_section_indices)
+                                            .last()
+                                            .map_or(1, |n| n + 1);
+                                    (continuing % 2 == 1) != need_odd
+                                }
                         } else {
                             // The evenAndOddHeaders heuristic (NextPage break with a restart)
                             // lands the section on the right PHYSICAL sheet for header selection.

@@ -581,12 +581,14 @@ pub(super) fn resolve_east_asia_font_from_node(
     resolve_east_asia_font(east_asia, east_asia_theme, theme)
 }
 
-pub(super) fn parse_line_spacing(spacing_node: roxmltree::Node, line_val: f32) -> LineSpacing {
-    match spacing_node.attribute((WML_NS, "lineRule")) {
+/// `w:spacing @line/@lineRule`, or None when `@line` is absent.
+pub(super) fn parse_line_spacing(spacing_node: roxmltree::Node) -> Option<LineSpacing> {
+    let line_val = spacing_node.attribute((WML_NS, "line"))?.parse::<f32>().ok()?;
+    Some(match spacing_node.attribute((WML_NS, "lineRule")) {
         Some("exact") => LineSpacing::Exact(twips_to_pts(line_val)),
         Some("atLeast") => LineSpacing::AtLeast(twips_to_pts(line_val)),
         _ => LineSpacing::Auto(line_val / 240.0),
-    }
+    })
 }
 
 /// Word gives its built-in "heading N" styles outline level N−1 even when the
@@ -756,11 +758,8 @@ pub(super) fn parse_styles<R: Read + Seek>(
             if let Some(after_val) = twips_attr(spacing, "after") {
                 defaults.space_after = after_val;
             }
-            if let Some(line_val) = spacing
-                .attribute((WML_NS, "line"))
-                .and_then(|v| v.parse::<f32>().ok())
-            {
-                defaults.line_spacing = parse_line_spacing(spacing, line_val);
+            if let Some(ls) = parse_line_spacing(spacing) {
+                defaults.line_spacing = ls;
             }
         }
         if let Some(ind) = default_ppr.and_then(|n| wml(n, "ind")) {
@@ -866,11 +865,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
                     .and_then(|ppr| wml_bool(ppr, "pageBreakBefore"))
                     .unwrap_or(false);
 
-                let line_spacing = spacing.and_then(|n| {
-                    n.attribute((WML_NS, "line"))
-                        .and_then(|v| v.parse::<f32>().ok())
-                        .map(|line_val| parse_line_spacing(n, line_val))
-                });
+                let line_spacing = spacing.and_then(parse_line_spacing);
 
                 let (indent_left, indent_right, indent_hanging, indent_first_line) = ppr
                     .and_then(|n| wml(n, "ind"))
@@ -975,11 +970,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
                 let base_italic = base_rpr.and_then(|rpr| wml_bool(rpr, "i"));
 
                 let cell_mar = wml(style_node, "tblPr").and_then(|pr| wml(pr, "tblCellMar"));
-                let side = |a: &str, b: &str| {
-                    cell_mar
-                        .and_then(|m| wml(m, a).or_else(|| wml(m, b)))
-                        .and_then(|n| twips_attr(n, "w"))
-                };
+                let side = |a: &str, b: &str| cell_mar.and_then(|m| super::tables::margin_twips(m, a, b));
                 let cell_margins = [
                     side("top", "top"),
                     side("left", "start"),
@@ -987,11 +978,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
                     side("right", "end"),
                 ];
                 let style_spacing = wml(style_node, "pPr").and_then(|p| wml(p, "spacing"));
-                let style_line_spacing = style_spacing.and_then(|n| {
-                    n.attribute((WML_NS, "line"))
-                        .and_then(|v| v.parse::<f32>().ok())
-                        .map(|line_val| super::parse_line_spacing(n, line_val))
-                });
+                let style_line_spacing = style_spacing.and_then(parse_line_spacing);
 
                 let mut conditionals = HashMap::new();
                 for child in style_node.children() {

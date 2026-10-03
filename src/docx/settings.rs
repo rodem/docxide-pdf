@@ -72,6 +72,9 @@ pub(super) fn parse_settings<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> Do
     let default_lang = lang("val");
     let bidi_lang = lang("bidi");
 
+    let compat = wml(root, "compat");
+    let compat_flag = |name| compat.and_then(|c| wml_bool(c, name)).unwrap_or(false);
+
     DocumentSettings {
         even_and_odd_headers: wml_bool(root, "evenAndOddHeaders").unwrap_or(false),
         mirror_margins: wml_bool(root, "mirrorMargins").unwrap_or(false),
@@ -82,7 +85,7 @@ pub(super) fn parse_settings<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> Do
         default_lang,
         compress_punctuation: wml_attr(root, "characterSpacingControl")
             .is_some_and(|v| v.starts_with("compressPunctuation")),
-        compat_mode: wml(root, "compat")
+        compat_mode: compat
             .into_iter()
             .flat_map(|c| c.children())
             .find(|n| n.attribute((WML_NS, "name")) == Some("compatibilityMode"))
@@ -91,11 +94,7 @@ pub(super) fn parse_settings<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> Do
             .unwrap_or(0),
         styles_from_normal_template: wml_bool(root, "linkStyles").unwrap_or(false)
             && wml(root, "attachedTemplate").is_none(),
-        do_not_expand_shift_return: wml(root, "compat")
-            .and_then(|c| wml_bool(c, "doNotExpandShiftReturn"))
-            .unwrap_or(false),
-        adjust_line_height_in_table: wml(root, "compat")
-            .and_then(|c| wml_bool(c, "adjustLineHeightInTable"))
-            .unwrap_or(false),
+        do_not_expand_shift_return: compat_flag("doNotExpandShiftReturn"),
+        adjust_line_height_in_table: compat_flag("adjustLineHeightInTable"),
     }
 }

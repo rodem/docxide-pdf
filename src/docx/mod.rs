@@ -571,11 +571,7 @@ pub(in crate::docx) fn parse_paragraph_spacing(
     };
 
     let line_spacing = inline_spacing
-        .and_then(|n| {
-            n.attribute((WML_NS, "line"))
-                .and_then(|v| v.parse::<f32>().ok())
-                .map(|line_val| parse_line_spacing(n, line_val))
-        })
+        .and_then(parse_line_spacing)
         .or_else(|| para_style.and_then(|s| s.line_spacing));
     (space_before, space_after, line_spacing)
 }

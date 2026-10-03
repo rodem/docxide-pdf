@@ -204,8 +204,6 @@ def export_one(src: Path, dst: Path, stage: Path, timeout: float) -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(s_pdf), dst)
     finally:
-        s_docx.unlink(missing_ok=True)
-        s_pdf.unlink(missing_ok=True)
         shutil.rmtree(folder, ignore_errors=True)
 
 

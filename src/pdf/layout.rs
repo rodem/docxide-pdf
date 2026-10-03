@@ -1103,22 +1103,21 @@ fn is_compressible_opening(c: char) -> bool {
 /// touches nothing when the marks cannot yield enough.
 fn compress_punctuation(chunks: &mut [WordChunk], needed: f32) -> bool {
     // (chunk, squeezes at its end, squeezes at its start)
-    let marks: Vec<(usize, bool, bool)> = chunks
+    let marks: Vec<(usize, f32, bool)> = chunks
         .iter()
         .enumerate()
         .filter(|(_, c)| c.inline_image_name.is_none())
         .map(|(i, c)| {
             let end = c.text.chars().last().is_some_and(is_compressible_punct);
             let start = c.text.chars().next().is_some_and(is_compressible_opening);
-            (i, end, start)
+            (i, end as u8 as f32 + start as u8 as f32, start)
         })
-        .filter(|&(_, end, start)| end || start)
+        .filter(|&(_, sides, _)| sides > 0.0)
         .collect();
     let room: Vec<f32> = marks
         .iter()
-        .map(|&(i, end, start)| {
-            let sides = end as u8 + start as u8;
-            (chunks[i].font_size * 0.25 * sides as f32 - chunks[i].punct_compressed).max(0.0)
+        .map(|&(i, sides, _)| {
+            (chunks[i].font_size * 0.25 * sides - chunks[i].punct_compressed).max(0.0)
         })
         .collect();
     let total: f32 = room.iter().sum();
@@ -1133,16 +1132,12 @@ fn compress_punctuation(chunks: &mut [WordChunk], needed: f32) -> bool {
     for (i, chunk) in chunks.iter_mut().enumerate() {
         chunk.x_offset -= shift;
         if k < marks.len() && marks[k].0 == i {
-            let (_, end, start) = marks[k];
+            let (_, sides, start) = marks[k];
             let cut = room[k] * scale;
             // An opening bracket loses its blank left: the chunk slides into
             // the gap before it by its share of the cut, and only the rest
             // comes off its right end.
-            let lead = match (start, end) {
-                (true, true) => cut / 2.0,
-                (true, false) => cut,
-                _ => 0.0,
-            };
+            let lead = if start { cut / sides } else { 0.0 };
             chunk.x_offset -= lead;
             chunk.width -= cut - lead;
             chunk.punct_compressed += cut;
