@@ -320,6 +320,14 @@ pub(super) struct TableStyleDef {
     /// "lastCol", "band1Horz", "band2Horz", "band1Vert", "band2Vert",
     /// "nwCell", "neCell", "swCell", "seCell"
     pub(super) conditionals: HashMap<String, TableConditionalFormat>,
+    /// `w:tblPr/w:tblCellMar`, top/left/bottom/right, unset sides `None`.
+    pub(super) cell_margins: [Option<f32>; 4],
+    /// The style's `w:pPr/w:spacing` before/after and line rule: cell
+    /// paragraphs take them over docDefaults.
+    pub(super) space_before: Option<f32>,
+    pub(super) space_after: Option<f32>,
+    pub(super) line_spacing: Option<LineSpacing>,
+    pub(super) based_on: Option<String>,
 }
 
 pub(super) struct StylesInfo {
@@ -966,6 +974,25 @@ pub(super) fn parse_styles<R: Read + Seek>(
                 let base_bold = base_rpr.and_then(|rpr| wml_bool(rpr, "b"));
                 let base_italic = base_rpr.and_then(|rpr| wml_bool(rpr, "i"));
 
+                let cell_mar = wml(style_node, "tblPr").and_then(|pr| wml(pr, "tblCellMar"));
+                let side = |a: &str, b: &str| {
+                    cell_mar
+                        .and_then(|m| wml(m, a).or_else(|| wml(m, b)))
+                        .and_then(|n| twips_attr(n, "w"))
+                };
+                let cell_margins = [
+                    side("top", "top"),
+                    side("left", "start"),
+                    side("bottom", "bottom"),
+                    side("right", "end"),
+                ];
+                let style_spacing = wml(style_node, "pPr").and_then(|p| wml(p, "spacing"));
+                let style_line_spacing = style_spacing.and_then(|n| {
+                    n.attribute((WML_NS, "line"))
+                        .and_then(|v| v.parse::<f32>().ok())
+                        .map(|line_val| super::parse_line_spacing(n, line_val))
+                });
+
                 let mut conditionals = HashMap::new();
                 for child in style_node.children() {
                     if !child.has_tag_name((WML_NS, "tblStylePr")) {
@@ -1011,23 +1038,22 @@ pub(super) fn parse_styles<R: Read + Seek>(
                     }
                 }
 
-                if base_borders.is_some()
-                    || !conditionals.is_empty()
-                    || base_font_size.is_some()
-                    || base_font_name.is_some()
-                {
-                    table_styles.insert(
-                        style_id.to_string(),
-                        TableStyleDef {
-                            base_borders,
-                            base_font_size,
-                            base_font_name,
-                            base_bold,
-                            base_italic,
-                            conditionals,
-                        },
-                    );
-                }
+                table_styles.insert(
+                    style_id.to_string(),
+                    TableStyleDef {
+                        base_borders,
+                        base_font_size,
+                        base_font_name,
+                        base_bold,
+                        base_italic,
+                        conditionals,
+                        cell_margins,
+                        space_before: style_spacing.and_then(|n| twips_attr(n, "before")),
+                        space_after: style_spacing.and_then(|n| twips_attr(n, "after")),
+                        line_spacing: style_line_spacing,
+                        based_on: wml_attr(style_node, "basedOn").map(str::to_string),
+                    },
+                );
             }
             _ => {}
         }

@@ -251,19 +251,57 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
         })
         .filter(|p| *p > 0.0);
 
-    let cell_margins = tbl_pr
-        .and_then(|pr| wml(pr, "tblCellMar"))
-        .map(|mar| CellMargins {
-            top: wml(mar, "top")
-                .and_then(|n| twips_attr(n, "w"))
-                .unwrap_or(0.0),
-            left: margin_twips(mar, "left", "start").unwrap_or(5.4),
-            bottom: wml(mar, "bottom")
-                .and_then(|n| twips_attr(n, "w"))
-                .unwrap_or(0.0),
-            right: margin_twips(mar, "right", "end").unwrap_or(5.4),
-        })
-        .unwrap_or_default();
+    let tbl_style = tbl_pr
+        .and_then(|pr| wml_attr(pr, "tblStyle"))
+        .and_then(|id| ctx.styles.table_styles.get(id));
+    // A table-style property, the nearest along the style's basedOn chain.
+    let style_chain = |f: &dyn Fn(&TableStyleDef) -> Option<f32>| -> Option<f32> {
+        let mut style = tbl_style;
+        for _ in 0..8 {
+            let s = style?;
+            if let Some(v) = f(s) {
+                return Some(v);
+            }
+            style = s
+                .based_on
+                .as_deref()
+                .and_then(|id| ctx.styles.table_styles.get(id));
+        }
+        None
+    };
+    // Each side: the table's own, then its style's (estonian_community's
+    // TableGrid zeroes them), then Word's default.
+    let own_mar = tbl_pr.and_then(|pr| wml(pr, "tblCellMar"));
+    let side = |i: usize, a: &str, b: &str, default: f32| {
+        own_mar
+            .and_then(|mar| margin_twips(mar, a, b))
+            .or_else(|| style_chain(&|s: &TableStyleDef| s.cell_margins[i]))
+            .unwrap_or(default)
+    };
+    let cell_margins = CellMargins {
+        top: side(0, "top", "top", 0.0),
+        left: side(1, "left", "start", 5.4),
+        bottom: side(2, "bottom", "bottom", 0.0),
+        right: side(3, "right", "end", 5.4),
+    };
+    let style_space_before = style_chain(&|s: &TableStyleDef| s.space_before);
+    let style_space_after = style_chain(&|s: &TableStyleDef| s.space_after);
+    let style_line_spacing = {
+        let mut style = tbl_style;
+        let mut found = None;
+        for _ in 0..8 {
+            let Some(s) = style else { break };
+            if s.line_spacing.is_some() {
+                found = s.line_spacing;
+                break;
+            }
+            style = s
+                .based_on
+                .as_deref()
+                .and_then(|id| ctx.styles.table_styles.get(id));
+        }
+        found
+    };
 
     let table_position = tbl_pr.and_then(|pr| wml(pr, "tblpPr")).map(|tblp| {
         let v_anchor = match tblp.attribute((WML_NS, "vertAnchor")) {
@@ -302,9 +340,6 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
         }
     });
 
-    let tbl_style = tbl_pr
-        .and_then(|pr| wml_attr(pr, "tblStyle"))
-        .and_then(|id| ctx.styles.table_styles.get(id));
     let tbl_style_borders = tbl_style.and_then(|s| s.base_borders.as_ref());
     let has_tbl_style = tbl_style_borders.is_some();
 
@@ -717,8 +752,9 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         .or_else(|| para_style.and_then(|s| s.alignment))
                         .unwrap_or(Alignment::Left);
                     let (sp_before, sp_after, ls) = parse_paragraph_spacing(ppr, para_style);
-                    let line_spacing =
-                        ls.or_else(|| has_tbl_style.then_some(LineSpacing::Auto(1.0)));
+                    let line_spacing = ls
+                        .or(style_line_spacing)
+                        .or_else(|| has_tbl_style.then_some(LineSpacing::Auto(1.0)));
                     let num_pr = ppr.and_then(|ppr| wml(ppr, "numPr"));
                     let style_num = para_style.and_then(|s| s.num_id.as_deref());
                     let style_ilvl = para_style.and_then(|s| s.num_ilvl);
@@ -762,8 +798,8 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                             indent_first_line = v;
                         }
                     }
-                    let space_before = sp_before.unwrap_or(0.0);
-                    let space_after = sp_after.unwrap_or(if has_tbl_style {
+                    let space_before = sp_before.or(style_space_before).unwrap_or(0.0);
+                    let space_after = sp_after.or(style_space_after).unwrap_or(if has_tbl_style {
                         0.0
                     } else {
                         ctx.styles.defaults.space_after
