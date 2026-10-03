@@ -837,6 +837,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         floating_images: parsed.floating_images,
                         textboxes: parsed.textboxes,
                         connectors: parsed.connectors,
+                        style_id: Some(para_style_id.to_string()),
                         tab_stops,
                         ..Paragraph::default()
                     }));

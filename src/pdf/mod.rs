@@ -75,6 +75,22 @@ fn sorted_by_z<'a>(
     v
 }
 
+/// The paragraph a table opens with, which contextual spacing compares a
+/// paragraph before the table against: bulgarian_road_safety's empty Normal
+/// paragraph keeps no space after above a table whose first cell is Normal.
+fn first_cell_paragraph(t: &crate::model::Table) -> Option<&Paragraph> {
+    t.rows
+        .first()?
+        .cells
+        .first()?
+        .content
+        .iter()
+        .find_map(|b| match b {
+            Block::Paragraph(p) => Some(p),
+            Block::Table(_) => None,
+        })
+}
+
 pub(super) struct RenderContext<'a> {
     pub(super) fonts: &'a HashMap<String, FontEntry>,
     pub(super) doc_line_spacing: LineSpacing,
@@ -1245,7 +1261,8 @@ fn compute_bookmark_positions(
                     };
                     let next_para = match blocks.get(bi + 1) {
                         Some(Block::Paragraph(p)) => Some(p),
-                        _ => None,
+                        Some(Block::Table(t)) => first_cell_paragraph(t),
+                        None => None,
                     };
                     let effective_sa = if drops_contextual_spacing(para, next_para) {
                         0.0
@@ -1342,7 +1359,7 @@ fn render_paragraph_block(
     let adjacent_para = |idx: usize| -> Option<&Paragraph> {
         match section_blocks.get(idx)? {
             Block::Paragraph(p) => Some(p),
-            Block::Table(_) => None,
+            Block::Table(t) => first_cell_paragraph(t),
         }
     };
 
