@@ -264,7 +264,17 @@ pub(super) fn auto_fit_columns(
                         std::borrow::Cow::Borrowed(&run.text)
                     };
                     let fs = run.font_size;
-                    for word in text.split_whitespace() {
+                    // A CJK sentence holds no spaces but may wrap after any ideograph.
+                    // Latin words stay whole: Word sizes "/api/auth/refresh" as one
+                    // unbreakable word although UAX #14 allows breaks after its slashes.
+                    let words = text.split_whitespace().flat_map(|w| {
+                        if w.chars().any(|c| c >= '\u{2E80}') {
+                            super::layout::split_preserving_spaces(w)
+                        } else {
+                            vec![(0, w)]
+                        }
+                    });
+                    for (_, word) in words {
                         let ww = if run.small_caps {
                             super::layout::smallcaps_segments(word, fs)
                                 .iter()

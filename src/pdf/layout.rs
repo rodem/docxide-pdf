@@ -162,7 +162,7 @@ fn breaks_between(a: char, b: char) -> bool {
 /// in addition to whitespace. Non-breaking spaces (U+00A0) and ideographic spaces
 /// (U+3000) are kept within words. Trailing spaces after the last word are handled
 /// separately by the caller.
-fn split_preserving_spaces(text: &str) -> Vec<(usize, &str)> {
+pub(super) fn split_preserving_spaces(text: &str) -> Vec<(usize, &str)> {
     if text.is_empty() {
         return Vec::new();
     }
