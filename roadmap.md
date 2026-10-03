@@ -245,10 +245,9 @@ probe documents; each fix is one commit on the branch.
   `in-table` paragraphs come out 0.7pt short. Word reports "unreadable content" in
   the original fixture (valid zip; re-zipped variants open fine), so its reference
   came from a Word-repaired copy
-- strategi: NOT our bug — its original file trips Word's repair prompt and the committed
-  reference shows the repaired layout; a re-zipped copy exports like our output (59.5 J vs
-  15.5). Replacing the reference awaits the user's OK. Against that clean export we
-  score 63.2 J / 92.3 SSIM after the glued-word cut and page-number fixes (2026-10-03)
+- strategi: its original file ended in 4 stray bytes (`\r\n\r\n` after the zip's end
+  record), which trips Word's repair prompt; the old reference showed the repaired layout.
+  Input and reference replaced with the stripped file and its export (2026-10-03): 63.2 J
 - radiographer: Word also splits *inside* a nested row (between its lines)
 - Word floors auto-multiple grid lines to 0.24pt steps (19.44 vs our 19.50)
 - Slash breaks: Word for Mac never breaks after `/` (probe: 138 margin crossings over 6 pair

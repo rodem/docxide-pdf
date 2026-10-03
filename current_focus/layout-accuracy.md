@@ -416,7 +416,7 @@ Regressions and what explained them:
      `TableStyleDef` (`styles.rs`, resolving basedOn, storing spacing-only
      styles) and cascade docDefaults → table style → paragraph style →
      direct. 38 table styles in the fixtures carry pPr spacing.
-  2. **Reference artifact** (§10): an empty footnote gets an extra blank line in the Normal style (page 1
+  2. **Reference artifact, fixed by replacing the reference** (§10): an empty footnote gets an extra blank line in the Normal style (page 1
      footnote area 51pt taller in Word). Seen in education_consultant_posting
      too; turkish_journal (footnotes with text) has none. Trigger understood,
      reason not. Same code: paragraphs without pStyle fall back to
@@ -564,12 +564,16 @@ closes part of §6's "cells built by hand" item (auto spacing).
 
 **Findings:**
 - **Reference artifacts.** Some fixtures trip Word's "unreadable content —
-  recover?" prompt although the zip and XML are valid; re-zipping the same
-  parts opens cleanly, so the trigger is in the container. Their references
-  show the *repaired* layout: strategi (15.5 vs ours, 59.5 vs a re-zipped
-  export, which also explains its "extra footnote line"), dutch_government
-  (17.6 vs 20.4). Re-exporting the other 11 refs of batch `e3612354`
-  reproduced them exactly. Replacing strategi's reference awaits the user.
+  recover?" prompt although the zip and XML are valid. The trigger is 4
+  stray bytes (`\r\n\r\n`, a scraper artifact) after the end-of-central-
+  directory record: stripping just them opens strategi cleanly, and its
+  export matches a re-zipped one line for line. Those references show the
+  *repaired* layout: strategi (15.5 vs ours, 59.5 vs a clean export, which
+  also explains its "extra footnote line"), dutch_government (17.6 vs 20.4).
+  Re-exporting the other 11 refs of batch `e3612354` (none with the bytes)
+  reproduced them exactly. strategi's input and reference were replaced with
+  the stripped file and its export (2026-10-03). About 115 other fixtures end
+  in the same bytes; their references may have gone through the repair too.
 - References made before the staging fix print `<stem>_<hex>.docx` in FILENAME
   fields (massachusetts' footer); `word_export.py` now keeps the file name.
 - Word for Mac never breaks after `/`; older references that do
