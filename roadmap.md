@@ -231,6 +231,9 @@ probe documents; each fix is one commit on the branch.
 - Table style `tblCellMar` + paragraph spacing (along basedOn); cell grid snapping
   only under `adjustLineHeightInTable`; vMerge continuation cells don't number
 - Row split with one line of room (14pt guard); nested tables split between rows
+- Row splits charge a cell paragraph's space after; a carried-over paragraph keeps
+  its space before (nabl +16 J). Merged cells draw borders row by row, closing at
+  a page break. VML HRs sit 2pt above the line bottom
 - Odd/even section breaks: filler page vs number bump, filler pages bare,
   per-variant header inheritance (§17.10.5) — 15 Word probes; croatian_thesis +50 J
 - Autofit minimum width breaks CJK words after each ideograph; pre-2013 tables
@@ -1077,8 +1080,8 @@ non-empty pair, so the other 14 pBdr fixtures are unchanged.
 paragraphs) constrain the text bounds together, and paragraph indents are
 measured from the column edge with float bounds clipping (Word semantics).
 `parse_object_floating_image` honors `w10:wrap type="square|tight|through|
-topAndBottom"`. Letterhead center now within ~5pt of reference. Remaining:
-HR `o:hrpct` width should use the indent-adjusted paragraph box.
+topAndBottom"`. Letterhead center now within ~5pt of reference. HR `o:hrpct`
+width now uses the indent-adjusted paragraph box (2026-10-03).
 
 ## Annotation Fixes 2026-07-03 round 2 (#121 #133 #167 #190 #219 — DONE)
 
