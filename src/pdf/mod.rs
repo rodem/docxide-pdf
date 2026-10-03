@@ -1522,7 +1522,11 @@ fn render_paragraph_block(
                         }
                     } else if let Some(FieldCode::PageRef(ref bookmark)) = run.field_code {
                         let mut r = run.clone();
-                        if let Some(&(page_idx, _)) = state.bookmark_positions.get(bookmark) {
+                        // Word prints PAGEREF's cached result unless fields are updated
+                        // before printing; only an empty result needs our estimate.
+                        if r.text.trim().is_empty()
+                            && let Some(&(page_idx, _)) = state.bookmark_positions.get(bookmark)
+                        {
                             r.text = (page_idx + 1).to_string();
                         }
                         r
