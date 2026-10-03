@@ -1,0 +1,519 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Engine comparison</title>
+<!-- The engine comparison page. tools/engine_compare.py (write_html) fills in the double-underscore placeholders
+     and writes the result to comparison/index.html. -->
+<style>
+:root { --bg:#1e1e1e; --panel:#252526; --fg:#ddd; --muted:#888; --accent:#4ea1ff; --border:#3a3a3a;
+  --line:#2e2e2e; --cell:#2a2a2a; --hover:#2c2c2c; --sel:#094771; --tint:color-mix(in srgb, var(--accent) 15%, transparent);
+  --side:280px; }
+* { box-sizing:border-box; }
+body { margin:0; font:13px/1.4 -apple-system, Helvetica, Arial, sans-serif; background:var(--bg); color:var(--fg); height:100vh;
+  display:grid; grid-template-columns:var(--side) 1fr; grid-template-rows:auto auto 1fr; grid-template-areas:"nav bar" "side legend" "side main"; }
+/* Two columns all the way down: case navigation and the case list on the left; view controls, the legend and
+   the pages on the right. The scores table spans both columns, its sticky first column standing where the list was. */
+body.table { grid-template-areas:"nav bar" "corner legend" "main main"; }
+body.table #side { display:none; }
+body.table #corner { display:block; }
+body.table #main { padding:0; }
+#nav { grid-area:nav; border-right:1px solid var(--border); gap:4px; padding:6px 8px; }
+#nav button { padding:2px 6px; }   /* the navigation fits the side column on one line */
+#bar { grid-area:bar; } #legend { grid-area:legend; } #side { grid-area:side; } #main { grid-area:main; }
+#corner { grid-area:corner; display:none; background:var(--panel); border-right:1px solid var(--border); border-bottom:1px solid var(--border); }
+button, select, input:not([type=checkbox], [type=range]) { background:#333; color:var(--fg); border:1px solid #555; border-radius:3px; font:inherit; }
+button { cursor:pointer; }
+button:hover { background:#444; }
+kbd { background:#333; border:1px solid #555; border-radius:3px; padding:0 4px; font-size:11px; color:var(--muted); }
+.ver { color:var(--muted); font-weight:400; font-size:11px; }
+.hidden { display:none !important; }
+/* Sortable headers: a click sorts the case list and the scores table by that key. */
+[data-k] { cursor:pointer; user-select:none; }
+.sorted { color:var(--fg); }
+.sorted::after { content:' ▲'; }
+.sorted.desc::after { content:' ▼'; }
+
+.bar { display:flex; gap:14px; align-items:center; align-content:flex-start; flex-wrap:wrap; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--border); }
+.bar .grp { display:inline-flex; gap:8px; align-items:center; padding-right:14px; border-right:1px solid var(--border); }
+.grp label { display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none; }
+.bar button, .bar select { padding:2px 8px; }
+#navPos { color:var(--muted); font-size:11px; text-align:center; font-variant-numeric:tabular-nums; }
+
+#legend { padding:3px 10px; font-size:11px; line-height:1.5; color:var(--muted); background:var(--panel); border-bottom:1px solid var(--border); }
+#legend b { color:var(--fg); }
+#legend summary { cursor:pointer; user-select:none; }
+#legend .items { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0, 1fr); gap:6px; margin:4px 0 5px; }
+#legend .item { border:1px solid var(--border); border-radius:6px; background:var(--cell); color:inherit; line-height:inherit; text-align:left; padding:4px 9px; user-select:none; }
+#legend .item:hover { border-color:#555; background:var(--cell); }
+#legend .item[aria-pressed=false] { opacity:.45; }   /* its column is hidden in the scores table */
+
+/* The filters float under their button, out of the flow, so opening them moves nothing. */
+#filterAnchor { position:relative; display:inline-flex; }
+#filters { position:absolute; top:calc(100% + 4px); left:0; z-index:20; width:300px; background:var(--panel); border:1px solid #555; border-radius:6px; box-shadow:0 8px 24px #000a; overflow:hidden; }
+#filterBtn.on { border-color:var(--accent); color:var(--accent); }
+#filter { width:100%; padding:6px 8px; border:0; border-bottom:1px solid var(--border); border-radius:0; }
+#fx { display:grid; grid-template-columns:auto minmax(0, 1fr); gap:4px 8px; padding:6px 8px; font-size:12px; align-items:center; }
+#fx > label { color:var(--muted); }
+#fx select, #fx input, #fx button { padding:1px 4px; min-width:0; }
+#fx input[type=number] { width:4.5em; }
+#fx .row { display:flex; gap:4px; align-items:center; }
+#fx .foot { grid-column:1/3; display:flex; align-items:center; }
+#fxn { color:var(--muted); margin-right:auto; }
+
+/* A case's name and group, in the list and in the table's first column. */
+.ci { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:0 8px; align-items:baseline; }
+.ci .name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ci .grp { color:var(--muted); font-size:11px; font-weight:400; }
+#side { overflow:auto; background:var(--panel); border-right:1px solid var(--border); }
+#sidehead { position:sticky; top:0; z-index:1; background:var(--panel); border-bottom:1px solid var(--border); }
+#lhCols { display:flex; align-items:center; gap:8px; height:24px; padding:0 8px; font-size:12px; font-weight:600; color:var(--muted); }
+#lhCols [data-k="group"] { margin-left:auto; }
+#lhSort { font-weight:400; font-size:11px; }
+#side .case { padding:4px 8px; cursor:pointer; border-bottom:1px solid var(--line); }
+#side .case:hover { background:var(--hover); }
+#side .case.sel { background:var(--sel); }
+
+#main { overflow:auto; padding:10px; }
+#grid { display:grid; gap:4px 10px; align-items:start; }
+.col { min-width:0; }
+.colhead { margin:0; min-width:0; font-size:12px; font-weight:600; color:var(--muted); position:sticky; top:0; background:var(--bg); padding:2px 0; z-index:1; }
+.colhead b { color:var(--fg); }
+.page { margin-bottom:8px; }
+.page img { width:100%; display:block; background:#fff; box-shadow:0 0 0 1px #000; }
+.missing { width:100%; aspect-ratio:8.5/11; display:flex; align-items:center; justify-content:center; color:var(--muted); background:var(--cell); border:1px dashed #444; }
+#overlay > div { position:relative; margin-bottom:8px; }
+#overlay img { width:100%; display:block; }
+#overlay img.top { position:absolute; inset:0; }
+#more { display:block; margin:4px 0 24px; padding:8px 18px; border-radius:4px; }
+
+/* Separate borders: collapsed ones stay behind when a sticky cell moves. */
+#scores table { border-collapse:separate; border-spacing:0; font-size:12px; white-space:nowrap; }
+#scores th, #scores td { padding:3px 9px; border-bottom:1px solid var(--line); text-align:left; }
+#scores th { color:var(--muted); font-weight:600; background:var(--panel); }
+/* The header stays on top and the case column on the left. Row states set --row-bg, which the sticky case cell
+   paints too (it has to paint its own background to cover what scrolls under it). */
+#scores thead { position:sticky; top:0; z-index:2; }
+#scores .case { position:sticky; left:0; z-index:1; width:var(--side); min-width:var(--side); max-width:var(--side); background:var(--row-bg, var(--panel)); border-right:1px solid var(--border); }
+#scores td.case { padding:4px 8px; }
+#scores th.eng { text-align:center; border-left:1px solid var(--border); }
+#scores th.count { font-weight:400; font-size:11px; }
+#scores .num { text-align:right; font-variant-numeric:tabular-nums; }
+#scores .first { border-left:1px solid var(--border); }
+#scores td.best { color:#7ee787; }
+#scores tr.mean { --row-bg:var(--cell); }
+#scores tr.mean td { color:var(--fg); font-weight:600; background:var(--row-bg); }
+#scores tbody tr { cursor:pointer; background:var(--row-bg); }
+#scores tbody tr:hover { --row-bg:var(--hover); }
+#scores tbody tr.sel { --row-bg:var(--sel); }
+/* Metric cells: a clipping box (.cv) around the padded label. A hidden metric shuts the box to zero width and
+   curtain() animates that width; while it runs, the label keeps its full width centred in the narrowing box, so
+   it is cut away evenly from both sides. */
+#scores .mc { padding-left:0; padding-right:0; }
+#scores .cv { overflow:hidden; }
+#scores .cv > span { display:inline-block; padding:0 9px; }
+#scores .cv.cur { display:flex; justify-content:center; }
+#scores .cv.cur > span { flex:none; width:var(--cw); }
+</style>
+<div id="nav" class="bar"><span id="filterAnchor"><button id="filterBtn" title="filter the cases (f)" aria-controls="filters" aria-expanded="false">filter</button>
+<div id="filters" class="hidden" role="dialog" aria-label="filter the cases"><input id="filter" placeholder="filter cases (name, group)…"><div id="fx">
+  <label for="fxGroup">group</label><select id="fxGroup"><option value="">all</option></select>
+  <label for="fxPages">pages</label><select id="fxPages"><option value="">any</option><option value="1-1">1</option><option value="2-3">2–3</option><option value="4-10">4–10</option><option value="11-1e9">11+</option></select>
+  <label for="fxEng">engine</label><select id="fxEng"></select>
+  <label for="fxMetric">score</label><span class="row"><select id="fxMetric"></select> ≤ <input type="number" id="fxMax" min="0" max="100" placeholder="any"></span>
+  <span></span><label class="row"><input type="checkbox" id="fxDiffer"> page count differs from Word</label>
+  <span class="foot"><span id="fxn"></span><button id="fxClear">clear filters</button></span>
+</div></div></span><button id="prev" title="previous case (&uarr;)">&lsaquo; prev</button><button id="rand" title="random case (r)">random</button><button id="next" title="next case (&darr;)">next &rsaquo;</button><span id="navPos"></span></div>
+<div id="bar" class="bar">
+  <span class="grp" id="engines"></span>
+  <span class="grp">
+    <span id="pageinfo"></span>
+  </span>
+  <span class="grp"><label>zoom <input type="range" id="zoom" min="200" max="1400" value="600" step="20"></label></span>
+  <span class="grp">
+    <label><input type="checkbox" id="ovl"> overlay</label>
+    <select id="ovlA"></select> under <select id="ovlB"></select>
+    <select id="blend"><option value="normal">opacity</option><option value="difference">difference</option><option value="multiply">multiply</option></select>
+    <input type="range" id="alpha" min="0" max="100" value="50">
+  </span>
+  <span class="grp"><button id="viewToggle">Scores table</button></span>
+  <span style="color:var(--muted)"><kbd>1</kbd>-<kbd>__NENGINES__</kbd> engines &nbsp;<kbd>&uarr;</kbd><kbd>&darr;</kbd> cases &nbsp;<kbd>r</kbd> random &nbsp;<kbd>f</kbd> filter &nbsp;<kbd>o</kbd> overlay &nbsp;<kbd>m</kbd> more pages &nbsp;<kbd>t</kbd> scores table</span>
+</div>
+<details id="legend"></details>
+<div id="corner"></div>
+<div id="side"><div id="sidehead"><div id="lhCols"><span data-k="case">case</span><span id="lhSort" title="the list follows the scores table's sort; click case or group to change it"></span><span data-k="group">group</span></div></div><div id="list"></div></div>
+<div id="main"><div id="grid"></div><div id="overlay" class="hidden"></div><button id="more" class="hidden">more pages</button><div id="scores" class="hidden"></div></div>
+<script>
+const DATA = __DATA__;
+const ENGINES = __ENGINES__;
+const METRICS = __METRICS__;
+const VERSIONS = __VERSIONS__;
+const TABLE_COLS = [...METRICS, 'a11y', 'time'];
+const METRIC_LABEL = { jaccard: 'J', ssim: 'SSIM', text_boundary: 'TB', a11y: 'a11y', time: 's' };
+const A11Y = ['ua_fail', 'ua_deficit', 'a11y_struct', 'a11y_text'];
+const METRIC_INFO = {
+  a11y: 'Accessibility, scored as tests/accessibility.rs does, comma separated: PDF/UA-1 rules failed (veraPDF) · rules failed worse than Word (0 = as good as Word; the table sorts on this) · structure-tree tag sequence vs Word · block text in structure order vs Word. – = untagged Word reference, nothing to compare with.',
+  time: 'Conversion time: wall-clock seconds for one DOCX→PDF run of the engine CLI (LibreOffice includes process start-up). Conversions run in parallel (--jobs), so compare engines against each other rather than reading absolute numbers.',
+  jaccard: 'Jaccard on ink pixels: both pages rendered at 150 DPI, a pixel is ink when its luma is below 200, score = ink in both ÷ ink in either. Exact placement matters: a one-line vertical shift sends it toward zero.',
+  ssim: 'Structural similarity on 8×8 luma windows, each window allowed to search ±8 px vertically for its best match, so small vertical drift is forgiven. Only windows that contain ink count. Measures shape and texture rather than exact position.',
+  text_boundary: 'Text boundary: share of text lines (mutool extraction) whose first and last word match the reference line at the same position. Pages whose line counts differ by more than 15% are skipped. Measures line breaking and pagination, independent of fonts and pixels.',
+};
+const PAGE_STEP = 10;
+const FX_NONE = { text: '', group: '', pages: '', max: '', differ: false };   // every filter off
+const $ = s => document.querySelector(s);
+const store = k => { try { return JSON.parse(localStorage.getItem('ec.'+k)); } catch { return null; } };
+const save = (k,v) => { try { localStorage.setItem('ec.'+k, JSON.stringify(v)); } catch {} };
+
+let state = Object.assign({ on: {},
+  shown: PAGE_STEP, zoom: 600, ovl: false, ovlA: 'reference', ovlB: 'generated', blend: 'normal', alpha: 50, sel: 0,
+  view: 'viewer', sort: { key: 'case', dir: 1 }, legend: false, offCols: [],
+  fx: { ...FX_NONE, eng: 'generated', metric: METRICS[0] } },
+  store('state') || {});
+// A state saved by an earlier version of the page, or against other data, is brought up to date once here.
+(() => {
+  // Engines added after a viewer state was saved default to visible.
+  for (const [k] of ENGINES) state.on[k] ??= true;
+  state.fx = { ...FX_NONE, eng: 'generated', metric: METRICS[0], ...state.fx };
+  if (typeof state.filter === 'string') { state.fx.text ||= state.filter; delete state.filter; }   // it lived outside fx
+  if (!state.sort?.key) state.sort = { key: 'case', dir: 1 };
+  state.offCols ??= [];
+  const engines = ENGINES.filter(([k]) => k !== 'reference');
+  if (!engines.some(([k]) => k === state.fx.eng)) state.fx.eng = engines[0][0];
+  if (!METRICS.includes(state.fx.metric)) state.fx.metric = METRICS[0];
+})();
+
+// Deep links: #scores opens the table, #<group>/<case> opens that case in the viewer.
+function applyHash() {
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (h === 'scores') { state.view = 'scores'; return true; }
+  const i = DATA.findIndex(c => c.group + '/' + c.case === h);
+  if (i >= 0) { select(i); state.view = 'viewer'; return true; }
+  return false;
+}
+applyHash();
+window.onhashchange = () => { if (applyHash()) { render(); $('#main').scrollTop = history.state?.top ?? 0; } };
+
+// engine toggles
+ENGINES.forEach(([key,label],i) => {
+  const l = document.createElement('label');
+  // The version shows in each column header; here it is a tooltip so the bar stays one line.
+  l.innerHTML = `<input type="checkbox" data-e="${key}"> ${label} <kbd>${i+1}</kbd>`;
+  l.title = VERSIONS[key] || '';
+  $('#engines').appendChild(l);
+  for (const s of ['#ovlA', '#ovlB']) $(s).add(new Option(label, key));
+});
+document.querySelectorAll('#engines input').forEach(cb => cb.onchange = () => { state.on[cb.dataset.e] = cb.checked; render(); });
+
+const pagesOf = (c, k) => c.pages[k] || [];
+const pageCount = (c, k) => pagesOf(c, k).length;
+function visibleCases() {
+  const f = state.fx.text.toLowerCase();
+  return DATA.map((c,i) => [c,i]).filter(([c]) => (!f || (c.case + ' ' + c.group).toLowerCase().includes(f)) && passesFx(c));
+}
+function passesFx(c) {
+  const fx = state.fx;
+  if (fx.group && c.group !== fx.group) return false;
+  if (fx.pages) {
+    const [lo, hi] = fx.pages.split('-').map(Number), n = pageCount(c, 'reference');
+    if (n < lo || n > hi) return false;
+  }
+  if (fx.max !== '') {
+    const v = c.scores[fx.eng]?.[fx.metric];
+    if (v == null || v > +fx.max) return false;
+  }
+  return !fx.differ || pageCount(c, fx.eng) !== pageCount(c, 'reference');
+}
+// One sort for the case list and the scores table, so both show the same cases in the same order. Keys are
+// 'case' (manifest order), 'group' (the manifest's group order), 'pages' (Word's) or '<engine>:<metric>';
+// a hidden column sorts by case.
+const colOn = m => !state.offCols.includes(m);
+const GROUP_RANK = new Map([...new Set(DATA.map(c => c.group))].map((g, i) => [g, i]));
+function activeSort() {
+  const [k, m] = state.sort.key.split(':');
+  return m && !(state.on[k] && colOn(m)) ? { key: 'case', dir: 1 } : state.sort;
+}
+function orderedCases() {
+  const { key: k, dir } = activeSort(), [e, m] = k.split(':');
+  const get = k === 'case' ? (c, i) => i : k === 'group' ? c => GROUP_RANK.get(c.group)
+    : k === 'pages' ? c => pageCount(c, 'reference') : c => key(c, e, m);
+  return visibleCases().sort(([a, i], [b, j]) => {
+    const x = get(a, i), y = get(b, j);
+    if (x == null) return y == null ? 0 : 1; if (y == null) return -1;   // missing scores last either way
+    return dir * (x - y);
+  });
+}
+function sortBy(k) {
+  const cur = activeSort();
+  state.sort = { key: k, dir: k === cur.key ? -cur.dir : (k.includes(':') ? -1 : 1) }; render();
+}
+// The class that marks the sort key's header; the arrow comes from CSS.
+function sortCls(k) { const s = activeSort(); return k !== s.key ? '' : s.dir > 0 ? 'sorted' : 'sorted desc'; }
+function sortLabel(k) {
+  if (!k.includes(':')) return k === 'pages' ? 'Word pages' : '';
+  const [e, m] = k.split(':'); return `${ENGINES.find(x => x[0] === e)?.[1] ?? e} ${METRIC_LABEL[m]}`;
+}
+function select(i) { state.sel = i; state.shown = PAGE_STEP; }
+// Prev/next walk the filtered, sorted list and wrap at both ends.
+function step(d) {
+  const vis = orderedCases().map(([, i]) => i); if (!vis.length) return;
+  const at = vis.indexOf(state.sel);
+  select(at < 0 ? vis[0] : vis[(at + d + vis.length) % vis.length]);
+}
+function pickRandom() {
+  const vis = visibleCases(); if (vis.length) select(vis[Math.floor(Math.random() * vis.length)][1]);
+}
+// The sticky header covers the top of the list, so centre the selection rather than scroll it to the nearest edge.
+function showSel() { document.querySelector(state.view === 'scores' ? '#scores tbody .sel' : '#side .sel')?.scrollIntoView({ block: 'center' }); }
+function openCase(i) { select(i); state.view = 'viewer'; render(); }
+function fxChanged() {
+  const vis = visibleCases();
+  if (vis.length && !vis.some(([, i]) => i === state.sel)) select(vis[0][1]);
+  render(); showSel();
+}
+function setupFx() {
+  const fx = state.fx;
+  for (const g of GROUP_RANK.keys()) $('#fxGroup').add(new Option(g, g));
+  for (const [k, label] of ENGINES.filter(([k]) => k !== 'reference')) $('#fxEng').add(new Option(label, k));
+  for (const m of METRICS) $('#fxMetric').add(new Option(METRIC_LABEL[m], m));
+  // Filters saved on an earlier visit may match nothing in today's data; start unfiltered instead of on an empty list.
+  if (!visibleCases().length) Object.assign(fx, FX_NONE);
+  const inputs = { text: '#filter', group: '#fxGroup', pages: '#fxPages', eng: '#fxEng', metric: '#fxMetric', max: '#fxMax', differ: '#fxDiffer' };
+  const prop = k => k === 'differ' ? 'checked' : 'value';
+  const show = () => { for (const [k, s] of Object.entries(inputs)) $(s)[prop(k)] = fx[k]; };
+  for (const [k, s] of Object.entries(inputs)) $(s).oninput = e => { fx[k] = e.target[prop(k)]; fxChanged(); };
+  $('#fxClear').onclick = () => { Object.assign(fx, FX_NONE); show(); fxChanged(); };
+  show();
+}
+function fmt(v) { return v == null ? '–' : v.toFixed(1) + '%'; }
+function fmtA11y(a) { return a ? A11Y.map(k => a[k] == null ? '–' : k.startsWith('a11y_') ? fmt(a[k]) : +a[k].toFixed(1)).join(', ') : '–'; }
+function fmtM(m, v) { return m === 'time' ? (v == null ? '–' : v.toFixed(2) + ' s') : m === 'a11y' ? fmtA11y(v) : fmt(v); }
+function val(c, k, m) { return (m === 'time' ? c.times?.[k] : c.scores[k]?.[m]) ?? null; }
+// Sort and best-engine value: the a11y cell holds four numbers, ranked by its UA deficit.
+function key(c, k, m) { return m === 'a11y' ? c.scores[k]?.a11y?.ua_deficit ?? null : val(c, k, m); }
+const caseLabel = c => `<span class="name" title="${c.case}">${c.case}</span><span class="grp">${c.group}</span>`;
+
+// The case list, its counts and its sort header. In the table its rows are the table's first column instead.
+function renderList(vis) {
+  if (state.view !== 'scores')
+    $('#list').innerHTML = vis.map(([c, i]) => `<div class="case ci${i === state.sel ? ' sel' : ''}" data-i="${i}">${caseLabel(c)}</div>`).join('');
+  const at = vis.findIndex(([, i]) => i === state.sel);
+  $('#navPos').textContent = `${at < 0 ? '–' : at + 1} / ${vis.length}`;
+  $('#fxn').textContent = `${vis.length} of ${DATA.length} cases`;
+  const active = Object.keys(FX_NONE).filter(k => state.fx[k] !== FX_NONE[k]).length;
+  // Colour, not a count, marks active filters: the label keeps its width so the navigation stays on one line.
+  $('#filterBtn').classList.toggle('on', active > 0);
+  $('#filterBtn').title = `filter the cases (f)${active ? ` · ${active} filter${active > 1 ? 's' : ''} on, ${vis.length} of ${DATA.length} cases shown` : ''}`;
+  const { key: sk, dir } = activeSort();
+  document.querySelectorAll('#lhCols [data-k]').forEach(s => s.className = sortCls(s.dataset.k));
+  $('#lhSort').textContent = sortLabel(sk) ? `by ${sortLabel(sk)} ${dir > 0 ? '▲' : '▼'}` : '';
+}
+
+function renderScores(vis) {
+  // The engine checkboxes govern the table too: hidden engines lose their columns, the mean row and the
+  // green "best" marks are computed over the engines shown.
+  const engines = ENGINES.filter(([k]) => k !== 'reference' && state.on[k]);
+  // The legend tiles hide and show metrics. A hidden metric's columns stay in the table, shut to zero width by
+  // an off-<metric> class, so a tile can open or close them in place (curtain()); with every metric hidden
+  // there is nothing to shut, and the engine blocks go.
+  const metrics = TABLE_COLS.filter(colOn).length ? TABLE_COLS : [];
+  // After the case and Word's page count, one column per engine×metric. Each carries a stable key so the sort
+  // survives columns being hidden, its class (a rule before each engine's block; the metric's class, which a
+  // hovered legend tile lights up), and the curtain's clipping box around its label.
+  const cols = engines.flatMap(([k]) => metrics.map(m => ({ k, m, key: `${k}:${m}`, cls: `num mc m-${m}${m === metrics[0] ? ' first' : ''}` })));
+  const cv = (inner, cls = '') => `<div class="cv"><span class="${cls}">${inner}</span></div>`;
+  const rows = vis.map(([c, i]) => ({ c, i }));
+  const avg = xs => { const v = xs.filter(x => typeof x === 'number'); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const mean = cl => cl.m === 'a11y' ? Object.fromEntries(A11Y.map(a => [a, avg(rows.map(r => val(r.c, cl.k, 'a11y')?.[a]))])) : avg(rows.map(r => key(r.c, cl.k, cl.m)));
+  const hint = 'click a column to sort, a row to open it · green = best engine for that column (highest score, lowest time and a11y deficit)';
+
+  let html = `<table class="${TABLE_COLS.filter(m => !colOn(m)).map(m => `off-${m}`).join(' ')}"><thead>` +
+    `<tr><th class="case count">${rows.length} cases${engines.length ? '' : ' · no engine selected'}</th><th></th>` +
+    (metrics.length ? engines.map(([k, label]) => `<th class="eng" colspan="${metrics.length}">${label}${VERSIONS[k] ? ` <span class="ver">${VERSIONS[k]}</span>` : ''}</th>`).join('') : '') + '</tr>';
+  html += `<tr><th class="case"><div class="ci" title="${hint}"><span data-k="case" class="${sortCls('case')}">case</span><span data-k="group" class="${sortCls('group')}">group</span></div></th>` +
+    `<th data-k="pages" class="num ${sortCls('pages')}">pages</th>` +
+    cols.map(cl => `<th data-k="${cl.key}" class="${cl.cls}">${cv(`<span title="${METRIC_INFO[cl.m]}">${METRIC_LABEL[cl.m]}</span>`, sortCls(cl.key))}</th>`).join('') + '</tr>';
+  html += '<tr class="mean"><td class="case">mean</td><td></td>' + cols.map(cl => `<td class="${cl.cls}">${cv(fmtM(cl.m, mean(cl)))}</td>`).join('') + '</tr></thead><tbody>';
+  for (const r of rows) {
+    // Highest score (lowest time) per column across the engines shown; ties all count as best.
+    const best = {};
+    for (const m of metrics) { const v = engines.map(([k]) => key(r.c, k, m)).filter(x => x != null); best[m] = m === 'time' || m === 'a11y' ? Math.min(...v) : Math.max(...v); }
+    html += `<tr data-i="${r.i}"${r.i === state.sel ? ' class="sel"' : ''}><td class="case"><div class="ci">${caseLabel(r.c)}</div></td><td class="num">${pageCount(r.c, 'reference')}</td>` +
+      cols.map(cl => { const v = key(r.c, cl.k, cl.m);
+        return `<td class="${cl.cls}${v != null && v === best[cl.m] ? ' best' : ''}">${cv(fmtM(cl.m, val(r.c, cl.k, cl.m)))}</td>`; }).join('') + '</tr>';
+  }
+  $('#scores').innerHTML = html + '</tbody></table>';
+}
+// One listener per container rather than one per row and header, as both are rebuilt on every render.
+$('#list').onclick = e => { const row = e.target.closest('[data-i]'); if (row) openCase(+row.dataset.i); };
+$('#lhCols').onclick = e => { const h = e.target.closest('[data-k]'); if (h) sortBy(h.dataset.k); };
+$('#scores').onclick = e => {
+  const h = e.target.closest('[data-k]'), row = e.target.closest('tbody tr');
+  if (h) sortBy(h.dataset.k); else if (row) { openCase(+row.dataset.i); showSel(); }
+};
+
+const filtersOpen = () => !$('#filters').classList.contains('hidden');
+function showFilters(open = !filtersOpen()) {
+  $('#filters').classList.toggle('hidden', !open);
+  $('#filterBtn').setAttribute('aria-expanded', open);
+  if (open) $('#filter').focus();
+}
+$('#filterBtn').onclick = () => showFilters();
+// A click anywhere else closes the panel, like a menu.
+document.addEventListener('mousedown', e => { if (filtersOpen() && !e.target.closest('#filters, #filterBtn')) showFilters(false); });
+
+// What the zoom, opacity and blend controls change, applied without rebuilding the pages.
+function applyLook() {
+  $('#grid').style.gridTemplateColumns = `repeat(${ENGINES.filter(([k]) => state.on[k]).length}, ${state.zoom}px)`;
+  $('#overlay').style.width = state.zoom + 'px';
+  for (const img of document.querySelectorAll('#overlay img.top')) Object.assign(img.style, { opacity: state.alpha / 100, mixBlendMode: state.blend });
+}
+
+function render() {
+  save('state', state);
+  document.querySelectorAll('#engines input').forEach(cb => cb.checked = !!state.on[cb.dataset.e]);
+  $('#zoom').value = state.zoom; $('#ovl').checked = state.ovl;
+  $('#ovlA').value = state.ovlA; $('#ovlB').value = state.ovlB; $('#blend').value = state.blend; $('#alpha').value = state.alpha;
+  markTiles();
+  const table = state.view === 'scores', vis = orderedCases();
+  renderList(vis);
+  const c = DATA[state.sel]; if (!c) return;
+  document.body.classList.toggle('table', table);
+  $('#viewToggle').textContent = table ? 'Viewer' : 'Scores table';
+  // Switching between the table and the pages is a navigation, so Back returns to the
+  // other view where it was scrolled; moving between cases only rewrites the URL.
+  const hash = '#' + (table ? 'scores' : c.group + '/' + c.case);
+  if (location.hash && (location.hash === '#scores') !== table) {
+    history.replaceState({ top: $('#main').scrollTop }, '');
+    history.pushState(null, '', hash);
+    $('#main').scrollTop = 0;
+  } else if (location.hash !== hash) {
+    history.replaceState(history.state, '', hash);
+  }
+  $('#scores').classList.toggle('hidden', !table);
+  if (table) {
+    for (const id of ['#grid', '#overlay', '#more']) $(id).classList.add('hidden');
+    $('#pageinfo').textContent = '';
+    renderScores(vis);
+    return;
+  }
+  const maxPages = Math.max(1, ...Object.values(c.pages).map(p => p.length));
+  state.shown = Math.min(Math.max(PAGE_STEP, state.shown), maxPages);
+  const pageIdx = [...Array(state.shown).keys()];
+  const left = maxPages - state.shown;
+  $('#pageinfo').textContent = `pages 1–${state.shown} of ${maxPages}`;
+  $('#more').classList.toggle('hidden', left <= 0);
+  $('#more').textContent = `more pages (${left} left)`;
+
+  const grid = $('#grid'), ov = $('#overlay');
+  grid.classList.toggle('hidden', state.ovl); ov.classList.toggle('hidden', !state.ovl);
+  if (state.ovl) {
+    ov.innerHTML = pageIdx.map(p => {
+      const a = pagesOf(c, state.ovlA)[p], b = pagesOf(c, state.ovlB)[p];
+      return `<div>${a ? `<img src="${a}">` : '<div class="missing">no page</div>'}${b ? `<img class="top" src="${b}">` : ''}</div>`;
+    }).join('');
+    applyLook();
+    return;
+  }
+  grid.innerHTML = '';
+  // Headers occupy their own grid row so a header that wraps to two lines in one column
+  // does not push that column's pages down relative to the others.
+  const cols = [];
+  for (const [key,label] of ENGINES.filter(([k]) => state.on[k])) {
+    const s = c.scores[key] || {}, n = pageCount(c, key);
+    const sc = [...METRICS, 'a11y'].filter(m => s[m] != null).map(m => ` · <span title="${METRIC_INFO[m]}">${METRIC_LABEL[m]} ${fmtM(m, s[m])}</span>`).join('');
+    // Reference PDFs printed via macOS (Producer "Quartz PDFContext") differ from Word's own export; flag them.
+    const odd = key === 'reference' && c.reference_app && c.reference_app !== 'Microsoft Word' ? ` (${c.reference_app})` : '';
+    const ver = (VERSIONS[key] || '') + odd;
+    const h = document.createElement('h3'); h.className = 'colhead';
+    h.innerHTML = `<b>${label}</b>${ver ? ` <span class="ver">${ver}</span>` : ''} · ${n} p${sc}`;
+    grid.appendChild(h);
+    const col = document.createElement('div'); col.className = 'col';
+    col.innerHTML = pageIdx.map(p => { const src = pagesOf(c, key)[p];
+      return `<div class="page">${src ? `<img src="${src}" loading="lazy">` : `<div class="missing">no page ${p+1}</div>`}</div>`; }).join('');
+    cols.push(col);
+  }
+  cols.forEach(col => grid.appendChild(col));
+  applyLook();
+}
+
+$('#more').onclick = () => { state.shown += PAGE_STEP; render(); };
+$('#viewToggle').onclick = () => { state.view = state.view === 'scores' ? 'viewer' : 'scores'; render(); showSel(); };
+$('#zoom').oninput = e => { state.zoom = +e.target.value; applyLook(); };
+$('#alpha').oninput = e => { state.alpha = +e.target.value; applyLook(); };
+$('#blend').onchange = e => { state.blend = e.target.value; applyLook(); save('state', state); };
+for (const s of ['#zoom', '#alpha']) $(s).onchange = () => save('state', state);   // saved once the drag ends
+$('#ovl').onchange = e => { state.ovl = e.target.checked; render(); };
+$('#ovlA').onchange = e => { state.ovlA = e.target.value; render(); };
+$('#ovlB').onchange = e => { state.ovlB = e.target.value; render(); };
+$('#prev').onclick = () => { step(-1); render(); showSel(); };
+$('#next').onclick = () => { step(1); render(); showSel(); };
+$('#rand').onclick = () => { pickRandom(); render(); showSel(); };
+
+$('#legend').innerHTML = '<summary><b>Metrics</b> · all scores are against the Word reference, averaged over the pages both PDFs have; extra pages are ignored.</summary><div class="items">' +
+  TABLE_COLS.map(m => `<button class="item" data-m="${m}" title="click to hide or show the ${METRIC_LABEL[m]} columns in the scores table"><b>${METRIC_LABEL[m]}</b> ${METRIC_INFO[m]}</button>`).join('') + '</div>';
+$('#legend').open = state.legend;
+$('#legend').ontoggle = () => { state.legend = $('#legend').open; save('state', state); };
+function markTiles() { document.querySelectorAll('#legend .item').forEach(t => t.setAttribute('aria-pressed', colOn(t.dataset.m))); }
+// Each tile toggles its metric's columns in the scores table; a dimmed tile is a hidden column. In the table the
+// columns draw open or shut like curtains, in place, and a render then settles the rest (while its column is
+// hidden the sort falls back to case order). With no columns to animate the render comes straight away.
+function toggleCol(m) {
+  const hide = colOn(m), table = $('#scores table');
+  state.offCols = hide ? [...state.offCols, m] : state.offCols.filter(x => x !== m);
+  markTiles();
+  if (state.view !== 'scores' || !table?.querySelector(`.m-${m}`)) render();
+  else curtain(table, m, !hide, render);
+}
+const CURTAIN_MS = 320;
+function curtain(table, m, open, done) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { done(); return; }
+  const all = [...table.querySelectorAll(`.m-${m}`)];
+  // Each column opens to its widest label (measurable while shut), or shuts from the width it has.
+  const width = new Map();
+  for (const td of all) {
+    const w = td.querySelector(open ? '.cv > span' : '.cv').getBoundingClientRect().width;
+    width.set(td.cellIndex, Math.max(w, width.get(td.cellIndex) ?? 0));
+  }
+  // Only the header and the rows on screen animate. The off class shuts every other cell for the whole run;
+  // a shut cell adds nothing to its column's width, so the animated cells alone size the column.
+  const view = $('#main').getBoundingClientRect();
+  const cells = all.filter(td => {
+    if (td.closest('thead')) return true;
+    const r = td.getBoundingClientRect();
+    return r.bottom > view.top && r.top < view.bottom;
+  });
+  table.classList.add(`off-${m}`);
+  const opts = { duration: CURTAIN_MS, easing: 'cubic-bezier(.4, 0, .2, 1)', fill: 'forwards' };
+  const anims = cells.map(td => {
+    const w = width.get(td.cellIndex), cv = td.querySelector('.cv'), shut = [{ width: w + 'px' }, { width: '0px' }];
+    cv.classList.add('cur'); cv.style.setProperty('--cw', w + 'px');
+    return cv.animate(open ? shut.reverse() : shut, opts);
+  });
+  // The render after it rebuilds the table, which clears the animation state.
+  Promise.all(anims.map(a => a.finished)).then(done, () => {});
+}
+document.querySelectorAll('#legend .item').forEach(t => {
+  t.onclick = () => toggleCol(t.dataset.m);
+  // Hovering or focusing a tile tints its metric's columns in the table.
+  t.onmouseenter = t.onfocus = () => { $('#scores').dataset.hl = t.dataset.m; };
+  t.onmouseleave = t.onblur = () => { delete $('#scores').dataset.hl; };
+});
+// The tint is a background-image layer, so it lies over each cell's own background colour (sticky header, mean
+// row, hovered or selected row) without replacing it. Not an inset box-shadow: Firefox repaints hundreds of
+// large shadows on every frame while the pointer moves, and the highlight and cursor flicker.
+document.head.insertAdjacentHTML('beforeend', '<style>' +
+  TABLE_COLS.map(m => `#scores[data-hl="${m}"] .m-${m}`).join(', ') + ' { background-image:linear-gradient(var(--tint), var(--tint)); }\n' +
+  // a hidden metric's columns: shut to zero width (the block rule on the first metric stays)
+  TABLE_COLS.map(m => `#scores table.off-${m} .m-${m} > .cv`).join(', ') + ' { width:0; }</style>');
+setupFx();
+// Each shortcut presses its control, so a key does exactly what the button or checkbox does.
+const KEYS = { ArrowDown: '#next', ArrowUp: '#prev', r: '#rand', f: '#filterBtn', o: '#ovl', m: '#more', t: '#viewToggle' };
+document.onkeydown = e => {
+  if (e.key === 'Escape' && filtersOpen()) { showFilters(false); $('#filterBtn').focus(); return; }
+  if (e.target.tagName === 'SELECT' || ['text', 'number'].includes(e.target.type)) return;
+  // Browser shortcuts are not ours: Cmd+R would pick a random case just before the reload.
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const control = KEYS[e.key] ? $(KEYS[e.key]) : /^[1-9]$/.test(e.key) ? document.querySelectorAll('#engines input')[e.key - 1] : null;
+  if (control) { e.preventDefault(); control.click(); }
+};
+render();
+showSel();
+</script>
