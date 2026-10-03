@@ -102,7 +102,13 @@ pub(super) fn parse_txbx_content_paragraphs<R: Read + std::io::Seek>(
         .children()
         .filter(|n| n.has_tag_name((WML_NS, "p")))
     {
-        paragraphs.push(super::paragraph::build_paragraph(p, ctx, &mut lists, &opts));
+        let mut para = super::paragraph::build_paragraph(p, ctx, &mut lists, &opts);
+        // Auto spacing opens no story, as at the top of the body (air_pollution's
+        // Normal (Web) text box starts at its inset, not 14pt below it).
+        if paragraphs.is_empty() && para.space_before_auto {
+            para.space_before = 0.0;
+        }
+        paragraphs.push(para);
     }
     paragraphs
 }
