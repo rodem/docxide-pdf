@@ -1817,7 +1817,27 @@ pub(super) fn render_table(
             && available_h > 14.0
             && first_chunk_fits;
 
-        let must_split = (row_h > page_content_h || keep_with_anchor) && !row.cant_split;
+        // A row taller than a page must split, but not where its cells can't
+        // start: away from the page top each cell needs its first paragraph,
+        // or two lines of a long one (widow control), in the room left —
+        // croatian_grant's 776pt row starts on the next page rather than in
+        // the 28pt above a footnote.
+        let first_lines_fit = layout.cells.iter().all(|c| {
+            c.items.first().is_none_or(|it| {
+                let item_h = match it {
+                    CellContentItem::Paragraph(p) if p.lines.len() >= 4 => super::table_layout::cell_lines_h(p, 0..2),
+                    CellContentItem::Paragraph(p) => para_block_height(p),
+                    CellContentItem::NestedTable {
+                        height,
+                        row_heights,
+                    } => row_heights.first().copied().unwrap_or(*height),
+                };
+                cm.top + cm.bottom + item_h <= available_h
+            })
+        });
+        let must_split = (row_h > page_content_h || keep_with_anchor)
+            && !row.cant_split
+            && (at_page_top || first_lines_fit);
         if row_h > available_h && (must_split || can_meaningfully_split) {
             split_row_across_pages(
                 row,
