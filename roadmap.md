@@ -225,6 +225,9 @@ probe documents; each fix is one commit on the branch.
   15.5). Replacing the reference awaits the user's OK
 - radiographer: Word also splits *inside* a nested row (between its lines)
 - Word floors auto-multiple grid lines to 0.24pt steps (19.44 vs our 19.50)
+- Slash breaks: we now never break after `/` before a letter/digit (13 fixtures gain, none
+  lose), but Word does break there sometimes: education_consultant "Development Partners/" +
+  "Donors", "tabulation/graphics/" + "comparative", romanian "septembrie/". Rule unknown
 - References of the first 10 new fixtures were staged as `<stem>_<hex>.docx`, so
   FILENAME fields print that name (massachusetts footer); fixed in the tool, refs not re-exported
 
