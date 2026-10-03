@@ -148,7 +148,16 @@ fn parse_notes_simple<R: Read + Seek>(
 
         let mut parse_para = |p: roxmltree::Node, fn_ctx: &mut ParseContext<'_, R>| -> Paragraph {
             let ppr = wml(p, "pPr");
-            if ppr.is_some_and(|ppr| wml(ppr, "numPr").is_some()) {
+            let para_style_id = ppr
+                .and_then(|ppr| wml_attr(ppr, "pStyle"))
+                .unwrap_or(default_style_id);
+            let numbered = ppr.is_some_and(|ppr| wml(ppr, "numPr").is_some())
+                || fn_ctx
+                    .styles
+                    .paragraph_styles
+                    .get(para_style_id)
+                    .is_some_and(|s| s.num_id.is_some());
+            if numbered {
                 let mut para = super::paragraph::build_paragraph(
                     p,
                     fn_ctx,
@@ -159,9 +168,6 @@ fn parse_notes_simple<R: Read + Seek>(
                 para.snap_to_grid = true;
                 return para;
             }
-            let para_style_id = ppr
-                .and_then(|ppr| wml_attr(ppr, "pStyle"))
-                .unwrap_or(default_style_id);
             let para_style = fn_ctx.styles.paragraph_styles.get(para_style_id);
 
             let alignment = resolve_alignment(ppr, para_style);
