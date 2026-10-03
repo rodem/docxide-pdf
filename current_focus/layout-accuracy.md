@@ -572,8 +572,17 @@ closes part of §6's "cells built by hand" item (auto spacing).
   also explains its "extra footnote line"), dutch_government (17.6 vs 20.4).
   Re-exporting the other 11 refs of batch `e3612354` (none with the bytes)
   reproduced them exactly. strategi's input and reference were replaced with
-  the stripped file and its export (2026-10-03). About 115 other fixtures end
-  in the same bytes; their references may have gone through the repair too.
+  the stripped file and its export (2026-10-03). 111 tracked fixtures end in
+  the same bytes, and every one tested trips the repair, but the repair
+  usually changes nothing. Of the 37 with local (Quartz) references, only
+  strategi and education_consultant were damaged: for each, Word today
+  through the repair reproduces the old reference exactly, and differs from
+  the stripped export (Word lists "Footnotes" among its repairs). Both were
+  replaced. Five others differ from today's export only by Word-version
+  drift (repaired = stripped today): stem_partnerships (8 vs 7 pages),
+  usep_handbook, alpharetta, east_asia, russian_university; refs kept. The
+  74 online (tagged) references are untested: that needs Word's online
+  export preset, set by hand.
 - References made before the staging fix print `<stem>_<hex>.docx` in FILENAME
   fields (massachusetts' footer); `word_export.py` now keeps the file name.
 - Word for Mac never breaks after `/`; older references that do
