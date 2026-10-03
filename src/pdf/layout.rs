@@ -3319,10 +3319,11 @@ pub(super) fn grid_snapped_line_h(
     }
     // Tolerance so an exact fit stays one cell despite f32 error.
     let cells = |h: f32| ((h / pitch) - 0.02).ceil().max(1.0) * pitch;
-    // A line-spacing multiple scales the cells the glyphs need rather than
-    // being snapped itself: 1.5 lines of one 18pt cell is 27pt (case79).
+    // A line-spacing multiple is a floor of m unsnapped pitches under the cells
+    // the glyphs need: 1.5 lines of one 18pt cell is 27pt (case79), while text
+    // needing two 15.6pt cells stays 31.2pt at 1.25, 1.5 or 2 lines (Word probes).
     match effective_ls {
-        crate::model::LineSpacing::Auto(m) if grid_h > 0.0 => cells(grid_h) * m,
+        crate::model::LineSpacing::Auto(m) if grid_h > 0.0 => cells(grid_h).max(m * pitch),
         _ => cells(line_h),
     }
 }
@@ -3612,6 +3613,13 @@ mod tests {
         let h = |ls| grid_snapped_line_h(&runs, &fonts, ls, 13.8, 18.0);
         assert_eq!(h(crate::model::LineSpacing::Auto(1.0)), 18.0);
         assert_eq!(h(crate::model::LineSpacing::Auto(1.5)), 27.0);
+        let big = [Run {
+            text: "Hxgp".to_string(),
+            ..make_run(22.0, VertAlign::Baseline, false)
+        }];
+        let h2 = |ls| grid_snapped_line_h(&big, &fonts, ls, 25.3, 15.6);
+        assert_eq!(h2(crate::model::LineSpacing::Auto(1.5)), 31.2);
+        assert_eq!(h2(crate::model::LineSpacing::Auto(3.0)), 15.6 * 3.0);
     }
 
     #[test]
