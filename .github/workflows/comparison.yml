@@ -69,7 +69,7 @@ jobs:
         # from JUBARTE_FONT_DIR, which engine_compare.py sets. Without the two links below it would draw
         # every Calibri/Arial/Times document in its bundled Carlito/Liberation while the other engines get
         # the real fonts. Our vendored files carry the names it expects (Calibri.ttf, Times New Roman.ttf, Cambria.ttc…).
-        # Times New Roman in assets/fonts is Apple's 5.01 build (hhea lineGap 87), the face Word for Mac drew the
+        # Times New Roman in fonts/ is Apple's 5.01 build (hhea lineGap 87), the face Word for Mac drew the
         # references with. Word's bundled 7.00 build has lineGap 0; with only that one here, every Times document's
         # lines sat too tight and those cases collapsed on this site for every engine (found 2026-10-03).
         run: |

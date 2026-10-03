@@ -826,7 +826,7 @@ was intended is unverified.
 with Apple's Times New Roman 5.01 (hhea lineGap 87, 13.80pt per 12pt line);
 the Ubuntu runner only had Word's bundled 7.00 (lineGap 0, 13.29pt), so every
 line sat half a point too tight. Reproduced in a Linux container to the
-decimal, and restored by adding Apple's faces. The assets repo now carries
+decimal, and restored by adding Apple's faces. CI's font set now carries
 Apple's four Times New Roman faces instead of Word's, so CI and the laptop
 draw the same font; every engine on the site was affected the same way.
 
