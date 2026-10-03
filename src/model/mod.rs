@@ -235,6 +235,9 @@ pub struct Document {
     pub comments: HashMap<u32, Comment>,
     pub font_table: FontTable,
     pub even_and_odd_headers: bool,
+    /// `w:mirrorMargins`: like evenAndOddHeaders, makes odd/even section breaks
+    /// insert filler pages even when the section restarts its numbering.
+    pub mirror_margins: bool,
     pub default_tab_stop: f32,
     /// Maps style IDs to display names (for STYLEREF resolution)
     pub style_id_to_name: HashMap<String, String>,

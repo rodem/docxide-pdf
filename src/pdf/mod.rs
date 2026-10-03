@@ -660,6 +660,8 @@ pub(super) struct PageBuilder {
     all_footnote_ids: Vec<Vec<u32>>,
     all_alpha_states: Vec<HashSet<u8>>,
     all_gradient_specs: Vec<Vec<GradientSpec>>,
+    /// Pages inserted by odd/even section breaks; Word prints them without header or footer.
+    filler_pages: Vec<usize>,
     /// Per-page tuples: (hf_section, is_first_page, content_section).
     /// hf_section: which section provides headers/footers.
     /// content_section: which section is being rendered (for page numbering, geometry).
@@ -706,6 +708,7 @@ impl PageBuilder {
             all_footnote_ids: Vec::new(),
             all_alpha_states: Vec::new(),
             all_gradient_specs: Vec::new(),
+            filler_pages: Vec::new(),
             page_section_indices: Vec::new(),
             all_styleref: Vec::new(),
             all_first_styleref: Vec::new(),
@@ -843,6 +846,7 @@ impl PageBuilder {
     }
 
     fn push_blank_page(&mut self, sect_idx: usize) {
+        self.filler_pages.push(self.all_contents.len());
         self.all_contents.push(tagging::artifact_content());
         // Blank page has no body content; record top so vAlign yields no shift.
         self.all_content_bottom.push(self.slot_top);
@@ -3136,28 +3140,29 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                         _ => false,
                     };
                     if need_odd || need_even {
-                        // For an explicit OddPage/EvenPage section break, parity refers to the
-                        // new section's LOGICAL page number (pgNumType w:start): a restarted
-                        // section already begins at that number, so a filler page is only
-                        // needed when its parity is wrong (without a restart, numbering
-                        // continues and the physical index is the right proxy).
-                        //
-                        // The evenAndOddHeaders alignment heuristic also sets need_odd/need_even
-                        // (on a NextPage break, from page_num_start parity) but there the goal
-                        // is to land the section on the correct PHYSICAL sheet for even/odd
-                        // header selection — so it must keep using the physical index.
                         let explicit_parity_break = matches!(
                             sp.break_type,
                             SectionBreakType::OddPage | SectionBreakType::EvenPage
                         );
-                        let parity_ref = if explicit_parity_break {
-                            sp.page_num_start
-                                .map(|s| s as usize)
-                                .unwrap_or_else(|| state.pb.page_count() + 1)
+                        let filler = if explicit_parity_break {
+                            // Word's filler page follows the number the section would get by
+                            // continuing. A restarted section skips it (and bumps its own start
+                            // instead, see page_numbers) unless evenAndOddHeaders/mirrorMargins
+                            // ask for print-ready sheets (measured with Word probes, 2026-10-03).
+                            let continuing = page_numbers(doc, &state.pb.page_section_indices)
+                                .last()
+                                .map_or(1, |n| n + 1);
+                            (continuing % 2 == 1) != need_odd
+                                && (sp.page_num_start.is_none()
+                                    || doc.even_and_odd_headers
+                                    || doc.mirror_margins)
                         } else {
-                            state.pb.page_count() + 1
+                            // The evenAndOddHeaders heuristic (NextPage break with a restart)
+                            // lands the section on the right PHYSICAL sheet for header selection.
+                            let physical = state.pb.page_count() + 1;
+                            (need_odd && physical % 2 == 0) || (need_even && physical % 2 == 1)
                         };
-                        if (need_odd && parity_ref % 2 == 0) || (need_even && parity_ref % 2 == 1) {
+                        if filler {
                             state.pb.push_blank_page(sect_idx - 1);
                         }
                     }
@@ -3541,33 +3546,22 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
     // continue numbering from the previous section, but the format never
     // inherits — fmt applies only to its own section and an omitted fmt means
     // decimal (OOXML §17.6.12; Word renders arabic after roman front matter)
-    let mut page_numbers: Vec<usize> = Vec::with_capacity(total_pages);
     // Track which section's format applies to each page (None = decimal default).
     // Uses a section index to avoid cloning the format string for every page.
     let mut page_format_sources: Vec<Option<usize>> = Vec::with_capacity(total_pages);
+    let page_numbers = page_numbers(doc, &state.pb.page_section_indices);
     {
-        let mut running_num: usize = 0;
         let mut running_format_si: Option<usize> = None;
         let mut prev_content_si: Option<usize> = None;
         for page_idx in 0..total_pages {
             let (_, _, content_si) = state.pb.page_section_indices[page_idx];
-            let csp = &doc.sections[content_si].properties;
             if prev_content_si != Some(content_si) {
-                // New section boundary
-                running_format_si = if csp.page_num_format.is_some() {
-                    Some(content_si)
-                } else {
-                    None
-                };
-                if let Some(start) = csp.page_num_start {
-                    running_num = start as usize;
-                } else {
-                    running_num += 1;
-                }
-            } else {
-                running_num += 1;
+                running_format_si = doc.sections[content_si]
+                    .properties
+                    .page_num_format
+                    .is_some()
+                    .then_some(content_si);
             }
-            page_numbers.push(running_num);
             page_format_sources.push(running_format_si);
             prev_content_si = Some(content_si);
         }
@@ -3578,6 +3572,9 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
     let mut all_hf_contents: Vec<Option<Content>> = (0..total_pages).map(|_| None).collect();
     for (page_idx, hf_content) in all_hf_contents.iter_mut().enumerate() {
         let (si, is_first, _content_si) = state.pb.page_section_indices[page_idx];
+        if state.pb.filler_pages.contains(&page_idx) {
+            continue;
+        }
         let sp = &doc.sections[si].properties;
 
         let page_num = page_numbers[page_idx];
@@ -3846,4 +3843,32 @@ mod tests {
         para.list_label_font = Some("Courier New".to_string());
         assert_eq!(boosted(&para), text_line_h);
     }
+}
+
+/// Logical page number of each page: a section with `w:pgNumType @start` restarts,
+/// others continue. A restart after an odd/even section break with the wrong
+/// parity takes the next number instead (Word skips a number, not a sheet).
+fn page_numbers(doc: &Document, page_section_indices: &[(usize, bool, usize)]) -> Vec<usize> {
+    let mut numbers = Vec::with_capacity(page_section_indices.len());
+    let mut running = 0;
+    let mut prev_si = None;
+    for &(_, _, si) in page_section_indices {
+        let sp = &doc.sections[si].properties;
+        running = match sp.page_num_start {
+            Some(start) if prev_si != Some(si) => {
+                let start = start as usize;
+                let wrong_parity = si > 0
+                    && match sp.break_type {
+                        SectionBreakType::OddPage => start % 2 == 0,
+                        SectionBreakType::EvenPage => start % 2 == 1,
+                        _ => false,
+                    };
+                start + wrong_parity as usize
+            }
+            _ => running + 1,
+        };
+        numbers.push(running);
+        prev_si = Some(si);
+    }
+    numbers
 }

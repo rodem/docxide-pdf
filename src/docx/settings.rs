@@ -4,6 +4,7 @@ use super::{WML_NS, read_zip_text, twips_attr, wml, wml_attr, wml_bool};
 
 pub(super) struct DocumentSettings {
     pub even_and_odd_headers: bool,
+    pub mirror_margins: bool,
     pub default_tab_stop: f32,
     pub gutter_at_top: bool,
     pub east_asia_lang: Option<String>,
@@ -33,6 +34,7 @@ impl Default for DocumentSettings {
     fn default() -> Self {
         Self {
             even_and_odd_headers: false,
+            mirror_margins: false,
             default_tab_stop: 36.0, // 0.5 inches = 720 twips = 36pt
             gutter_at_top: false,
             east_asia_lang: None,
@@ -72,6 +74,7 @@ pub(super) fn parse_settings<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> Do
 
     DocumentSettings {
         even_and_odd_headers: wml_bool(root, "evenAndOddHeaders").unwrap_or(false),
+        mirror_margins: wml_bool(root, "mirrorMargins").unwrap_or(false),
         default_tab_stop,
         gutter_at_top: wml_bool(root, "gutterAtTop").unwrap_or(false),
         east_asia_lang,

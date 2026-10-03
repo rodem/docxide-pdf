@@ -973,6 +973,7 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
         comments,
         font_table,
         even_and_odd_headers: settings.even_and_odd_headers,
+        mirror_margins: settings.mirror_margins,
         default_tab_stop: settings.default_tab_stop,
         style_id_to_name: styles.style_id_to_name,
         theme_minor_font: theme.minor.clone(),
