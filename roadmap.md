@@ -193,6 +193,38 @@ metric-clone fallback (Liberation Serif, Carlito, Caladea) on Linux.
 `engine_compare.py` `pdf_creator()` truncates Quartz producers at the escaped
 paren.
 
+## New-Case Accuracy Round (IN PROGRESS — 2026-10-03, branch `accuracy-oct3`)
+
+10 scraped fixtures added with references exported by `tools/word_export.py`
+(Word for Mac, unattended). Rules measured from those references or from Word
+probe documents; each fix is one commit on the branch.
+
+**Done** (suite deltas in each commit message):
+- Moved text (`w:moveTo`/`w:moveFrom`), nested hyperlinks, mid-paragraph page breaks
+- `w:position` raises/lowers runs and grows the line on that side only
+- Super/subscript size from the face's OS/2 script size, rounded to 0.5pt
+- Table style `tblCellMar` + paragraph spacing (along basedOn); cell grid snapping
+  only under `adjustLineHeightInTable`; vMerge continuation cells don't number
+- Row split with one line of room (14pt guard); nested tables split between rows
+- Odd/even section breaks: filler page vs number bump, filler pages bare,
+  per-variant header inheritance (§17.10.5) — 15 Word probes; croatian_thesis +50 J
+- Autofit minimum width breaks CJK words after each ideograph; pre-2013 tables
+  always outdent by the cell margin (6 fixtures +3–6 J)
+- Grid + auto multiple: line = max(cells, m × pitch) (40 Word probes)
+- PAGEREF prints its cached result; text boxes drop auto space-before on top (air_pollution +25 J)
+
+**Parked:**
+- massachusetts: page-anchored body frames (`framePr vAnchor=page`) not implemented — only fixture using them
+- dutch_government: a page-anchored floating table moves the following body table
+  down 2.4pt in Word (not to the float's bottom; cause unknown), and two 1pt
+  `in-table` paragraphs come out 0.7pt short. Word refuses to reopen the original
+  file via automation (re-zipped variants open fine)
+- strategi: Word gives two empty footnotes ~26pt each; we give almost nothing
+- radiographer: Word also splits *inside* a nested row (between its lines)
+- Word floors auto-multiple grid lines to 0.24pt steps (19.44 vs our 19.50)
+- References of the first 10 new fixtures were staged as `<stem>_<hex>.docx`, so
+  FILENAME fields print that name (massachusetts footer); fixed in the tool, refs not re-exported
+
 ## Deterministic Output (DONE — 2026-10-01, `6f64723a`)
 
 All 226 fixtures convert to identical bytes across runs (three renders + `cmp`).
@@ -1206,7 +1238,7 @@ Distribute alignment (equal spacing including edges, different from justify). Cu
 
 ### `w:mirrorMargins` (TODO — MEDIUM IMPACT)
 
-Parsed from `word/settings.xml` and stored in `DocumentSettings.mirror_margins`, but **never applied to layout**. Fix: swap `margin_left`/`margin_right` on even-numbered pages.
+Parsed from `word/settings.xml` into `Document::mirror_margins` (used only for odd/even section-break filler pages), **never applied to margins**. Fix: swap `margin_left`/`margin_right` on even-numbered pages.
 
 ### `w:gutter` (TODO — LOW IMPACT)
 
