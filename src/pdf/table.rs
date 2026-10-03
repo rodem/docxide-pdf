@@ -1799,7 +1799,8 @@ pub(super) fn render_table(
                 })
         });
         // Whether every cell's first chunk fits in the room left: its first
-        // paragraph (with `widow`, two lines of a long one) or first nested row.
+        // paragraph (with `widow`, two lines of a long one) or first nested row,
+        // with the opening space before that find_cell_split charges.
         let first_fits = |widow: bool| {
             layout.cells.iter().all(|c| {
                 c.items.first().is_none_or(|it| {
@@ -1808,7 +1809,11 @@ pub(super) fn render_table(
                         CellContentItem::Paragraph(_) => None,
                         CellContentItem::NestedTable { .. } => Some(1),
                     };
-                    cm.top + cm.bottom + item_chunk_height(it, 0, end) <= available_h
+                    cm.top
+                        + cm.bottom
+                        + chunk_space_before(it, 0, CellCursor::default())
+                        + item_chunk_height(it, 0, end)
+                        <= available_h
                 })
             })
         };
