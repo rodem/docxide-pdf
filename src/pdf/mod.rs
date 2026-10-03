@@ -425,6 +425,24 @@ impl FloatZone {
         (self.obj_left, self.obj_right)
     }
 
+    /// Exclusion over a whole line box, `top` to `bottom`: Word keeps a line
+    /// clear of the polygon anywhere in its height (case42's wrap edges match
+    /// it to 0.3pt), where one scanline at the line top lags a line behind
+    /// a shape that widens downwards.
+    fn exclusion_in_band(&self, top: f32, bottom: f32) -> (f32, f32) {
+        let Some(pts) = self.polygon_pts.as_ref() else {
+            return (self.obj_left, self.obj_right);
+        };
+        // A polygon's extremes over a band lie on the band's edges or its vertices.
+        let inner = pts.iter().map(|p| p.1).filter(|&y| y < top && y > bottom);
+        [top, bottom]
+            .into_iter()
+            .chain(inner)
+            .filter_map(|y| poly_scanline(pts, y))
+            .reduce(|(l0, r0), (l1, r1)| (l0.min(l1), r0.max(r1)))
+            .unwrap_or((self.obj_left, self.obj_right))
+    }
+
     /// Narrow a paragraph's text box (`text_x`, `text_w`, `label_x`) to fit
     /// beside this floating object when `y`, the paragraph's first line top,
     /// is inside the zone. Leaves the box as it is otherwise, or when no side
@@ -1725,8 +1743,8 @@ fn render_paragraph_block(
                             if !(in_zone && line_top > z.bottom_y + line_h * 0.2) {
                                 continue;
                             }
-                            let query_y = line_top.min(z.top_y);
-                            let (ex_left, ex_right) = z.exclusion_at_y(query_y);
+                            let (ex_left, ex_right) =
+                                z.exclusion_in_band(line_top.min(z.top_y), line_bottom);
                             let sl = ex_left - z.left_from_text;
                             let sr = ex_right + z.right_from_text;
                             let mut next = Vec::with_capacity(intervals.len() + 1);
@@ -1797,8 +1815,8 @@ fn render_paragraph_block(
                         line_top <= fz.top_y
                     };
                     if in_zone && line_top > bottom_threshold {
-                        let query_y = line_top.min(fz.top_y);
-                        let (ex_left, ex_right) = fz.exclusion_at_y(query_y);
+                        let (ex_left, ex_right) =
+                            fz.exclusion_in_band(line_top.min(fz.top_y), line_bottom);
                         let float_right = ex_right + fz.right_from_text;
                         let sr = col_right - float_right;
                         let sl = (ex_left - fz.left_from_text) - col_x;
