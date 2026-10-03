@@ -545,6 +545,9 @@ pub(super) enum CellContentItem {
 pub(super) struct CellLayout {
     pub(super) items: Vec<CellContentItem>,
     pub(super) total_height: f32,
+    /// The space after the last paragraph that `total_height` includes; the
+    /// chunk of a split row that finishes the cell charges it too.
+    pub(super) trailing_space_after: f32,
     pub(super) text_direction: TextDirection,
 }
 
@@ -593,6 +596,7 @@ pub(super) fn compute_row_layouts(
                         return CellLayout {
                             items: vec![],
                             total_height: 14.4,
+                            trailing_space_after: 0.0,
                             text_direction: TextDirection::LrTb,
                         };
                     }
@@ -1001,9 +1005,9 @@ pub(super) fn compute_row_layouts(
                     let trailing_mark_after_table = items.len() >= 2
                         && matches!(items.get(items.len() - 2), Some(CellContentItem::NestedTable { .. }))
                         && matches!(items.last(), Some(CellContentItem::Paragraph(p)) if p.lines.is_empty() && p.image_name.is_none() && p.floating_images.is_empty());
-                    if !trailing_mark_after_table {
-                        total_h += prev_space_after;
-                    }
+                    let trailing_space_after =
+                        if trailing_mark_after_table { 0.0 } else { prev_space_after };
+                    total_h += trailing_space_after;
                     if is_rotated {
                         total_h = ecm.top + ecm.bottom + max_rotated_line_w;
                     }
@@ -1013,6 +1017,7 @@ pub(super) fn compute_row_layouts(
                     CellLayout {
                         items,
                         total_height: total_h,
+                        trailing_space_after,
                         text_direction: cell.text_direction,
                     }
                 })
@@ -1162,14 +1167,13 @@ pub(super) fn item_chunk_height(item: &CellContentItem, l0: usize, l1: Option<us
 }
 
 /// The paragraph's space_before as charged inside a chunk starting at
-/// `start`: a continuation's first item never repeats it, but the chunk that
-/// opens the cell keeps it like an unsplit row (croatian_grant's floating
-/// "Važno!" box starts 6pt below its top border in Word).
+/// `start`: a paragraph continuing mid-way never repeats it, but one starting
+/// a chunk whole keeps it like an unsplit row (croatian_grant's floating
+/// "Važno!" box starts 6pt below its top border in Word; nabl's carried-over
+/// "Remarks" paragraph keeps its 4pt).
 pub(super) fn chunk_space_before(item: &CellContentItem, pi: usize, start: CellCursor) -> f32 {
     match item {
-        CellContentItem::Paragraph(p) if pi != start.item || start == CellCursor::default() => {
-            p.space_before
-        }
+        CellContentItem::Paragraph(p) if pi != start.item || start.line == 0 => p.space_before,
         _ => 0.0,
     }
 }
@@ -1200,7 +1204,13 @@ pub(super) fn find_cell_split(
         let item = &cell.items[pi];
         let sb = chunk_space_before(item, pi, start);
         let item_h = sb + item_chunk_height(item, l0, None);
-        if h + item_h <= available_h {
+        // A paragraph fits only with its space after: nabl's "Remarks" row
+        // moves its last (4pt after) paragraph to the next page in Word.
+        let sa = match item {
+            CellContentItem::Paragraph(p) => p.space_after,
+            CellContentItem::NestedTable { .. } => 0.0,
+        };
+        if h + item_h + sa <= available_h {
             h += item_h;
             continue;
         }
@@ -1268,6 +1278,7 @@ mod tests {
         let cell = CellLayout {
             items: vec![para(1), para(10)],
             total_height: 0.0,
+            trailing_space_after: 0.0,
             text_direction: TextDirection::default(),
         };
         let cm = CellMargins {

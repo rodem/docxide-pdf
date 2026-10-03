@@ -1351,6 +1351,11 @@ fn render_partial_row(
             let item = &cell_layout.items[pi];
             h += chunk_space_before(item, pi, start) + item_chunk_height(item, l0, l1);
         }
+        // The chunk that finishes the cell keeps its last paragraph's space
+        // after, as an unsplit row does.
+        if end.item >= cell_layout.items.len() {
+            h += cell_layout.trailing_space_after;
+        }
         max_h = max_h.max(h);
     }
 
