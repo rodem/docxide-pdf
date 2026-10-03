@@ -19,7 +19,7 @@
       "source": "Generated",
       "x_pt": 322.27734,
       "y_pt": 164.30786,
-      "note": "This text should come on page 2.\n\nSYSTEMIC (triage 2026-07-03): CJK fallback line height, not pagination. The Korean fonts route to a fallback with line ratio ~1.27 vs ~1.73 in the reference, so every atLeast row collapses to its trHeight while Word grows them — ~116pt lost across the table and the trailing text fits page 1. Needs CJK fallback vertical-metric fidelity (bundle/select metric-compatible fallback or CJK line-height compensation).",
+      "note": "This text should come on page 2.\n\nSYSTEMIC (triage 2026-07-03): CJK fallback line height, not pagination. The Korean fonts route to a fallback with line ratio ~1.27 vs ~1.73 in the reference, so every atLeast row collapses to its trHeight while Word grows them — ~116pt lost across the table and the trailing text fits page 1. Needs CJK fallback vertical-metric fidelity (bundle/select metric-compatible fallback or CJK line-height compensation).\n\nUPDATE (2026-10-03): the fonts now match Word's (Batang/Malgun Gothic/MS Mincho/Yu Mincho) and every 75pt row lines up within 0.2pt. What is left is one wrap: Word breaks \"(その他, 発表言語など)\" after な and we keep it on one line. Word's line is 1.8pt wider: it advances 5.4pt from the comma to 発 (MS Mincho, fallback for a glyph missing from the substituted Batang) where we advance 3.7pt (Batang's 0.333em space), and Word draws the substituted Batang at 10.9pt instead of 11. Neither rule is derived yet.",
       "fixed": false,
       "cleared": false
     },
@@ -52,7 +52,7 @@
       "source": "Generated",
       "x_pt": 81.04862,
       "y_pt": 744.497,
-      "note": "Too much space below \"header\" with image and text and above numbered list.\n\nSYSTEMIC (triage 2026-07-03): page-1 line/row heights accumulate ~28pt short, so the 2-line intro paragraph Word pushes to page 2 (it carries lastRenderedPageBreak) fits on our page 1 — page-2 content then sits ~26pt high. No page-2 spacing knob; boundary-sensitive pagination flip from line-height fidelity.",
+      "note": "Too much space below \"header\" with image and text and above numbered list.\n\nSYSTEMIC (triage 2026-07-03): page-1 line/row heights accumulate ~28pt short, so the 2-line intro paragraph Word pushes to page 2 (it carries lastRenderedPageBreak) fits on our page 1 — page-2 content then sits ~26pt high. No page-2 spacing knob; boundary-sensitive pagination flip from line-height fidelity.\n\nUPDATE (2026-10-03): two causes. (1) The header's narrow wrapSquare logo (posV -2pt, 48.7pt tall) extends our header to its bottom, so page 1's body starts 5.5pt low; Word starts the body at the header text. Dropping that extent (compute_header_height's float_bottom_h) puts french_sexual_health within 0.25pt (+18.6 J), but here Word pushes page 2's first line below the logo (body wraps around the header float), which we don't model, so the change regressed this case and was not kept. (2) Normal has w:position=-1 (text lowered 0.5pt) and each spacer paragraph/row here comes out ~0.5pt taller in Word, which is the per-row shortfall that lets the intro paragraph fit on our page 1.",
       "fixed": false,
       "cleared": false
     },
@@ -734,7 +734,7 @@
       "source": "Generated",
       "x_pt": 142.31418,
       "y_pt": 718.8507,
-      "note": "mystic square outline around logo",
+      "note": "mystic square outline around logo\n\nTRIAGE (2026-10-03): not a rendering bug. The faint grey square is in the JPEG itself (a ~#EC border around the logo); Word's reference draws the same lines at the same pixels (236 vs our 235). Word re-samples the picture to 277x305 while we pass the original 189x208 JPEG through, which is why ours looks softer when zoomed.",
       "fixed": false,
       "cleared": false
     },
@@ -778,8 +778,8 @@
       "source": "Generated",
       "x_pt": 88.24426,
       "y_pt": 770.7291,
-      "note": "Missing header",
-      "fixed": false,
+      "note": "Missing header\n\nCHECKED (2026-10-03): no longer reproduces. The document has no header parts at all; \"Přílohy\" follows a w:br type=page inside the signature paragraph, and a fresh render puts it at the top of page 5 exactly like Word (page 4 ends with the signature block in both). Most likely the screenshot predates a fix; please confirm.",
+      "fixed": true,
       "cleared": false
     },
     {
@@ -789,8 +789,8 @@
       "source": "Generated",
       "x_pt": 505.67105,
       "y_pt": 392.90082,
-      "note": "Heading for next page?",
-      "fixed": false,
+      "note": "Heading for next page?\n\nCHECKED (2026-10-03): same as #256: a fresh render breaks before \"Přílohy\" like Word, nothing heading-like is left at the bottom of page 4.",
+      "fixed": true,
       "cleared": false
     }
   ]
