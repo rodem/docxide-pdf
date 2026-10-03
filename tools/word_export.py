@@ -206,7 +206,7 @@ def export_one(src: Path, dst: Path, stage: Path, timeout: float) -> None:
     finally:
         s_docx.unlink(missing_ok=True)
         s_pdf.unlink(missing_ok=True)
-        folder.rmdir()
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def iter_docx(paths: list[Path]):
