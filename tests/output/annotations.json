@@ -756,7 +756,7 @@
       "source": "Generated",
       "x_pt": 537.98706,
       "y_pt": 83.49414,
-      "note": "NPF 2 on wrong page\n\nFIXED (2026-10-03): a split table row kept a cell paragraph whose space after ran past the body bottom, so nabl drifted a few points per page from page 6 on and NPF 2's lead-in landed a page early. find_cell_split now requires a paragraph's space after to fit, the chunk that finishes a cell keeps its trailing space after, and a paragraph starting a continuation whole keeps its space before. Pages 6-13 line up with Word (J 49.2 -> 65.1).",
+      "note": "NPF 2 on wrong page\n\nFIXED (2026-10-03): a split table row kept a cell paragraph whose space after ran past the body bottom, so nabl drifted a few points per page from page 6 on and NPF 2's lead-in landed a page early. find_cell_split now requires a paragraph's space after to fit, the chunk that finishes a cell keeps its trailing space after, and a paragraph starting a continuation whole keeps its space before. Pages 6-13 line up with Word (J 49.2 -> 65.1).\n\nAlso (2026-10-03): the vertically merged \"Sl.\"/\"a)\" columns of item 26 no longer run past the footer to the page edge on page 10, close with a bottom border at the break like Word's, and resume with their left border on page 11. Merged cells now draw their borders row by row.",
       "fixed": true,
       "cleared": false
     },

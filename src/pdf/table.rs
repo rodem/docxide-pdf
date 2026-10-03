@@ -1201,25 +1201,22 @@ fn render_table_row(
         let col_w = cell_span_width(col_widths, grid_col, span);
         let bx = cell_x_offset(col_widths, table_left, grid_col);
 
-        if cell.v_merge == VMerge::Continue {
-            continue;
-        }
-
-        let merge_extra = merge_spans
+        // Each row draws its slice of a vertically merged cell, so a span
+        // that crosses a page break ends at the page bottom and resumes on
+        // the next page (nabl's "Sl." column, pages 10-11).
+        let span_below = merge_spans
             .get(&(row_idx, grid_col))
             .copied()
             .unwrap_or(0.0);
-        let effective_bottom = row_bottom - merge_extra;
-
         draw_cell_borders(
             &mut pb.content,
             &cell.borders,
             bx,
             row_top,
-            effective_bottom,
+            row_bottom,
             col_w,
-            true,
-            true,
+            cell.v_merge != VMerge::Continue,
+            span_below == 0.0,
         );
     }
 
@@ -1431,10 +1428,8 @@ fn render_partial_row(
         let col_w = cell_span_width(col_widths, grid_col, span);
         let bx = cell_x_offset(col_widths, table_left, grid_col);
 
-        if cell.v_merge == VMerge::Continue {
-            continue;
-        }
-
+        // A merged cell's slice, as in render_table_row; every chunk of a
+        // split row closes at its page bottom.
         draw_cell_borders(
             &mut pb.content,
             &cell.borders,
@@ -1442,7 +1437,7 @@ fn render_partial_row(
             row_top,
             row_bottom,
             col_w,
-            true,
+            cell.v_merge != VMerge::Continue,
             true,
         );
     }
@@ -1854,6 +1849,21 @@ pub(super) fn render_table(
         } else if !at_page_top && row_h > available_h {
             if is_floating {
                 did_flush_while_floating = true;
+            }
+            // Word closes a merged cell that runs on past the page break with
+            // its bottom border (nabl page 10's "26." column).
+            if ri > 0 {
+                for (grid_col, span, cell) in table.rows[ri - 1].grid_cells() {
+                    if merge_spans
+                        .get(&(ri - 1, grid_col))
+                        .is_some_and(|&below| below > 0.0)
+                    {
+                        let bx = cell_x_offset(&col_widths, table_left, grid_col);
+                        let right = bx + cell_span_width(&col_widths, grid_col, span);
+                        let y = pb.slot_top;
+                        draw_border(&mut pb.content, &cell.borders.bottom, bx, y, right, y);
+                    }
+                }
             }
             flush_and_render_headers(pb, ri, effective_margin_bottom);
             // After flushing + rendering header rows, re-check if the row

@@ -1075,7 +1075,9 @@ pub(super) fn compute_row_layouts(
 }
 
 /// Pre-compute how much extra height each vMerge Restart cell spans beyond its own row.
-/// Returns a map from (row_idx, grid_col) to the sum of Continue row heights below.
+/// Returns a map from (row_idx, grid_col) to the sum of Continue row heights below;
+/// a Continue cell maps to the height of the span rows still below it, absent
+/// on the last, so a row can tell whether the merged cell ends there.
 pub(super) fn compute_merge_spans(
     table: &Table,
     row_layouts: &[RowLayout],
@@ -1108,15 +1110,20 @@ pub(super) fn compute_merge_spans(
     for (ri, row) in table.rows.iter().enumerate() {
         for (grid_col, _, cell) in row.grid_cells() {
             if cell.v_merge == VMerge::Restart {
-                let mut extra = 0.0f32;
-                for next_ri in (ri + 1)..table.rows.len() {
-                    if grid_col >= max_cols || vmerge_grid[next_ri][grid_col] != VMerge::Continue {
-                        break;
+                let end = (ri + 1..table.rows.len())
+                    .find(|&next_ri| {
+                        grid_col >= max_cols || vmerge_grid[next_ri][grid_col] != VMerge::Continue
+                    })
+                    .unwrap_or(table.rows.len());
+                let mut below = 0.0f32;
+                for next_ri in (ri + 1..end).rev() {
+                    if below > 0.0 {
+                        spans.insert((next_ri, grid_col), below);
                     }
-                    extra += row_layouts[next_ri].height;
+                    below += row_layouts[next_ri].height;
                 }
-                if extra > 0.0 {
-                    spans.insert((ri, grid_col), extra);
+                if below > 0.0 {
+                    spans.insert((ri, grid_col), below);
                 }
             }
         }
