@@ -128,6 +128,11 @@ fn word_pair_rule(a: char, b: char) -> Option<bool> {
     if is_break_space(a) && !is_break_space(b) {
         return Some(true);
     }
+    // UAX #14 breaks after a solidus, Word doesn't: croatian_grant keeps
+    // "troškova/izdataka" whole and wraps before it.
+    if a == '/' && b.is_alphanumeric() {
+        return Some(false);
+    }
     // Class IN allows a break after an ellipsis before digits, but Word keeps
     // tokens like TOC dot-leaders typed as "…………45" unbreakable.
     if matches!(a, '\u{2024}' | '\u{2025}' | '\u{2026}') && !b.is_whitespace() {
@@ -162,7 +167,7 @@ fn breaks_between(a: char, b: char) -> bool {
 /// in addition to whitespace. Non-breaking spaces (U+00A0) and ideographic spaces
 /// (U+3000) are kept within words. Trailing spaces after the last word are handled
 /// separately by the caller.
-fn split_preserving_spaces(text: &str) -> Vec<(usize, &str)> {
+pub(super) fn split_preserving_spaces(text: &str) -> Vec<(usize, &str)> {
     if text.is_empty() {
         return Vec::new();
     }
@@ -250,6 +255,9 @@ pub(super) struct WordChunk {
     pub(super) char_spacing: f32,
     pub(super) text_scale: f32, // percentage, 100.0 = normal
     pub(super) y_offset: f32,   // vertical offset for superscript/subscript
+    /// `w:position` share of `y_offset`: it stretches the line box, unlike
+    /// super/subscript (see `size_lines_by_own_runs`).
+    pub(super) raise: f32,
     pub(super) hyperlink_url: Option<String>,
     pub(super) inline_image_name: Option<String>,
     pub(super) inline_image_height: f32,
@@ -354,6 +362,7 @@ impl WordChunk {
             char_spacing,
             text_scale: run.text_scale,
             y_offset,
+            raise: run.position,
             hyperlink_url: run.hyperlink_url.clone(),
             inline_image_name: None,
             inline_image_height: 0.0,
@@ -409,6 +418,7 @@ impl WordChunk {
             char_spacing: 0.0,
             text_scale: 100.0,
             y_offset: 0.0,
+            raise: 0.0,
             hyperlink_url: None,
             inline_image_name: Some(pdf_name.to_string()),
             inline_image_height: height,
@@ -464,6 +474,7 @@ impl WordChunk {
             char_spacing: 0.0,
             text_scale: 100.0,
             y_offset: 0.0,
+            raise: 0.0,
             hyperlink_url: None,
             inline_image_name: None,
             inline_image_height: 0.0,
@@ -524,6 +535,7 @@ impl WordChunk {
             char_spacing: 0.0,
             text_scale: 100.0,
             y_offset: 0.0,
+            raise: 0.0,
             hyperlink_url: None,
             inline_image_name: None,
             inline_image_height: 0.0,
@@ -754,8 +766,11 @@ pub(super) fn size_lines_by_own_runs(
             // Small caps' 80% letters and raised/lowered runs keep the run's
             // own size: italian_project_proposal's small-caps cell lines step
             // 14.64 like full-size ones.
-            ascent = ascent.max(c.line_font_size * ar + pad);
-            below = below.max(c.line_font_size * (lhr - ar).max(0.0) + pad);
+            // `w:position` does stretch the box, on its side only: a 6pt raise
+            // makes polish_building's formula line 5.95pt taller, and
+            // czech_municipal's Normal lowered 0.5pt steps 14.0 for 13.43.
+            ascent = ascent.max(c.line_font_size * ar + pad + c.raise.max(0.0));
+            below = below.max(c.line_font_size * (lhr - ar).max(0.0) + pad + (-c.raise).max(0.0));
             sized = true;
         }
         if !sized {
@@ -776,11 +791,18 @@ pub(super) fn is_text_empty(runs: &[Run]) -> bool {
     })
 }
 
-fn effective_font_size(run: &Run) -> f32 {
-    match run.vertical_align {
-        VertAlign::Superscript | VertAlign::Subscript => run.font_size * 0.58,
-        VertAlign::Baseline => run.font_size,
-    }
+/// Word sizes a superscript or subscript by the face's OS/2 script size,
+/// rounded to the nearest half point: Aptos (0.600) 12pt → 7.0, Palatino
+/// (0.601) 10pt → 6.0, Times/Arial/Calibri (0.650) 12pt → 8.0, 11pt → 7.0,
+/// 9.5pt → 6.0 (census over 30 fixtures' references).
+fn effective_font_size(run: &Run, entry: &FontEntry) -> f32 {
+    let ratio = match run.vertical_align {
+        VertAlign::Superscript => entry.superscript_ratio,
+        VertAlign::Subscript => entry.subscript_ratio,
+        VertAlign::Baseline => return run.font_size,
+    };
+    // ponytail: 0.65 is the common OS/2 value, for faces without one (Type1 fallback).
+    (run.font_size * ratio.unwrap_or(0.65) * 2.0).round() / 2.0
     // Note: smallCaps sizing is handled per-segment via smallcaps_segments()
 }
 
@@ -949,11 +971,12 @@ fn read_shadow_once(mut chunk: WordChunk) -> WordChunk {
 }
 
 fn vert_y_offset(run: &Run) -> f32 {
-    match run.vertical_align {
-        VertAlign::Superscript => run.font_size * 0.35,
-        VertAlign::Subscript => -run.font_size * 0.14,
-        VertAlign::Baseline => 0.0,
-    }
+    run.position
+        + match run.vertical_align {
+            VertAlign::Superscript => run.font_size * 0.35,
+            VertAlign::Subscript => -run.font_size * 0.14,
+            VertAlign::Baseline => 0.0,
+        }
 }
 
 const DEFAULT_TAB_INTERVAL: f32 = 36.0; // 0.5 inches
@@ -1034,8 +1057,8 @@ fn line_space_width(chunks: &[WordChunk]) -> f32 {
 }
 
 /// Full-width East Asian closing punctuation whose right half is blank, which
-/// Word's `compressPunctuation` may squeeze (§17.15.1.15). Opening brackets
-/// compress on their left; ponytail: no fixture needs them, so they are left alone.
+/// Word's `compressPunctuation` may squeeze (§17.15.1.15). The middle dot,
+/// blank on both sides, squeezes like them.
 fn is_compressible_punct(c: char) -> bool {
     matches!(
         c,
@@ -1057,6 +1080,17 @@ fn is_compressible_punct(c: char) -> bool {
             | '》'
             | '〙'
             | '〗'
+            | '・'
+    )
+}
+
+/// Full-width opening brackets, blank on their left, which `compressPunctuation`
+/// squeezes from that side: japanese_medical's "（" sits 2pt into the gap
+/// before it on a tight line.
+fn is_compressible_opening(c: char) -> bool {
+    matches!(
+        c,
+        '（' | '［' | '｛' | '「' | '『' | '【' | '〔' | '〈' | '《' | '〘' | '〖'
     )
 }
 
@@ -1068,18 +1102,23 @@ fn is_compressible_punct(c: char) -> bool {
 /// em off) is the most Word ever took (annotation #238). Returns false and
 /// touches nothing when the marks cannot yield enough.
 fn compress_punctuation(chunks: &mut [WordChunk], needed: f32) -> bool {
-    let marks: Vec<usize> = chunks
+    // (chunk, squeezes at its end, squeezes at its start)
+    let marks: Vec<(usize, f32, bool)> = chunks
         .iter()
         .enumerate()
-        .filter(|(_, c)| {
-            c.inline_image_name.is_none()
-                && c.text.chars().last().is_some_and(is_compressible_punct)
+        .filter(|(_, c)| c.inline_image_name.is_none())
+        .map(|(i, c)| {
+            let end = c.text.chars().last().is_some_and(is_compressible_punct);
+            let start = c.text.chars().next().is_some_and(is_compressible_opening);
+            (i, end as u8 as f32 + start as u8 as f32, start)
         })
-        .map(|(i, _)| i)
+        .filter(|&(_, sides, _)| sides > 0.0)
         .collect();
     let room: Vec<f32> = marks
         .iter()
-        .map(|&i| (chunks[i].font_size * 0.25 - chunks[i].punct_compressed).max(0.0))
+        .map(|&(i, sides, _)| {
+            (chunks[i].font_size * 0.25 * sides - chunks[i].punct_compressed).max(0.0)
+        })
         .collect();
     let total: f32 = room.iter().sum();
     if needed <= 0.0 || total + 0.01 < needed {
@@ -1092,9 +1131,15 @@ fn compress_punctuation(chunks: &mut [WordChunk], needed: f32) -> bool {
     let mut k = 0;
     for (i, chunk) in chunks.iter_mut().enumerate() {
         chunk.x_offset -= shift;
-        if k < marks.len() && marks[k] == i {
+        if k < marks.len() && marks[k].0 == i {
+            let (_, sides, start) = marks[k];
             let cut = room[k] * scale;
-            chunk.width -= cut;
+            // An opening bracket loses its blank left: the chunk slides into
+            // the gap before it by its share of the cut, and only the rest
+            // comes off its right end.
+            let lead = if start { cut / sides } else { 0.0 };
+            chunk.x_offset -= lead;
+            chunk.width -= cut - lead;
             chunk.punct_compressed += cut;
             shift += cut;
             k += 1;
@@ -1365,7 +1410,7 @@ pub(super) fn build_paragraph_lines(
 
         let key = font_key_buf(run, &mut key_buf);
         let entry = seen_fonts.get(key).expect("font registered");
-        let eff_fs = effective_font_size(run);
+        let eff_fs = effective_font_size(run, entry);
         let space_w = entry.space_width(eff_fs);
         let text = &run.text;
         let y_off = vert_y_offset(run);
@@ -1405,7 +1450,10 @@ pub(super) fn build_paragraph_lines(
                     crate::docx::is_east_asian_char(prev_ch) || is_cjk_punctuation(prev_ch);
                 let cur_ea =
                     crate::docx::is_east_asian_char(first_ch) || is_cjk_punctuation(first_ch);
-                if prev_ea != cur_ea {
+                // An ideographic space is a space, not East Asian text: Word
+                // sets japanese_medical's "　kg　" with no gap around "kg".
+                let beside_space = prev_ch == '\u{3000}' || first_ch == '\u{3000}';
+                if prev_ea != cur_ea && !beside_space {
                     pending_space_w += eff_fs * 0.25;
                 }
             }
@@ -1804,7 +1852,7 @@ fn segment_width(runs: &[&Run], seen_fonts: &HashMap<String, FontEntry>) -> f32 
     for run in runs {
         let key = font_key_buf(run, &mut key_buf);
         let entry = seen_fonts.get(key).expect("font registered");
-        let eff_fs = effective_font_size(run);
+        let eff_fs = effective_font_size(run, entry);
         let ts = run.text_scale / 100.0;
         let cs = run.char_spacing;
         let space_w = entry.space_width(eff_fs) * ts + cs;
@@ -1835,7 +1883,7 @@ fn decimal_before_width(runs: &[&Run], seen_fonts: &HashMap<String, FontEntry>) 
     for (run, text) in runs.iter().zip(texts.iter()) {
         let key = font_key_buf(run, &mut key_buf);
         let entry = seen_fonts.get(key).expect("font registered");
-        let eff_fs = effective_font_size(run);
+        let eff_fs = effective_font_size(run, entry);
         let ts = run.text_scale / 100.0;
         let cs = run.char_spacing;
         let text_to_measure = if text.len() <= chars_remaining {
@@ -1922,6 +1970,8 @@ pub(super) fn build_tabbed_line(
     let mut pending_space_border: Option<ParagraphBorder> = None;
     let mut key_buf = String::new();
     let mut is_first_line = true;
+    // Set when tabs wrap onto a new line that has nothing drawn yet.
+    let mut tab_wrapped_line = false;
 
     for (seg_idx, (seg_runs, seg_indices, tab_before, tab_run_before)) in
         segments.iter().enumerate()
@@ -2019,6 +2069,7 @@ pub(super) fn build_tabbed_line(
             let wrap_limit = line_max + indent_right;
             if seg_start > wrap_limit && !all_chunks.is_empty() {
                 result_lines.push(finish_line(&mut all_chunks));
+                tab_wrapped_line = true;
                 current_x = 0.0;
                 is_first_line = false;
                 let new_stop = find_next_tab_stop(0.0, tab_stops, indent_left, default_tab_stop);
@@ -2047,7 +2098,7 @@ pub(super) fn build_tabbed_line(
                         .unwrap_or(tab_run);
                     let key = font_key_buf(font_run, &mut key_buf);
                     let entry = seen_fonts.get(key).expect("font registered");
-                    let eff_fs = effective_font_size(tab_run).max(font_run.font_size);
+                    let eff_fs = effective_font_size(tab_run, entry).max(font_run.font_size);
                     all_chunks.push(WordChunk::tab_underline(
                         entry,
                         eff_fs,
@@ -2077,7 +2128,7 @@ pub(super) fn build_tabbed_line(
                     if let Some(run) = font_run {
                         let key = font_key_buf(run, &mut key_buf);
                         let entry = seen_fonts.get(key).expect("font registered");
-                        let eff_fs = effective_font_size(run);
+                        let eff_fs = effective_font_size(run, entry);
                         let char_w = entry.char_width_1000(leader_char) * eff_fs / 1000.0;
                         let leader_gap = seg_start - current_x;
                         if char_w > 0.0 && leader_gap > char_w * 2.0 {
@@ -2110,6 +2161,7 @@ pub(super) fn build_tabbed_line(
             if run.is_line_break {
                 mark_space_after(&mut all_chunks);
                 result_lines.push(finish_line_with_break(&mut all_chunks));
+                tab_wrapped_line = false;
                 current_x = 0.0;
                 is_first_line = false;
                 pending_space_w = 0.0;
@@ -2133,7 +2185,7 @@ pub(super) fn build_tabbed_line(
 
             let key = font_key_buf(run, &mut key_buf);
             let entry = seen_fonts.get(key).expect("font registered");
-            let eff_fs = effective_font_size(run);
+            let eff_fs = effective_font_size(run, entry);
             let space_w = entry.space_width(eff_fs);
             let y_off = vert_y_offset(run);
             let text = &run.text;
@@ -2189,6 +2241,7 @@ pub(super) fn build_tabbed_line(
                 // Wrap word to new line if it exceeds max_width
                 if current_x + ww > cur_line_max && !all_chunks.is_empty() && !is_continuation {
                     result_lines.push(finish_line(&mut all_chunks));
+                    tab_wrapped_line = false;
                     current_x = 0.0;
                     is_first_line = false;
                 }
@@ -2228,10 +2281,12 @@ pub(super) fn build_tabbed_line(
         }
     }
 
-    // Finalize remaining chunks into the last line
+    // Finalize remaining chunks into the last line. Tabs that wrapped keep
+    // their line though nothing is drawn on it: bulgarian_road_safety's
+    // trailing tabs after "/Зл. Атанасова/" take a second line in Word.
     if !all_chunks.is_empty() {
         result_lines.push(finish_line(&mut all_chunks));
-    } else if result_lines.is_empty() {
+    } else if result_lines.is_empty() || tab_wrapped_line {
         result_lines.push(TextLine::default());
     }
 
@@ -3256,19 +3311,19 @@ pub(super) fn grid_snapped_line_h(
         if run.is_line_break || run.is_math {
             continue;
         }
-        if let Some(t) = seen_fonts
-            .get(font_key_buf(run, &mut key_buf))
-            .and_then(|e| e.grid_line_ratio)
+        if let Some(e) = seen_fonts.get(font_key_buf(run, &mut key_buf))
+            && let Some(t) = e.grid_line_ratio
         {
-            grid_h = grid_h.max(effective_font_size(run) * t);
+            grid_h = grid_h.max(effective_font_size(run, e) * t);
         }
     }
     // Tolerance so an exact fit stays one cell despite f32 error.
     let cells = |h: f32| ((h / pitch) - 0.02).ceil().max(1.0) * pitch;
-    // A line-spacing multiple scales the cells the glyphs need rather than
-    // being snapped itself: 1.5 lines of one 18pt cell is 27pt (case79).
+    // A line-spacing multiple is a floor of m unsnapped pitches under the cells
+    // the glyphs need: 1.5 lines of one 18pt cell is 27pt (case79), while text
+    // needing two 15.6pt cells stays 31.2pt at 1.25, 1.5 or 2 lines (Word probes).
     match effective_ls {
-        crate::model::LineSpacing::Auto(m) if grid_h > 0.0 => cells(grid_h) * m,
+        crate::model::LineSpacing::Auto(m) if grid_h > 0.0 => cells(grid_h).max(m * pitch),
         _ => cells(line_h),
     }
 }
@@ -3286,10 +3341,8 @@ pub(super) fn grid_baseline_offset(
             r.inline_image.is_none() && !r.vanish && !r.is_line_break && !r.is_math && sizes_line(r)
         })
         .filter_map(|r| {
-            let shift = seen_fonts
-                .get(font_key_buf(r, &mut key_buf))?
-                .grid_baseline_shift?;
-            Some(shift * effective_font_size(r))
+            let e = seen_fonts.get(font_key_buf(r, &mut key_buf))?;
+            Some(e.grid_baseline_shift? * effective_font_size(r, e))
         })
         .reduce(f32::max)
         .map(|shift| cell_h / 2.0 + shift)
@@ -3560,6 +3613,13 @@ mod tests {
         let h = |ls| grid_snapped_line_h(&runs, &fonts, ls, 13.8, 18.0);
         assert_eq!(h(crate::model::LineSpacing::Auto(1.0)), 18.0);
         assert_eq!(h(crate::model::LineSpacing::Auto(1.5)), 27.0);
+        let big = [Run {
+            text: "Hxgp".to_string(),
+            ..make_run(22.0, VertAlign::Baseline, false)
+        }];
+        let h2 = |ls| grid_snapped_line_h(&big, &fonts, ls, 25.3, 15.6);
+        assert_eq!(h2(crate::model::LineSpacing::Auto(1.5)), 31.2);
+        assert_eq!(h2(crate::model::LineSpacing::Auto(3.0)), 15.6 * 3.0);
     }
 
     #[test]
@@ -3598,6 +3658,8 @@ mod tests {
             grid_line_ratio: None,
             plain_line_h_ratio: None,
             grid_baseline_shift: None,
+            superscript_ratio: None,
+            subscript_ratio: None,
             east_asian: false,
             plain_ascender_ratio: None,
             char_to_gid: None,
@@ -3664,28 +3726,34 @@ mod tests {
     #[test]
     fn test_effective_font_size_baseline() {
         let run = make_run(12.0, VertAlign::Baseline, false);
-        assert_eq!(effective_font_size(&run), 12.0);
+        assert_eq!(effective_font_size(&run, &stub_font_entry()), 12.0);
     }
 
     #[test]
     fn test_effective_font_size_superscript() {
+        // Aptos (OS/2 0.600) 12pt superscripts are 7pt in Word, Times (0.650) 8pt.
+        let mut entry = stub_font_entry();
+        entry.superscript_ratio = Some(0.6);
         let run = make_run(12.0, VertAlign::Superscript, false);
-        let expected = 12.0 * 0.58; // 6.96
-        assert!((effective_font_size(&run) - expected).abs() < 0.01);
+        assert_eq!(effective_font_size(&run, &entry), 7.0);
+        entry.superscript_ratio = Some(0.65);
+        assert_eq!(effective_font_size(&run, &entry), 8.0);
     }
 
     #[test]
     fn test_effective_font_size_subscript() {
-        let run = make_run(12.0, VertAlign::Subscript, false);
-        let expected = 12.0 * 0.58;
-        assert!((effective_font_size(&run) - expected).abs() < 0.01);
+        // 9.5pt at 0.650 is 6.175, Word draws 6.0.
+        let mut entry = stub_font_entry();
+        entry.subscript_ratio = Some(0.65);
+        let run = make_run(9.5, VertAlign::Subscript, false);
+        assert_eq!(effective_font_size(&run, &entry), 6.0);
     }
 
     #[test]
     fn test_effective_font_size_ignores_small_caps() {
         // smallCaps sizing is per-segment, not per-run — effective_font_size returns base size
         let run = make_run(12.0, VertAlign::Baseline, true);
-        assert_eq!(effective_font_size(&run), 12.0);
+        assert_eq!(effective_font_size(&run, &stub_font_entry()), 12.0);
     }
 
     #[test]
@@ -3877,5 +3945,12 @@ mod tests {
         let run = make_run(12.0, VertAlign::Subscript, false);
         let expected = -12.0 * 0.14; // -1.68
         assert!((vert_y_offset(&run) - expected).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_vert_y_offset_adds_position() {
+        let mut run = make_run(12.0, VertAlign::Superscript, false);
+        run.position = -3.0;
+        assert!((vert_y_offset(&run) - (12.0 * 0.35 - 3.0)).abs() < 0.01);
     }
 }

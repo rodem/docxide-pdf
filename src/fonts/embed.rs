@@ -183,6 +183,14 @@ pub(super) fn embed_truetype(
         grid_line_ratio: lm.grid_line_ratio,
         plain_line_h_ratio: lm.plain_line_h_ratio,
         grid_baseline_shift: lm.grid_baseline_shift,
+        superscript_ratio: face
+            .superscript_metrics()
+            .map(|m| m.y_size as f32 / units)
+            .filter(|r| *r > 0.0),
+        subscript_ratio: face
+            .subscript_metrics()
+            .map(|m| m.y_size as f32 / units)
+            .filter(|r| *r > 0.0),
         east_asian: lm.east_asian,
         plain_ascender_ratio: lm.plain_ascender_ratio,
         char_to_gid,

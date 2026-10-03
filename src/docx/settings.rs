@@ -4,6 +4,7 @@ use super::{WML_NS, read_zip_text, twips_attr, wml, wml_attr, wml_bool};
 
 pub(super) struct DocumentSettings {
     pub even_and_odd_headers: bool,
+    pub mirror_margins: bool,
     pub default_tab_stop: f32,
     pub gutter_at_top: bool,
     pub east_asia_lang: Option<String>,
@@ -24,12 +25,16 @@ pub(super) struct DocumentSettings {
     /// `w:compat/w:doNotExpandShiftReturn`: a justified line ending in a
     /// manual break keeps its natural width.
     pub do_not_expand_shift_return: bool,
+    /// `w:compat/w:adjustLineHeightInTable`: table cell lines snap to the
+    /// document grid too (§17.15.3.1).
+    pub adjust_line_height_in_table: bool,
 }
 
 impl Default for DocumentSettings {
     fn default() -> Self {
         Self {
             even_and_odd_headers: false,
+            mirror_margins: false,
             default_tab_stop: 36.0, // 0.5 inches = 720 twips = 36pt
             gutter_at_top: false,
             east_asia_lang: None,
@@ -39,6 +44,7 @@ impl Default for DocumentSettings {
             compat_mode: 0,
             styles_from_normal_template: false,
             do_not_expand_shift_return: false,
+            adjust_line_height_in_table: false,
         }
     }
 }
@@ -66,8 +72,12 @@ pub(super) fn parse_settings<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> Do
     let default_lang = lang("val");
     let bidi_lang = lang("bidi");
 
+    let compat = wml(root, "compat");
+    let compat_flag = |name| compat.and_then(|c| wml_bool(c, name)).unwrap_or(false);
+
     DocumentSettings {
         even_and_odd_headers: wml_bool(root, "evenAndOddHeaders").unwrap_or(false),
+        mirror_margins: wml_bool(root, "mirrorMargins").unwrap_or(false),
         default_tab_stop,
         gutter_at_top: wml_bool(root, "gutterAtTop").unwrap_or(false),
         east_asia_lang,
@@ -75,7 +85,7 @@ pub(super) fn parse_settings<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> Do
         default_lang,
         compress_punctuation: wml_attr(root, "characterSpacingControl")
             .is_some_and(|v| v.starts_with("compressPunctuation")),
-        compat_mode: wml(root, "compat")
+        compat_mode: compat
             .into_iter()
             .flat_map(|c| c.children())
             .find(|n| n.attribute((WML_NS, "name")) == Some("compatibilityMode"))
@@ -84,8 +94,7 @@ pub(super) fn parse_settings<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> Do
             .unwrap_or(0),
         styles_from_normal_template: wml_bool(root, "linkStyles").unwrap_or(false)
             && wml(root, "attachedTemplate").is_none(),
-        do_not_expand_shift_return: wml(root, "compat")
-            .and_then(|c| wml_bool(c, "doNotExpandShiftReturn"))
-            .unwrap_or(false),
+        do_not_expand_shift_return: compat_flag("doNotExpandShiftReturn"),
+        adjust_line_height_in_table: compat_flag("adjustLineHeightInTable"),
     }
 }

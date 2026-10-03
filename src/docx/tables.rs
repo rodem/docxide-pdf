@@ -49,7 +49,7 @@ fn hatch_kind(val: &str) -> Option<crate::model::HatchKind> {
     })
 }
 
-fn margin_twips(mar: roxmltree::Node, primary: &str, fallback: &str) -> Option<f32> {
+pub(super) fn margin_twips(mar: roxmltree::Node, primary: &str, fallback: &str) -> Option<f32> {
     wml(mar, primary)
         .or_else(|| wml(mar, fallback))
         .and_then(|n| twips_attr(n, "w"))
@@ -251,19 +251,36 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
         })
         .filter(|p| *p > 0.0);
 
-    let cell_margins = tbl_pr
-        .and_then(|pr| wml(pr, "tblCellMar"))
-        .map(|mar| CellMargins {
-            top: wml(mar, "top")
-                .and_then(|n| twips_attr(n, "w"))
-                .unwrap_or(0.0),
-            left: margin_twips(mar, "left", "start").unwrap_or(5.4),
-            bottom: wml(mar, "bottom")
-                .and_then(|n| twips_attr(n, "w"))
-                .unwrap_or(0.0),
-            right: margin_twips(mar, "right", "end").unwrap_or(5.4),
+    let tbl_style = tbl_pr
+        .and_then(|pr| wml_attr(pr, "tblStyle"))
+        .and_then(|id| ctx.styles.table_styles.get(id));
+    // The table style and its basedOn ancestors, nearest first.
+    let style_chain = || {
+        std::iter::successors(tbl_style, |s| {
+            s.based_on
+                .as_deref()
+                .and_then(|id| ctx.styles.table_styles.get(id))
         })
-        .unwrap_or_default();
+        .take(8)
+    };
+    // Each side: the table's own, then its style's (estonian_community's
+    // TableGrid zeroes them), then Word's default.
+    let own_mar = tbl_pr.and_then(|pr| wml(pr, "tblCellMar"));
+    let side = |i: usize, a: &str, b: &str, default: f32| {
+        own_mar
+            .and_then(|mar| margin_twips(mar, a, b))
+            .or_else(|| style_chain().find_map(|s| s.cell_margins[i]))
+            .unwrap_or(default)
+    };
+    let cell_margins = CellMargins {
+        top: side(0, "top", "top", 0.0),
+        left: side(1, "left", "start", 5.4),
+        bottom: side(2, "bottom", "bottom", 0.0),
+        right: side(3, "right", "end", 5.4),
+    };
+    let style_space_before = style_chain().find_map(|s| s.space_before);
+    let style_space_after = style_chain().find_map(|s| s.space_after);
+    let style_line_spacing = style_chain().find_map(|s| s.line_spacing);
 
     let table_position = tbl_pr.and_then(|pr| wml(pr, "tblpPr")).map(|tblp| {
         let v_anchor = match tblp.attribute((WML_NS, "vertAnchor")) {
@@ -302,9 +319,6 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
         }
     });
 
-    let tbl_style = tbl_pr
-        .and_then(|pr| wml_attr(pr, "tblStyle"))
-        .and_then(|id| ctx.styles.table_styles.get(id));
     let tbl_style_borders = tbl_style.and_then(|s| s.base_borders.as_ref());
     let has_tbl_style = tbl_style_borders.is_some();
 
@@ -454,6 +468,17 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
             let hide_mark = tc_pr
                 .and_then(|pr| wml_bool(pr, "hideMark"))
                 .unwrap_or(false);
+
+            // Word shows only a vertically merged cell's first part; the
+            // numbered paragraphs of its continuations don't count either:
+            // nabl's checklist numbers its sections 13, 14, … though every
+            // row's merged first cell carries a numbered paragraph.
+            let mut hidden_lists = ListCounters::default();
+            let cell_lists: &mut ListCounters = if v_merge == VMerge::Continue {
+                &mut hidden_lists
+            } else {
+                &mut *lists
+            };
 
             let span_end = ci + grid_span as usize;
 
@@ -706,8 +731,10 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         .or_else(|| para_style.and_then(|s| s.alignment))
                         .unwrap_or(Alignment::Left);
                     let (sp_before, sp_after, ls) = parse_paragraph_spacing(ppr, para_style);
-                    let line_spacing =
-                        ls.or_else(|| has_tbl_style.then_some(LineSpacing::Auto(1.0)));
+                    let (space_before_auto, space_after_auto) = super::autospacing(ppr, para_style);
+                    let line_spacing = ls
+                        .or(style_line_spacing)
+                        .or_else(|| has_tbl_style.then_some(LineSpacing::Auto(1.0)));
                     let num_pr = ppr.and_then(|ppr| wml(ppr, "numPr"));
                     let style_num = para_style.and_then(|s| s.num_id.as_deref());
                     let style_ilvl = para_style.and_then(|s| s.num_ilvl);
@@ -729,7 +756,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         Some(para_style_id),
                         &ctx.styles.paragraph_styles,
                         ctx.numbering,
-                        lists,
+                        cell_lists,
                     );
                     let mut indent_first_line = 0.0;
                     let mut indent_right = 0.0;
@@ -751,8 +778,8 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                             indent_first_line = v;
                         }
                     }
-                    let space_before = sp_before.unwrap_or(0.0);
-                    let space_after = sp_after.unwrap_or(if has_tbl_style {
+                    let space_before = sp_before.or(style_space_before).unwrap_or(0.0);
+                    let space_after = sp_after.or(style_space_after).unwrap_or(if has_tbl_style {
                         0.0
                     } else {
                         ctx.styles.defaults.space_after
@@ -768,6 +795,8 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                     cell_blocks.push(Block::Paragraph(Paragraph {
                         runs,
                         alignment,
+                        space_before_auto,
+                        space_after_auto,
                         indent_left,
                         indent_right,
                         indent_hanging,
@@ -783,15 +812,19 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         space_after,
                         image: para_image,
                         content_height,
-                        snap_to_grid: true,
+                        snap_to_grid: ppr
+                            .and_then(|ppr| wml_bool(ppr, "snapToGrid"))
+                            .or_else(|| para_style.and_then(|s| s.snap_to_grid))
+                            .unwrap_or(true),
                         floating_images: parsed.floating_images,
                         textboxes: parsed.textboxes,
                         connectors: parsed.connectors,
+                        style_id: Some(para_style_id.to_string()),
                         tab_stops,
                         ..Paragraph::default()
                     }));
                 } else if n.has_tag_name((WML_NS, "tbl")) {
-                    let nested = parse_table_node(*n, ctx, lists);
+                    let nested = parse_table_node(*n, ctx, cell_lists);
                     cell_blocks.push(Block::Table(nested));
                 }
             }

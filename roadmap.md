@@ -204,6 +204,45 @@ metric-clone fallback (Liberation Serif, Carlito, Caladea) on Linux.
 `engine_compare.py` `pdf_creator()` truncates Quartz producers at the escaped
 paren.
 
+## New-Case Accuracy Round (IN PROGRESS — 2026-10-03, branch `accuracy-oct3`)
+
+10 scraped fixtures added with references exported by `tools/word_export.py`
+(Word for Mac, unattended). Rules measured from those references or from Word
+probe documents; each fix is one commit on the branch.
+
+**Done** (suite deltas in each commit message):
+- Moved text (`w:moveTo`/`w:moveFrom`), nested hyperlinks, mid-paragraph page breaks
+- `w:position` raises/lowers runs and grows the line on that side only
+- Super/subscript size from the face's OS/2 script size, rounded to 0.5pt
+- Table style `tblCellMar` + paragraph spacing (along basedOn); cell grid snapping
+  only under `adjustLineHeightInTable`; vMerge continuation cells don't number
+- Row split with one line of room (14pt guard); nested tables split between rows
+- Odd/even section breaks: filler page vs number bump, filler pages bare,
+  per-variant header inheritance (§17.10.5) — 15 Word probes; croatian_thesis +50 J
+- Autofit minimum width breaks CJK words after each ideograph; pre-2013 tables
+  always outdent by the cell margin (6 fixtures +3–6 J)
+- Grid + auto multiple: line = max(cells, m × pitch) (40 Word probes)
+- PAGEREF prints its cached result; text boxes drop auto space-before on top (air_pollution +25 J)
+
+**Parked:**
+- massachusetts: page-anchored body frames (`framePr vAnchor=page`) not implemented — only fixture using them
+- dutch_government: a page-anchored floating table moves the following body table
+  down 2.4pt in Word (not to the float's bottom; cause unknown), and two 1pt
+  `in-table` paragraphs come out 0.7pt short. Word reports "unreadable content" in
+  the original fixture (valid zip; re-zipped variants open fine), so its reference
+  came from a Word-repaired copy
+- strategi: NOT our bug — its original file trips Word's repair prompt and the committed
+  reference shows the repaired layout; a re-zipped copy exports like our output (59.5 J vs
+  15.5). Replacing the reference awaits the user's OK
+- radiographer: Word also splits *inside* a nested row (between its lines)
+- Word floors auto-multiple grid lines to 0.24pt steps (19.44 vs our 19.50)
+- Slash breaks: Word for Mac never breaks after `/` (probe: 138 margin crossings over 6 pair
+  kinds incl. digits and a 40-char token, all wrapped whole), matching our rule. Older refs
+  that do end lines on a slash (education_consultant "Partners/", romanian "septembrie/")
+  presumably come from another Word build
+- References of the first 10 new fixtures were staged as `<stem>_<hex>.docx`, so
+  FILENAME fields print that name (massachusetts footer); fixed in the tool, refs not re-exported
+
 ## Deterministic Output (DONE — 2026-10-01, `6f64723a`)
 
 All 226 fixtures (as of 2026-10-01) converted to identical bytes across runs
@@ -1235,8 +1274,9 @@ done.
 
 ### `w:mirrorMargins` (TODO — MEDIUM IMPACT)
 
-Not parsed (the unused parse was removed in `3ead74c4`). Fix: parse it in
-`settings.rs` and swap left/right margins (and the gutter side) on even pages.
+Parsed in `settings.rs` into `Document::mirror_margins` (used only for odd/even
+section-break filler pages), never applied to margins. Fix: swap left/right
+margins (and the gutter side) on even pages.
 
 ### `w:textAlignment` (TODO — LOW IMPACT)
 

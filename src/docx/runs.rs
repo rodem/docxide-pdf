@@ -81,6 +81,9 @@ pub(super) struct ParsedRuns {
     /// `Paragraph.page_break_before_explicit`.
     pub(super) has_explicit_page_break_before: bool,
     pub(super) has_page_break_after: bool,
+    /// Index into `runs` of the first run after a `<w:br w:type="page"/>`
+    /// that has visible content after it in the same paragraph.
+    pub(super) page_break_at: Option<usize>,
     pub(super) has_column_break: bool,
     pub(super) has_clear_break: bool,
     pub(super) floating_images: Vec<FloatingImage>,
@@ -175,6 +178,7 @@ struct ParagraphRunDefaults {
     color: Option<[u8; 3]>,
     char_spacing: f32,
     kern_threshold: Option<f32>,
+    position: Option<f32>,
     east_asia_font: Option<String>,
     text_outline: Option<TextOutline>,
     text_fill: Option<TextFill>,
@@ -218,6 +222,7 @@ impl ParagraphRunDefaults {
             kern_threshold: para_style
                 .and_then(|s| s.kern_threshold)
                 .or(defaults.kern_threshold),
+            position: para_style.and_then(|s| s.position).or(defaults.position),
             east_asia_font: style_or_clone(|s| s.east_asia_font.as_ref(), &defaults.east_asia_font),
             text_outline: para_style.and_then(|s| s.text_outline.clone()),
             text_fill: para_style.and_then(|s| s.text_fill.clone()),
@@ -332,6 +337,11 @@ impl ParagraphRunDefaults {
                 .kern_threshold
                 .or_else(|| char_style.and_then(|cs| cs.kern_threshold))
                 .or(self.kern_threshold),
+            position: own
+                .position
+                .or_else(|| char_style.and_then(|cs| cs.position))
+                .or(self.position)
+                .unwrap_or(0.0),
             char_style_id: char_style_id_str.map(|s| s.to_string()),
             text_outline: own
                 .text_outline
@@ -568,17 +578,23 @@ fn collect_run_nodes<'a>(
                     .and_then(|rid| rels.get(rid))
                     .cloned()
             };
-            for n in child.children().filter(|n| n.has_tag_name((WML_NS, "r"))) {
-                if is_comment_reference_run(n) {
-                    continue;
-                }
-                out.push((n, url.clone(), is_anchor_only, active_comments.clone()));
-            }
-        } else if is_wml && matches!(name, "ins" | "smartTag" | "customXml") {
-            // w:customXml inline-wraps runs transparently, like w:smartTag.
+            // Everything inside the link takes it, nested links and wrappers
+            // included: croatian_grant's portal URL sits in a hyperlink
+            // inside a hyperlink, and the inner one wins.
+            let first = out.len();
             collect_run_nodes(child, rels, out, active_comments);
-        } else if is_wml && name == "del" {
-            // Final mode: skip deleted content entirely
+            for (_, run_url, anchor_only, _) in &mut out[first..] {
+                if run_url.is_none() {
+                    *run_url = url.clone();
+                    *anchor_only = is_anchor_only;
+                }
+            }
+        } else if is_wml && matches!(name, "ins" | "moveTo" | "smartTag" | "customXml") {
+            // w:customXml inline-wraps runs transparently, like w:smartTag.
+            // Final mode shows moved text at its destination (moveTo).
+            collect_run_nodes(child, rels, out, active_comments);
+        } else if is_wml && matches!(name, "del" | "moveFrom") {
+            // Final mode: skip deleted content and the source of moved text
         } else if is_wml && name == "sdt" {
             if let Some(content) = wml(child, "sdtContent") {
                 collect_run_nodes(content, rels, out, active_comments);
@@ -710,6 +726,7 @@ fn merge_compatible_runs(runs: Vec<Run>) -> Vec<Run> {
                 && prev.border == run.border
                 && prev.vertical_align == run.vertical_align
                 && prev.kern_threshold == run.kern_threshold
+                && prev.position == run.position
                 && prev.hyperlink_url == run.hyperlink_url
                 && prev.text_outline == run.text_outline
                 && prev.text_fill == run.text_fill
@@ -902,6 +919,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
     let mut horizontal_rule: Option<HorizontalRule> = None;
     let mut has_page_break_after = false;
     let mut page_break_before_content = false;
+    let mut page_break_at: Option<usize> = None;
     let mut has_column_break = false;
     let mut has_clear_break = false;
     let mut field_stack: Vec<FieldFrame> = Vec::new();
@@ -1105,6 +1123,8 @@ pub(super) fn parse_runs<R: Read + Seek>(
                         if runs.is_empty() && pending_text.is_empty() {
                             page_break_before_content = true;
                         } else {
+                            flush_pending(&mut pending_text, &mut runs);
+                            page_break_at.get_or_insert(runs.len());
                             has_page_break_after = true;
                         }
                     }
@@ -1242,13 +1262,26 @@ pub(super) fn parse_runs<R: Read + Seek>(
 
     ensure_nonempty_paragraph(&mut runs, ppr, &defaults, ctx.theme, has_page_break_before);
 
-    let runs = merge_compatible_runs(runs);
+    // Merge each side of a mid-paragraph page break on its own so the split
+    // index stays valid; a break with nothing visible after it stays a plain
+    // break after the paragraph.
+    let tail = page_break_at.map(|at| runs.split_off(at.min(runs.len())));
+    let mut runs = merge_compatible_runs(runs);
+    let page_break_at = tail.and_then(|tail| {
+        let at = runs.len();
+        let has_content = tail
+            .iter()
+            .any(|r| !r.text.trim().is_empty() || r.is_tab || r.inline_image.is_some());
+        runs.extend(merge_compatible_runs(tail));
+        has_content.then_some(at)
+    });
 
     ParsedRuns {
         runs,
         has_page_break_before,
         has_explicit_page_break_before: page_break_before_content,
         has_page_break_after,
+        page_break_at,
         has_column_break,
         has_clear_break,
         floating_images,
@@ -1361,6 +1394,47 @@ mod tests {
             .find(|n| n.has_tag_name((WML_NS, "t")))
             .and_then(|n| n.text());
         assert_eq!(t_text, Some("OFFICIAL"));
+    }
+
+    #[test]
+    fn collect_run_nodes_keeps_text_of_nested_hyperlinks() {
+        let ns = WML_NS;
+        let xml = format!(
+            r#"<w:p xmlns:w="{ns}" xmlns:r="{REL_NS}">
+              <w:hyperlink r:id="a"><w:hyperlink r:id="b"><w:r><w:t>inner</w:t></w:r></w:hyperlink></w:hyperlink>
+            </w:p>"#
+        );
+        let doc = roxmltree::Document::parse(&xml).unwrap();
+        let rels = HashMap::from([("a".into(), "outer".into()), ("b".into(), "inner".into())]);
+        let mut out = Vec::new();
+        collect_run_nodes(doc.root_element(), &rels, &mut out, &mut Vec::new());
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].1.as_deref(), Some("inner"));
+    }
+
+    #[test]
+    fn collect_run_nodes_keeps_moved_text_at_its_destination() {
+        let ns = WML_NS;
+        let xml = format!(
+            r#"<w:p xmlns:w="{ns}">
+              <w:moveFrom w:id="1" w:author="a"><w:r><w:t>old</w:t></w:r></w:moveFrom>
+              <w:moveTo w:id="2" w:author="a"><w:r><w:t>new</w:t></w:r></w:moveTo>
+            </w:p>"#
+        );
+        let doc = roxmltree::Document::parse(&xml).unwrap();
+        let mut out = Vec::new();
+        collect_run_nodes(
+            doc.root_element(),
+            &HashMap::new(),
+            &mut out,
+            &mut Vec::new(),
+        );
+        let texts: Vec<_> = out
+            .iter()
+            .filter_map(|(r, ..)| r.descendants().find(|n| n.has_tag_name((WML_NS, "t"))))
+            .filter_map(|t| t.text())
+            .collect();
+        assert_eq!(texts, ["new"]);
     }
 
     #[test]

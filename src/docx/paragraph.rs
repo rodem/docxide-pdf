@@ -411,6 +411,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
             || para_style.is_some_and(|s| s.page_break_before),
         page_break_before_explicit: parsed.has_explicit_page_break_before,
         page_break_after: parsed.has_page_break_after,
+        page_break_at: parsed.page_break_at,
         column_break_before: parsed.has_column_break,
         clears_floats: parsed.has_clear_break,
         tab_stops,
@@ -430,5 +431,72 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         auto_space_de,
         auto_space_dn,
         frame_props: ppr.and_then(parse_frame_props),
+    }
+}
+
+/// Word moves the text after a page break inside a paragraph to the next page
+/// and lays it out as the paragraph's continuation: no list label, no
+/// first-line indent, no space before. The paragraph's space after, keep-next
+/// and section break belong to its end, i.e. the continuation.
+pub(super) fn split_at_page_break(para: &mut Paragraph) -> Option<Paragraph> {
+    let at = para.page_break_at.take()?;
+    let runs = para.runs.split_off(at);
+    let rest = Paragraph {
+        runs,
+        style_id: para.style_id.clone(),
+        space_after: std::mem::take(&mut para.space_after),
+        space_after_auto: std::mem::take(&mut para.space_after_auto),
+        alignment: para.alignment,
+        indent_left: para.indent_left,
+        indent_right: para.indent_right,
+        contextual_spacing: para.contextual_spacing,
+        keep_next: std::mem::take(&mut para.keep_next),
+        keep_lines: para.keep_lines,
+        widow_control: para.widow_control,
+        line_spacing: para.line_spacing,
+        borders: para.borders.clone(),
+        shading: para.shading,
+        tab_stops: para.tab_stops.clone(),
+        paragraph_mark_vanish: para.paragraph_mark_vanish,
+        paragraph_mark_font_size: para.paragraph_mark_font_size,
+        paragraph_mark_font_name: para.paragraph_mark_font_name.clone(),
+        snap_to_grid: para.snap_to_grid,
+        auto_space_de: para.auto_space_de,
+        auto_space_dn: para.auto_space_dn,
+        ..Paragraph::default()
+    };
+    Some(rest)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn page_break_split_moves_the_paragraph_end_to_the_continuation() {
+        let run = |t: &str| Run {
+            text: t.into(),
+            ..Run::default()
+        };
+        let mut para = Paragraph {
+            runs: vec![run("before"), run("after")],
+            page_break_at: Some(1),
+            page_break_after: true,
+            space_before: 6.0,
+            space_after: 10.0,
+            keep_next: true,
+            indent_left: 18.0,
+            indent_hanging: 18.0,
+            list_label: "1.".into(),
+            ..Paragraph::default()
+        };
+        let rest = split_at_page_break(&mut para).unwrap();
+        assert_eq!(para.runs.len(), 1);
+        assert_eq!(rest.runs[0].text, "after");
+        assert!(para.page_break_after && !para.keep_next && para.space_after == 0.0);
+        assert!(rest.keep_next && rest.space_after == 10.0 && rest.space_before == 0.0);
+        assert_eq!((rest.indent_left, rest.indent_hanging), (18.0, 0.0));
+        assert!(rest.list_label.is_empty() && !rest.page_break_after);
+        assert!(split_at_page_break(&mut para).is_none());
     }
 }

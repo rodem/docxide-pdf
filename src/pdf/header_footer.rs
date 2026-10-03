@@ -1056,6 +1056,26 @@ pub(super) fn render_header_footer(
     }
 }
 
+/// Which header/footer variant a page shows. A section that lacks that variant
+/// inherits it from earlier sections, and shows none if no section defines it
+/// (§17.10.5) — it never falls back to the default variant.
+#[derive(Clone, Copy)]
+enum HfVariant {
+    Default,
+    First,
+    Even,
+}
+
+fn hf_variant(doc: &Document, section_idx: usize, is_first_page: bool, page_num: usize) -> HfVariant {
+    if is_first_page && doc.sections[section_idx].properties.different_first_page {
+        HfVariant::First
+    } else if doc.even_and_odd_headers && page_num.is_multiple_of(2) {
+        HfVariant::Even
+    } else {
+        HfVariant::Default
+    }
+}
+
 /// Resolve which header to use for a given page, walking sections backward
 /// for inheritance. Returns `(header_data, hf_type_id, section_index)`.
 pub(super) fn resolve_header_for_page(
@@ -1064,27 +1084,24 @@ pub(super) fn resolve_header_for_page(
     is_first_page: bool,
     page_num: usize,
 ) -> (Option<&HeaderFooter>, u8, usize) {
+    let variant = hf_variant(doc, section_idx, is_first_page, page_num);
+    let t = match variant {
+        HfVariant::Default => 0,
+        HfVariant::First => 1,
+        HfVariant::Even => 4,
+    };
     for idx in (0..=section_idx).rev() {
         let s = &doc.sections[idx].properties;
-        let (h, t) = if idx == section_idx {
-            if is_first_page && s.different_first_page {
-                (s.header_first.as_ref(), 1u8)
-            } else if doc.even_and_odd_headers
-                && page_num.is_multiple_of(2)
-                && s.header_even.is_some()
-            {
-                (s.header_even.as_ref(), 4u8)
-            } else {
-                (s.header_default.as_ref(), 0u8)
-            }
-        } else {
-            (s.header_default.as_ref(), 0u8)
+        let h = match variant {
+            HfVariant::Default => &s.header_default,
+            HfVariant::First => &s.header_first,
+            HfVariant::Even => &s.header_even,
         };
         if h.is_some() {
-            return (h, t, idx);
+            return (h.as_ref(), t, idx);
         }
     }
-    (None, 0, section_idx)
+    (None, t, section_idx)
 }
 
 /// Resolve which footer to use for a given page, walking sections backward
@@ -1095,25 +1112,22 @@ pub(super) fn resolve_footer_for_page(
     is_first_page: bool,
     page_num: usize,
 ) -> (Option<&HeaderFooter>, u8, usize) {
+    let variant = hf_variant(doc, section_idx, is_first_page, page_num);
+    let t = match variant {
+        HfVariant::Default => 2,
+        HfVariant::First => 3,
+        HfVariant::Even => 5,
+    };
     for idx in (0..=section_idx).rev() {
         let s = &doc.sections[idx].properties;
-        let (f, t) = if idx == section_idx {
-            if is_first_page && s.different_first_page {
-                (s.footer_first.as_ref(), 3u8)
-            } else if doc.even_and_odd_headers
-                && page_num.is_multiple_of(2)
-                && s.footer_even.is_some()
-            {
-                (s.footer_even.as_ref(), 5u8)
-            } else {
-                (s.footer_default.as_ref(), 2u8)
-            }
-        } else {
-            (s.footer_default.as_ref(), 2u8)
+        let f = match variant {
+            HfVariant::Default => &s.footer_default,
+            HfVariant::First => &s.footer_first,
+            HfVariant::Even => &s.footer_even,
         };
         if f.is_some() {
-            return (f, t, idx);
+            return (f.as_ref(), t, idx);
         }
     }
-    (None, 2, section_idx)
+    (None, t, section_idx)
 }

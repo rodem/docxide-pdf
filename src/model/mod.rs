@@ -140,6 +140,15 @@ impl SectionProperties {
     pub fn text_width(&self) -> f32 {
         self.page_width - self.margin_left - self.margin_right
     }
+
+    /// The docGrid line pitch when the grid snaps lines, else None.
+    pub fn line_grid_pitch(&self) -> Option<f32> {
+        (matches!(
+            self.grid_type,
+            DocGridType::Lines | DocGridType::LinesAndChars | DocGridType::SnapToChars
+        ) && self.line_pitch > 0.0)
+            .then_some(self.line_pitch)
+    }
 }
 
 /// §17.6.8 `w:lnNumType` — line numbers shown in the margin (legal/contract docs).
@@ -235,6 +244,9 @@ pub struct Document {
     pub comments: HashMap<u32, Comment>,
     pub font_table: FontTable,
     pub even_and_odd_headers: bool,
+    /// `w:mirrorMargins`: like evenAndOddHeaders, makes odd/even section breaks
+    /// insert filler pages even when the section restarts its numbering.
+    pub mirror_margins: bool,
     pub default_tab_stop: f32,
     /// Maps style IDs to display names (for STYLEREF resolution)
     pub style_id_to_name: HashMap<String, String>,
@@ -253,6 +265,8 @@ pub struct Document {
     pub compat_mode: u32,
     /// Word's `doNotExpandShiftReturn` (see `docx::settings`).
     pub do_not_expand_shift_return: bool,
+    /// Word's `adjustLineHeightInTable` (see `docx::settings`).
+    pub adjust_line_height_in_table: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -433,6 +447,9 @@ pub struct Paragraph {
     /// emits a blank page in that case; the style property is idempotent.
     pub page_break_before_explicit: bool,
     pub page_break_after: bool,
+    /// Run index where a page break inside the paragraph splits it; the
+    /// body parser turns the rest into a continuation paragraph.
+    pub page_break_at: Option<usize>,
     pub column_break_before: bool,
     /// §17.3.3.1 `w:br w:type="textWrapping" w:clear="all"` — content after
     /// this paragraph restarts below any floating objects.
@@ -503,6 +520,8 @@ pub struct Run {
     pub is_endnote_ref_mark: bool,
     /// `w:kern` in points; see `Run::kerns_at`.
     pub kern_threshold: Option<f32>,
+    /// Points the run is raised above the baseline (`w:position`; negative: lowered).
+    pub position: f32,
     pub char_style_id: Option<String>,
     pub text_outline: Option<TextOutline>,
     pub text_fill: Option<TextFill>,
@@ -606,6 +625,7 @@ impl Default for Run {
             endnote_id: None,
             is_endnote_ref_mark: false,
             kern_threshold: None,
+            position: 0.0,
             char_style_id: None,
             text_outline: None,
             text_fill: None,

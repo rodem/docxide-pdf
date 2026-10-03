@@ -27,13 +27,13 @@ is inherited from the last manual Save As; set "Best for printing" once by hand.
 from __future__ import annotations
 
 import argparse
-import re
 import shutil
 import subprocess
 import sys
 import threading
 import time
 import uuid
+import zipfile
 from pathlib import Path
 
 CONTAINER_TMP = Path.home() / "Library/Containers/com.microsoft.Word/Data/tmp"
@@ -71,7 +71,6 @@ end run
 
 PING = 'tell application "Microsoft Word" to get name'
 QUIT = 'tell application "Microsoft Word" to quit saving no'
-IS_RUNNING = 'tell application "System Events" to (name of processes) contains "Microsoft Word"'
 
 # Buttons in the order they are tried. "No" first: that is the repair prompt
 # ("Word found unreadable content… Do you want to recover?"), and recovering
@@ -111,8 +110,9 @@ def osa(script: str, *args: str, timeout: float = 30) -> subprocess.CompletedPro
 
 
 def word_running() -> bool:
-    r = osa(IS_RUNNING)
-    return r.returncode == 0 and r.stdout.strip() == "true"
+    # pgrep, not System Events: a hung System Events (AppleEvent timeout -1712)
+    # must not stop the export, it only costs the dialog watchdog.
+    return subprocess.run(["pgrep", "-xq", "Microsoft Word"]).returncode == 0
 
 
 def preflight() -> list[str]:
@@ -178,13 +178,21 @@ class Watchdog(threading.Thread):
             self.stop.wait(0.5)
 
 
-def safe_name(stem: str) -> str:
-    return re.sub(r"[^A-Za-z0-9._-]+", "_", stem)[:80] or "doc"
-
-
 def export_one(src: Path, dst: Path, stage: Path, timeout: float) -> None:
-    name = f"{safe_name(src.stem)}_{uuid.uuid4().hex[:6]}"
-    s_docx, s_pdf = stage / f"{name}.docx", stage / f"{name}.pdf"
+    # A broken zip makes Word ask to repair it, and that prompt needs a human
+    # whenever the watchdog lacks Accessibility access.
+    try:
+        with zipfile.ZipFile(src) as z:
+            bad = z.testzip()
+    except zipfile.BadZipFile as e:
+        raise RuntimeError(f"not a valid docx: {e}") from None
+    if bad:
+        raise RuntimeError(f"not a valid docx: corrupt part {bad}")
+    # The document keeps its own name (FILENAME fields print it); a fresh
+    # folder per export keeps the path unique.
+    folder = stage / uuid.uuid4().hex[:6]
+    folder.mkdir()
+    s_docx, s_pdf = folder / src.name, folder / f"{src.stem}.pdf"
     shutil.copy2(src, s_docx)
     subprocess.run(["xattr", "-d", "com.apple.quarantine", str(s_docx)], capture_output=True)
     try:
@@ -196,8 +204,7 @@ def export_one(src: Path, dst: Path, stage: Path, timeout: float) -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(s_pdf), dst)
     finally:
-        s_docx.unlink(missing_ok=True)
-        s_pdf.unlink(missing_ok=True)
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def iter_docx(paths: list[Path]):

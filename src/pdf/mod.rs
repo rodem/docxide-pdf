@@ -28,7 +28,7 @@ use pdf_writer::{Content, Name, Pdf, Ref};
 use crate::error::Error;
 use crate::fonts::FontEntry;
 use crate::model::{
-    Block, DocGridType, Document, FieldCode, HRelativeFrom, LineSpacing, PageVerticalAlign,
+    Block, Document, FieldCode, HRelativeFrom, LineSpacing, PageVerticalAlign,
     Paragraph, ParagraphBorder, Run, SectionBreakType, SectionProperties, ShapeFill, ShapeGeometry,
     VRelativeFrom, VerticalPosition, WrapText, WrapType,
 };
@@ -75,6 +75,22 @@ fn sorted_by_z<'a>(
     v
 }
 
+/// The paragraph a table opens with, which contextual spacing compares a
+/// paragraph before the table against: bulgarian_road_safety's empty Normal
+/// paragraph keeps no space after above a table whose first cell is Normal.
+fn first_cell_paragraph(t: &crate::model::Table) -> Option<&Paragraph> {
+    t.rows
+        .first()?
+        .cells
+        .first()?
+        .content
+        .iter()
+        .find_map(|b| match b {
+            Block::Paragraph(p) => Some(p),
+            Block::Table(_) => None,
+        })
+}
+
 pub(super) struct RenderContext<'a> {
     pub(super) fonts: &'a HashMap<String, FontEntry>,
     pub(super) doc_line_spacing: LineSpacing,
@@ -94,6 +110,11 @@ pub(super) struct RenderContext<'a> {
     pub(super) compat_mode: u32,
     /// Word's `doNotExpandShiftReturn` (see `docx::settings`).
     pub(super) do_not_expand_shift_return: bool,
+    /// The current section's docGrid line pitch when its grid snaps lines
+    /// and `adjustLineHeightInTable` is set (0 otherwise): table cells then
+    /// snap to it like body text; physical_therapy (no flag) keeps natural
+    /// cell lines on its 18pt grid.
+    pub(super) cell_grid_pitch: std::cell::Cell<f32>,
 }
 
 impl RenderContext<'_> {
@@ -639,6 +660,8 @@ pub(super) struct PageBuilder {
     all_footnote_ids: Vec<Vec<u32>>,
     all_alpha_states: Vec<HashSet<u8>>,
     all_gradient_specs: Vec<Vec<GradientSpec>>,
+    /// Pages inserted by odd/even section breaks; Word prints them without header or footer.
+    filler_pages: Vec<usize>,
     /// Per-page tuples: (hf_section, is_first_page, content_section).
     /// hf_section: which section provides headers/footers.
     /// content_section: which section is being rendered (for page numbering, geometry).
@@ -685,6 +708,7 @@ impl PageBuilder {
             all_footnote_ids: Vec::new(),
             all_alpha_states: Vec::new(),
             all_gradient_specs: Vec::new(),
+            filler_pages: Vec::new(),
             page_section_indices: Vec::new(),
             all_styleref: Vec::new(),
             all_first_styleref: Vec::new(),
@@ -822,6 +846,7 @@ impl PageBuilder {
     }
 
     fn push_blank_page(&mut self, sect_idx: usize) {
+        self.filler_pages.push(self.all_contents.len());
         self.all_contents.push(tagging::artifact_content());
         // Blank page has no body content; record top so vAlign yields no shift.
         self.all_content_bottom.push(self.slot_top);
@@ -1175,6 +1200,7 @@ fn compute_bookmark_positions(
                         bookmark_positions.insert(bm.clone(), (page_idx, slot_top));
                     }
                     if para.is_section_break && is_text_empty(&para.runs) {
+                        prev_space_after = para.space_after;
                         continue;
                     }
                     let (mut font_size, mut tallest_lhr, _) =
@@ -1185,14 +1211,8 @@ fn compute_bookmark_positions(
                     let effective_ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
                     let line_h = resolve_line_h(effective_ls, font_size, tallest_lhr);
                     let line_h = if para.snap_to_grid
-                        && matches!(
-                            sp.grid_type,
-                            DocGridType::Lines
-                                | DocGridType::LinesAndChars
-                                | DocGridType::SnapToChars
-                        )
+                        && sp.line_grid_pitch().is_some()
                         && !matches!(effective_ls, LineSpacing::Exact(_))
-                        && sp.line_pitch > 0.0
                     {
                         grid_snapped_line_h(
                             &para.runs,
@@ -1239,7 +1259,8 @@ fn compute_bookmark_positions(
                     };
                     let next_para = match blocks.get(bi + 1) {
                         Some(Block::Paragraph(p)) => Some(p),
-                        _ => None,
+                        Some(Block::Table(t)) => first_cell_paragraph(t),
+                        None => None,
                     };
                     let effective_sa = if drops_contextual_spacing(para, next_para) {
                         0.0
@@ -1336,7 +1357,7 @@ fn render_paragraph_block(
     let adjacent_para = |idx: usize| -> Option<&Paragraph> {
         match section_blocks.get(idx)? {
             Block::Paragraph(p) => Some(p),
-            Block::Table(_) => None,
+            Block::Table(t) => first_cell_paragraph(t),
         }
     };
 
@@ -1349,6 +1370,10 @@ fn render_paragraph_block(
         && para.floating_images.is_empty()
         && para.textboxes.is_empty()
     {
+        // Its space after still meets the next section's first space before:
+        // case25's sections (break paragraph after=10pt) start their 24pt
+        // heading 14pt down, victorian's (after=0) its 26pt heading 26pt down.
+        state.prev_space_after = para.space_after;
         state.global_block_idx += 1;
         return true;
     }
@@ -1418,12 +1443,8 @@ fn render_paragraph_block(
     let effective_ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
     let line_h = resolve_line_h(effective_ls, font_size, tallest_lhr);
     let grid_snapped = para.snap_to_grid
-        && matches!(
-            sp.grid_type,
-            DocGridType::Lines | DocGridType::LinesAndChars | DocGridType::SnapToChars
-        )
-        && !matches!(effective_ls, LineSpacing::Exact(_))
-        && sp.line_pitch > 0.0;
+        && sp.line_grid_pitch().is_some()
+        && !matches!(effective_ls, LineSpacing::Exact(_));
     let line_h = if grid_snapped {
         grid_snapped_line_h(&para.runs, ctx.fonts, effective_ls, line_h, sp.line_pitch)
     } else {
@@ -1491,7 +1512,11 @@ fn render_paragraph_block(
                         }
                     } else if let Some(FieldCode::PageRef(ref bookmark)) = run.field_code {
                         let mut r = run.clone();
-                        if let Some(&(page_idx, _)) = state.bookmark_positions.get(bookmark) {
+                        // Word prints PAGEREF's cached result unless fields are updated
+                        // before printing; only an empty result needs our estimate.
+                        if r.text.trim().is_empty()
+                            && let Some(&(page_idx, _)) = state.bookmark_positions.get(bookmark)
+                        {
                             r.text = (page_idx + 1).to_string();
                         }
                         r
@@ -2241,13 +2266,22 @@ fn render_paragraph_block(
         if line_h > 0.0 {
             let mut fn_acc = 0.0f32;
             // Line i fits when the advances of the lines above it plus its own
-            // text height fit (its trailing leading may hang past the margin).
+            // text height fit (its trailing leading may hang past the margin),
+            // but not past a footnote area: there the whole line must fit
+            // (environmental_law_clinic's double-spaced lines stop a line
+            // earlier above the footnotes on every page in Word).
             let mut above = 0.0f32;
             for (i, fn_extra) in line_fn_extra.iter().enumerate() {
                 fn_acc += fn_extra;
                 let room = available - fn_acc;
                 let own_pitch = lines.get(i).and_then(|l| l.pitch);
-                if above + own_pitch.map_or(first_line_h, |p| p.min(first_line_h)) > room {
+                let above_footnotes = !state.pb.footnote_ids.is_empty() || fn_acc > 0.0;
+                let own_h = if above_footnotes {
+                    own_pitch.unwrap_or(line_h)
+                } else {
+                    own_pitch.map_or(first_line_h, |p| p.min(first_line_h))
+                };
+                if above + own_h > room {
                     break;
                 }
                 lines_that_fit = i + 1;
@@ -3040,6 +3074,11 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         endnote_marks: &endnote_display_order,
         compat_mode: doc.compat_mode,
         do_not_expand_shift_return: doc.do_not_expand_shift_return,
+        cell_grid_pitch: std::cell::Cell::new(
+            doc.sections
+                .first()
+                .map_or(0.0, |s| cell_grid_pitch(doc, &s.properties)),
+        ),
     };
 
     let bookmark_positions = compute_bookmark_positions(doc, &ctx);
@@ -3062,6 +3101,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
     for (sect_idx, section) in doc.sections.iter().enumerate() {
         let sp = &section.properties;
+        ctx.cell_grid_pitch.set(cell_grid_pitch(doc, sp));
 
         // Section break handling (not for the first section)
         if sect_idx > 0 {
@@ -3087,28 +3127,32 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                         _ => false,
                     };
                     if need_odd || need_even {
-                        // For an explicit OddPage/EvenPage section break, parity refers to the
-                        // new section's LOGICAL page number (pgNumType w:start): a restarted
-                        // section already begins at that number, so a filler page is only
-                        // needed when its parity is wrong (without a restart, numbering
-                        // continues and the physical index is the right proxy).
-                        //
-                        // The evenAndOddHeaders alignment heuristic also sets need_odd/need_even
-                        // (on a NextPage break, from page_num_start parity) but there the goal
-                        // is to land the section on the correct PHYSICAL sheet for even/odd
-                        // header selection — so it must keep using the physical index.
                         let explicit_parity_break = matches!(
                             sp.break_type,
                             SectionBreakType::OddPage | SectionBreakType::EvenPage
                         );
-                        let parity_ref = if explicit_parity_break {
-                            sp.page_num_start
-                                .map(|s| s as usize)
-                                .unwrap_or_else(|| state.pb.page_count() + 1)
+                        let filler = if explicit_parity_break {
+                            // Word's filler page follows the number the section would get by
+                            // continuing. A restarted section skips it (and bumps its own start
+                            // instead, see page_numbers) unless evenAndOddHeaders/mirrorMargins
+                            // ask for print-ready sheets (measured with Word probes, 2026-10-03).
+                            (sp.page_num_start.is_none()
+                                || doc.even_and_odd_headers
+                                || doc.mirror_margins)
+                                && {
+                                    let continuing =
+                                        page_numbers(doc, &state.pb.page_section_indices)
+                                            .last()
+                                            .map_or(1, |n| n + 1);
+                                    (continuing % 2 == 1) != need_odd
+                                }
                         } else {
-                            state.pb.page_count() + 1
+                            // The evenAndOddHeaders heuristic (NextPage break with a restart)
+                            // lands the section on the right PHYSICAL sheet for header selection.
+                            let physical = state.pb.page_count() + 1;
+                            (need_odd && physical % 2 == 0) || (need_even && physical % 2 == 1)
                         };
-                        if (need_odd && parity_ref % 2 == 0) || (need_even && parity_ref % 2 == 1) {
+                        if filler {
                             state.pb.push_blank_page(sect_idx - 1);
                         }
                     }
@@ -3492,33 +3536,22 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
     // continue numbering from the previous section, but the format never
     // inherits — fmt applies only to its own section and an omitted fmt means
     // decimal (OOXML §17.6.12; Word renders arabic after roman front matter)
-    let mut page_numbers: Vec<usize> = Vec::with_capacity(total_pages);
     // Track which section's format applies to each page (None = decimal default).
     // Uses a section index to avoid cloning the format string for every page.
     let mut page_format_sources: Vec<Option<usize>> = Vec::with_capacity(total_pages);
+    let page_numbers = page_numbers(doc, &state.pb.page_section_indices);
     {
-        let mut running_num: usize = 0;
         let mut running_format_si: Option<usize> = None;
         let mut prev_content_si: Option<usize> = None;
         for page_idx in 0..total_pages {
             let (_, _, content_si) = state.pb.page_section_indices[page_idx];
-            let csp = &doc.sections[content_si].properties;
             if prev_content_si != Some(content_si) {
-                // New section boundary
-                running_format_si = if csp.page_num_format.is_some() {
-                    Some(content_si)
-                } else {
-                    None
-                };
-                if let Some(start) = csp.page_num_start {
-                    running_num = start as usize;
-                } else {
-                    running_num += 1;
-                }
-            } else {
-                running_num += 1;
+                running_format_si = doc.sections[content_si]
+                    .properties
+                    .page_num_format
+                    .is_some()
+                    .then_some(content_si);
             }
-            page_numbers.push(running_num);
             page_format_sources.push(running_format_si);
             prev_content_si = Some(content_si);
         }
@@ -3529,7 +3562,11 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
     let mut all_hf_contents: Vec<Option<Content>> = (0..total_pages).map(|_| None).collect();
     for (page_idx, hf_content) in all_hf_contents.iter_mut().enumerate() {
         let (si, is_first, _content_si) = state.pb.page_section_indices[page_idx];
+        if state.pb.filler_pages.contains(&page_idx) {
+            continue;
+        }
         let sp = &doc.sections[si].properties;
+        ctx.cell_grid_pitch.set(cell_grid_pitch(doc, sp));
 
         let page_num = page_numbers[page_idx];
         let effective_page_num_format = page_format_sources[page_idx]
@@ -3737,6 +3774,8 @@ mod tests {
             grid_line_ratio: None,
             plain_line_h_ratio: Some(lhr),
             grid_baseline_shift: None,
+            superscript_ratio: None,
+            subscript_ratio: None,
             east_asian: false,
             plain_ascender_ratio: Some(ar),
             char_to_gid: None,
@@ -3795,4 +3834,40 @@ mod tests {
         para.list_label_font = Some("Courier New".to_string());
         assert_eq!(boosted(&para), text_line_h);
     }
+}
+
+/// Logical page number of each page: a section with `w:pgNumType @start` restarts,
+/// others continue. A restart after an odd/even section break with the wrong
+/// parity takes the next number instead (Word skips a number, not a sheet).
+fn page_numbers(doc: &Document, page_section_indices: &[(usize, bool, usize)]) -> Vec<usize> {
+    let mut numbers = Vec::with_capacity(page_section_indices.len());
+    let mut running = 0;
+    let mut prev_si = None;
+    for &(_, _, si) in page_section_indices {
+        let sp = &doc.sections[si].properties;
+        running = match sp.page_num_start {
+            Some(start) if prev_si != Some(si) => {
+                let start = start as usize;
+                let wrong_parity = si > 0
+                    && match sp.break_type {
+                        SectionBreakType::OddPage => start % 2 == 0,
+                        SectionBreakType::EvenPage => start % 2 == 1,
+                        _ => false,
+                    };
+                start + wrong_parity as usize
+            }
+            _ => running + 1,
+        };
+        numbers.push(running);
+        prev_si = Some(si);
+    }
+    numbers
+}
+
+/// The docGrid pitch table-cell lines snap to in a section: only under
+/// `w:compat/w:adjustLineHeightInTable`, else 0.
+fn cell_grid_pitch(doc: &Document, sp: &crate::model::SectionProperties) -> f32 {
+    sp.line_grid_pitch()
+        .filter(|_| doc.adjust_line_height_in_table)
+        .unwrap_or(0.0)
 }

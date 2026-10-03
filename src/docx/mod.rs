@@ -571,11 +571,7 @@ pub(in crate::docx) fn parse_paragraph_spacing(
     };
 
     let line_spacing = inline_spacing
-        .and_then(|n| {
-            n.attribute((WML_NS, "line"))
-                .and_then(|v| v.parse::<f32>().ok())
-                .map(|line_val| parse_line_spacing(n, line_val))
-        })
+        .and_then(parse_line_spacing)
         .or_else(|| para_style.and_then(|s| s.line_spacing));
     (space_before, space_after, line_spacing)
 }
@@ -877,7 +873,9 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
                 }
                 prev_list_num_id = num_id;
 
+                let continuation = paragraph::split_at_page_break(&mut para);
                 blocks.push(Block::Paragraph(para));
+                blocks.extend(continuation.map(Block::Paragraph));
 
                 // Mid-document section break: sectPr inside pPr ends the current section
                 if let Some(sect_node) = ppr.and_then(|ppr| wml(ppr, "sectPr")) {
@@ -971,6 +969,7 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
         comments,
         font_table,
         even_and_odd_headers: settings.even_and_odd_headers,
+        mirror_margins: settings.mirror_margins,
         default_tab_stop: settings.default_tab_stop,
         style_id_to_name: styles.style_id_to_name,
         theme_minor_font: theme.minor.clone(),
@@ -982,6 +981,7 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
         compress_punctuation: settings.compress_punctuation,
         compat_mode: settings.compat_mode,
         do_not_expand_shift_return: settings.do_not_expand_shift_return,
+        adjust_line_height_in_table: settings.adjust_line_height_in_table,
     })
 }
 

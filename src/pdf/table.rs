@@ -218,13 +218,30 @@ fn render_cell_inline_image(
     cursor_y: f32,
     cm: &CellMargins,
 ) -> f32 {
-    let text_w = (col_w - cm.left - cm.right).max(0.0);
-    let img_x = match para.alignment {
-        Alignment::Center => cell_x + cm.left + (text_w - para.image_width) / 2.0,
-        Alignment::Right => cell_x + cm.left + text_w - para.image_width,
-        _ => cell_x + cm.left,
-    };
+    // The picture is the paragraph's first line, so it starts at the first-line
+    // indent: nabl's logo paragraph (w:ind left=-198) sits 9.9pt into the cell
+    // margin in Word.
+    let left = cm.left + para.indent_left + para.indent_first_line - para.indent_hanging;
+    let text_w = (col_w - left - cm.right - para.indent_right).max(0.0);
+    let img_x = cell_x
+        + left
+        + match para.alignment {
+            Alignment::Center => (text_w - para.image_width) / 2.0,
+            Alignment::Right => text_w - para.image_width,
+            _ => 0.0,
+        };
     let img_y = cursor_y - para.image_height;
+
+    // Word clips a picture wider than its cell to the cell's edges (nabl's
+    // 90.75pt logo in an 81pt column).
+    let clip = img_x < cell_x || img_x + para.image_width > cell_x + col_w;
+    if clip {
+        content.save_state();
+        content
+            .rect(cell_x, img_y - 1.0, col_w, para.image_height + 2.0)
+            .clip_nonzero()
+            .end_path();
+    }
 
     if let Some(ref shadow) = para.image_shadow {
         super::color::draw_image_shadow(
@@ -271,6 +288,9 @@ fn render_cell_inline_image(
             para.image_clip.as_ref(),
         );
     }
+    if clip {
+        content.restore_state();
+    }
 
     para.image_height
 }
@@ -298,7 +318,7 @@ fn cell_content_h_for_valign(items: &[CellContentItem]) -> f32 {
         .iter()
         .map(|item| match item {
             CellContentItem::Paragraph(p) => p.space_before + para_block_height(p),
-            CellContentItem::NestedTable { height } => *height,
+            CellContentItem::NestedTable { height, .. } => *height,
         })
         .sum();
     // Word includes the last paragraph's space_after in the content block height
@@ -326,7 +346,7 @@ fn cell_content_h_for_valign(items: &[CellContentItem]) -> f32 {
 fn cell_has_visible_content(items: &[CellContentItem]) -> bool {
     items.iter().any(|item| match item {
         CellContentItem::Paragraph(p) => para_has_visible_content(p),
-        CellContentItem::NestedTable { height } => *height > 0.0,
+        CellContentItem::NestedTable { height, .. } => *height > 0.0,
     })
 }
 
@@ -545,7 +565,7 @@ fn render_cell_content(
                     );
                 }
             }
-            CellContentItem::NestedTable { height } => {
+            CellContentItem::NestedTable { height, .. } => {
                 // Find the corresponding Block::Table
                 let table = loop {
                     if block_idx >= blocks.len() {
@@ -568,6 +588,7 @@ fn render_cell_content(
                         gradient_specs,
                         links,
                         &mut tagger,
+                        0..usize::MAX,
                     );
                 } else {
                     cursor_y -= height;
@@ -727,9 +748,17 @@ fn render_table_rows(
     // (tags, this table's structure, page) for a nested table in a tagged
     // cell; header/footer tables stay artifacts.
     mut tag: Option<(&mut Tags, &mut TableTags, usize)>,
+    rows: std::ops::Range<usize>,
 ) {
     let cm = &table.cell_margins;
-    for (ri, (row, layout)) in table.rows.iter().zip(row_layouts.iter()).enumerate() {
+    for (ri, (row, layout)) in table
+        .rows
+        .iter()
+        .zip(row_layouts.iter())
+        .enumerate()
+        .skip(rows.start)
+        .take(rows.len())
+    {
         let row_h = layout.height;
         let row_top = *cursor_y;
         let row_bottom = row_top - row_h;
@@ -833,6 +862,8 @@ fn render_nested_table(
     links: &mut Vec<LinkAnnotation>,
     // The parent cell's tagger: the nested table is tagged inside that cell.
     tagger: &mut Option<CellTagger<'_>>,
+    // The rows to draw: all of them, or one part of a row split.
+    rows: std::ops::Range<usize>,
 ) {
     let mut col_widths = auto_fit_columns(table, ctx.fonts, Some(available_w), None);
     apply_pct_width(table, &mut col_widths, available_w);
@@ -863,6 +894,7 @@ fn render_nested_table(
         gradient_specs,
         links,
         tag,
+        rows,
     );
     if let (Some(t), Some(n)) = (tagger.as_mut(), nested) {
         n.finish(t.tags);
@@ -915,11 +947,7 @@ fn render_partial_cell_content(
     for (pi, l0, l1) in cursor_chunks(items, start, end) {
         match &items[pi] {
             CellContentItem::Paragraph(para) => {
-                let sb = if pi == start.item {
-                    0.0
-                } else {
-                    para.space_before
-                };
+                let sb = chunk_space_before(&items[pi], pi, start);
 
                 let cell_nodes = tagger
                     .as_mut()
@@ -1008,7 +1036,8 @@ fn render_partial_cell_content(
 
                 cursor_y -= super::table_layout::cell_lines_h(para, l0..l1);
             }
-            CellContentItem::NestedTable { height } => {
+            CellContentItem::NestedTable { .. } => {
+                let height = super::table_layout::item_chunk_height(&items[pi], l0, l1);
                 let bi = item_to_block.get(pi).copied().unwrap_or(0);
                 if let Some(Block::Table(table)) = blocks.get(bi) {
                     render_nested_table(
@@ -1021,6 +1050,7 @@ fn render_partial_cell_content(
                         gradient_specs,
                         links,
                         &mut tagger,
+                        l0..l1.unwrap_or(usize::MAX),
                     );
                 } else {
                     cursor_y -= height;
@@ -1318,7 +1348,7 @@ fn render_partial_row(
         let mut h = cm.top + cm.bottom;
         for (pi, l0, l1) in cursor_chunks(&cell_layout.items, start, end) {
             let item = &cell_layout.items[pi];
-            h += chunk_space_before(item, pi == start.item) + item_chunk_height(item, l0, l1);
+            h += chunk_space_before(item, pi, start) + item_chunk_height(item, l0, l1);
         }
         max_h = max_h.max(h);
     }
@@ -1366,7 +1396,7 @@ fn render_partial_row(
         let has_content = cursor_chunks(&cell_layout.items, start, end).any(|(pi, _, _)| {
             match &cell_layout.items[pi] {
                 CellContentItem::Paragraph(p) => para_has_visible_content(p),
-                CellContentItem::NestedTable { height } => *height > 0.0,
+                CellContentItem::NestedTable { height, .. } => *height > 0.0,
             }
         });
 
@@ -1514,21 +1544,14 @@ pub(super) fn render_table(
         let left = match table.alignment {
             TableAlignment::Center => area_left + (area_width - table_total_w) / 2.0,
             TableAlignment::Right => area_left + area_width - table_total_w,
-            // When tblInd is explicitly set AND significantly different
-            // from the cell margin, it positions the table edge directly.
-            // When absent, or when tblInd ≈ cm.left (common in
-            // LibreOffice-generated DOCX), legacy behavior subtracts
-            // cm.left so first-cell text aligns with the page margin.
-            // Word 2013+ layout (compat 15) never outdents: the border
-            // sits at the margin and the text inside it.
+            // Before Word 2013 layout, tblInd positions the first cell's text, so
+            // the edge sits one cell margin further out, even for an explicit
+            // tblInd of 0 (chinese_costume). Word 2013+ (compat 15) never outdents:
+            // the border sits at the margin and the text inside it.
             TableAlignment::Left => {
                 let ind = table.table_indent;
-                let explicit_real_indent =
-                    table.table_indent_explicit && (ind - cm.left).abs() > 1.0;
                 if ctx.compat_mode >= 15 {
                     area_left + ind + word2013_border_shift(table)
-                } else if explicit_real_indent {
-                    area_left + ind
                 } else {
                     area_left + ind - cm.left
                 }
@@ -1770,32 +1793,49 @@ pub(super) fn render_table(
         // instead).
         let any_cell_multi_item = layout.cells.iter().any(|c| {
             c.items.len() > 1
-                || c.items
-                    .iter()
-                    .any(|it| matches!(it, CellContentItem::Paragraph(p) if p.lines.len() >= 4))
+                || c.items.iter().any(|it| match it {
+                    CellContentItem::Paragraph(p) => p.lines.len() >= 4,
+                    CellContentItem::NestedTable { row_heights, .. } => row_heights.len() >= 2,
+                })
         });
-        let first_chunk_fits = layout.cells.iter().all(|c| {
-            c.items.first().is_none_or(|it| {
-                let item_h = match it {
-                    CellContentItem::Paragraph(p) => para_block_height(p),
-                    CellContentItem::NestedTable { height } => *height,
-                };
-                cm.top + cm.bottom + item_h <= available_h
+        // Whether every cell's first chunk fits in the room left: its first
+        // paragraph (with `widow`, two lines of a long one) or first nested row,
+        // with the opening space before that find_cell_split charges.
+        let first_fits = |widow: bool| {
+            layout.cells.iter().all(|c| {
+                c.items.first().is_none_or(|it| {
+                    let end = match it {
+                        CellContentItem::Paragraph(p) if widow && p.lines.len() >= 4 => Some(2),
+                        CellContentItem::Paragraph(_) => None,
+                        CellContentItem::NestedTable { .. } => Some(1),
+                    };
+                    cm.top
+                        + cm.bottom
+                        + chunk_space_before(it, 0, CellCursor::default())
+                        + item_chunk_height(it, 0, end)
+                        <= available_h
+                })
             })
-        });
-        // ponytail: 50pt (~4 lines) sliver guard. Word splits with even one
-        // line of room, but our line heights run a few pt short of Word's, so
-        // near-boundary rows see phantom space Word doesn't have (victorian
-        // p8: ours 43pt vs Word's 6pt). Lower toward one line height once
-        // line-height fidelity improves.
+        };
+        // Word splits with one line of room: nabl's "Remarks" row breaks
+        // between its paragraphs with 30pt left. ponytail: 14pt (a line) guard
+        // so a near-boundary rounding error can't split off nothing; drop it
+        // if a reference ever splits with less.
         let can_meaningfully_split = !row.cant_split
             && row.height.is_none()
             && any_cell_multi_item
             && !at_page_top
-            && available_h > 50.0
-            && first_chunk_fits;
+            && available_h > 14.0
+            && first_fits(false);
 
-        let must_split = (row_h > page_content_h || keep_with_anchor) && !row.cant_split;
+        // A row taller than a page must split, but not where its cells can't
+        // start: away from the page top each cell needs its first paragraph,
+        // or two lines of a long one (widow control), in the room left —
+        // croatian_grant's 776pt row starts on the next page rather than in
+        // the 28pt above a footnote.
+        let must_split = (row_h > page_content_h || keep_with_anchor)
+            && !row.cant_split
+            && (at_page_top || first_fits(true));
         if row_h > available_h && (must_split || can_meaningfully_split) {
             split_row_across_pages(
                 row,
@@ -2012,5 +2052,6 @@ pub(super) fn render_header_footer_table(
         gradient_specs,
         &mut Vec::new(),
         None,
+        0..usize::MAX,
     );
 }
