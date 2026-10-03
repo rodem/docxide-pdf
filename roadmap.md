@@ -220,7 +220,9 @@ probe documents; each fix is one commit on the branch.
   `in-table` paragraphs come out 0.7pt short. Word reports "unreadable content" in
   the original fixture (valid zip; re-zipped variants open fine), so its reference
   came from a Word-repaired copy
-- strategi: Word gives two empty footnotes ~26pt each; we give almost nothing
+- strategi: NOT our bug — its original file trips Word's repair prompt and the committed
+  reference shows the repaired layout; a re-zipped copy exports like our output (59.5 J vs
+  15.5). Replacing the reference awaits the user's OK
 - radiographer: Word also splits *inside* a nested row (between its lines)
 - Word floors auto-multiple grid lines to 0.24pt steps (19.44 vs our 19.50)
 - References of the first 10 new fixtures were staged as `<stem>_<hex>.docx`, so
