@@ -8,7 +8,7 @@ use super::RenderContext;
 use super::color::stroke_segment;
 use super::helpers::{effective_space_after, effective_space_before};
 use super::layout::{
-    EMPTY_EFFECTS, EMPTY_INLINE_IMAGES, TextLine, build_paragraph_lines, is_text_empty,
+    EMPTY_EFFECTS, EMPTY_INLINE_IMAGES, LinkTagger, TextLine, build_paragraph_lines, is_text_empty,
     render_paragraph_lines, tallest_run_metrics,
 };
 use super::list_label::render_list_label;
@@ -291,14 +291,14 @@ fn render_notes_downward(
                     (layout.font_size * layout.ascender_ratio, 0.0),
                     line_count,
                     0,
-                    &mut Vec::new(),
+                    notes.links,
                     hanging,
                     ctx.fonts,
                     None,
                     gradient_specs,
                     None,
                     None,
-                    None,
+                    Some(LinkTagger::new(notes.tags, notes.page, p)),
                 );
                 super::tagging::Tags::end(content);
 

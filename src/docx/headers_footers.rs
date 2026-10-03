@@ -122,11 +122,11 @@ fn parse_notes_simple<R: Read + Seek>(
         return footnotes;
     };
     let root = xml.root_element();
-    let empty_rels = HashMap::new();
+    let rels = parse_part_relationships(zip, zip_path);
     let mut fn_ctx = ParseContext {
         styles,
         theme,
-        rels: &empty_rels,
+        rels: &rels,
         zip,
         numbering,
     };

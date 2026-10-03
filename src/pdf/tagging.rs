@@ -9,9 +9,11 @@
 
 use std::collections::HashMap;
 
-use pdf_writer::types::TableHeaderScope;
+use pdf_writer::types::{ListNumbering, TableHeaderScope};
 use pdf_writer::writers::StructTreeRoot;
 use pdf_writer::{Content, Name, Pdf, Ref, Str, TextStr};
+
+use crate::model::ListItem;
 
 pub(super) const ROOT: usize = 0;
 
@@ -33,6 +35,8 @@ struct Node {
     actual: Option<String>,
     /// `/Lang` of a Span in another language than the document's.
     lang: Option<String>,
+    /// An L's `/ListNumbering`.
+    numbering: Option<ListNumbering>,
 }
 
 impl Node {
@@ -46,6 +50,7 @@ impl Node {
             id: None,
             actual: None,
             lang: None,
+            numbering: None,
         }
     }
 
@@ -166,15 +171,15 @@ impl TableTags {
         c
     }
 
-    /// The cell paragraph's elements: a P, or for a list item (level, list id)
-    /// its Lbl (when the label is drawn separately) and LBody, with the
-    /// cell's own L/LI nesting. A continued paragraph gets its body back.
+    /// The cell paragraph's elements: a P, or for a list item its Lbl (when
+    /// the label is drawn separately) and LBody, with the cell's own L/LI
+    /// nesting. A continued paragraph gets its body back.
     fn para(
         &mut self,
         tags: &mut Tags,
         (row, cell, col_span): (usize, usize, i32),
         item: usize,
-        list_item: Option<(u8, u32)>,
+        list_item: Option<ListItem>,
         labelled: bool,
     ) -> (Option<usize>, usize) {
         if let Some(&p) = self.paras.get(&(row, cell, item)) {
@@ -182,13 +187,7 @@ impl TableTags {
         }
         let c = self.cell(tags, row, cell, col_span);
         let lists = self.lists.entry((row, cell)).or_default();
-        let nodes = match list_item {
-            Some((level, id)) => tags.list_item(lists, c, id, level, labelled),
-            None => {
-                lists.close();
-                (None, tags.add(c, "P"))
-            }
-        };
+        let nodes = tags.para_nodes(lists, c, list_item, labelled, "P");
         self.paras.insert((row, cell, item), nodes.1);
         nodes
     }
@@ -211,7 +210,7 @@ impl CellTagger<'_> {
         &mut self,
         content: &mut Content,
         item: usize,
-        list_item: Option<(u8, u32)>,
+        list_item: Option<ListItem>,
         labelled: bool,
     ) -> (Option<usize>, usize) {
         let at = (self.row, self.cell, self.col_span);
@@ -257,6 +256,8 @@ pub(super) struct NoteTagger<'a> {
     pub(super) tags: &'a mut Tags,
     pub(super) page: usize,
     pub(super) endnote: bool,
+    /// The page's link annotations, for links in the note text.
+    pub(super) links: &'a mut Vec<super::layout::LinkAnnotation>,
 }
 
 /// The language part of a language tag ("en" of "en-GB").
@@ -399,36 +400,76 @@ impl Tags {
         primary_subtag(&self.lang).eq_ignore_ascii_case(primary_subtag(lang))
     }
 
-    /// LI for list `id` at `level` (a new L under `parent` when the list
-    /// starts); returns (Lbl when the label is drawn separately, LBody).
+    /// A paragraph's elements under `parent`: for a list item (see
+    /// `list_item`) its (Lbl, LBody), else a `kind` element, which ends the
+    /// open list.
+    pub(super) fn para_nodes(
+        &mut self,
+        lists: &mut Lists,
+        parent: usize,
+        list_item: Option<ListItem>,
+        labelled: bool,
+        kind: &'static str,
+    ) -> (Option<usize>, usize) {
+        match list_item {
+            Some(item) => self.list_item(lists, parent, item, labelled),
+            None => {
+                lists.close();
+                (None, self.add(parent, kind))
+            }
+        }
+    }
+
+    /// LI for the item's list and level (a new L under `parent`, with the
+    /// level's numbering, when the list starts); returns (Lbl when the label
+    /// is drawn separately, LBody).
     pub(super) fn list_item(
         &mut self,
         lists: &mut Lists,
         parent: usize,
-        id: u32,
-        level: u8,
+        item: ListItem,
         labelled: bool,
     ) -> (Option<usize>, usize) {
-        if lists.id != Some(id) {
+        if lists.id != Some(item.list_id) {
             lists.close();
-            lists.id = Some(id);
+            lists.id = Some(item.list_id);
         }
-        while lists.stack.last().is_some_and(|&(l, ..)| l > level) {
+        while lists.stack.last().is_some_and(|&(l, ..)| l > item.level) {
             lists.stack.pop();
         }
         let list = match lists.stack.last() {
-            Some(&(l, list, _)) if l == level => {
+            Some(&(l, list, _)) if l == item.level => {
                 lists.stack.pop();
                 list
             }
-            Some(&(_, _, body)) => self.add(body, "L"),
-            None => self.add(parent, "L"),
+            top => {
+                let list = self.add(top.map_or(parent, |&(.., body)| body), "L");
+                self.nodes[list].numbering = Some(item.numbering);
+                list
+            }
         };
-        let item = self.add(list, "LI");
-        let label = labelled.then(|| self.add(item, "Lbl"));
-        let body = self.add(item, "LBody");
-        lists.stack.push((level, list, body));
+        let li = self.add(list, "LI");
+        let label = labelled.then(|| self.add(li, "Lbl"));
+        let body = self.add(li, "LBody");
+        lists.stack.push((item.level, list, body));
         (label, body)
+    }
+
+    /// Open a paragraph's elements from `para_nodes`: the label is drawn in
+    /// its Lbl, or in the text element when it has none; the text element
+    /// stays open.
+    pub(super) fn begin_para(
+        &mut self,
+        content: &mut Content,
+        page: usize,
+        (label, text): (Option<usize>, usize),
+        draw_label: impl FnOnce(&mut Content),
+    ) {
+        self.begin(content, page, label.unwrap_or(text));
+        draw_label(content);
+        if label.is_some() {
+            self.begin(content, page, text);
+        }
     }
 
     /// Start a piece of `node`'s content on `page`; it runs until `end`.
@@ -533,6 +574,10 @@ impl Tags {
                 if col_span > 1 {
                     table.col_span(col_span);
                 }
+            }
+            // None is the default; writing it says nothing.
+            if let Some(numbering) = node.numbering.filter(|&n| n != ListNumbering::None) {
+                elem.attributes().push().list().list_numbering(numbering);
             }
             // Content on the element's own /Pg is a bare MCID; only a paragraph
             // continued on the next page needs full marked-content references.
@@ -663,10 +708,16 @@ mod tests {
     fn list_items_nest_like_word() {
         let mut tags = Tags::new();
         let mut lists = Lists::default();
-        let (label, first_body) = tags.list_item(&mut lists, ROOT, 7, 0, true);
-        tags.list_item(&mut lists, ROOT, 7, 1, false);
-        tags.list_item(&mut lists, ROOT, 7, 0, true);
-        tags.list_item(&mut lists, ROOT, 8, 0, true);
+        let disc = ListNumbering::Disc;
+        let item = |level, list_id, numbering| ListItem {
+            level,
+            list_id,
+            numbering,
+        };
+        let (label, first_body) = tags.list_item(&mut lists, ROOT, item(0, 7, disc), true);
+        tags.list_item(&mut lists, ROOT, item(1, 7, ListNumbering::Circle), false);
+        tags.list_item(&mut lists, ROOT, item(0, 7, disc), true);
+        tags.list_item(&mut lists, ROOT, item(0, 8, ListNumbering::Decimal), true);
         let kids = |n: usize| -> Vec<&str> {
             tags.nodes[n]
                 .child_nodes()
@@ -679,5 +730,9 @@ mod tests {
         assert_eq!(kids(first_body), ["L"]);
         let first_list = tags.nodes[tags.nodes[first_body].parent].parent;
         assert_eq!(kids(first_list), ["LI", "LI"]);
+        // Each L carries the numbering of the level that opened it.
+        let sub_list = tags.nodes[first_body].child_nodes().next().unwrap();
+        assert_eq!(tags.nodes[first_list].numbering, Some(disc));
+        assert_eq!(tags.nodes[sub_list].numbering, Some(ListNumbering::Circle));
     }
 }

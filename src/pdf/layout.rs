@@ -671,18 +671,31 @@ impl<'a> LinkTagger<'a> {
         }
     }
 
-    /// Back to the open element after a picture, an artifact or a Span.
+    /// Back to the open element after a picture or a Span.
     fn resume(&mut self, content: &mut Content) {
         self.span = None;
         self.tags.begin(content, self.page, self.open());
     }
 
     /// Draw something that isn't the paragraph's content (outside a text
-    /// object) as an artifact.
+    /// object) as an artifact, then go on in the open Span, Link or paragraph.
     fn artifact(&mut self, content: &mut Content, draw: impl FnOnce(&mut Content)) {
         super::tagging::Tags::end(content);
         draw(content);
-        self.resume(content);
+        let node = self.span.as_ref().map_or_else(|| self.open(), |s| s.0);
+        self.tags.begin(content, self.page, node);
+    }
+
+    /// `artifact` inside a text object (a text shadow's gray copy): the
+    /// object is closed around it, so the text matrix starts afresh.
+    fn text_artifact(&mut self, content: &mut Content, draw: impl FnOnce(&mut Content)) {
+        content.end_text();
+        self.artifact(content, |content| {
+            content.begin_text();
+            draw(content);
+            content.end_text();
+        });
+        content.begin_text();
     }
 
     fn finish(mut self, content: &mut Content) {
@@ -950,24 +963,14 @@ fn push_word_chunks(
                 _ => *source,
             };
             chunk.actual_text = actual(seg_text, source);
-            chunks.push(read_shadow_once(chunk));
+            chunks.push(chunk);
             seg_x += seg_w;
         }
     } else {
         let mut chunk = WordChunk::text(entry, run, word, eff_fs, cs, y_off, x_start, total_ww);
         chunk.actual_text = original.and_then(|o| actual(word, o));
-        chunks.push(read_shadow_once(chunk));
+        chunks.push(chunk);
     }
-}
-
-/// The legacy text shadow draws a gray copy of the glyphs before them: one
-/// `/ActualText` over both (the caps Span) keeps a screen reader from reading
-/// the word twice.
-fn read_shadow_once(mut chunk: WordChunk) -> WordChunk {
-    if chunk.text_shadow.is_some() && chunk.actual_text.is_none() {
-        chunk.actual_text = Some(chunk.text.clone());
-    }
-    chunk
 }
 
 fn vert_y_offset(run: &Run) -> f32 {
@@ -2774,10 +2777,8 @@ pub(super) fn render_paragraph_lines(
                 let primary_entry = pdf_name_to_entry.get(chunk.pdf_font.as_str());
                 // The next chunk is positioned from the line start, so the
                 // space's advance moves nothing; it only marks the word boundary.
-                let boundary_space = chunk.space_after
-                    && primary_entry.is_none_or(|e| {
-                        e.char_to_gid.as_ref().is_none_or(|m| m.contains_key(&' '))
-                    });
+                let boundary_space =
+                    chunk.space_after && primary_entry.is_none_or(|e| e.has_char(' '));
                 // A Span's /ActualText covers the boundary space the Tj carries too.
                 if let Some(lt) = link_tags.as_mut().filter(|_| !chunk.text.is_empty()) {
                     let actual = chunk.actual_text.as_ref().map(|t| {
@@ -2897,6 +2898,29 @@ pub(super) fn render_paragraph_lines(
                 } else {
                     0.0
                 };
+                if let Some(ref sh) = chunk.text_shadow {
+                    let (sx, sy) = (x + sh.offset_x, cy + sh.offset_y);
+                    let bytes =
+                        encode_text_for_pdf(&chunk.text, &chunk.pdf_font, &pdf_name_to_entry);
+                    let draw_shadow = |content: &mut Content| {
+                        content.set_text_matrix([1.0, 0.0, shear, 1.0, sx, sy]);
+                        fill_color_or_black(content, Some(sh.color));
+                        content.show(Str(&bytes));
+                        fill_color_or_black(content, current_color);
+                    };
+                    // The gray copy is an artifact, so the word is read,
+                    // searched and copied once.
+                    (td_x, td_y, cur_shear) = match link_tags.as_mut() {
+                        Some(lt) => {
+                            lt.text_artifact(content, draw_shadow);
+                            (0.0, 0.0, 0.0)
+                        }
+                        None => {
+                            draw_shadow(content);
+                            (sx, sy, shear)
+                        }
+                    };
+                }
                 let mut move_to = |content: &mut Content, mx: f32, my: f32| {
                     if shear != 0.0 || cur_shear != 0.0 {
                         content.set_text_matrix([1.0, 0.0, shear, 1.0, mx, my]);
@@ -2907,14 +2931,6 @@ pub(super) fn render_paragraph_lines(
                     td_x = mx;
                     td_y = my;
                 };
-                if let Some(ref sh) = chunk.text_shadow {
-                    move_to(content, x + sh.offset_x, cy + sh.offset_y);
-                    fill_color_or_black(content, Some(sh.color));
-                    let bytes =
-                        encode_text_for_pdf(&chunk.text, &chunk.pdf_font, &pdf_name_to_entry);
-                    content.show(Str(&bytes));
-                    fill_color_or_black(content, current_color);
-                }
 
                 move_to(content, x, cy);
 
@@ -3839,19 +3855,6 @@ mod tests {
         assert_eq!(
             chunks_for(&Run::default(), "plain", None),
             [("plain".into(), None)]
-        );
-        let shadowed = Run {
-            text_shadow: Some(crate::model::TextShadow {
-                color: [128; 3],
-                offset_x: 1.0,
-                offset_y: -1.0,
-                alpha: 1.0,
-            }),
-            ..Run::default()
-        };
-        assert_eq!(
-            chunks_for(&shadowed, "Shadow", None),
-            [("Shadow".into(), Some("Shadow".into()))]
         );
     }
 

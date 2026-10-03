@@ -13,7 +13,7 @@ use super::layout::{
 };
 use super::list_label::render_list_label;
 use super::positioning::resolve_h_position;
-use super::tagging::Tags;
+use super::tagging::{Lists, Tags};
 use super::wordart;
 use super::{GradientSpec, RenderContext, render_shape_fill, resolve_line_h};
 
@@ -185,13 +185,16 @@ pub(super) fn render_single_textbox(
         .as_ref()
         .is_some_and(|w| w.preset != "textNoShape")
     {
-        if wordart::render_warped_textbox(tb, content, ctx.fonts, tb_x, tb_y_top, align_w) {
-            if needs_clip {
-                content.restore_state();
-            }
-            return;
-        }
-        if wordart::render_text_on_path(tb, content, ctx.fonts, tb_x, tb_y_top, align_w) {
+        if wordart::render_warped_textbox(tb, content, ctx.fonts, tb_x, tb_y_top, align_w)
+            || wordart::render_text_on_path(tb, content, ctx.fonts, tb_x, tb_y_top, align_w)
+        {
+            // The outlines stay artifacts; the text reads as one P (Word:
+            // Sect > P with the text).
+            let p = tags.add(sect, "P");
+            tags.begin(content, page, p);
+            let (x, top) = (tb_x + tb.margin_left, tb_y_top - tb.margin_top);
+            wordart::invisible_text(tb, content, ctx.fonts, x, top);
+            Tags::end(content);
             if needs_clip {
                 content.restore_state();
             }
@@ -364,12 +367,13 @@ pub(super) fn render_textbox_paragraphs(
     ctx: &RenderContext,
     clip_bottom: Option<f32>,
     gradient_specs: &mut Vec<GradientSpec>,
-    // As in `render_single_textbox`; each paragraph becomes a P in the Sect.
-    // ponytail: list paragraphs are tagged P too; L/LI if a textbox list matters
+    // As in `render_single_textbox`; each paragraph becomes a P (a list
+    // paragraph an LI) in the Sect.
     mut tag: Option<(&mut Tags, usize, usize)>,
 ) {
     let mut cursor_y = start_y;
     let mut prev_space_after = 0.0f32;
+    let mut lists = Lists::default();
     for (tp_idx, tp) in paragraphs.iter().enumerate() {
         // Collapse adjacent spacing: use max(prev_after, current_before) like body text
         let inter_gap = if tp_idx == 0 {
@@ -384,7 +388,12 @@ pub(super) fn render_textbox_paragraphs(
             break;
         }
         // Word keeps empty and picture-only paragraphs as empty P elements.
-        let para_tag = tag.as_mut().map(|(tags, _, sect)| tags.add(*sect, "P"));
+        // (Lbl, text element) as in the body: see `para_tags`.
+        let tag_nodes = tag.as_mut().map(|(tags, _, sect)| {
+            let item = tp.list_item.filter(|_| tp.outline_level.is_none());
+            tags.para_nodes(&mut lists, *sect, item, !tp.list_label.is_empty(), "P")
+        });
+        let para_tag = tag_nodes.map(|(_, text)| text);
         let tp_ls = tp.line_spacing.unwrap_or(ctx.doc_line_spacing);
         let tp_text_w = (content_w - tp.indent_left - tp.indent_right).max(1.0);
         let tp_align_w = (align_w - tp.indent_left - tp.indent_right).max(1.0);
@@ -475,18 +484,15 @@ pub(super) fn render_textbox_paragraphs(
         if let Some(c) = force_color {
             fill_rgb(content, c);
         }
-        if let (Some((tags, page, _)), Some(p)) = (tag.as_mut(), para_tag) {
-            tags.begin(content, *page, p);
-        }
-        if render_labels {
-            render_list_label(
-                content,
-                tp,
-                ctx.fonts,
-                content_x + tp.indent_left - tp.indent_hanging,
-                tb_baseline,
-                tb_fs,
-            );
+        let draw_label = |content: &mut Content| {
+            if render_labels {
+                let label_x = content_x + tp.indent_left - tp.indent_hanging;
+                render_list_label(content, tp, ctx.fonts, label_x, tb_baseline, tb_fs);
+            }
+        };
+        match tag.as_mut().zip(tag_nodes) {
+            Some(((tags, page, _), nodes)) => tags.begin_para(content, *page, nodes, draw_label),
+            None => draw_label(content),
         }
         render_paragraph_lines(
             content,

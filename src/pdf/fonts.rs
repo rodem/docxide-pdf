@@ -131,8 +131,11 @@ fn collect_used_chars(doc: &Document, all_runs: &[&Run]) -> HashMap<String, Hash
 
     for para in &all_paras {
         if !para.list_label.is_empty() {
+            // With the space `encode_label` ends the label with.
             if let Some(key) = label_font_key(para) {
-                used.entry(key).or_default().extend(para.list_label.chars());
+                let chars = used.entry(key).or_default();
+                chars.extend(para.list_label.chars());
+                chars.insert(' ');
             }
             // The label may fall back to the surrounding body font when the
             // labeled font (e.g. Symbol) can't render a PUA bullet char. Make

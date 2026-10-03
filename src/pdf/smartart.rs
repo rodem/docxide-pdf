@@ -175,9 +175,7 @@ pub(super) fn render_smartart(
     smartart_font_key: &str,
     image_names: &HashMap<usize, String>,
 ) {
-    let sa_font_entry = seen_fonts
-        .get(smartart_font_key)
-        .or_else(|| seen_fonts.values().next());
+    let sa_font_entry = seen_fonts.get(smartart_font_key);
     let sa_font_pdf_name = sa_font_entry.map(|e| e.pdf_name.as_str()).unwrap_or("F1");
 
     let apply_rotation =

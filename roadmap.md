@@ -132,6 +132,20 @@ nowhere gets Arial/Liberation Sans/Arimo/Helvetica/DejaVu Sans before Type1
 not `.notdef` (U+202F in macOS Arial 5.01, Aptos Italic). One commit each,
 plus a `/simplify` pass (one field list in `resolve_based_on`).
 
+**Done, round 5 (2026-10-03, `b761af97`..`3036c297`):** links in footnote and
+endnote text kept and tagged (footnotes parsed with their part's
+relationships) · warped WordArt reads its text: invisible text (rendering
+mode 3) under the outlines in `Sect > P` · textbox lists → L/LI · every L
+carries `/ListNumbering` (numFmt; bullets by glyph) · a text shadow's gray
+copy is an artifact, so the word extracts once · list labels end with a space
+glyph ("1.01SECTION" → "1.01 SECTION") · comment pane, SmartArt and WordArt
+font fallbacks no longer depend on HashMap order (door_air_cooling changed
+between runs). Text 95.3 → 96.6%, struct 94.8 → 95.0%, ua_fail unchanged,
++19 KB. Pixels: footnote hyperlinks now take the body's hyperlink underline
+offset (0.08 em, was 0.12): czech_crisis, isla, uk_commercial move ≤0.4pt.
+Element-level `/ActualText` is ignored by extraction and Poppler; prefer
+content-level fixes (see `current_focus/A11Y.md`).
+
 Progress over the 173 tagged references: struct 0 → 94.8%, text 0 → 95.2%,
 ua_deficit 1165 → 0 (every fixture fails no PDF/UA-1 rule Word passes);
 LibreOffice's own tagged export scores 76% / 84% on the same yardstick. Over
@@ -170,15 +184,15 @@ symbol glyphs, see SCORING.md.)
 
 **Backlog, ordered by gap data (`tag_gaps.py` / `text_gaps.py` in the session
 scratchpad; rebuild them from `tests/common/a11y.rs` if needed):**
-1. Textbox lists are tagged P (not L/LI); table-cell and header/footer
-   textboxes and floats stay artifacts; WordArt / text on a path has no text.
+1. Math: Word tags OMML as `Formula` with spoken `/Alt`; ours is linear text
+   in the P (a Formula needs alt, 7.7-1). Table-cell and header/footer
+   textboxes and floats stay artifacts.
 2. slovak_eu_directive: we emit 9 table rows where Word has 14 (table model).
-3. Links in headers/footers and footnote text are still dropped; link rects and
-   outline destinations ignore the comment-pane zoom (`comments::page_zoom`)
-   and vAlign (`assembly.rs`).
-4. `/ListNumbering` on L (not checked by UA-1; Word writes Disc/Decimal/…;
-   needs numFmt + lvlText threaded to `Tags::list_item`, ~10 sites);
-   Wingdings 2/3 and Webdings still extract as private-use code points;
+3. Links in headers/footers are still dropped (Word writes them untagged);
+   link rects and outline destinations ignore the comment-pane zoom
+   (`comments::page_zoom`) and vAlign (`assembly.rs`) — no fixture has links
+   with either.
+4. Wingdings 2/3 and Webdings still extract as private-use code points;
    `w:lang/@bidi` (complex-script text) ignored. (`w:softHyphen` dropped and
    `w:noBreakHyphen` → U+002D both match Word's extraction.)
 5. Missing glyphs other than spaces still draw `.notdef`: Word rescues them per

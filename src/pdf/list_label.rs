@@ -48,6 +48,21 @@ fn map_symbol_pua(text: &str) -> Option<String> {
     )
 }
 
+/// The label's glyphs and a space, so text extraction and screen readers
+/// don't run the label into the paragraph text ("1.01SECTION"); invisible,
+/// as nothing follows it in its text object. Fonts without a space get none.
+/// None when the font draws none of the label (all `.notdef`).
+pub(super) fn encode_label(entry: &FontEntry, label: &str) -> Option<Vec<u8>> {
+    let mut bytes = entry.encode(label);
+    if is_all_notdef(&bytes) {
+        return None;
+    }
+    if entry.has_char(' ') {
+        bytes.extend(entry.encode(" "));
+    }
+    Some(bytes)
+}
+
 fn label_for_paragraph<'a>(
     para: &Paragraph,
     seen_fonts: &'a HashMap<String, FontEntry>,
@@ -55,11 +70,10 @@ fn label_for_paragraph<'a>(
     let key = label_font_key(para);
     let entry = key.as_deref().and_then(|k| seen_fonts.get(k));
 
-    if let Some(entry) = entry {
-        let bytes = entry.encode(&para.list_label);
-        if !is_all_notdef(&bytes) {
-            return (entry.pdf_name.as_str(), bytes);
-        }
+    if let Some(entry) = entry
+        && let Some(bytes) = encode_label(entry, &para.list_label)
+    {
+        return (entry.pdf_name.as_str(), bytes);
     }
 
     // Either the labeled font is missing, or it produced only .notdef
@@ -70,7 +84,7 @@ fn label_for_paragraph<'a>(
         && let Some(run) = para.runs.first()
         && let Some(body_entry) = seen_fonts.get(&font_key(run))
     {
-        let bytes = body_entry.encode(&mapped);
+        let bytes = encode_label(body_entry, &mapped).unwrap_or_else(|| body_entry.encode(&mapped));
         return (body_entry.pdf_name.as_str(), bytes);
     }
 

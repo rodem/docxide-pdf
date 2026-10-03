@@ -382,6 +382,7 @@ pub(super) fn assemble_pdf_pages(
                 zoom_sp.page_width,
                 zoom_sp.page_height,
                 seen_fonts,
+                font_order.first().map_or("", String::as_str),
             );
             pane_raw = pane_content.finish().to_vec();
         }

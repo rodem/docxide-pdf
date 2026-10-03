@@ -140,6 +140,13 @@ impl FontEntry {
     pub(crate) fn space_width(&self, font_size: f32) -> f32 {
         self.char_width_1000(' ') * font_size / 1000.0
     }
+
+    /// Whether `encode` draws `ch` (embedded fonts map only what they hold).
+    pub(crate) fn has_char(&self, ch: char) -> bool {
+        self.char_to_gid
+            .as_ref()
+            .is_none_or(|m| m.contains_key(&ch))
+    }
 }
 
 pub(crate) fn primary_font_name(name: &str) -> &str {
