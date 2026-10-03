@@ -240,9 +240,28 @@ pub(super) fn label_boosted_line_h(
     // not 15.5), while a Courier New "o" or a Symbol bullet on Arial, whose
     // descents are deeper than the text's, leave the line at the text height
     // (streamnet p5, dialysis). Measured against Word, not from the spec.
-    let ascent = (text_font_size * text_ar.unwrap_or(0.75)).max(label_fs * label_ar);
-    let descent = text_font_size * descender_ratio(text_lhr, text_ar);
-    resolve_line_h(effective_ls, 1.0, Some(ascent + descent)).max(text_line_h)
+    let text_ascent = text_font_size * text_ar.unwrap_or(0.75);
+    let label_ascent = label_fs * label_ar;
+    let natural = match effective_ls {
+        // A multiple scales the text's own line and the marker's extra ascent
+        // is added once, unscaled: SymbolMT on 12pt Aptos at 278/240 gives
+        // 16.97 + 0.80 = 17.76 (Word 17.75, case3), on 11pt Calibri at 1.15
+        // 15.44 + 0.59 = 16.03 (Word 16.00, case33); scaling the marker's
+        // ascent with the text gave 17.89 and 16.12.
+        LineSpacing::Auto(_) => {
+            resolve_line_h(effective_ls, text_font_size, text_lhr)
+                + (label_ascent - text_ascent).max(0.0)
+        }
+        _ => {
+            let descent = text_font_size * descender_ratio(text_lhr, text_ar);
+            resolve_line_h(
+                effective_ls,
+                1.0,
+                Some(text_ascent.max(label_ascent) + descent),
+            )
+        }
+    };
+    natural.max(text_line_h)
 }
 
 /// First-baseline offset including the list label's ascent. The label is a run
@@ -3778,7 +3797,7 @@ mod tests {
     /// case33: an 11pt Symbol bullet on 11pt Calibri gives Word a 16.0pt line
     /// (marker ascent + text descent, ×1.15), not the 15.5pt of either font alone.
     #[test]
-    fn symbol_bullet_line_combines_ascent_and_descent() {
+    fn symbol_bullet_adds_its_extra_ascent_once() {
         let (cal_lhr, cal_ar) = (1.220703, 0.952148);
         let fonts = HashMap::from([
             ("Symbol".to_string(), font(1.225098, 1.005371)),
@@ -3803,8 +3822,9 @@ mod tests {
         };
 
         para.list_label_font = Some("Symbol".to_string());
+        // 15.44 (Calibri at 1.15) + 0.59 unscaled extra ascent; Word 16.00.
         assert!(
-            (boosted(&para) - 16.115).abs() < 0.01,
+            (boosted(&para) - 16.027).abs() < 0.01,
             "got {}",
             boosted(&para)
         );
