@@ -2179,7 +2179,12 @@ fn render_paragraph_block(
                 _ => break,
             };
             if next.page_break_before {
-                extra = f32::MAX;
+                // A `<w:br w:type="page"/>` opening the next paragraph ends the
+                // chain where it is: Word keeps the heading on this page (online
+                // export probes, 2026-10-03; usep's cover).
+                if !next.page_break_before_explicit {
+                    extra = f32::MAX;
+                }
                 break;
             }
             let (nfs, nlhr, _) = tallest_run_metrics(&next.runs, ctx.fonts);
