@@ -3074,7 +3074,11 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         endnote_marks: &endnote_display_order,
         compat_mode: doc.compat_mode,
         do_not_expand_shift_return: doc.do_not_expand_shift_return,
-        cell_grid_pitch: std::cell::Cell::new(0.0),
+        cell_grid_pitch: std::cell::Cell::new(
+            doc.sections
+                .first()
+                .map_or(0.0, |s| cell_grid_pitch(doc, &s.properties)),
+        ),
     };
 
     let bookmark_positions = compute_bookmark_positions(doc, &ctx);
@@ -3097,11 +3101,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
     for (sect_idx, section) in doc.sections.iter().enumerate() {
         let sp = &section.properties;
-        ctx.cell_grid_pitch.set(
-            sp.line_grid_pitch()
-                .filter(|_| doc.adjust_line_height_in_table)
-                .unwrap_or(0.0),
-        );
+        ctx.cell_grid_pitch.set(cell_grid_pitch(doc, sp));
 
         // Section break handling (not for the first section)
         if sect_idx > 0 {
@@ -3566,6 +3566,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             continue;
         }
         let sp = &doc.sections[si].properties;
+        ctx.cell_grid_pitch.set(cell_grid_pitch(doc, sp));
 
         let page_num = page_numbers[page_idx];
         let effective_page_num_format = page_format_sources[page_idx]
@@ -3861,4 +3862,12 @@ fn page_numbers(doc: &Document, page_section_indices: &[(usize, bool, usize)]) -
         prev_si = Some(si);
     }
     numbers
+}
+
+/// The docGrid pitch table-cell lines snap to in a section: only under
+/// `w:compat/w:adjustLineHeightInTable`, else 0.
+fn cell_grid_pitch(doc: &Document, sp: &crate::model::SectionProperties) -> f32 {
+    sp.line_grid_pitch()
+        .filter(|_| doc.adjust_line_height_in_table)
+        .unwrap_or(0.0)
 }
