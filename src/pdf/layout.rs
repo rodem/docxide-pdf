@@ -1970,6 +1970,8 @@ pub(super) fn build_tabbed_line(
     let mut pending_space_border: Option<ParagraphBorder> = None;
     let mut key_buf = String::new();
     let mut is_first_line = true;
+    // Set when tabs wrap onto a new line that has nothing drawn yet.
+    let mut tab_wrapped_line = false;
 
     for (seg_idx, (seg_runs, seg_indices, tab_before, tab_run_before)) in
         segments.iter().enumerate()
@@ -2067,6 +2069,7 @@ pub(super) fn build_tabbed_line(
             let wrap_limit = line_max + indent_right;
             if seg_start > wrap_limit && !all_chunks.is_empty() {
                 result_lines.push(finish_line(&mut all_chunks));
+                tab_wrapped_line = true;
                 current_x = 0.0;
                 is_first_line = false;
                 let new_stop = find_next_tab_stop(0.0, tab_stops, indent_left, default_tab_stop);
@@ -2158,6 +2161,7 @@ pub(super) fn build_tabbed_line(
             if run.is_line_break {
                 mark_space_after(&mut all_chunks);
                 result_lines.push(finish_line_with_break(&mut all_chunks));
+                tab_wrapped_line = false;
                 current_x = 0.0;
                 is_first_line = false;
                 pending_space_w = 0.0;
@@ -2237,6 +2241,7 @@ pub(super) fn build_tabbed_line(
                 // Wrap word to new line if it exceeds max_width
                 if current_x + ww > cur_line_max && !all_chunks.is_empty() && !is_continuation {
                     result_lines.push(finish_line(&mut all_chunks));
+                    tab_wrapped_line = false;
                     current_x = 0.0;
                     is_first_line = false;
                 }
@@ -2276,10 +2281,12 @@ pub(super) fn build_tabbed_line(
         }
     }
 
-    // Finalize remaining chunks into the last line
+    // Finalize remaining chunks into the last line. Tabs that wrapped keep
+    // their line though nothing is drawn on it: bulgarian_road_safety's
+    // trailing tabs after "/Зл. Атанасова/" take a second line in Word.
     if !all_chunks.is_empty() {
         result_lines.push(finish_line(&mut all_chunks));
-    } else if result_lines.is_empty() {
+    } else if result_lines.is_empty() || tab_wrapped_line {
         result_lines.push(TextLine::default());
     }
 
