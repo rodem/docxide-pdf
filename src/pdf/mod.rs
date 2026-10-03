@@ -3309,6 +3309,16 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                             col_w,
                             text_width,
                         );
+                        // Before compat 15 an offset places the first cell's text, not
+                        // its border, as tblInd does inline: Word draws case46's R1 at
+                        // the margin and the border a cell margin left of it.
+                        let x = if ctx.compat_mode < 15
+                            && matches!(pos.h_position, crate::model::HorizontalPosition::Offset(_))
+                        {
+                            x - table.cell_margins.left
+                        } else {
+                            x
+                        };
                         let y = match pos.v_anchor {
                             "page" => sp.page_height - pos.v_offset_pt,
                             "margin" => sp.page_height - sp.margin_top - pos.v_offset_pt,
