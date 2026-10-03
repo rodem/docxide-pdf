@@ -44,8 +44,8 @@ use header_footer::{
 };
 pub(super) use helpers::resolve_line_h;
 use helpers::{
-    align_offset, collect_paras, drops_contextual_spacing, joins_border_group,
-    para_runs_with_textboxes,
+    align_offset, collect_paras, draw_horizontal_rule, drops_contextual_spacing,
+    joins_border_group, para_runs_with_textboxes,
 };
 use images::{EffectXObjs, EmbeddedImages, embed_all_images};
 use layout::{
@@ -2697,17 +2697,8 @@ fn render_paragraph_block(
             );
         }
     } else if let Some(ref hr) = para.horizontal_rule {
-        let rule_w = col_w * hr.width_pct / 100.0;
-        let rule_x = col_x + align_offset(para.alignment, col_w - rule_w);
-        // Standard HRs (o:hrstd) render as a thin 0.5pt line
-        // centered in the specified height space
-        let draw_h = if hr.is_standard { 0.5 } else { hr.height_pt };
-        let rule_y = state.pb.slot_top - (content_h - draw_h) / 2.0 - draw_h;
-        state.pb.content.save_state();
-        fill_rgb(&mut state.pb.content, hr.fill_color);
-        state.pb.content.rect(rule_x, rule_y, rule_w, draw_h);
-        state.pb.content.fill_nonzero();
-        state.pb.content.restore_state();
+        let line_bottom = state.pb.slot_top - content_h;
+        draw_horizontal_rule(&mut state.pb.content, para, hr, col_x, col_w, line_bottom);
     } else if para.image.is_some() && para.content_height > 0.0 {
         if let Some(pdf_name) = image_pdf_names.get(&state.global_block_idx) {
             let img = para.image.as_ref().unwrap();

@@ -723,7 +723,7 @@
       "source": "Generated",
       "x_pt": 297.0,
       "y_pt": 724.16,
-      "note": "Header bottom is wrong: Word draws three thin rules at 120.3-121.8pt from the top (y 721.7-720.2), we draw one 0.5pt rule at 117.8pt. The body starts 1.17pt below Word (149.80 vs 150.97 from top). Since ed5e495c the Korinna BT paragraph marks under the header (family roman, altName Cambria Math, rejected) are Cambria-tall, adding 0.58pt to the old 0.59pt (J 48.3 -> 34.5). Which face and height Word uses for those marks is unknown; fix the header geometry first.",
+      "note": "Header bottom is wrong: Word draws three thin rules at 120.3-121.8pt from the top (y 721.7-720.2), we draw one 0.5pt rule at 117.8pt. The body starts 1.17pt below Word (149.80 vs 150.97 from top). Since ed5e495c the Korinna BT paragraph marks under the header (family roman, altName Cambria Math, rejected) are Cambria-tall, adding 0.58pt to the old 0.59pt (J 48.3 -> 34.5). Which face and height Word uses for those marks is unknown; fix the header geometry first.\n\nPARTLY FIXED (2026-10-03): the HR's width and position now follow Word: 60.9% of the paragraph's indented width (291.7pt), centred there (x 174.6-466.3, Word 174.5-466.25), its bottom 2pt above the line bottom (croatian and isla match Word within 0.05pt). Still open: it sits 1.7pt low because the header lines above it run ~1.1pt low (the Korinna BT marks), and Word draws this explicit-width gray HR as a 1.5pt bar with 3D edges (top/left #A0A0A0, bottom/right #E3E3E3) while width:0 HRs (croatian, isla) get a flat 0.5pt bar; the only Word here (Mac) draws HRs as black outlines, so that rule could not be probed.",
       "fixed": false,
       "cleared": false
     },

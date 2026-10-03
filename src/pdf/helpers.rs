@@ -1,6 +1,10 @@
 use pdf_writer::Content;
 
-use crate::model::{Alignment, LineSpacing, Paragraph, ParagraphBorder, ParagraphBorders, Run};
+use crate::model::{
+    Alignment, HorizontalRule, LineSpacing, Paragraph, ParagraphBorder, ParagraphBorders, Run,
+};
+
+use super::color::fill_rgb;
 
 /// How far an object `slack` narrower than its box moves to follow the
 /// paragraph alignment: centred takes half of it, right-aligned all of it.
@@ -10,6 +14,31 @@ pub(super) fn align_offset(alignment: Alignment, slack: f32) -> f32 {
         Alignment::Right => slack,
         _ => 0.0,
     }
+}
+
+/// Draw a VML horizontal rule (o:hr) on the line whose box ends at
+/// `line_bottom`, in a column starting at `col_x`, `col_w` wide. The width
+/// percentage and alignment apply inside the paragraph's indents (slovak's
+/// 60.9% rule is 291.7pt of 478.95, centred there), and the bar's bottom sits
+/// 2pt above the line bottom (croatian's 18pt and isla's 12pt lines both).
+pub(super) fn draw_horizontal_rule(
+    content: &mut Content,
+    para: &Paragraph,
+    hr: &HorizontalRule,
+    col_x: f32,
+    col_w: f32,
+    line_bottom: f32,
+) {
+    let area_w = (col_w - para.indent_left - para.indent_right).max(0.0);
+    let rule_w = area_w * hr.width_pct / 100.0;
+    let rule_x = col_x + para.indent_left + align_offset(para.alignment, area_w - rule_w);
+    // Standard HRs (o:hrstd) render as a thin 0.5pt line
+    let draw_h = if hr.is_standard { 0.5 } else { hr.height_pt };
+    content.save_state();
+    fill_rgb(content, hr.fill_color);
+    content.rect(rule_x, line_bottom + 2.0, rule_w, draw_h);
+    content.fill_nonzero();
+    content.restore_state();
 }
 
 /// Approximate a circle with 4 cubic Bézier curves (path only — caller fills/strokes).

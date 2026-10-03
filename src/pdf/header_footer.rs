@@ -8,7 +8,7 @@ use crate::model::{
 };
 
 use super::color::stroke_segment;
-use super::helpers::align_offset;
+use super::helpers::{align_offset, draw_horizontal_rule};
 use super::layout::{
     LineOpts, build_lines, is_text_empty, lines_height, picture_line_bottom,
     render_paragraph_lines, runs_max_image_h, tallest_run_metrics,
@@ -857,15 +857,14 @@ pub(super) fn render_header_footer(
                 // paragraphs, so draw them before the text_empty skip below —
                 // mirrors the body render path in pdf::mod.
                 if let Some(ref hr) = para.horizontal_rule {
-                    let rule_w = text_width * hr.width_pct / 100.0;
-                    let rule_x = sp.margin_left + align_offset(para.alignment, text_width - rule_w);
-                    let draw_h = if hr.is_standard { 0.5 } else { hr.height_pt };
-                    let rule_y = cursor_y - (line_h - draw_h) / 2.0 - draw_h;
-                    content.save_state();
-                    super::color::fill_rgb(content, hr.fill_color);
-                    content.rect(rule_x, rule_y, rule_w, draw_h);
-                    content.fill_nonzero();
-                    content.restore_state();
+                    draw_horizontal_rule(
+                        content,
+                        para,
+                        hr,
+                        sp.margin_left,
+                        text_width,
+                        cursor_y - line_h,
+                    );
                 }
 
                 if text_empty {
