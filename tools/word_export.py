@@ -27,13 +27,13 @@ is inherited from the last manual Save As; set "Best for printing" once by hand.
 from __future__ import annotations
 
 import argparse
-import re
 import shutil
 import subprocess
 import sys
 import threading
 import time
 import uuid
+import zipfile
 from pathlib import Path
 
 CONTAINER_TMP = Path.home() / "Library/Containers/com.microsoft.Word/Data/tmp"
@@ -178,13 +178,21 @@ class Watchdog(threading.Thread):
             self.stop.wait(0.5)
 
 
-def safe_name(stem: str) -> str:
-    return re.sub(r"[^A-Za-z0-9._-]+", "_", stem)[:80] or "doc"
-
-
 def export_one(src: Path, dst: Path, stage: Path, timeout: float) -> None:
-    name = f"{safe_name(src.stem)}_{uuid.uuid4().hex[:6]}"
-    s_docx, s_pdf = stage / f"{name}.docx", stage / f"{name}.pdf"
+    # A broken zip makes Word ask to repair it, and that prompt needs a human
+    # whenever the watchdog lacks Accessibility access.
+    try:
+        with zipfile.ZipFile(src) as z:
+            bad = z.testzip()
+    except zipfile.BadZipFile as e:
+        raise RuntimeError(f"not a valid docx: {e}") from None
+    if bad:
+        raise RuntimeError(f"not a valid docx: corrupt part {bad}")
+    # The document keeps its own name (FILENAME fields print it); a fresh
+    # folder per export keeps the path unique.
+    folder = stage / uuid.uuid4().hex[:6]
+    folder.mkdir()
+    s_docx, s_pdf = folder / src.name, folder / f"{src.stem}.pdf"
     shutil.copy2(src, s_docx)
     subprocess.run(["xattr", "-d", "com.apple.quarantine", str(s_docx)], capture_output=True)
     try:
@@ -198,6 +206,7 @@ def export_one(src: Path, dst: Path, stage: Path, timeout: float) -> None:
     finally:
         s_docx.unlink(missing_ok=True)
         s_pdf.unlink(missing_ok=True)
+        folder.rmdir()
 
 
 def iter_docx(paths: list[Path]):
