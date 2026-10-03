@@ -14,7 +14,7 @@ use super::layout::{
 };
 use super::list_label::render_list_label;
 use super::positioning::resolve_h_position;
-use super::tagging::Tags;
+use super::tagging::{Lists, Tags};
 use super::wordart;
 use super::{GradientSpec, RenderContext, render_shape_fill, resolve_line_h};
 
@@ -393,12 +393,13 @@ pub(super) fn render_textbox_paragraphs(
     ctx: &RenderContext,
     clip_bottom: Option<f32>,
     gradient_specs: &mut Vec<GradientSpec>,
-    // As in `render_single_textbox`; each paragraph becomes a P in the Sect.
-    // ponytail: list paragraphs are tagged P too; L/LI if a textbox list matters
+    // As in `render_single_textbox`; each paragraph becomes a P (a list
+    // paragraph an LI) in the Sect.
     mut tag: Option<(&mut Tags, usize, usize)>,
 ) {
     let mut cursor_y = start_y;
     let mut prev_space_after = 0.0f32;
+    let mut lists = Lists::default();
     for (tp_idx, tp) in paragraphs.iter().enumerate() {
         // Collapse adjacent spacing: use max(prev_after, current_before) like body text
         let inter_gap = if tp_idx == 0 {
@@ -413,7 +414,18 @@ pub(super) fn render_textbox_paragraphs(
             break;
         }
         // Word keeps empty and picture-only paragraphs as empty P elements.
-        let para_tag = tag.as_mut().map(|(tags, _, sect)| tags.add(*sect, "P"));
+        // (Lbl, text element) as in the body: see `para_tags`.
+        let tag_nodes = tag.as_mut().map(|(tags, _, sect)| match tp.list_item {
+            Some((level, id)) if tp.outline_level.is_none() => {
+                let labelled = render_labels && !tp.list_label.is_empty();
+                tags.list_item(&mut lists, *sect, id, level, labelled)
+            }
+            _ => {
+                lists.close();
+                (None, tags.add(*sect, "P"))
+            }
+        });
+        let para_tag = tag_nodes.map(|(_, text)| text);
         let tp_ls = tp.line_spacing.unwrap_or(ctx.doc_line_spacing);
         let tp_text_w = (content_w - tp.indent_left - tp.indent_right).max(1.0);
         let tp_align_w = (align_w - tp.indent_left - tp.indent_right).max(1.0);
@@ -504,8 +516,9 @@ pub(super) fn render_textbox_paragraphs(
         if let Some(c) = force_color {
             fill_rgb(content, c);
         }
-        if let (Some((tags, page, _)), Some(p)) = (tag.as_mut(), para_tag) {
-            tags.begin(content, *page, p);
+        let label = tag_nodes.and_then(|(label, _)| label);
+        if let (Some((tags, page, _)), Some(node)) = (tag.as_mut(), label.or(para_tag)) {
+            tags.begin(content, *page, node);
         }
         if render_labels {
             render_list_label(
@@ -516,6 +529,9 @@ pub(super) fn render_textbox_paragraphs(
                 tb_baseline,
                 tb_fs,
             );
+        }
+        if let (Some((tags, page, _)), Some(_), Some(p)) = (tag.as_mut(), label, para_tag) {
+            tags.begin(content, *page, p);
         }
         render_paragraph_lines(
             content,
