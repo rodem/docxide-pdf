@@ -266,7 +266,9 @@ pub(super) fn auto_fit_columns(
                     let fs = run.font_size;
                     // Same break opportunities as line layout: a CJK sentence holds
                     // no spaces but may wrap after any ideograph.
-                    let words = super::layout::split_preserving_spaces(&text).into_iter().map(|(_, w)| w);
+                    let words = super::layout::split_preserving_spaces(&text)
+                        .into_iter()
+                        .map(|(_, w)| w);
                     for word in words {
                         let ww = if run.small_caps {
                             super::layout::smallcaps_segments(word, fs)
@@ -508,8 +510,8 @@ pub(super) struct CellParagraphLayout {
     pub(super) float_indent_left: f32,
     pub(super) list_label: String,
     pub(super) list_label_font: Option<String>,
-    /// (level, list id) of a list item, for L/LI tagging inside the cell.
-    pub(super) list_item: Option<(u8, u32)>,
+    /// (level, list id, label style) of a list item, for L/LI tagging inside the cell.
+    pub(super) list_item: Option<(u8, u32, pdf_writer::types::ListNumbering)>,
     pub(super) label_color: Option<[u8; 3]>,
     pub(super) first_run_font_key: String,
     pub(super) image_name: Option<String>,

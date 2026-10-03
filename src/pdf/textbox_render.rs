@@ -217,7 +217,13 @@ pub(super) fn render_single_textbox(
         let drawn = wordart::render_warped_textbox(tb, content, ctx.fonts, tb_x, tb_y_top, align_w)
             || wordart::render_text_on_path(tb, content, ctx.fonts, tb_x, tb_y_top, align_w);
         if drawn {
-            invisible_text(content, tb, ctx, tb_x + tb.margin_left, tb_y_top - tb.margin_top);
+            invisible_text(
+                content,
+                tb,
+                ctx,
+                tb_x + tb.margin_left,
+                tb_y_top - tb.margin_top,
+            );
         }
         Tags::end(content);
         if drawn {
@@ -416,9 +422,9 @@ pub(super) fn render_textbox_paragraphs(
         // Word keeps empty and picture-only paragraphs as empty P elements.
         // (Lbl, text element) as in the body: see `para_tags`.
         let tag_nodes = tag.as_mut().map(|(tags, _, sect)| match tp.list_item {
-            Some((level, id)) if tp.outline_level.is_none() => {
+            Some(item) if tp.outline_level.is_none() => {
                 let labelled = render_labels && !tp.list_label.is_empty();
-                tags.list_item(&mut lists, *sect, id, level, labelled)
+                tags.list_item(&mut lists, *sect, item, labelled)
             }
             _ => {
                 lists.close();

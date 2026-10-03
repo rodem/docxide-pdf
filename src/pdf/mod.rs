@@ -754,10 +754,10 @@ impl PageBuilder {
         self.toc = None;
         self.toc_field = para.starts_toc_field;
         match para.list_item {
-            Some((level, id)) if para.outline_level.is_none() => {
+            Some(item) if para.outline_level.is_none() => {
                 let labelled = !para.list_label.is_empty();
                 self.tags
-                    .list_item(&mut self.lists, tagging::ROOT, id, level, labelled)
+                    .list_item(&mut self.lists, tagging::ROOT, item, labelled)
             }
             _ => {
                 self.lists.close();

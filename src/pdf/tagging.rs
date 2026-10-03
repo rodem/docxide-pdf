@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use pdf_writer::types::TableHeaderScope;
+use pdf_writer::types::{ListNumbering, TableHeaderScope};
 use pdf_writer::writers::StructTreeRoot;
 use pdf_writer::{Content, Name, Pdf, Ref, Str, TextStr};
 
@@ -33,6 +33,8 @@ struct Node {
     actual: Option<String>,
     /// `/Lang` of a Span in another language than the document's.
     lang: Option<String>,
+    /// An L's `/ListNumbering`.
+    numbering: Option<ListNumbering>,
 }
 
 impl Node {
@@ -46,6 +48,7 @@ impl Node {
             id: None,
             actual: None,
             lang: None,
+            numbering: None,
         }
     }
 
@@ -166,7 +169,7 @@ impl TableTags {
         c
     }
 
-    /// The cell paragraph's elements: a P, or for a list item (level, list id)
+    /// The cell paragraph's elements: a P, or for a list item (level, list id, numbering)
     /// its Lbl (when the label is drawn separately) and LBody, with the
     /// cell's own L/LI nesting. A continued paragraph gets its body back.
     fn para(
@@ -174,7 +177,7 @@ impl TableTags {
         tags: &mut Tags,
         (row, cell, col_span): (usize, usize, i32),
         item: usize,
-        list_item: Option<(u8, u32)>,
+        list_item: Option<(u8, u32, ListNumbering)>,
         labelled: bool,
     ) -> (Option<usize>, usize) {
         if let Some(&p) = self.paras.get(&(row, cell, item)) {
@@ -183,7 +186,7 @@ impl TableTags {
         let c = self.cell(tags, row, cell, col_span);
         let lists = self.lists.entry((row, cell)).or_default();
         let nodes = match list_item {
-            Some((level, id)) => tags.list_item(lists, c, id, level, labelled),
+            Some(list_item) => tags.list_item(lists, c, list_item, labelled),
             None => {
                 lists.close();
                 (None, tags.add(c, "P"))
@@ -211,7 +214,7 @@ impl CellTagger<'_> {
         &mut self,
         content: &mut Content,
         item: usize,
-        list_item: Option<(u8, u32)>,
+        list_item: Option<(u8, u32, ListNumbering)>,
         labelled: bool,
     ) -> (Option<usize>, usize) {
         let at = (self.row, self.cell, self.col_span);
@@ -402,13 +405,13 @@ impl Tags {
     }
 
     /// LI for list `id` at `level` (a new L under `parent` when the list
-    /// starts); returns (Lbl when the label is drawn separately, LBody).
+    /// starts, with the level's `numbering`); returns (Lbl when the label is
+    /// drawn separately, LBody).
     pub(super) fn list_item(
         &mut self,
         lists: &mut Lists,
         parent: usize,
-        id: u32,
-        level: u8,
+        (level, id, numbering): (u8, u32, ListNumbering),
         labelled: bool,
     ) -> (Option<usize>, usize) {
         if lists.id != Some(id) {
@@ -423,14 +426,20 @@ impl Tags {
                 lists.stack.pop();
                 list
             }
-            Some(&(_, _, body)) => self.add(body, "L"),
-            None => self.add(parent, "L"),
+            Some(&(_, _, body)) => self.add_list(body, numbering),
+            None => self.add_list(parent, numbering),
         };
         let item = self.add(list, "LI");
         let label = labelled.then(|| self.add(item, "Lbl"));
         let body = self.add(item, "LBody");
         lists.stack.push((level, list, body));
         (label, body)
+    }
+
+    fn add_list(&mut self, parent: usize, numbering: ListNumbering) -> usize {
+        let list = self.add(parent, "L");
+        self.nodes[list].numbering = Some(numbering);
+        list
     }
 
     /// Start a piece of `node`'s content on `page`; it runs until `end`.
@@ -535,6 +544,9 @@ impl Tags {
                 if col_span > 1 {
                     table.col_span(col_span);
                 }
+            }
+            if let Some(numbering) = node.numbering {
+                elem.attributes().push().list().list_numbering(numbering);
             }
             // Content on the element's own /Pg is a bare MCID; only a paragraph
             // continued on the next page needs full marked-content references.
@@ -665,10 +677,11 @@ mod tests {
     fn list_items_nest_like_word() {
         let mut tags = Tags::new();
         let mut lists = Lists::default();
-        let (label, first_body) = tags.list_item(&mut lists, ROOT, 7, 0, true);
-        tags.list_item(&mut lists, ROOT, 7, 1, false);
-        tags.list_item(&mut lists, ROOT, 7, 0, true);
-        tags.list_item(&mut lists, ROOT, 8, 0, true);
+        let disc = ListNumbering::Disc;
+        let (label, first_body) = tags.list_item(&mut lists, ROOT, (0, 7, disc), true);
+        tags.list_item(&mut lists, ROOT, (1, 7, ListNumbering::Circle), false);
+        tags.list_item(&mut lists, ROOT, (0, 7, disc), true);
+        tags.list_item(&mut lists, ROOT, (0, 8, ListNumbering::Decimal), true);
         let kids = |n: usize| -> Vec<&str> {
             tags.nodes[n]
                 .child_nodes()
@@ -681,5 +694,9 @@ mod tests {
         assert_eq!(kids(first_body), ["L"]);
         let first_list = tags.nodes[tags.nodes[first_body].parent].parent;
         assert_eq!(kids(first_list), ["LI", "LI"]);
+        // Each L carries the numbering of the level that opened it.
+        let sub_list = tags.nodes[first_body].child_nodes().next().unwrap();
+        assert_eq!(tags.nodes[first_list].numbering, Some(disc));
+        assert_eq!(tags.nodes[sub_list].numbering, Some(ListNumbering::Circle));
     }
 }

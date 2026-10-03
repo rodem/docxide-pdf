@@ -423,9 +423,10 @@ pub struct Paragraph {
     pub list_label_font_size: Option<f32>,
     pub list_label_bold: bool,
     pub list_label_color: Option<[u8; 3]>,
-    /// `ilvl` and abstract list id of a list item, for L/LI tagging. Also set
-    /// for `suff="nothing"` items whose label was folded into the runs.
-    pub list_item: Option<(u8, u32)>,
+    /// `ilvl`, abstract list id and label style of a list item, for L/LI
+    /// tagging. Also set for `suff="nothing"` items whose label was folded
+    /// into the runs.
+    pub list_item: Option<(u8, u32, pdf_writer::types::ListNumbering)>,
     /// A `TOC` field begins here. Word tags "toc N" paragraphs as TOC/TOCI
     /// only inside such a field; hand-styled ones stay paragraphs.
     pub starts_toc_field: bool,

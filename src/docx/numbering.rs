@@ -3,6 +3,7 @@ use std::io::{Read, Seek};
 
 use super::styles::{ParagraphStyle, parse_font_size, rfonts_ascii_name};
 use super::{WML_NS, parse_hex_color, twips_attr, wml, wml_attr, wml_bool};
+use pdf_writer::types::ListNumbering;
 
 #[derive(Clone)]
 pub(super) struct LevelDef {
@@ -40,9 +41,31 @@ pub(super) struct ListLabelInfo {
     pub(super) bold: bool,
     pub(super) color: Option<[u8; 3]>,
     pub(super) suff: String,
-    /// `ilvl` and abstract list id of a numbered/bulleted item (None when the
-    /// paragraph shows no label).
-    pub(super) item: Option<(u8, u32)>,
+    /// `ilvl`, abstract list id and label style of a numbered/bulleted item
+    /// (None when the paragraph shows no label).
+    pub(super) item: Option<(u8, u32, ListNumbering)>,
+}
+
+/// The tagged L's `/ListNumbering`: the level's number format, or for
+/// bullets the glyph (Word's own Symbol •, Courier New o and Wingdings ▪, in
+/// their private-use or Unicode form). Word itself says None for a Unicode
+/// bullet in a text font.
+fn list_numbering(num_fmt: &str, label: &str) -> ListNumbering {
+    match num_fmt {
+        "bullet" => match label.chars().next() {
+            // Symbol draws its 0xB7 (·) as a bullet.
+            Some('\u{F0B7}' | '\u{F06C}' | '•' | '●' | '·') => ListNumbering::Disc,
+            Some('o' | '◦' | '○') => ListNumbering::Circle,
+            Some('\u{F0A7}' | '\u{F06E}' | '▪' | '■') => ListNumbering::Square,
+            _ => ListNumbering::None,
+        },
+        "decimal" | "decimalZero" => ListNumbering::Decimal,
+        "lowerRoman" => ListNumbering::LowerRoman,
+        "upperRoman" => ListNumbering::UpperRoman,
+        "lowerLetter" => ListNumbering::LowerAlpha,
+        "upperLetter" => ListNumbering::UpperAlpha,
+        _ => ListNumbering::None,
+    }
 }
 
 /// List numbering state carried across one story's paragraphs (body,
@@ -530,7 +553,6 @@ pub(super) fn parse_list_info(
         indent_left: def.indent_left,
         indent_hanging: def.indent_hanging,
         tab_stop: def.tab_stop,
-        label,
         font: if is_bullet {
             def.label_font.clone()
         } else if def.suff == "nothing" {
@@ -544,7 +566,8 @@ pub(super) fn parse_list_info(
         bold: def.label_bold,
         color: def.label_color,
         suff: def.suff.clone(),
-        item: Some((ilvl, abs_key)),
+        item: Some((ilvl, abs_key, list_numbering(&def.num_fmt, &label))),
+        label,
     }
 }
 
