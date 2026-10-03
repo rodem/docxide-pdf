@@ -1712,7 +1712,9 @@ pub(super) fn build_paragraph_lines(
                 current_x = 0.0;
                 // A word wider than the new line breaks at its margin too.
                 let room = left_max(lines.len());
+                let right = right_region_for(lines.len());
                 if ww > room
+                    && right.is_none()
                     && let Some(cut) =
                         fitting_prefix_len(source, room, |w| width(&caps_word(run, w)))
                 {
@@ -1726,9 +1728,11 @@ pub(super) fn build_paragraph_lines(
                 }
                 // If the new line's left region is zero-width, go
                 // straight to the right region for this word.
-                if let Some((rx, rw, _)) = right_region_for(lines.len()) {
-                    let new_left_max = left_max(lines.len());
-                    if new_left_max <= 0.0 {
+                if let Some((rx, rw, _)) = right {
+                    // So does a word the left region is too narrow for: Word
+                    // leaves that gap empty rather than split the word around
+                    // the float (case42's "ullamcorper." beside the arm).
+                    if room <= 0.0 || ww > room {
                         cur_right_info = Some((0, rx, rw));
                         in_right_region = true;
                         pending_space_w = 0.0;
