@@ -724,7 +724,7 @@ body.table #list { display:none; }
     <input type="range" id="alpha" min="0" max="100" value="50">
   </span>
   <span class="grp"><button id="viewToggle">Scores table</button></span>
-  <span style="color:var(--muted)"><kbd>1</kbd>-<kbd>6</kbd> engines &nbsp;<kbd>&uarr;</kbd><kbd>&darr;</kbd> cases &nbsp;<kbd>r</kbd> random &nbsp;<kbd>s</kbd> case list &nbsp;<kbd>o</kbd> overlay &nbsp;<kbd>m</kbd> more pages &nbsp;<kbd>t</kbd> scores table</span>
+  <span style="color:var(--muted)"><kbd>1</kbd>-<kbd>__NENGINES__</kbd> engines &nbsp;<kbd>&uarr;</kbd><kbd>&darr;</kbd> cases &nbsp;<kbd>r</kbd> random &nbsp;<kbd>s</kbd> case list &nbsp;<kbd>o</kbd> overlay &nbsp;<kbd>m</kbd> more pages &nbsp;<kbd>t</kbd> scores table</span>
 </div>
 <details id="legend"></details>
 <div id="side"><div id="sidehead"><input id="filter" placeholder="filter cases (name, group)…"><div id="fx">
@@ -758,7 +758,7 @@ const save = (k,v) => { try { localStorage.setItem('ec.'+k, JSON.stringify(v)); 
 
 let state = Object.assign({ on: {},
   shown: PAGE_STEP, zoom: 600, ovl: false, ovlA: 'reference', ovlB: 'generated', blend: 'normal', alpha: 50, sel: 0, filter: '',
-  view: 'viewer', sort: { col: 0, dir: 1 }, noside: false, legend: false,
+  view: 'viewer', sort: { key: 'case', dir: 1 }, noside: false, legend: false,
   fx: { group: '', pages: '', eng: 'generated', metric: METRICS[0], max: '', differ: false } },
   store('state') || {});
 // Engines added after a viewer state was saved default to visible.
@@ -863,18 +863,22 @@ function renderList() {
 }
 
 function renderScores() {
-  const engines = ENGINES.filter(([k]) => k !== 'reference');
-  // Sort columns: 0 case (manifest order), 1 group, 2 reference pages, then one per engine×metric.
+  // The engine checkboxes govern the table too: hidden engines lose their columns, the mean row and the
+  // green "best" marks are computed over the engines shown.
+  const engines = ENGINES.filter(([k]) => k !== 'reference' && state.on[k]);
+  // Columns: case (manifest order), group, reference pages, then one per engine×metric. Each carries a
+  // stable key so the sort survives engines being hidden or shown (a column index would not).
   const cols = [
-    { get: r => r.i, show: r => `<span class="cname" title="${r.c.case}">${r.c.case}</span>` },
-    { get: r => r.c.group, show: r => r.c.group },
-    { get: r => (r.c.pages.reference || []).length, show: r => (r.c.pages.reference || []).length, num: true },
+    { key: 'case', get: r => r.i, show: r => `<span class="cname" title="${r.c.case}">${r.c.case}</span>` },
+    { key: 'group', get: r => r.c.group, show: r => r.c.group },
+    { key: 'pages', get: r => (r.c.pages.reference || []).length, show: r => (r.c.pages.reference || []).length, num: true },
   ];
   for (const [k] of engines) for (const m of TABLE_COLS)
-    cols.push({ k, m, num: true, get: r => key(r.c, k, m), show: r => fmtM(m, val(r.c, k, m)) });
+    cols.push({ key: `${k}:${m}`, k, m, num: true, get: r => key(r.c, k, m), show: r => fmtM(m, val(r.c, k, m)) });
 
   const rows = visibleCases().map(([c, i]) => ({ c, i }));
-  const { col: sc, dir } = state.sort; const sortCol = cols[sc] || cols[0];
+  if (state.sort.key == null) state.sort = { key: 'case', dir: 1 };   // saved state from before the keyed sort
+  const sortCol = cols.find(cl => cl.key === state.sort.key) || cols[0], dir = state.sort.dir;
   rows.sort((a, b) => {
     const x = sortCol.get(a), y = sortCol.get(b);
     if (x == null) return 1; if (y == null) return -1;
@@ -882,23 +886,25 @@ function renderScores() {
   });
   const avg = xs => { const v = xs.filter(x => typeof x === 'number'); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
   const mean = cl => cl.m === 'a11y' ? Object.fromEntries(A11Y.map(a => [a, avg(rows.map(r => val(r.c, cl.k, 'a11y')?.[a]))])) : avg(rows.map(cl.get));
-  const th = (j, label, cls = '') => `<th data-c="${j}" class="${cls}${j === sc ? ' sorted' : ''}">${label}${j === sc ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
+  const th = (cl, label, cls = '') => { const on = cl === sortCol; return `<th data-k="${cl.key}" class="${cls}${on ? ' sorted' : ''}">${label}${on ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`; };
 
-  let html = `<div class="note">${rows.length} cases · click a column to sort, a row to open it · green = best engine for that column (highest score, lowest time and a11y deficit)</div><table><thead>`;
-  html += `<tr>${th(0, 'case')}${th(1, 'group')}${th(2, 'pages', 'num')}` +
-    engines.map(([, label]) => `<th class="eng" colspan="${TABLE_COLS.length}">${label}${VERSIONS[engines.find(e => e[1] === label)[0]] ? ` <span class="ver">${VERSIONS[engines.find(e => e[1] === label)[0]]}</span>` : ''}</th>`).join('') + '</tr>';
-  html += '<tr><th></th><th></th><th></th>' + cols.slice(3).map((cl, j) => th(j + 3, `<span title="${METRIC_INFO[cl.m]}">${METRIC_LABEL[cl.m]}</span>`, 'num' + (cl.m === METRICS[0] ? ' first' : ''))).join('') + '</tr>';
+  let html = `<div class="note">${rows.length} cases · click a column to sort, a row to open it · green = best engine for that column (highest score, lowest time and a11y deficit)` +
+    (engines.length ? '' : ' · no engine selected: tick one in the sidebar') + '</div><table><thead>';
+  html += `<tr>${th(cols[0], 'case')}${th(cols[1], 'group')}${th(cols[2], 'pages', 'num')}` +
+    engines.map(([k, label]) => `<th class="eng" colspan="${TABLE_COLS.length}">${label}${VERSIONS[k] ? ` <span class="ver">${VERSIONS[k]}</span>` : ''}</th>`).join('') + '</tr>';
+  html += '<tr><th></th><th></th><th></th>' + cols.slice(3).map(cl => th(cl, `<span title="${METRIC_INFO[cl.m]}">${METRIC_LABEL[cl.m]}</span>`, 'num' + (cl.m === METRICS[0] ? ' first' : ''))).join('') + '</tr>';
   html += '<tr class="mean"><td>mean</td><td></td><td></td>' + cols.slice(3).map(cl => `<td class="num${cl.m === METRICS[0] ? ' first' : ''}">${fmtM(cl.m, mean(cl))}</td>`).join('') + '</tr></thead><tbody>';
   for (const r of rows) {
-    // Highest score (lowest time) per column across engines; ties all count as best.
+    // Highest score (lowest time) per column across the engines shown; ties all count as best.
     const best = {};
     for (const m of TABLE_COLS) { const v = engines.map(([k]) => key(r.c, k, m)).filter(x => x != null); best[m] = m === 'time' || m === 'a11y' ? Math.min(...v) : Math.max(...v); }
     html += `<tr data-i="${r.i}"${r.i === state.sel ? ' class="sel"' : ''}>` + cols.map((cl, j) =>
       `<td class="${cl.num ? 'num' : ''}${j >= 3 && cl.m === METRICS[0] ? ' first' : ''}${j >= 3 && cl.get(r) != null && cl.get(r) === best[cl.m] ? ' best' : ''}">${cl.show(r)}</td>`).join('') + '</tr>';
   }
   const el = $('#scores'); el.innerHTML = html + '</tbody></table>';
-  el.querySelectorAll('th[data-c]').forEach(h => h.onclick = () => {
-    const j = +h.dataset.c; state.sort = { col: j, dir: j === state.sort.col ? -state.sort.dir : (j >= 3 ? -1 : 1) }; render();
+  el.querySelectorAll('th[data-k]').forEach(h => h.onclick = () => {
+    const k = h.dataset.k, same = k === state.sort.key;
+    state.sort = { key: k, dir: same ? -state.sort.dir : (k.includes(':') ? -1 : 1) }; render();
   });
   el.querySelectorAll('tbody tr').forEach(tr => tr.onclick = () => { select(+tr.dataset.i); state.view = 'viewer'; render(); });
 }
@@ -1079,6 +1085,7 @@ def write_html(results: list[dict], versions: dict, out: Path) -> None:
     page = (HTML_TEMPLATE
             .replace("__DATA__", json.dumps(results))
             .replace("__ENGINES__", json.dumps(ENGINES))
+            .replace("__NENGINES__", str(len(ENGINES)))
             .replace("__METRICS__", json.dumps(METRICS))
             .replace("__VERSIONS__", json.dumps(versions)))
     out.write_text(page)
