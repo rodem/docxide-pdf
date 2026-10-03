@@ -225,9 +225,10 @@ probe documents; each fix is one commit on the branch.
   15.5). Replacing the reference awaits the user's OK
 - radiographer: Word also splits *inside* a nested row (between its lines)
 - Word floors auto-multiple grid lines to 0.24pt steps (19.44 vs our 19.50)
-- Slash breaks: we now never break after `/` before a letter/digit (13 fixtures gain, none
-  lose), but Word does break there sometimes: education_consultant "Development Partners/" +
-  "Donors", "tabulation/graphics/" + "comparative", romanian "septembrie/". Rule unknown
+- Slash breaks: Word for Mac never breaks after `/` (probe: 138 margin crossings over 6 pair
+  kinds incl. digits and a 40-char token, all wrapped whole), matching our rule. Older refs
+  that do end lines on a slash (education_consultant "Partners/", romanian "septembrie/")
+  presumably come from another Word build
 - References of the first 10 new fixtures were staged as `<stem>_<hex>.docx`, so
   FILENAME fields print that name (massachusetts footer); fixed in the tool, refs not re-exported
 
