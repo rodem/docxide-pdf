@@ -3,6 +3,7 @@ use std::io::{Read, Seek};
 
 use super::styles::{ParagraphStyle, parse_font_size, rfonts_ascii_name};
 use super::{WML_NS, parse_hex_color, twips_attr, wml, wml_attr, wml_bool};
+use crate::model::ListItem;
 use pdf_writer::types::ListNumbering;
 
 #[derive(Clone)]
@@ -41,9 +42,8 @@ pub(super) struct ListLabelInfo {
     pub(super) bold: bool,
     pub(super) color: Option<[u8; 3]>,
     pub(super) suff: String,
-    /// `ilvl`, abstract list id and label style of a numbered/bulleted item
-    /// (None when the paragraph shows no label).
-    pub(super) item: Option<(u8, u32, ListNumbering)>,
+    /// None when the paragraph shows no label.
+    pub(super) item: Option<ListItem>,
 }
 
 /// The tagged L's `/ListNumbering`: the level's number format, or for
@@ -566,7 +566,11 @@ pub(super) fn parse_list_info(
         bold: def.label_bold,
         color: def.label_color,
         suff: def.suff.clone(),
-        item: Some((ilvl, abs_key, list_numbering(&def.num_fmt, &label))),
+        item: Some(ListItem {
+            level: ilvl,
+            list_id: abs_key,
+            numbering: list_numbering(&def.num_fmt, &label),
+        }),
         label,
     }
 }

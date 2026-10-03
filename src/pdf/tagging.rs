@@ -13,6 +13,8 @@ use pdf_writer::types::{ListNumbering, TableHeaderScope};
 use pdf_writer::writers::StructTreeRoot;
 use pdf_writer::{Content, Name, Pdf, Ref, Str, TextStr};
 
+use crate::model::ListItem;
+
 pub(super) const ROOT: usize = 0;
 
 enum Kid {
@@ -169,15 +171,15 @@ impl TableTags {
         c
     }
 
-    /// The cell paragraph's elements: a P, or for a list item (level, list id, numbering)
-    /// its Lbl (when the label is drawn separately) and LBody, with the
-    /// cell's own L/LI nesting. A continued paragraph gets its body back.
+    /// The cell paragraph's elements: a P, or for a list item its Lbl (when
+    /// the label is drawn separately) and LBody, with the cell's own L/LI
+    /// nesting. A continued paragraph gets its body back.
     fn para(
         &mut self,
         tags: &mut Tags,
         (row, cell, col_span): (usize, usize, i32),
         item: usize,
-        list_item: Option<(u8, u32, ListNumbering)>,
+        list_item: Option<ListItem>,
         labelled: bool,
     ) -> (Option<usize>, usize) {
         if let Some(&p) = self.paras.get(&(row, cell, item)) {
@@ -185,13 +187,7 @@ impl TableTags {
         }
         let c = self.cell(tags, row, cell, col_span);
         let lists = self.lists.entry((row, cell)).or_default();
-        let nodes = match list_item {
-            Some(list_item) => tags.list_item(lists, c, list_item, labelled),
-            None => {
-                lists.close();
-                (None, tags.add(c, "P"))
-            }
-        };
+        let nodes = tags.para_nodes(lists, c, list_item, labelled, "P");
         self.paras.insert((row, cell, item), nodes.1);
         nodes
     }
@@ -214,7 +210,7 @@ impl CellTagger<'_> {
         &mut self,
         content: &mut Content,
         item: usize,
-        list_item: Option<(u8, u32, ListNumbering)>,
+        list_item: Option<ListItem>,
         labelled: bool,
     ) -> (Option<usize>, usize) {
         let at = (self.row, self.cell, self.col_span);
@@ -404,42 +400,76 @@ impl Tags {
         primary_subtag(&self.lang).eq_ignore_ascii_case(primary_subtag(lang))
     }
 
-    /// LI for list `id` at `level` (a new L under `parent` when the list
-    /// starts, with the level's `numbering`); returns (Lbl when the label is
-    /// drawn separately, LBody).
+    /// A paragraph's elements under `parent`: for a list item (see
+    /// `list_item`) its (Lbl, LBody), else a `kind` element, which ends the
+    /// open list.
+    pub(super) fn para_nodes(
+        &mut self,
+        lists: &mut Lists,
+        parent: usize,
+        list_item: Option<ListItem>,
+        labelled: bool,
+        kind: &'static str,
+    ) -> (Option<usize>, usize) {
+        match list_item {
+            Some(item) => self.list_item(lists, parent, item, labelled),
+            None => {
+                lists.close();
+                (None, self.add(parent, kind))
+            }
+        }
+    }
+
+    /// LI for the item's list and level (a new L under `parent`, with the
+    /// level's numbering, when the list starts); returns (Lbl when the label
+    /// is drawn separately, LBody).
     pub(super) fn list_item(
         &mut self,
         lists: &mut Lists,
         parent: usize,
-        (level, id, numbering): (u8, u32, ListNumbering),
+        item: ListItem,
         labelled: bool,
     ) -> (Option<usize>, usize) {
-        if lists.id != Some(id) {
+        if lists.id != Some(item.list_id) {
             lists.close();
-            lists.id = Some(id);
+            lists.id = Some(item.list_id);
         }
-        while lists.stack.last().is_some_and(|&(l, ..)| l > level) {
+        while lists.stack.last().is_some_and(|&(l, ..)| l > item.level) {
             lists.stack.pop();
         }
         let list = match lists.stack.last() {
-            Some(&(l, list, _)) if l == level => {
+            Some(&(l, list, _)) if l == item.level => {
                 lists.stack.pop();
                 list
             }
-            Some(&(_, _, body)) => self.add_list(body, numbering),
-            None => self.add_list(parent, numbering),
+            top => {
+                let list = self.add(top.map_or(parent, |&(.., body)| body), "L");
+                self.nodes[list].numbering = Some(item.numbering);
+                list
+            }
         };
-        let item = self.add(list, "LI");
-        let label = labelled.then(|| self.add(item, "Lbl"));
-        let body = self.add(item, "LBody");
-        lists.stack.push((level, list, body));
+        let li = self.add(list, "LI");
+        let label = labelled.then(|| self.add(li, "Lbl"));
+        let body = self.add(li, "LBody");
+        lists.stack.push((item.level, list, body));
         (label, body)
     }
 
-    fn add_list(&mut self, parent: usize, numbering: ListNumbering) -> usize {
-        let list = self.add(parent, "L");
-        self.nodes[list].numbering = Some(numbering);
-        list
+    /// Open a paragraph's elements from `para_nodes`: the label is drawn in
+    /// its Lbl, or in the text element when it has none; the text element
+    /// stays open.
+    pub(super) fn begin_para(
+        &mut self,
+        content: &mut Content,
+        page: usize,
+        (label, text): (Option<usize>, usize),
+        draw_label: impl FnOnce(&mut Content),
+    ) {
+        self.begin(content, page, label.unwrap_or(text));
+        draw_label(content);
+        if label.is_some() {
+            self.begin(content, page, text);
+        }
     }
 
     /// Start a piece of `node`'s content on `page`; it runs until `end`.
@@ -545,7 +575,8 @@ impl Tags {
                     table.col_span(col_span);
                 }
             }
-            if let Some(numbering) = node.numbering {
+            // None is the default; writing it says nothing.
+            if let Some(numbering) = node.numbering.filter(|&n| n != ListNumbering::None) {
                 elem.attributes().push().list().list_numbering(numbering);
             }
             // Content on the element's own /Pg is a bare MCID; only a paragraph
@@ -678,10 +709,15 @@ mod tests {
         let mut tags = Tags::new();
         let mut lists = Lists::default();
         let disc = ListNumbering::Disc;
-        let (label, first_body) = tags.list_item(&mut lists, ROOT, (0, 7, disc), true);
-        tags.list_item(&mut lists, ROOT, (1, 7, ListNumbering::Circle), false);
-        tags.list_item(&mut lists, ROOT, (0, 7, disc), true);
-        tags.list_item(&mut lists, ROOT, (0, 8, ListNumbering::Decimal), true);
+        let item = |level, list_id, numbering| ListItem {
+            level,
+            list_id,
+            numbering,
+        };
+        let (label, first_body) = tags.list_item(&mut lists, ROOT, item(0, 7, disc), true);
+        tags.list_item(&mut lists, ROOT, item(1, 7, ListNumbering::Circle), false);
+        tags.list_item(&mut lists, ROOT, item(0, 7, disc), true);
+        tags.list_item(&mut lists, ROOT, item(0, 8, ListNumbering::Decimal), true);
         let kids = |n: usize| -> Vec<&str> {
             tags.nodes[n]
                 .child_nodes()

@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
-use pdf_writer::types::TextRenderingMode;
-use pdf_writer::{Content, Name, Str};
+use pdf_writer::Content;
 
 use crate::model::{EmbeddedImage, Paragraph, SectionProperties, TextAnchor, Textbox};
 
@@ -34,28 +33,6 @@ pub(super) fn textbox_para_block_image(tp: &Paragraph) -> Option<&EmbeddedImage>
         return None;
     }
     tp.runs.iter().find_map(|r| r.inline_image.as_ref())
-}
-
-/// The textbox's text in its first run's font, in rendering mode 3 (neither
-/// filled nor stroked) from the top left of the box.
-fn invisible_text(content: &mut Content, tb: &Textbox, ctx: &RenderContext, x: f32, top: f32) {
-    let runs = || tb.paragraphs.iter().flat_map(|para| &para.runs);
-    let Some(run) = runs().find(|r| !r.text.is_empty()) else {
-        return;
-    };
-    let Some(entry) = ctx.fonts.get(&crate::fonts::font_key(run)) else {
-        return;
-    };
-    let text: String = runs().map(|r| r.text.as_str()).collect();
-    content.save_state();
-    content
-        .begin_text()
-        .set_font(Name(entry.pdf_name.as_bytes()), run.font_size)
-        .set_text_rendering_mode(TextRenderingMode::Invisible)
-        .next_line(x, top - run.font_size)
-        .show(Str(&entry.encode(&text)))
-        .end_text();
-    content.restore_state();
 }
 
 fn image_block_height(img: &EmbeddedImage) -> f32 {
@@ -208,25 +185,16 @@ pub(super) fn render_single_textbox(
         .as_ref()
         .is_some_and(|w| w.preset != "textNoShape")
     {
-        // Glyph outlines carry no text, so the WordArt's text is also drawn
-        // invisibly in one P (Word: Sect > P with the text), for screen
-        // readers, search and copy.
-        // ponytail: a warp that falls back to flat text leaves this P empty
-        let p = tags.add(sect, "P");
-        tags.begin(content, page, p);
-        let drawn = wordart::render_warped_textbox(tb, content, ctx.fonts, tb_x, tb_y_top, align_w)
-            || wordart::render_text_on_path(tb, content, ctx.fonts, tb_x, tb_y_top, align_w);
-        if drawn {
-            invisible_text(
-                content,
-                tb,
-                ctx,
-                tb_x + tb.margin_left,
-                tb_y_top - tb.margin_top,
-            );
-        }
-        Tags::end(content);
-        if drawn {
+        if wordart::render_warped_textbox(tb, content, ctx.fonts, tb_x, tb_y_top, align_w)
+            || wordart::render_text_on_path(tb, content, ctx.fonts, tb_x, tb_y_top, align_w)
+        {
+            // The outlines stay artifacts; the text reads as one P (Word:
+            // Sect > P with the text).
+            let p = tags.add(sect, "P");
+            tags.begin(content, page, p);
+            let (x, top) = (tb_x + tb.margin_left, tb_y_top - tb.margin_top);
+            wordart::invisible_text(tb, content, ctx.fonts, x, top);
+            Tags::end(content);
             if needs_clip {
                 content.restore_state();
             }
@@ -421,15 +389,9 @@ pub(super) fn render_textbox_paragraphs(
         }
         // Word keeps empty and picture-only paragraphs as empty P elements.
         // (Lbl, text element) as in the body: see `para_tags`.
-        let tag_nodes = tag.as_mut().map(|(tags, _, sect)| match tp.list_item {
-            Some(item) if tp.outline_level.is_none() => {
-                let labelled = render_labels && !tp.list_label.is_empty();
-                tags.list_item(&mut lists, *sect, item, labelled)
-            }
-            _ => {
-                lists.close();
-                (None, tags.add(*sect, "P"))
-            }
+        let tag_nodes = tag.as_mut().map(|(tags, _, sect)| {
+            let item = tp.list_item.filter(|_| tp.outline_level.is_none());
+            tags.para_nodes(&mut lists, *sect, item, !tp.list_label.is_empty(), "P")
         });
         let para_tag = tag_nodes.map(|(_, text)| text);
         let tp_ls = tp.line_spacing.unwrap_or(ctx.doc_line_spacing);
@@ -522,22 +484,15 @@ pub(super) fn render_textbox_paragraphs(
         if let Some(c) = force_color {
             fill_rgb(content, c);
         }
-        let label = tag_nodes.and_then(|(label, _)| label);
-        if let (Some((tags, page, _)), Some(node)) = (tag.as_mut(), label.or(para_tag)) {
-            tags.begin(content, *page, node);
-        }
-        if render_labels {
-            render_list_label(
-                content,
-                tp,
-                ctx.fonts,
-                content_x + tp.indent_left - tp.indent_hanging,
-                tb_baseline,
-                tb_fs,
-            );
-        }
-        if let (Some((tags, page, _)), Some(_), Some(p)) = (tag.as_mut(), label, para_tag) {
-            tags.begin(content, *page, p);
+        let draw_label = |content: &mut Content| {
+            if render_labels {
+                let label_x = content_x + tp.indent_left - tp.indent_hanging;
+                render_list_label(content, tp, ctx.fonts, label_x, tb_baseline, tb_fs);
+            }
+        };
+        match tag.as_mut().zip(tag_nodes) {
+            Some(((tags, page, _), nodes)) => tags.begin_para(content, *page, nodes, draw_label),
+            None => draw_label(content),
         }
         render_paragraph_lines(
             content,

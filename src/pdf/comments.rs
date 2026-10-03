@@ -48,12 +48,18 @@ pub(super) fn render_comment_pane(
     page_width: f32,
     page_height: f32,
     seen_fonts: &HashMap<String, FontEntry>,
+    // The document's main font, when neither Aptos nor Calibri is in it.
+    main_font: &str,
 ) {
-    let Some((body_font_key, body_entry)) = pick_font(seen_fonts, &["Aptos", "Calibri"]) else {
+    let Some((body_font_key, body_entry)) = pick_font(seen_fonts, &["Aptos", "Calibri", main_font])
+    else {
         return;
     };
-    let label_entry = pick_font(seen_fonts, &["Aptos/B", "Aptos Bold", "Calibri/B"])
-        .unwrap_or((body_font_key.clone(), body_entry));
+    let label_entry = pick_font(
+        seen_fonts,
+        &["Aptos/B", "Aptos Bold", "Calibri/B", main_font],
+    )
+    .unwrap_or((body_font_key.clone(), body_entry));
 
     let pane_x = page_width - PANE_WIDTH - PANE_RIGHT_MARGIN;
     let pane_top = page_height - PANE_VPAD;
@@ -272,15 +278,9 @@ fn pick_font<'a>(
     seen: &'a HashMap<String, FontEntry>,
     candidates: &[&str],
 ) -> Option<(String, &'a FontEntry)> {
-    for c in candidates {
-        if let Some(e) = seen.get(*c) {
-            return Some((c.to_string(), e));
-        }
-    }
-    // The smallest key, not HashMap order: the same document must give the same bytes.
-    seen.iter()
-        .min_by_key(|(k, _)| k.as_str())
-        .map(|(k, v)| (k.clone(), v))
+    candidates
+        .iter()
+        .find_map(|c| seen.get(*c).map(|e| (c.to_string(), e)))
 }
 
 fn draw_rounded_rect(content: &mut Content, x: f32, y: f32, w: f32, h: f32, r: f32) {

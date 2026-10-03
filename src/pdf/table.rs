@@ -1074,7 +1074,8 @@ fn draw_cell_label(
     let Some(entry) = fonts.get(font_key) else {
         return;
     };
-    let bytes = super::list_label::encode_label(entry, &para.list_label);
+    let bytes = super::list_label::encode_label(entry, &para.list_label)
+        .unwrap_or_else(|| entry.encode(&para.list_label));
 
     if let Some(c) = para.label_color {
         fill_rgb(content, c);

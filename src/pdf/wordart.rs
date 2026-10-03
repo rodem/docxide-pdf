@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use pdf_writer::Content;
 use pdf_writer::types::TextRenderingMode;
+use pdf_writer::{Content, Name, Str};
 
 use crate::fonts::FontEntry;
 use crate::geometry::{self, ResolvedCommand};
@@ -141,6 +141,8 @@ struct WordArtTextInfo {
     fill: Option<TextFill>,
     bold: bool,
     italic: bool,
+    /// The first run's key in the document's fonts, for `invisible_text`.
+    font_key: String,
 }
 
 /// Collect all text and the first run's formatting from a textbox.
@@ -154,6 +156,7 @@ fn collect_text_info(tb: &Textbox) -> Option<WordArtTextInfo> {
         fill: None,
         bold: false,
         italic: false,
+        font_key: String::new(),
     };
 
     for para in &tb.paragraphs {
@@ -168,6 +171,7 @@ fn collect_text_info(tb: &Textbox) -> Option<WordArtTextInfo> {
                     info.fill = run.text_fill.clone();
                     info.bold = run.bold;
                     info.italic = run.italic;
+                    info.font_key = crate::fonts::font_key(run);
                 }
             }
         }
@@ -177,6 +181,33 @@ fn collect_text_info(tb: &Textbox) -> Option<WordArtTextInfo> {
         return None;
     }
     Some(info)
+}
+
+/// WordArt drawn as glyph outlines carries no text: draw its text again in
+/// rendering mode 3 (neither filled nor stroked) from `(x, top)`, for screen
+/// readers, search and copy.
+pub(super) fn invisible_text(
+    tb: &Textbox,
+    content: &mut Content,
+    seen_fonts: &HashMap<String, FontEntry>,
+    x: f32,
+    top: f32,
+) {
+    let Some(info) = collect_text_info(tb) else {
+        return;
+    };
+    let Some(entry) = seen_fonts.get(&info.font_key) else {
+        return;
+    };
+    content.save_state();
+    content
+        .begin_text()
+        .set_font(Name(entry.pdf_name.as_bytes()), info.font_size)
+        .set_text_rendering_mode(TextRenderingMode::Invisible)
+        .next_line(x, top - info.font_size)
+        .show(Str(&entry.encode(&info.total_text)))
+        .end_text();
+    content.restore_state();
 }
 
 /// Resolve the effective fill color from text_fill + run color.

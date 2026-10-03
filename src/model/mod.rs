@@ -402,6 +402,17 @@ pub struct ParagraphBorders {
     pub between: Option<ParagraphBorder>,
 }
 
+/// A numbered or bulleted paragraph's place in its list.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ListItem {
+    /// `w:ilvl`.
+    pub level: u8,
+    /// Abstract list id: numIds sharing a definition are one list.
+    pub list_id: u32,
+    /// How the level's labels look (the tagged L's `/ListNumbering`).
+    pub numbering: pdf_writer::types::ListNumbering,
+}
+
 #[derive(Default)]
 pub struct Paragraph {
     pub runs: Vec<Run>,
@@ -423,10 +434,9 @@ pub struct Paragraph {
     pub list_label_font_size: Option<f32>,
     pub list_label_bold: bool,
     pub list_label_color: Option<[u8; 3]>,
-    /// `ilvl`, abstract list id and label style of a list item, for L/LI
-    /// tagging. Also set for `suff="nothing"` items whose label was folded
-    /// into the runs.
-    pub list_item: Option<(u8, u32, pdf_writer::types::ListNumbering)>,
+    /// For L/LI tagging. Also set for `suff="nothing"` items whose label was
+    /// folded into the runs.
+    pub list_item: Option<ListItem>,
     /// A `TOC` field begins here. Word tags "toc N" paragraphs as TOC/TOCI
     /// only inside such a field; hand-styled ones stay paragraphs.
     pub starts_toc_field: bool,

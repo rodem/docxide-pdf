@@ -671,25 +671,31 @@ impl<'a> LinkTagger<'a> {
         }
     }
 
-    /// Back to the open element after a picture, an artifact or a Span.
+    /// Back to the open element after a picture or a Span.
     fn resume(&mut self, content: &mut Content) {
         self.span = None;
         self.tags.begin(content, self.page, self.open());
     }
 
-    /// Back to the open Span, Link or paragraph after an artifact drawn
-    /// inside a word (a text shadow), keeping the Span.
-    fn reopen(&mut self, content: &mut Content) {
+    /// Draw something that isn't the paragraph's content (outside a text
+    /// object) as an artifact, then go on in the open Span, Link or paragraph.
+    fn artifact(&mut self, content: &mut Content, draw: impl FnOnce(&mut Content)) {
+        super::tagging::Tags::end(content);
+        draw(content);
         let node = self.span.as_ref().map_or_else(|| self.open(), |s| s.0);
         self.tags.begin(content, self.page, node);
     }
 
-    /// Draw something that isn't the paragraph's content (outside a text
-    /// object) as an artifact.
-    fn artifact(&mut self, content: &mut Content, draw: impl FnOnce(&mut Content)) {
-        super::tagging::Tags::end(content);
-        draw(content);
-        self.resume(content);
+    /// `artifact` inside a text object (a text shadow's gray copy): the
+    /// object is closed around it, so the text matrix starts afresh.
+    fn text_artifact(&mut self, content: &mut Content, draw: impl FnOnce(&mut Content)) {
+        content.end_text();
+        self.artifact(content, |content| {
+            content.begin_text();
+            draw(content);
+            content.end_text();
+        });
+        content.begin_text();
     }
 
     fn finish(mut self, content: &mut Content) {
@@ -2771,10 +2777,8 @@ pub(super) fn render_paragraph_lines(
                 let primary_entry = pdf_name_to_entry.get(chunk.pdf_font.as_str());
                 // The next chunk is positioned from the line start, so the
                 // space's advance moves nothing; it only marks the word boundary.
-                let boundary_space = chunk.space_after
-                    && primary_entry.is_none_or(|e| {
-                        e.char_to_gid.as_ref().is_none_or(|m| m.contains_key(&' '))
-                    });
+                let boundary_space =
+                    chunk.space_after && primary_entry.is_none_or(|e| e.has_char(' '));
                 // A Span's /ActualText covers the boundary space the Tj carries too.
                 if let Some(lt) = link_tags.as_mut().filter(|_| !chunk.text.is_empty()) {
                     let actual = chunk.actual_text.as_ref().map(|t| {
@@ -2895,27 +2899,27 @@ pub(super) fn render_paragraph_lines(
                     0.0
                 };
                 if let Some(ref sh) = chunk.text_shadow {
-                    // The gray copy is an artifact in a text object of its own,
-                    // so the word is read, searched and copied once.
-                    if link_tags.is_some() {
-                        content.end_text();
-                        super::tagging::Tags::end(content);
-                        content.begin_text();
-                    }
                     let (sx, sy) = (x + sh.offset_x, cy + sh.offset_y);
-                    content.set_text_matrix([1.0, 0.0, shear, 1.0, sx, sy]);
-                    (td_x, td_y, cur_shear) = (sx, sy, shear);
-                    fill_color_or_black(content, Some(sh.color));
                     let bytes =
                         encode_text_for_pdf(&chunk.text, &chunk.pdf_font, &pdf_name_to_entry);
-                    content.show(Str(&bytes));
-                    fill_color_or_black(content, current_color);
-                    if let Some(lt) = link_tags.as_mut() {
-                        content.end_text();
-                        lt.reopen(content);
-                        content.begin_text();
-                        (td_x, td_y, cur_shear) = (0.0, 0.0, 0.0);
-                    }
+                    let draw_shadow = |content: &mut Content| {
+                        content.set_text_matrix([1.0, 0.0, shear, 1.0, sx, sy]);
+                        fill_color_or_black(content, Some(sh.color));
+                        content.show(Str(&bytes));
+                        fill_color_or_black(content, current_color);
+                    };
+                    // The gray copy is an artifact, so the word is read,
+                    // searched and copied once.
+                    (td_x, td_y, cur_shear) = match link_tags.as_mut() {
+                        Some(lt) => {
+                            lt.text_artifact(content, draw_shadow);
+                            (0.0, 0.0, 0.0)
+                        }
+                        None => {
+                            draw_shadow(content);
+                            (sx, sy, shear)
+                        }
+                    };
                 }
                 let mut move_to = |content: &mut Content, mx: f32, my: f32| {
                     if shear != 0.0 || cur_shear != 0.0 {

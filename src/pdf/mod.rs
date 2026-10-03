@@ -753,21 +753,13 @@ impl PageBuilder {
         }
         self.toc = None;
         self.toc_field = para.starts_toc_field;
-        match para.list_item {
-            Some(item) if para.outline_level.is_none() => {
-                let labelled = !para.list_label.is_empty();
-                self.tags
-                    .list_item(&mut self.lists, tagging::ROOT, item, labelled)
-            }
-            _ => {
-                self.lists.close();
-                (
-                    None,
-                    self.tags
-                        .add(tagging::ROOT, para_tag_kind(para, style_name)),
-                )
-            }
-        }
+        self.tags.para_nodes(
+            &mut self.lists,
+            tagging::ROOT,
+            para.list_item.filter(|_| para.outline_level.is_none()),
+            !para.list_label.is_empty(),
+            para_tag_kind(para, style_name),
+        )
     }
 
     /// Tag a picture, chart or diagram paragraph the way Word does: an empty
@@ -798,18 +790,12 @@ impl PageBuilder {
     /// when it has none) and leave the paragraph text's tag open.
     fn begin_para_tags(
         &mut self,
-        (label, text): (Option<usize>, usize),
+        nodes: (Option<usize>, usize),
         draw_label: impl FnOnce(&mut Content),
     ) {
-        if let Some(label) = label {
-            self.begin_tag(label);
-            draw_label(&mut self.content);
-            self.end_tag();
-            self.begin_tag(text);
-        } else {
-            self.begin_tag(text);
-            draw_label(&mut self.content);
-        }
+        let page = self.all_contents.len();
+        self.tags
+            .begin_para(&mut self.content, page, nodes, draw_label);
     }
 
     pub(super) fn flush_page(&mut self, sect_idx: usize) {

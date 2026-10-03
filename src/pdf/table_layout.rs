@@ -510,8 +510,8 @@ pub(super) struct CellParagraphLayout {
     pub(super) float_indent_left: f32,
     pub(super) list_label: String,
     pub(super) list_label_font: Option<String>,
-    /// (level, list id, label style) of a list item, for L/LI tagging inside the cell.
-    pub(super) list_item: Option<(u8, u32, pdf_writer::types::ListNumbering)>,
+    /// For L/LI tagging inside the cell.
+    pub(super) list_item: Option<crate::model::ListItem>,
     pub(super) label_color: Option<[u8; 3]>,
     pub(super) first_run_font_key: String,
     pub(super) image_name: Option<String>,
