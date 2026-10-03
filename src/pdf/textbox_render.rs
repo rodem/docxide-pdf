@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use pdf_writer::Content;
+use pdf_writer::types::TextRenderingMode;
+use pdf_writer::{Content, Name, Str};
 
 use crate::model::{EmbeddedImage, Paragraph, SectionProperties, TextAnchor, Textbox};
 
@@ -33,6 +34,28 @@ pub(super) fn textbox_para_block_image(tp: &Paragraph) -> Option<&EmbeddedImage>
         return None;
     }
     tp.runs.iter().find_map(|r| r.inline_image.as_ref())
+}
+
+/// The textbox's text in its first run's font, in rendering mode 3 (neither
+/// filled nor stroked) from the top left of the box.
+fn invisible_text(content: &mut Content, tb: &Textbox, ctx: &RenderContext, x: f32, top: f32) {
+    let runs = || tb.paragraphs.iter().flat_map(|para| &para.runs);
+    let Some(run) = runs().find(|r| !r.text.is_empty()) else {
+        return;
+    };
+    let Some(entry) = ctx.fonts.get(&crate::fonts::font_key(run)) else {
+        return;
+    };
+    let text: String = runs().map(|r| r.text.as_str()).collect();
+    content.save_state();
+    content
+        .begin_text()
+        .set_font(Name(entry.pdf_name.as_bytes()), run.font_size)
+        .set_text_rendering_mode(TextRenderingMode::Invisible)
+        .next_line(x, top - run.font_size)
+        .show(Str(&entry.encode(&text)))
+        .end_text();
+    content.restore_state();
 }
 
 fn image_block_height(img: &EmbeddedImage) -> f32 {
@@ -185,13 +208,19 @@ pub(super) fn render_single_textbox(
         .as_ref()
         .is_some_and(|w| w.preset != "textNoShape")
     {
-        if wordart::render_warped_textbox(tb, content, ctx.fonts, tb_x, tb_y_top, align_w) {
-            if needs_clip {
-                content.restore_state();
-            }
-            return;
+        // Glyph outlines carry no text, so the WordArt's text is also drawn
+        // invisibly in one P (Word: Sect > P with the text), for screen
+        // readers, search and copy.
+        // ponytail: a warp that falls back to flat text leaves this P empty
+        let p = tags.add(sect, "P");
+        tags.begin(content, page, p);
+        let drawn = wordart::render_warped_textbox(tb, content, ctx.fonts, tb_x, tb_y_top, align_w)
+            || wordart::render_text_on_path(tb, content, ctx.fonts, tb_x, tb_y_top, align_w);
+        if drawn {
+            invisible_text(content, tb, ctx, tb_x + tb.margin_left, tb_y_top - tb.margin_top);
         }
-        if wordart::render_text_on_path(tb, content, ctx.fonts, tb_x, tb_y_top, align_w) {
+        Tags::end(content);
+        if drawn {
             if needs_clip {
                 content.restore_state();
             }
