@@ -48,6 +48,22 @@ fn map_symbol_pua(text: &str) -> Option<String> {
     )
 }
 
+/// The label's glyphs and a space, so text extraction and screen readers
+/// don't run the label into the paragraph text ("1.01SECTION"); invisible,
+/// as nothing follows it in its text object. Fonts without a space get none.
+pub(super) fn encode_label(entry: &FontEntry, label: &str) -> Vec<u8> {
+    let mut bytes = entry.encode(label);
+    if !is_all_notdef(&bytes)
+        && entry
+            .char_to_gid
+            .as_ref()
+            .is_none_or(|m| m.contains_key(&' '))
+    {
+        bytes.extend(entry.encode(" "));
+    }
+    bytes
+}
+
 fn label_for_paragraph<'a>(
     para: &Paragraph,
     seen_fonts: &'a HashMap<String, FontEntry>,
@@ -56,7 +72,7 @@ fn label_for_paragraph<'a>(
     let entry = key.as_deref().and_then(|k| seen_fonts.get(k));
 
     if let Some(entry) = entry {
-        let bytes = entry.encode(&para.list_label);
+        let bytes = encode_label(entry, &para.list_label);
         if !is_all_notdef(&bytes) {
             return (entry.pdf_name.as_str(), bytes);
         }
@@ -70,7 +86,7 @@ fn label_for_paragraph<'a>(
         && let Some(run) = para.runs.first()
         && let Some(body_entry) = seen_fonts.get(&font_key(run))
     {
-        let bytes = body_entry.encode(&mapped);
+        let bytes = encode_label(body_entry, &mapped);
         return (body_entry.pdf_name.as_str(), bytes);
     }
 
