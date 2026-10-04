@@ -780,9 +780,11 @@ pub(super) struct PageBuilder {
     /// Separator lines on the current page: (x positions, top y, bottom y).
     col_seps: Vec<(Vec<f32>, f32, f32)>,
     all_col_seps: Vec<Vec<(Vec<f32>, f32, f32)>>,
-    /// First block on this page whose text overflowed into the next column
-    /// (balancing trials).
-    first_overflow_block: Option<usize>,
+    /// Summed heights of the current region's finished columns on this page.
+    col_heights: f32,
+    /// The current column opens with the rest of a paragraph split from the
+    /// column (or page) before.
+    pub(super) col_starts_with_tail: bool,
     /// (page index, y): columns on that page end no lower than y, to balance
     /// the last page of a region spanning pages.
     balance_floor: Option<(usize, f32)>,
@@ -835,7 +837,8 @@ impl PageBuilder {
             region_sep_xs: Vec::new(),
             col_seps: Vec::new(),
             all_col_seps: Vec::new(),
-            first_overflow_block: None,
+            col_heights: 0.0,
+            col_starts_with_tail: false,
             balance_floor: None,
             all_styleref: Vec::new(),
             all_first_styleref: Vec::new(),
@@ -952,7 +955,6 @@ impl PageBuilder {
         ));
         self.push_col_seps(self.slot_top);
         self.all_col_seps.push(std::mem::take(&mut self.col_seps));
-        self.first_overflow_block = None;
         self.all_styleref.push(self.styleref_running.clone());
         self.all_first_styleref
             .push(std::mem::take(&mut self.styleref_page_first));
@@ -997,6 +999,7 @@ impl PageBuilder {
         }
         self.last_col = 0;
         self.col_bottom = f32::INFINITY;
+        self.col_heights = 0.0;
     }
 
     /// Endnotes render at the end of the document: collect the id once, in
@@ -1073,10 +1076,12 @@ impl PageBuilder {
         effective_margin_bottom: &mut f32,
         ctx: &RenderContext,
     ) {
+        self.col_starts_with_tail = false;
         if *current_col + 1 < col_count {
             *current_col += 1;
             self.last_col = self.last_col.max(*current_col);
             self.col_bottom = self.col_bottom.min(self.slot_top);
+            self.col_heights += self.column_top_y - self.slot_top;
             self.slot_top = self.column_top_y;
         } else {
             *current_col = 0;
@@ -2620,7 +2625,6 @@ fn render_paragraph_block(
 
             // The column ends below the lines that stay (its separator reaches them).
             state.pb.slot_top -= lines_height(first_part, line_h, para_metrics);
-            state.pb.first_overflow_block.get_or_insert(block_idx);
             state.pb.advance_column_or_page(
                 &mut state.current_col,
                 col_count,
@@ -2629,6 +2633,7 @@ fn render_paragraph_block(
                 &mut state.effective_margin_bottom,
                 ctx,
             );
+            state.pb.col_starts_with_tail = true;
 
             let baseline_offset2 = if grid_snapped {
                 grid_baseline
@@ -2708,6 +2713,7 @@ fn render_paragraph_block(
                     &mut state.effective_margin_bottom,
                     ctx,
                 );
+                state.pb.col_starts_with_tail = true;
             }
             state.prev_space_after = effective_space_after;
 
@@ -2727,7 +2733,6 @@ fn render_paragraph_block(
             return true;
         }
 
-        state.pb.first_overflow_block.get_or_insert(block_idx);
         state.pb.overflow_column_or_page(
             &mut state.current_col,
             col_count,
@@ -3482,16 +3487,17 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             vec![(sp.margin_left, text_width)]
         };
         state.current_col = 0;
-        // A mid-page column region starts below the pending space after, so
-        // every column's top lines up (case80's two-column region).
-        if col_count > 1 && !state.pb.is_at_page_top(sp) {
-            state.pb.slot_top -= state.prev_space_after;
-            state.prev_space_after = 0.0;
-        }
         // Record the starting y for this section's columns on the current
         // page. For a mid-page continuous section, both columns begin at the
         // same y rather than at the top of the page.
         state.pb.column_top_y = state.pb.slot_top;
+        // Mid-page, the columns start below the pending space after; the
+        // first paragraph still opens with max(space after, its space before),
+        // so a heading's extra space stays in column 1 (covid's column 2 starts
+        // above its heading; case80's columns line up).
+        if col_count > 1 && !state.pb.is_at_page_top(sp) {
+            state.pb.column_top_y -= state.prev_space_after;
+        }
         state.pb.region_sep_xs = match col_config {
             Some(cfg) if cfg.sep => col_geometry
                 .iter()
@@ -3678,29 +3684,21 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         };
 
         // Word balances the columns of a region that ends at a continuous
-        // section break: the shortest column height that still holds it all.
-        // Text before the last column break keeps its columns (case80's
-        // 4-column region is as tall as its first column).
+        // section break, unless it holds a column break (probe: column 2 then
+        // runs to the page foot and the next section moves to page 2).
         let balance = col_count > 1
             && doc
                 .sections
                 .get(sect_idx + 1)
-                .is_some_and(|s| s.properties.break_type == SectionBreakType::Continuous);
-        let free_from = section
-            .blocks
-            .iter()
-            .enumerate()
-            .filter_map(|(i, b)| match b {
-                Block::Paragraph(p) if p.column_break_after => Some(i + 1),
-                Block::Paragraph(p) if p.column_break_before => Some(i),
-                _ => None,
-            })
-            .max()
-            .unwrap_or(0);
+                .is_some_and(|s| s.properties.break_type == SectionBreakType::Continuous)
+            && !section.blocks.iter().any(|b| {
+                matches!(b, Block::Paragraph(p) if p.column_break_before || p.column_break_after)
+            });
         // A region spanning pages is balanced on its last page (Word probes:
         // a two-page region splits its last page 10/10 lines). `flushes` is
         // how many pages it fills before that one at full height.
         let base = state.pb.page_count().min(1);
+        state.pb.col_starts_with_tail = false;
         let trial_at = |state: &LayoutState, flushes: usize, bottom: f32| {
             let mut trial = state.trial(state.effective_margin_bottom);
             if flushes == 0 {
@@ -3709,17 +3707,18 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 trial.pb.balance_floor = Some((base + flushes, bottom));
             }
             layout_blocks(&mut trial);
-            let ok = trial.pb.first_overflow_block.is_none_or(|b| b >= free_from);
-            (trial.pb.page_count() - base, ok)
+            // The region's content height on its last page, as one stream.
+            let total = trial.pb.col_heights + trial.pb.column_top_y
+                - (trial.pb.slot_top - trial.prev_space_after);
+            (trial.pb.page_count() - base, total)
         };
-        let flushes = balance
-            .then(|| trial_at(&state, 0, state.effective_margin_bottom))
-            .and_then(|(flushes, ok)| ok.then_some(flushes));
-        // ponytail: every trial lays the whole region out again, so a region of
-        // n pages costs ~13n page layouts; start trials at its last page if slow.
-        if let Some(flushes) = flushes {
+        let natural = balance.then(|| trial_at(&state, 0, state.effective_margin_bottom));
+        let flushes = natural.map(|(flushes, _)| flushes);
+        // ponytail: every trial lays the whole region out again, so a long
+        // region costs a few full layouts; start trials at its last page if slow.
+        if let Some((flushes, total)) = natural {
             let (floor_page, page_bottom, top) = if flushes == 0 {
-                (0, state.effective_margin_bottom, state.pb.slot_top)
+                (0, state.effective_margin_bottom, state.pb.column_top_y)
             } else {
                 (
                     state.pb.page_count() + flushes,
@@ -3727,15 +3726,38 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                     effective_slot_top(sp, false, &ctx),
                 )
             };
-            let (mut lo, mut hi) = (page_bottom, top);
-            for _ in 0..12 {
-                let mid = (lo + hi) / 2.0;
-                if trial_at(&state, flushes, mid) == (flushes, true) {
-                    lo = mid;
-                } else {
-                    hi = mid;
+            // Word starts at the content height over the column count and adds
+            // a line until it fits, which is not always the shortest fit (a
+            // 3-column page split 14/14/12 lines where 14/13/13 fits).
+            // A line must fit with all its leading here, unlike at the page
+            // foot: case80's two-column region keeps its third paragraph whole
+            // in column 2 though its first two lines' text fits column 1.
+            let (step, lead) = section
+                .blocks
+                .iter()
+                .find_map(|b| match b {
+                    Block::Paragraph(p) if !is_text_empty(&p.runs) => {
+                        let (fs, lhr, _) = tallest_run_metrics(&p.runs, ctx.fonts);
+                        let ls = p.line_spacing.unwrap_or(ctx.doc_line_spacing);
+                        let line_h = resolve_line_h(ls, fs, lhr);
+                        Some((line_h, (line_h - fs * lhr.unwrap_or(1.2)).max(0.0)))
+                    }
+                    _ => None,
+                })
+                .unwrap_or((12.0, 0.0));
+            let step = step.max(1.0);
+            let mut h = total / col_count as f32;
+            while h < top - page_bottom {
+                if trial_at(&state, flushes, top - h + lead + 0.01).0 == flushes {
+                    break;
                 }
+                h += step;
             }
+            let lo = if h < top - page_bottom {
+                top - h + lead + 0.01
+            } else {
+                page_bottom
+            };
             if flushes == 0 {
                 state.effective_margin_bottom = lo;
             } else {
@@ -3750,12 +3772,23 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         }
 
         if col_count > 1 {
-            // What follows a column region starts below its deepest column,
-            // that column's trailing space after included.
-            let bottom = state
-                .pb
-                .col_bottom
-                .min(state.pb.slot_top - state.prev_space_after);
+            // What follows a column region starts below its deepest column.
+            // The last column's final space after counts unless that column
+            // opens with the tail of a split paragraph, and a balanced region
+            // is at least its whole content over the column count tall (Word
+            // probes: one paragraph over three columns ends there, 3pt above
+            // its last line's space after).
+            let last_end = state.pb.slot_top - state.prev_space_after;
+            let mut bottom = if state.pb.col_starts_with_tail {
+                state.pb.slot_top
+            } else {
+                last_end
+            };
+            if flushes.is_some() {
+                let total = state.pb.col_heights + state.pb.column_top_y - last_end;
+                bottom = bottom.min(state.pb.column_top_y - total / col_count as f32);
+            }
+            let bottom = state.pb.col_bottom.min(bottom);
             state.pb.push_col_seps(bottom);
             state.pb.slot_top = bottom;
             state.prev_space_after = 0.0;
