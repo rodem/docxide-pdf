@@ -240,6 +240,44 @@ Probes in `tests/output/probe_kn/` (generator `mk.py`, exported online):
 - Many `line_diff` first divergences between local and online are list labels
   extracted separately in the tagged PDF ("3. Údaje" vs "Údaje"), not layout.
 
+### 4e. Rules fixed in the jubarte-comparison round (2026-10-04)
+
+Found by comparing against jubarte (which scores the same cached PDFs ~1.5 J
+higher on the 87 switched fixtures; both lost ~7 J from the switch). Each was
+verified on the full suite; one commit each:
+
+| Commit | Rule | Effect |
+|---|---|---|
+| `f48ff7ce` | An at-least line whose minimum wins is bottom-aligned (extra height above the text) | bosch +21.1, victorian +12.9, czech_census +11.2, candidate_reference +10.8 |
+| `15337eaf` | A paragraph's own pageBreakBefore (also `w:val="0"`) overrides its style's | wa_child +23.6 |
+| `b4d4f779` | A line holding only a `w:br` is as tall as that break run (its own font) | pasto +29.6, russian_municipal +14.7, german_mezzo +4.0 |
+| `5f8452b3` | A justified line stretches only the spaces after its last tab | ukrainian +5.0 |
+| `ee96f405` | Paragraph side borders' inner edge = space + 1.47pt (left) / + 1.73pt (right) outside the text (probe: `tests/output/probe_bdr`) | case17 +2.3 |
+| `f5b10da2` | East Asian 1.3x leading split evenly above/below (local Word: all above); exact/at-least boxes still bottom-align at the descent (probe: `tests/output/probe_cjk`) | chinese_asset +30.5, polish_building +8.9; chinese_student -2.7 (open) |
+| `347cde15` | Text boxes bottom-align exact/at-least lines (shared `bottom_aligned_ascent`) | classroom +3.1 |
+| `ee150e62` | Header/footer paragraphs and frames too | carbon_farming +1.0, clean_energy +1.0 |
+| `3ec969db` | An empty section-break paragraph keeps its line before a continuous section with a different column count | covid_insomnia +15.0 |
+
+Tried and reverted: explicit-height rows splitting (arizona -52: exact
+trHeight rows stay whole online too), a 0.01pt overflow tolerance
+(czech_health -40).
+
+Open from this round:
+- radiographer (jubarte 77 vs us 24): Word splits *inside* a nested table's
+  row (between paragraphs); we split nested tables only between rows.
+- go_math (82 vs 42): a table cell line 0.045pt too wide wraps in Word; our
+  0.05pt overflow tolerance keeps it (the cell path, not the body path, since
+  tightening the body tolerance changed nothing there).
+- master_thesis (57 vs 42): the continuation of a row split across pages 2-3
+  is one line (14pt) shorter than Word's.
+- estonian (43 vs 22): 10pt Arial Narrow under Heading1's 1.104 spacing steps
+  ~0.3pt less in Word than our 12.65.
+- eco_int: a space-only Helvetica 9.5 paragraph at 1.5 spacing comes out
+  0.9pt taller.
+- chinese_student: -2.7 from the CJK split; its grid-snapped at-least lines.
+- greek: needs Windows' Comic Sans Italic (`comici.ttf`, `comicz.ttf`); online
+  uses the real face (10 deg), we shear 18.8 deg like local Mac Word.
+
 ## 5. How to measure
 
 - Suite: `tools/score_snapshot.sh <label> [<prev>]` (full visual suite →
