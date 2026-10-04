@@ -2916,15 +2916,18 @@ fn render_paragraph_block(
         let bdr = &para.borders;
         let box_top = state.pb.slot_top - bdr_top_half_band;
         let box_bottom = state.pb.slot_top - bdr_top_pad - content_h - bdr_bottom_pad;
+        // Word puts a side border's inner edge its space plus 1.47pt (left) or
+        // 1.73pt (right) outside the text, whatever its width (online export
+        // probes: sz 4/12/24 × space 0/4/12, with and without indents).
         let bdr_left_outset = bdr
             .left
             .as_ref()
-            .map(|b| b.space_pt + b.width_pt / 2.0)
+            .map(|b| b.space_pt + 1.47 + b.width_pt / 2.0)
             .unwrap_or(0.0);
         let bdr_right_outset = bdr
             .right
             .as_ref()
-            .map(|b| b.space_pt + b.width_pt / 2.0)
+            .map(|b| b.space_pt + 1.73 + b.width_pt / 2.0)
             .unwrap_or(0.0);
         let box_left = col_x - bdr_left_outset;
         let box_right = col_x + col_w + bdr_right_outset;
