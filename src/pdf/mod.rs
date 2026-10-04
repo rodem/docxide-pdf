@@ -782,9 +782,8 @@ pub(super) struct PageBuilder {
     all_col_seps: Vec<Vec<(Vec<f32>, f32, f32)>>,
     /// Summed heights of the current region's finished columns on this page.
     col_heights: f32,
-    /// The current column opens with the rest of a paragraph split from the
-    /// column (or page) before.
-    pub(super) col_starts_with_tail: bool,
+    /// Space before dropped at the top of this page (balancing still counts it).
+    top_suppressed: f32,
     /// (page index, y): columns on that page end no lower than y, to balance
     /// the last page of a region spanning pages.
     balance_floor: Option<(usize, f32)>,
@@ -838,7 +837,7 @@ impl PageBuilder {
             col_seps: Vec::new(),
             all_col_seps: Vec::new(),
             col_heights: 0.0,
-            col_starts_with_tail: false,
+            top_suppressed: 0.0,
             balance_floor: None,
             all_styleref: Vec::new(),
             all_first_styleref: Vec::new(),
@@ -955,6 +954,7 @@ impl PageBuilder {
         ));
         self.push_col_seps(self.slot_top);
         self.all_col_seps.push(std::mem::take(&mut self.col_seps));
+        self.top_suppressed = 0.0;
         self.all_styleref.push(self.styleref_running.clone());
         self.all_first_styleref
             .push(std::mem::take(&mut self.styleref_page_first));
@@ -1076,7 +1076,6 @@ impl PageBuilder {
         effective_margin_bottom: &mut f32,
         ctx: &RenderContext,
     ) {
-        self.col_starts_with_tail = false;
         if *current_col + 1 < col_count {
             *current_col += 1;
             self.last_col = self.last_col.max(*current_col);
@@ -2633,7 +2632,6 @@ fn render_paragraph_block(
                 &mut state.effective_margin_bottom,
                 ctx,
             );
-            state.pb.col_starts_with_tail = true;
 
             let baseline_offset2 = if grid_snapped {
                 grid_baseline
@@ -2682,7 +2680,6 @@ fn render_paragraph_block(
                         &mut state.effective_margin_bottom,
                         ctx,
                     );
-                    state.pb.col_starts_with_tail = true;
                     continue;
                 }
                 let chunk = &remaining[..fit.clamp(1, remaining.len())];
@@ -2739,7 +2736,6 @@ fn render_paragraph_block(
                     &mut state.effective_margin_bottom,
                     ctx,
                 );
-                state.pb.col_starts_with_tail = true;
             }
             state.prev_space_after = effective_space_after;
 
@@ -2776,6 +2772,7 @@ fn render_paragraph_block(
         .pb
         .page_top_gap(sp, effective_space_before, state.prev_space_after)
     {
+        state.pb.top_suppressed = (effective_space_before - gap).max(0.0);
         inter_gap = gap;
     }
 
@@ -3724,7 +3721,6 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         // a two-page region splits its last page 10/10 lines). `flushes` is
         // how many pages it fills before that one at full height.
         let base = state.pb.page_count().min(1);
-        state.pb.col_starts_with_tail = false;
         let trial_at = |state: &LayoutState, flushes: usize, bottom: f32| {
             let mut trial = state.trial(state.effective_margin_bottom);
             if flushes == 0 {
@@ -3733,16 +3729,17 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 trial.pb.balance_floor = Some((base + flushes, bottom));
             }
             layout_blocks(&mut trial);
-            // The region's content height on its last page, as one stream.
+            // The region's content height on its last page, as one stream,
+            // with the space before a page-top heading dropped (case81 p6).
             let total = trial.pb.col_heights + trial.pb.column_top_y
-                - (trial.pb.slot_top - trial.prev_space_after);
+                - (trial.pb.slot_top - trial.prev_space_after)
+                + trial.pb.top_suppressed;
             (trial.pb.page_count() - base, total)
         };
         let natural = balance.then(|| trial_at(&state, 0, state.effective_margin_bottom));
-        let flushes = natural.map(|(flushes, _)| flushes);
         // ponytail: every trial lays the whole region out again, so a long
         // region costs a few full layouts; start trials at its last page if slow.
-        if let Some((flushes, total)) = natural {
+        let balanced_h = if let Some((flushes, total)) = natural {
             let (floor_page, page_bottom, top) = if flushes == 0 {
                 (0, state.effective_margin_bottom, state.pb.column_top_y)
             } else {
@@ -3793,28 +3790,23 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             state.pb.balance_floor = None;
             // Keep footnote space booked while the region was laid out.
             state.effective_margin_bottom += page_bottom - lo;
+            Some(h.min(top - page_bottom))
         } else {
             layout_blocks(&mut state);
-        }
+            None
+        };
 
         if col_count > 1 {
-            // What follows a column region starts below its deepest column.
-            // The last column's final space after counts unless that column
-            // opens with the tail of a split paragraph, and a balanced region
-            // is at least its whole content over the column count tall (Word
-            // probes: one paragraph over three columns ends there, 3pt above
-            // its last line's space after).
-            let last_end = state.pb.slot_top - state.prev_space_after;
-            let mut bottom = if state.pb.col_starts_with_tail {
-                state.pb.slot_top
-            } else {
-                last_end
-            };
-            if flushes.is_some() {
-                let total = state.pb.col_heights + state.pb.column_top_y - last_end;
-                bottom = bottom.min(state.pb.column_top_y - total / col_count as f32);
+            // What follows a column region starts below its deepest column,
+            // the last one's final space after included; in a balanced region
+            // that space reaches no lower than the balancing height (Word
+            // probes: one paragraph over three columns ends 3pt above its
+            // space after; a lone two-line tail keeps all of it).
+            let mut last = state.pb.slot_top - state.prev_space_after;
+            if let Some(h) = balanced_h {
+                last = last.max(state.pb.column_top_y - h).min(state.pb.slot_top);
             }
-            let bottom = state.pb.col_bottom.min(bottom);
+            let bottom = state.pb.col_bottom.min(last);
             state.pb.push_col_seps(bottom);
             state.pb.slot_top = bottom;
             state.prev_space_after = 0.0;
