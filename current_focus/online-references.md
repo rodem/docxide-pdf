@@ -156,14 +156,42 @@ Biggest movers (baseline → now, J):
     hard: dutch_council lost 36.6 J with every line in place.
   - This affects **all** online references, so it likely caps many of the
     ~174 that were online before the switch too.
-- Hypotheses to test: advances rounded to whole pixels at some ppem (96 dpi
-  does not fit 'D'), the font's `hdmx` device widths, GDI-style hinted
-  advances, or rounding of absolute pen positions (which would make the same
-  glyph's advance vary along a line, as the space does: 2.484 / 2.495).
-- How to measure: `tests/output/dig/adv.py <pdf>` prints per-glyph advances of
-  the longest line from `mutool draw -F stext`; collect (font, size, glyph,
-  online advance) across many online references and fit a rule. Check
-  `memory/kerning_and_shaping.md` for earlier width work first.
+- **What is known (2026-10-04, 80 online references, scripts in
+  `tests/output/dig/width/`):**
+  - Online PDFs draw each source run as its own segment (`Tm` + one `TJ`);
+    segment starts are multiples of 0.025pt and sit at the layout position.
+    **A run boundary resets any drift**, even between runs with identical
+    formatting (dutch_council: `" het feit dat ik "` is its own run). Our
+    parser merges such runs (`merge_compatible_runs`), so the boundary is lost
+    before layout.
+  - **Inside a word, glyph advances are the exact width rounded to 0.25pt**
+    (1/288 inch). Times New Roman 12, medians over ~1000 glyphs: e/a/c 5.326 →
+    5.25, i/t/l 3.334 → 3.25, s 4.670 → 4.75, r 3.996 → 4.00, o/n/u 6.00
+    unchanged. The residue (5.244 not 5.25) is the TJ's 1/1000-em integers.
+    `tjpos.py` finds 288 dpi as the best grid (mean |frac px| 0.054).
+  - **The word's last glyph absorbs a correction**, so word *starts* follow
+    another width. Word-start drift against exact widths is font-dependent:
+    TNR 12 −0.27, Calibri 11 −0.24, Arial 12 −0.12, Cambria 11 and Aptos 12
+    ≈ 0 (mean signed drift per word start within a run).
+  - **Line breaking uses exact widths**: making layout widths narrower
+    (`floor_twip_attempt.patch`, word widths floored to twips) re-wrapped
+    lines and lost 108 fixtures (case16 99.0 → 88.5).
+- **Ruled out:** font versions (embedded /Widths = our files), legacy `kern`
+  pairs (worse), FreeType hinting at 96–1200 dpi (v40 and v35), a constant
+  twip floor (fits TNR/Calibri, overshoots Cambria/Aptos/Arial), pixel-snapped
+  word starts.
+- **Tried, reverted:** drawing-time shift (`render_shift_attempt.patch`): each
+  word moved left by the twip-floor shrink of the words before it, reset at
+  tabs; justified lines give it back to the spaces. 42 up (mandated_reporter
+  +6.3, case49 +9.9), 90 down (case9 −7.4, fonts/arial −3.2; also the local
+  references, which need exact widths). Missing pieces: reset at source-run
+  boundaries, and the right per-font word-start model.
+- **Next step:** find the word-start rule. Per word, compare the online
+  advance to the next word start with (a) exact, (b) glyph-rounded sum, per
+  font and size; `wordadv.py` started this but needs the clean-segment filter
+  from `models2.py`. Then carry source-run boundaries through
+  `merge_compatible_runs` and apply the shift per run, only for online
+  references' conditions.
 
 ### 4b. Markup / comment pane (open)
 
