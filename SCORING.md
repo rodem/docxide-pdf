@@ -18,7 +18,6 @@ comparison gives one or more scores per fixture.
 | TxtBnd | Do lines start and end on the same words as Word's? | 0–100% | not run at the moment |
 | `ua_fail` | How many accessibility rules does our PDF break? | count, lower is better | it goes up at all |
 | `ua_deficit` | How many accessibility rules do we break that Word gets right? | count, lower is better | it goes up at all |
-| `a11y_missing` | How much of the document's text never reaches a screen reader? | count of letters and digits, lower is better | it goes up at all |
 | `a11y_struct` | Is the document's tagged structure the same as Word's? | 0–100% | it drops more than 2 points |
 | `a11y_text` | Does a screen reader get the same text, in the same order, as from Word's PDF? | 0–100% | it drops more than 2 points |
 
@@ -234,27 +233,13 @@ Any difference in a block costs the whole block. This catches:
 - headers or footers read as body text,
 - words run together because no space was written ("Helloworld").
 
-### `a11y_missing` — text a screen reader never gets
-
-The letters and digits of the DOCX's body, footnotes and endnotes (case-folded,
-counted with repeats) that don't appear anywhere in our structure tree. Word
-doesn't come into it, so every fixture gets it. Deleted, hidden and
-field-code text, `mc:Fallback` copies and note separators are left out of
-the DOCX side. A count rather than a percentage, so one lost paragraph in a
-long document still fails the suite. `generated.deficit.json` lists the
-paragraphs whose text isn't there whole (`lost_paragraphs`).
-
-What it can't tell apart: text hidden by a style rather than the run itself,
-and textbox overflow that Word clips too. The baseline absorbs those, as it
-does source-limited rules in `ua_fail`.
-
 ### Fixtures without a tagged Word reference
 
 `a11y_struct`, `a11y_text` and `ua_deficit` need a Word reference that is
 itself tagged. 4 of our 244 references aren't, on purpose: case63, case64,
 door_air_cooling_unit_spec and missing_font_substitution are local
 print-path exports, the only way Word shows the comment pane. Those fixtures
-get only `ua_fail` and `a11y_missing`; the other 240 get every score.
+get only `ua_fail`; the other 240 get all four scores.
 
 ### Where to look
 

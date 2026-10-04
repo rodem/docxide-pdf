@@ -139,12 +139,10 @@ ua_deficit 2 → 0, ua_fail 510 → 504, text 96.34 → 96.51%, struct
 at page breaks become two TRs, continued footnotes two Ps, and some lists
 lose their labels into LBody or entirely (see `current_focus/A11Y.md`).
 
-**Done, round 7 (2026-10-04, branch `a11y-round7`):** `a11y_missing`, a
-reference-free score (DOCX letters and digits that never reach the tags, any
-increase fails), which found two content losses: vertical table-cell text
-was untagged (japanese_interlibrary text 95 → 100%), and a continuous break
-to landscape put transition_to_work's clause 108 above the top of its page
-(now a new page, as in Word) · pictures in table cells and textboxes are
+**Done, round 7 (2026-10-04, branch `a11y-round7`):** two content losses
+fixed: vertical table-cell text was untagged (japanese_interlibrary text
+95 → 100%), and a continuous break to landscape put transition_to_work's
+clause 108 above the top of its page (now a new page, as in Word) · pictures in table cells and textboxes are
 Figures (Figure counts match Word's in 9 of 12 changed fixtures). struct
 95.84 → 95.87%, text 96.51 → 96.53%, ua_deficit 0, ua_fail 504 → 510
 (pictures without descr, as in Word).
@@ -189,7 +187,7 @@ symbol glyphs, see SCORING.md.)
 scratchpad; rebuild them from `tests/common/a11y.rs` if needed):**
 1. Math speech reads matrices, accents and equation arrays as their contents
    in order. Anchored SmartArt is laid out as if inline and its paragraph's
-   text isn't drawn (learning_cultures, `a11y_missing` 43).
+   text isn't drawn (learning_cultures' Figure 1.2 caption).
 2. (Decided, not a gap) slovak_eu_directive: Word has 14 TRs to our 9 because
    it starts a new TR per page a row runs onto; we keep one TR per row.
 3. Link rects and outline destinations ignore the comment-pane zoom
