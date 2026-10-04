@@ -763,7 +763,21 @@ pub(super) fn parse_object_inline_image<R: Read + Seek>(
         .find(|n| n.has_tag_name((VML_NS, "imagedata")))?;
     let embed_id = imagedata.attribute((REL_NS, "id"))?;
     let (w, h) = object_dimensions(obj)?;
-    read_image_from_zip(embed_id, ctx.rels, ctx.zip, w, h)
+    read_image_from_zip(embed_id, ctx.rels, ctx.zip, w, h).map(|img| with_object_alt(obj, img))
+}
+
+/// Word tags an OLE object as a Sect in its paragraph, with the VML shape's alt
+/// text or a blank one. One with alt text becomes a Figure with it; one without
+/// an artifact rather than a Figure with nothing to say (7.3-1).
+fn with_object_alt(obj: roxmltree::Node, mut img: EmbeddedImage) -> EmbeddedImage {
+    img.alt = obj
+        .children()
+        .filter(|n| n.tag_name().namespace() == Some(VML_NS))
+        .find_map(|n| n.attribute("alt"))
+        .filter(|a| !a.trim().is_empty())
+        .map(str::to_string);
+    img.decorative = img.alt.is_none();
+    img
 }
 
 /// Extract a *floating* image from a `<w:object>` whose VML shape is absolutely
@@ -818,7 +832,7 @@ pub(super) fn parse_object_floating_image<R: Read + Seek>(
         .find(|n| n.has_tag_name((VML_NS, "imagedata")))?;
     let embed_id = imagedata.attribute((REL_NS, "id"))?;
     let (w, h) = object_dimensions(obj)?;
-    let image = read_image_from_zip(embed_id, ctx.rels, ctx.zip, w, h)?;
+    let image = with_object_alt(obj, read_image_from_zip(embed_id, ctx.rels, ctx.zip, w, h)?);
     // An explicit <w10:wrap type="square"/> means the object reflows text
     // (Word wraps centered header text between such logos); without it the
     // logo sits over/beside the text and None keeps the text full-width.
