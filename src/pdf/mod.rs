@@ -2656,8 +2656,34 @@ fn render_paragraph_block(
                     fit += 1;
                     above += l.pitch.unwrap_or(line_h);
                 }
-                if para.widow_control && fit < remaining.len() && remaining.len() - fit < 2 {
-                    fit = remaining.len().saturating_sub(2);
+                if para.widow_control && fit < remaining.len() {
+                    if remaining.len() - fit < 2 {
+                        fit = remaining.len().saturating_sub(2);
+                    }
+                    // Widow control keeps two lines together here too; with
+                    // room for fewer, the column is skipped.
+                    if fit < 2 {
+                        fit = 0;
+                    }
+                }
+                // A fresh page always takes a line, except a balanced one whose
+                // short columns must make the trial fail instead.
+                let fresh_page = state.pb.is_at_page_top(sp)
+                    && state
+                        .pb
+                        .balance_floor
+                        .is_none_or(|(page, _)| page != state.pb.page_count());
+                if fit == 0 && !fresh_page {
+                    state.pb.advance_column_or_page(
+                        &mut state.current_col,
+                        col_count,
+                        sect_idx,
+                        sp,
+                        &mut state.effective_margin_bottom,
+                        ctx,
+                    );
+                    state.pb.col_starts_with_tail = true;
+                    continue;
                 }
                 let chunk = &remaining[..fit.clamp(1, remaining.len())];
                 let baseline_y2 = state.pb.slot_top - baseline_offset2;
