@@ -1735,7 +1735,12 @@ pub(super) fn render_table(
         .collect();
 
     // Text width for footnote height computation (same as paragraph layout uses).
-    let fn_text_width = sp.page_width - sp.margin_left - sp.margin_right;
+    // A table's notes go to the foot of its column (the page in one column).
+    let fn_col = column_bounds.unwrap_or((
+        sp.margin_left,
+        sp.page_width - sp.margin_left - sp.margin_right,
+    ));
+    let fn_text_width = fn_col.1;
 
     let flush_and_render_headers = |pb: &mut super::PageBuilder, ri: usize, emb: &mut f32| {
         pb.flush_page(sect_idx);
@@ -1876,7 +1881,7 @@ pub(super) fn render_table(
                     super::footnotes::compute_footnote_height(footnote, ctx, fn_text_width);
             }
         }
-        if row_fn_extra > 0.0 && pb.footnote_ids.is_empty() {
+        if row_fn_extra > 0.0 && pb.col_fn_reserved == 0.0 {
             row_fn_extra += 12.0; // separator gap for first footnote on page
         }
 
@@ -2034,19 +2039,10 @@ pub(super) fn render_table(
 
         // Register footnotes from this row and reserve space for them.
         for &fn_id in &row_footnote_ids[ri] {
-            if pb.footnote_ids_set.insert(fn_id) {
-                pb.footnote_ids.push(fn_id);
-                if let Some(footnote) = footnotes.get(&fn_id) {
-                    let fn_h =
-                        super::footnotes::compute_footnote_height(footnote, ctx, fn_text_width);
-                    let sep = if pb.footnote_ids.len() == 1 {
-                        12.0
-                    } else {
-                        0.0
-                    };
-                    *effective_margin_bottom += sep + fn_h;
-                }
-            }
+            let fn_h = footnotes
+                .get(&fn_id)
+                .map(|f| super::footnotes::compute_footnote_height(f, ctx, fn_text_width));
+            pb.book_footnote(fn_id, fn_col, fn_h, effective_margin_bottom);
         }
 
         // Register endnotes from this row; they render at end of document

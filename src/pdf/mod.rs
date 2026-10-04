@@ -762,6 +762,13 @@ pub(super) struct PageBuilder {
     all_links: Vec<Vec<LinkAnnotation>>,
     pub(super) all_comment_anchors: Vec<Vec<(u32, f32, f32, f32)>>,
     all_footnote_ids: Vec<Vec<u32>>,
+    /// Each booked footnote's column (x, width), parallel to `footnote_ids`:
+    /// Word sets a multi-column section's footnotes at the foot of the column
+    /// that cites them, in its width.
+    footnote_cols: Vec<(f32, f32)>,
+    all_footnote_cols: Vec<Vec<(f32, f32)>>,
+    /// Footnote space booked in the current column.
+    pub(super) col_fn_reserved: f32,
     all_alpha_states: Vec<HashSet<u8>>,
     all_gradient_specs: Vec<Vec<GradientSpec>>,
     /// Pages inserted by odd/even section breaks; Word prints them without header or footer.
@@ -827,6 +834,9 @@ impl PageBuilder {
             all_links: Vec::new(),
             all_comment_anchors: Vec::new(),
             all_footnote_ids: Vec::new(),
+            footnote_cols: Vec::new(),
+            all_footnote_cols: Vec::new(),
+            col_fn_reserved: 0.0,
             all_alpha_states: Vec::new(),
             all_gradient_specs: Vec::new(),
             filler_pages: Vec::new(),
@@ -942,6 +952,9 @@ impl PageBuilder {
             .push(std::mem::take(&mut self.comment_anchors));
         self.all_footnote_ids
             .push(std::mem::take(&mut self.footnote_ids));
+        self.all_footnote_cols
+            .push(std::mem::take(&mut self.footnote_cols));
+        self.col_fn_reserved = 0.0;
         self.footnote_ids_set.clear();
         self.all_alpha_states
             .push(std::mem::take(&mut self.alpha_states));
@@ -972,6 +985,7 @@ impl PageBuilder {
         self.all_links.push(Vec::new());
         self.all_comment_anchors.push(Vec::new());
         self.all_footnote_ids.push(Vec::new());
+        self.all_footnote_cols.push(Vec::new());
         self.all_alpha_states.push(HashSet::new());
         self.all_gradient_specs.push(Vec::new());
         self.page_section_indices
@@ -985,6 +999,32 @@ impl PageBuilder {
 
     fn page_count(&self) -> usize {
         self.all_contents.len()
+    }
+
+    /// Book footnote `id` (height None when it doesn't exist) into the foot
+    /// of column `col` once per page, shrinking the column by its height and,
+    /// for the column's first note, the separator.
+    pub(super) fn book_footnote(
+        &mut self,
+        id: u32,
+        col: (f32, f32),
+        height: Option<f32>,
+        effective_margin_bottom: &mut f32,
+    ) {
+        if !self.footnote_ids_set.insert(id) {
+            return;
+        }
+        self.footnote_ids.push(id);
+        self.footnote_cols.push(col);
+        if let Some(h) = height {
+            let sep = if self.col_fn_reserved == 0.0 {
+                12.0
+            } else {
+                0.0
+            };
+            *effective_margin_bottom += sep + h;
+            self.col_fn_reserved += sep + h;
+        }
     }
 
     /// Close the current column region's separators on this page: Word draws
@@ -1081,6 +1121,8 @@ impl PageBuilder {
             self.last_col = self.last_col.max(*current_col);
             self.col_bottom = self.col_bottom.min(self.slot_top);
             self.col_heights += self.column_top_y - self.slot_top;
+            *effective_margin_bottom -= self.col_fn_reserved;
+            self.col_fn_reserved = 0.0;
             self.slot_top = self.column_top_y;
         } else {
             *current_col = 0;
@@ -1126,6 +1168,7 @@ impl LayoutState {
         pb.float_zone = self.pb.float_zone.clone();
         pb.pending_float_anchor = self.pb.pending_float_anchor;
         pb.footnote_ids_set = self.pb.footnote_ids_set.clone();
+        pb.col_fn_reserved = self.pb.col_fn_reserved;
         // Page-top rules look at whether a page was already flushed.
         if !self.pb.all_contents.is_empty() {
             pb.all_contents.push(Content::new());
@@ -1149,22 +1192,16 @@ fn track_page_footnote(
     state: &mut LayoutState,
     doc: &Document,
     ctx: &RenderContext,
-    text_width: f32,
+    col: (f32, f32),
     id: u32,
 ) {
-    if !state.pb.footnote_ids_set.insert(id) {
-        return;
-    }
-    state.pb.footnote_ids.push(id);
-    if let Some(footnote) = doc.footnotes.get(&id) {
-        let fn_height = compute_footnote_height(footnote, ctx, text_width);
-        let separator_h = if state.pb.footnote_ids.len() == 1 {
-            12.0
-        } else {
-            0.0
-        };
-        state.effective_margin_bottom += separator_h + fn_height;
-    }
+    let height = doc
+        .footnotes
+        .get(&id)
+        .map(|f| compute_footnote_height(f, ctx, col.1));
+    state
+        .pb
+        .book_footnote(id, col, height, &mut state.effective_margin_bottom);
 }
 
 /// Footnote ids referenced by `lines`, in reading order, each once.
@@ -2499,15 +2536,15 @@ fn render_paragraph_block(
         &line_refs,
         &run_refs,
         &state.pb.footnote_ids_set,
-        if state.pb.footnote_ids.is_empty() {
+        if state.pb.col_fn_reserved == 0.0 {
             12.0
         } else {
             0.0
         },
         |id| {
-            doc.footnotes
-                .get(&id)
-                .map_or(0.0, |f| compute_footnote_height(f, ctx, text_width))
+            doc.footnotes.get(&id).map_or(0.0, |f| {
+                compute_footnote_height(f, ctx, col_geometry[state.current_col].1)
+            })
         },
     );
 
@@ -2533,7 +2570,7 @@ fn render_paragraph_block(
                 fn_acc += fn_extra;
                 let room = available - fn_acc;
                 let own_pitch = lines.get(i).and_then(|l| l.pitch);
-                let above_footnotes = !state.pb.footnote_ids.is_empty() || fn_acc > 0.0;
+                let above_footnotes = state.pb.col_fn_reserved > 0.0 || fn_acc > 0.0;
                 let own_h = if above_footnotes {
                     own_pitch.unwrap_or(line_h)
                 } else {
@@ -2624,7 +2661,7 @@ fn render_paragraph_block(
             // to the continuation page while the space stays reserved here.
             let first_part_fn_ids = line_footnote_ids(first_part);
             for &id in &first_part_fn_ids {
-                track_page_footnote(state, doc, ctx, text_width, id);
+                track_page_footnote(state, doc, ctx, col_geometry[state.current_col], id);
             }
 
             // The column ends below the lines that stay (its separator reaches them).
@@ -2749,7 +2786,7 @@ fn render_paragraph_block(
                 if let Some(id) = run.footnote_id
                     && !first_part_fn_ids.contains(&id)
                 {
-                    track_page_footnote(state, doc, ctx, text_width, id);
+                    track_page_footnote(state, doc, ctx, col_geometry[state.current_col], id);
                 }
                 if let Some(id) = run.endnote_id {
                     state.pb.track_endnote(id);
@@ -3267,7 +3304,7 @@ fn render_paragraph_block(
     // Track footnotes referenced on this page
     for run in para.runs.iter() {
         if let Some(id) = run.footnote_id {
-            track_page_footnote(state, doc, ctx, text_width, id);
+            track_page_footnote(state, doc, ctx, col_geometry[state.current_col], id);
         }
         if let Some(id) = run.endnote_id {
             state.pb.track_endnote(id);
@@ -3853,23 +3890,40 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         let content_sp = &doc.sections[si].properties;
         let text_width = content_sp.text_width();
         let bottom = eff_bottom;
-        let tops = render_page_footnotes(
-            content,
-            &state.pb.all_footnote_ids[page_idx],
-            &doc.footnotes,
-            &footnote_display_order,
-            &ctx,
-            content_sp.margin_left,
-            bottom,
-            text_width,
-            &mut state.pb.all_gradient_specs[page_idx],
-            tagging::NoteTagger {
-                tags: &mut state.pb.tags,
-                page: page_idx,
-                endnote: false,
-                links: &mut state.pb.all_links[page_idx],
-            },
-        );
+        // One block per column, at its foot and in its width.
+        let ids = &state.pb.all_footnote_ids[page_idx];
+        let cols = &state.pb.all_footnote_cols[page_idx];
+        let mut tops = Vec::new();
+        let mut done: Vec<(f32, f32)> = Vec::new();
+        for &col in cols {
+            if done.contains(&col) {
+                continue;
+            }
+            done.push(col);
+            let col_ids: Vec<u32> = ids
+                .iter()
+                .zip(cols)
+                .filter(|&(_, &c)| c == col)
+                .map(|(&id, _)| id)
+                .collect();
+            tops.extend(render_page_footnotes(
+                content,
+                &col_ids,
+                &doc.footnotes,
+                &footnote_display_order,
+                &ctx,
+                col.0,
+                bottom,
+                col.1,
+                &mut state.pb.all_gradient_specs[page_idx],
+                tagging::NoteTagger {
+                    tags: &mut state.pb.tags,
+                    page: page_idx,
+                    endnote: false,
+                    links: &mut state.pb.all_links[page_idx],
+                },
+            ));
+        }
         for (id, y) in tops {
             state
                 .bookmark_positions
