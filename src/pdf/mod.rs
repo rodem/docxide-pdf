@@ -1384,8 +1384,16 @@ fn render_paragraph_block(
         }
     };
 
-    // Skip empty section-break paragraphs — Word gives these zero height
+    // Skip empty section-break paragraphs — Word gives these zero height —
+    // unless a continuous break changes the column layout: then the mark keeps
+    // its line (covid_insomnia's break into two columns: 11.9pt; romanian's
+    // and strategi's single-column continuous breaks stay at zero).
+    let keeps_line = doc.sections.get(sect_idx + 1).is_some_and(|next| {
+        next.properties.break_type == SectionBreakType::Continuous
+            && column_count(&next.properties) != column_count(sp)
+    });
     if para.is_section_break
+        && !keeps_line
         && is_text_empty(&para.runs)
         && para.image.is_none()
         && para.inline_chart.is_none()
@@ -3926,6 +3934,10 @@ fn page_numbers(doc: &Document, page_section_indices: &[(usize, bool, usize)]) -
         prev_si = Some(last_si);
     }
     numbers
+}
+
+fn column_count(sp: &SectionProperties) -> usize {
+    sp.columns.as_ref().map_or(1, |c| c.columns.len().max(1))
 }
 
 /// The docGrid pitch table-cell lines snap to in a section: only under
