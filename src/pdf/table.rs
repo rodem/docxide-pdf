@@ -1894,7 +1894,7 @@ pub(super) fn render_table(
                 || c.items.iter().any(|it| match it {
                     CellContentItem::Paragraph(p) => p.lines.len() >= 4,
                     CellContentItem::NestedTable { rows, .. } => {
-                        rows.len() >= 2 || rows.iter().any(|r| r.can_split)
+                        rows.len() >= 2 || rows.iter().any(|r| r.split_min.is_some())
                     }
                 })
         });
@@ -1931,7 +1931,7 @@ pub(super) fn render_table(
         // A long first paragraph needs only its first two lines in the room
         // left, as split rows break between lines (bulgarian_road's row ends
         // page 2 with three lines of a six-line cell paragraph).
-        let can_meaningfully_split = layout.can_split
+        let can_meaningfully_split = layout.split_min.is_some_and(|m| available_h >= m)
             && any_cell_multi_item
             && !at_page_top
             && available_h > 14.0

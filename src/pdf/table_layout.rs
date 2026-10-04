@@ -549,9 +549,12 @@ pub(super) struct CellLayout {
 pub(super) struct RowLayout {
     pub(super) height: f32,
     pub(super) cells: Vec<CellLayout>,
-    /// Word breaks a row across pages unless it is cantSplit or has an
-    /// explicit trHeight.
-    pub(super) can_split: bool,
+    /// The room a row needs on a page to break across it: None for cantSplit
+    /// and exact-height rows, which Word never breaks; an at-least row's
+    /// trHeight with its cell margins (croatian_grant's 15pt rows of five
+    /// bullets break at the foot of a page, stem_partnerships' 76.55pt row
+    /// and traditional_skills' form rows move whole).
+    pub(super) split_min: Option<f32>,
 }
 
 /// When provided, field codes in header/footer table runs are substituted with
@@ -1078,7 +1081,8 @@ pub(super) fn compute_row_layouts(
             RowLayout {
                 height,
                 cells,
-                can_split: !row.cant_split && row.height.is_none(),
+                split_min: (!row.cant_split && !row.height_exact)
+                    .then(|| row.height.map_or(0.0, |h| h + insets)),
             }
         })
         .collect();
@@ -1416,7 +1420,7 @@ pub(super) fn find_cell_split(
                 r += 1;
                 row_start = &[];
             }
-            if r < rows.len() && rows[r].can_split {
+            if r < rows.len() && rows[r].split_min.is_some_and(|m| available_h - used >= m) {
                 let starts: Vec<CellCursor> = (0..rows[r].cells.len())
                     .map(|ci| row_start.get(ci).unwrap_or(&CELL_START).clone())
                     .collect();
