@@ -1050,14 +1050,16 @@ pub(super) fn compute_row_layouts(
             // (belgian_youth 19.85 → 20.5, italian_evaluation 12.0 → 12.48,
             // japanese_interlibrary 21.25 → 21.77). An exact height is the
             // border-to-border pitch (case15: 36.0).
-            let bands = row
-                .cells
+            // The cells' top and bottom margins sit on top of it too, like the
+            // bands in their insets: a 30pt row with 5pt margins is 40.5 in
+            // Word, and polish_ministry's 33.15pt rows with 1.4pt ones 36.25.
+            let insets = cells
                 .iter()
-                .map(|c| (c.borders.top.band() + c.borders.bottom.band()) / 2.0)
+                .map(|c| c.cm.top + c.cm.bottom)
                 .fold(0.0f32, f32::max);
             let height = match (row.height, row.height_exact) {
                 (Some(h), true) => h,
-                (Some(h), false) => content_h.max(h + bands),
+                (Some(h), false) => content_h.max(h + insets),
                 _ => content_h,
             };
 
