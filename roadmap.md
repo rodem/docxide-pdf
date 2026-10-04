@@ -236,6 +236,19 @@ metric-clone fallback (Liberation Serif, Carlito, Caladea) on Linux.
 `engine_compare.py` `pdf_creator()` truncates Quartz producers at the escaped
 paren.
 
+## Biggest Scraped Gaps (2026-10-04, branch `gap-fixes`)
+
+Details in `current_focus/layout-accuracy.md` §12. Mean J 63.85 → 64.19.
+- DONE: running heads (IF over nested STYLEREF, `\n`, forward search),
+  cell-paragraph indents from the style, floating header tables, column
+  breaks in one-column sections. bosch +35.0, french_sexual +22.2,
+  turkish_prostate +19.5.
+- TODO: radiographer's nested-row split between lines; estonian's per-line
+  drift; table cells through `build_paragraph`; one new-page helper.
+- PARKED: online glyph positioning (`online-references.md` §4a) — the
+  correction phase is not derivable from exact widths; fit or more probing is
+  the user's call.
+
 ## Synthetic-Case Gaps (DONE — 2026-10-04, branch `synthetic-gaps`)
 
 Six rules from the lowest-scoring handcrafted `cases/` fixtures, each one

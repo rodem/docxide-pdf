@@ -221,6 +221,14 @@ Biggest movers (baseline → now, J):
     +5.2, case18 +5.4; losers czech_works −7.1, indonesian_bench −5.2,
     fonts/arial −3.8 (Arial and TNR Bold/Italic lines overshoot), and the
     local-reference fixtures (door_air −6.5, case64 −5.8).
+- **Third look (2026-10-04, `adv.pdf`):** in 288-dpi pixels (the 0.25pt
+  grid) each glyph's step is a constant device width (the mode, e.g. 18px for
+  TNR 10 `e`, 17.76px exact) with ±1px corrections whose long-run mean is the
+  exact width. Where the corrections fall does not follow from exact-width
+  drift: the drift before a correction ranges 0.2–1.8px, and it is not
+  centred (Arial 10 `e` oscillates between −1.25 and −0.5px; Arial 11 `e`
+  corrects at +0.45px every other glyph). Same conclusion as above, so no
+  rule to implement yet.
 - **Next step:** decide whether a measured constant is acceptable (it is a
   fit, not a derived rule). If yes: carry source-run boundaries through
   `merge_compatible_runs` instead of the formatting heuristic, and check

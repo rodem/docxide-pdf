@@ -645,3 +645,36 @@ carry plain hmtx advances; the online references do apply the font's pair
 kerning. Word's extra per-size hinting adjustments (a few 1000ths of an em)
 remain unmodelled.
 
+
+## 12. Biggest scraped gaps (2026-10-04, branch `gap-fixes`)
+
+The scraped fixtures with the largest Jaccard deficits, triaged by matching
+text lines between Word's PDF and ours (vertical offset, page shifts,
+horizontal drift). Snapshots `base` → `fix4b2`: mean J 63.85 → **64.19**,
+scraped 58.02 → 58.58, SSIM 81.28 → 81.73; nothing down.
+
+| Commit | Rule | Evidence |
+|---|---|---|
+| 66e68c8f | `IF` fields over nested fields (complex or `fldSimple`) are evaluated per page; STYLEREF `\n` is the paragraph's list number (0 when unnumbered); a top-level STYLEREF `fldSimple` is re-evaluated; style names match case-insensitively; a character style's value spans its consecutive runs; failing the page and before it, the search runs forward | Legislation running heads `IF {STYLEREF X \n} = 0 "{STYLEREF X}" "Part {STYLEREF X \n}"`: western_australia 41 of 58 heads wrong → 2, wa_child 19 → 1; J +1.5 (heads are little ink) |
+| 01c46288 | Table-cell paragraphs resolve indents like body paragraphs (style and document defaults, not just a direct `w:ind`) | turkish_prostate cell text 7.2pt left of Word (style `ind left=144`) → exact; 63.4 → 82.9, turkish_ancient +3.5 |
+| fa4db3fa | A floating table (`tblpPr`) in a header sits at its `tblpX`/`tblpY` and takes no room in the header flow | french_sexual's logo paragraph starts at the header top, logo 13.6pt above it; body back at the top margin; 22.2 → 44.4 |
+| 00aa38ce | A column break in a one-column section breaks the page; mid-paragraph it splits the paragraph like a page break | bosch page 2 ends 7 lines short in Word (next paragraph opens with `w:br type="column"`); 27.4 → 62.4 |
+
+**Open (diagnosed, not fixed):**
+- radiographer: Word splits a nested table's row between its lines at a page
+  end ("Administrative teams within Radiology" closes page 1); we split only
+  between nested rows. Needs a third level in `CellCursor` (nested row + a
+  cursor per nested cell) through `find_cell_split` and the partial-row
+  renderer.
+- estonian: no single break; lines drift down 0.15–0.4pt each through the
+  opening paragraphs (first heading +0.4), then hold at +2pt.
+- Table cells build paragraphs with their own parser (`tables.rs`) instead of
+  `build_paragraph`; it has drifted (alignment default, tab stops incl. the
+  implicit hanging-indent stop, multi-image paragraphs, borders, keep flags,
+  paragraph-mark font). Switching moves many fixtures at once: own commit,
+  full snapshot.
+- The new-page sequence (flush, slot/column/page tops, bottom margin) is
+  copied in `advance_column_or_page`, the page-break-before and -after
+  blocks, and twice in `table.rs`.
+- A floating header table neither wraps header text nor extends the header;
+  no fixture shows Word doing either.
