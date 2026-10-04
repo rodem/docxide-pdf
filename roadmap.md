@@ -1333,47 +1333,42 @@ a text outline with no fill.
 `gutterAtTop`/`rtlGutter`), `w:pgBorders` and sectPr `w:vAlign` (`79b7f850`) are
 done.
 
-### Column regions (MOSTLY DONE — 2026-10-05, branch `columns`, case80 J 47.8 → 65.4)
+### Column regions (MOSTLY DONE — 2026-10-05, branch `columns`; case80 47.8 → 65.4, case81 71.0)
 
-Measured on case80 and Word probes, now implemented (`pdf/mod.rs`):
-- A region ending at a continuous section break is balanced: the shortest
-  column height that holds it (found by trial layouts on a throwaway
-  `LayoutState`). Widow control makes that Word's split. Text before the last
-  column break keeps its columns (the 4-column region is as tall as column 1).
-  Next-page breaks and the document end are not balanced.
-- What follows starts below the deepest column, its trailing space after
-  included; a mid-page region starts below the pending space after so all
-  column tops line up.
-- `w:sep` lines run from the region top on that page to its deepest column,
-  0.75pt, only up to the last column holding text (also beside an empty
-  middle column).
-- Text overflowing an empty mid-page column goes to the next page, not into
-  the next column (the others are no taller).
-- An empty section-break paragraph has zero height; mid-page the paragraph
-  before keeps its whole space after and the next space before counts only
-  beyond the break's (probes: gap = prev after + max(0, next before − break
-  after)). This replaced the "keeps its line when the columns change" rule:
-  covid's 11.9pt was its empty keyword paragraph's 12pt after.
-- An autofit table in a newspaper column is sized like a page table, then
-  squeezed in proportion to each grid column's room above its longest word.
-
-- A region spanning pages is balanced on its last page (a floor on that
-  page's column bottom during the trial).
-- A paragraph's overflow continues column by column and page by page (it
-  used to be drawn whole in the next column, past the page bottom).
-
-Word probes (2026-10-05, 2–4 columns, widow control on/off, one long
-paragraph, two-page regions): column line counts match in 9 of 10.
+Measured on case80/81/82 and ~30 Word probes, implemented in `pdf/mod.rs`:
+- Balancing: a region ending at a continuous section break, without a column
+  break in it, is balanced on its (last) page. Word starts at the content
+  height over the column count and adds a line until it fits, a line needing
+  all its leading (not the shortest fit: 14/14/12 where 14/13/13 fits). The
+  content counts a page-top heading's dropped space before.
+- The region ends at its deepest column; the last column's final space after
+  counts, clipped to the balancing height. What follows starts there.
+- A mid-page region's columns start below the pending space after; the first
+  paragraph still opens with max(space after, its space before).
+- `w:sep`: 0.75pt, region top to deepest column on each page (trailing space
+  after included), up to the last column holding text.
+- Overflow at an empty mid-page column goes to the next page. A paragraph
+  continues column by column and page by page, keeping widow control.
+- A paragraph ending in a column break puts its mark on a line at the top of
+  the next column.
+- An empty section-break paragraph has zero height; mid-page gap = prev after
+  + max(0, next before − break after). (Replaced the column-change line rule.)
+- An autofit table in a newspaper column is squeezed in proportion to each
+  grid column's room above its longest word.
+- Footnotes in a multi-column section sit at the foot of the citing column,
+  in its width; only that column shrinks. A note whose style is missing or
+  sets no spacing takes the document defaults.
 
 Open:
-- Word's balanced height is not always the minimal one: a 3-column last page
-  came out 14/14/12 lines where 14/13/13 fits (ours). Word's region bottom
-  fits max(top + total height / columns, deepest column) in most probes;
-  single-paragraph regions end ~5pt above ours (we add the trailing space
-  after).
-- Word lets a column-break paragraph's first line sit in the column before
-  the break: case80's 4-column separator runs 25pt lower than ours.
-- Each balancing trial lays the whole region out again (~13× for a long one).
+- Footnote continuation across columns (case82 J 21.3): Word lays the note
+  area out in the columns and may continue a note under the next column so
+  more body text fits (p1: footnote 1 runs 3 lines under column 1, 2 under
+  column 2; in another probe the whole note stayed in column 1). Needs a rule
+  for how much of the note must stay with its reference.
+- case80's 4-column region: Word's separator runs one line (15pt) below the
+  space after of column 1's last paragraph; unexplained.
+- The table probe's region ends 1.6pt off.
+- Each balancing trial lays the whole region out again (a few times).
 
 ### `w:mirrorMargins` (TODO — MEDIUM IMPACT)
 
