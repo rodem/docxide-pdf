@@ -598,6 +598,58 @@ under another name (online export; Windows maps Helvetica → Arial).
    measured on east_asia_conference_form.
 9. ~~Vendor Merriweather~~ (done 2026-10-02) and Copperplate Gothic Light.
 
+## Annotation Fixes 2026-10-05 (one commit each, branch `annot/french-logo`)
+
+Baseline: HEAD 4371430b. Each fix verified by a full visual run (no case below
+its baseline at the end; polish_ministry dipped after 4 and recovered with 7),
+each diff through `/simplify` before its commit. Rules were measured with Word
+probes (`tools/word_export.py`), not fitted to the fixtures.
+
+1. **#264 french_sexual logo at the foot of page 2** (`8ff40fad`): a
+   regression from fa4db3fa. Its shorter header let a paragraph's look-ahead
+   anchor the next paragraph's logo on page 1; keep-with-next then moved that
+   paragraph to page 2, which still used the page-1 `pending_float_anchor`.
+   The one-shot anchor now resets on page flush and column advance. J +6.0.
+2. **#258 czech_wastewater checkboxes** (`dbabec2f`): legacy FORMCHECKBOX
+   fields are drawn. The cell is one line of the run's font tall and wide at
+   the box size (`w:size`, or the run size for `w:sizeAuto`), sitting on that
+   line's descent, with the square stroked 0.75pt and 1pt / 1.5pt inside it;
+   checked boxes get 0.5pt diagonals. A ballot-box placeholder run carries
+   the field through line layout; table autofit and tab segments measure it
+   via `word_width_for_run` too.
+3. **#262 english_town_council white seams** (`d46ae4d3`): paragraph shading
+   now reaches the side borders' inner edges (their 1.47/1.73pt shift had left
+   a gap).
+4. **#263 erasmus_plus "(if applicable)"** (`7addc6f8`): table-cell paragraphs
+   now parse `w:contextualSpacing` and apply it between a cell's paragraphs.
+   Probe: cells follow the body rule exactly. education_consultant J +11.2,
+   estonian +7.9.
+5. **Below single spacing** (`9c8dca04`): for auto m < 1 Word shrinks the
+   whole line box, so the first baseline sits m × ascent below the line top.
+   Body and cell paragraphs only; header/footer, textbox and footnote
+   paragraphs keep the old rule (no probe, no fixture).
+6. **#261 door_air comment pane** (`66f1025d`): the pane and balloons follow
+   the page zoom (pane 9.1pt right of the text column and 13.3pt short of the
+   279.7pt balloon area; balloons 22.8/4.3pt in, text 4.3pt in, all unzoomed).
+   The balloon font (7pt) and line height (8.5pt) are still case63's zoomed
+   values.
+7. **At-least row heights** (`44cca044`): an at-least trHeight bounds the
+   content between the cells' top and bottom margins, which sit on top of it
+   like the border bands. traditional_skills J 16.0 → 48.3, estonian 29.4 →
+   50.3, go_math 55.4 → 74.4, romanian +5.1, polish_ministry 29.8 → 37.6.
+8. **Exact row heights** (`02387b89`): an exact trHeight grows by the bottom
+   margin only. candidate_reference J 41.3 → 63.6. vAlign top/center/bottom
+   in both row kinds checked against Word (within 0.15pt).
+
+Open:
+- #259/#260 door_air are tracked-change balloons ("Deleted: …" for each
+  w:del, change bars, insertion markup); needs a revision-markup feature.
+  door_air is the only fixture whose reference shows markup.
+- Cell paragraphs (docx/tables.rs) still default most pPr fields that
+  `build_paragraph` resolves (keep_next, widow_control, borders, shading,
+  outline level, …). No fixture is affected today (czech_municipal's cell
+  borders are all `nil`); a shared pPr resolver would close it.
+
 ## Annotation Fixes 2026-10-02 (one commit each, worktree `annot/wp-n`)
 
 Baseline for the round: HEAD 48a4eba0 (the layout-accuracy merge). Each fix
