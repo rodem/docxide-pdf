@@ -2773,7 +2773,10 @@ fn render_paragraph_block(
         if let Some(pdf_name) = image_pdf_names.get(&state.global_block_idx) {
             let img = para.image.as_ref().unwrap();
             // Decorative pictures stay artifacts, as in Word's export.
-            if !img.decorative {
+            if img.decorative {
+                // The paragraph mark still has its element (a heading's H3).
+                state.pb.tag_empty_para(para, doc);
+            } else {
                 state.pb.begin_figure(para, doc, img.alt.as_deref());
             }
             let y_bottom = state.pb.slot_top - img.layout_extra_top - img.display_height;
