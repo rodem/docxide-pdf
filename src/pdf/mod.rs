@@ -930,6 +930,8 @@ impl PageBuilder {
         self.all_first_styleref
             .push(std::mem::take(&mut self.styleref_page_first));
         self.float_zone = None;
+        // An anchor measured on the old page must not place a float on this one
+        self.pending_float_anchor = None;
         // After flush, the new page starts with the current section
         self.page_hf_section = sect_idx;
     }
@@ -1003,6 +1005,7 @@ impl PageBuilder {
         if *current_col + 1 < col_count {
             *current_col += 1;
             self.slot_top = self.column_top_y;
+            self.pending_float_anchor = None;
         } else {
             *current_col = 0;
             self.flush_page(sect_idx);
