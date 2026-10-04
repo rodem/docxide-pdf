@@ -769,6 +769,10 @@ pub(super) struct PageBuilder {
     /// hf_section: which section provides headers/footers.
     /// content_section: which section is being rendered (for page numbering, geometry).
     page_section_indices: Vec<(usize, bool, usize)>,
+    /// Highest column index reached on the current page; Word draws a column
+    /// separator only beside columns that hold text.
+    last_col: usize,
+    all_last_cols: Vec<usize>,
     all_styleref: Vec<HashMap<String, String>>,
     all_first_styleref: Vec<HashMap<String, String>>,
     pub(super) tags: tagging::Tags,
@@ -813,6 +817,8 @@ impl PageBuilder {
             all_gradient_specs: Vec::new(),
             filler_pages: Vec::new(),
             page_section_indices: Vec::new(),
+            last_col: 0,
+            all_last_cols: Vec::new(),
             all_styleref: Vec::new(),
             all_first_styleref: Vec::new(),
             tags: tagging::Tags::new(),
@@ -926,6 +932,7 @@ impl PageBuilder {
             self.is_first_page_of_section,
             sect_idx,
         ));
+        self.all_last_cols.push(std::mem::take(&mut self.last_col));
         self.all_styleref.push(self.styleref_running.clone());
         self.all_first_styleref
             .push(std::mem::take(&mut self.styleref_page_first));
@@ -947,6 +954,7 @@ impl PageBuilder {
         self.all_gradient_specs.push(Vec::new());
         self.page_section_indices
             .push((self.page_hf_section, false, sect_idx));
+        self.all_last_cols.push(0);
         self.all_styleref.push(self.styleref_running.clone());
         self.all_first_styleref
             .push(std::mem::take(&mut self.styleref_page_first));
@@ -1002,6 +1010,7 @@ impl PageBuilder {
     ) {
         if *current_col + 1 < col_count {
             *current_col += 1;
+            self.last_col = self.last_col.max(*current_col);
             self.slot_top = self.column_top_y;
         } else {
             *current_col = 0;
@@ -3537,9 +3546,10 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             && cfg.sep
         {
             let mut x = sp.margin_left;
+            let last_col = state.pb.all_last_cols[page_idx];
             for (i, col) in cfg.columns.iter().enumerate() {
                 x += col.width;
-                if i < cfg.columns.len() - 1 {
+                if i < last_col {
                     let mid_x = x + col.space / 2.0;
                     stroke_segment(
                         content,
