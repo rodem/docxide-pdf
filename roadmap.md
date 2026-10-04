@@ -44,37 +44,11 @@ Diagram→Figure, CommentAnchor→Span), `/Tabs /S` on pages, headers/footers as
 a Title in 157/174, TH without `/Scope`, Figure `/Alt` copied verbatim from
 `wp:docPr/@descr` (41/140 figures).
 
-**Deferred: 61 untagged references** (of 234, as of 2026-10-03) are macOS
-Quartz print-path PDFs ("Best for printing", not the accessibility export) and
-score N/A until re-exported: cases/case17 case18 case19 case20 case36 case63
-case64; fonts/missing_font_substitution; samples/double-underline run-borders
-sample500kB; scraped/alfies_arc_adult_safeguarding_policy
-alpharetta_school_governance_council americas_counter_terrorism_agenda
-arizona_physical_education_standards bosch_software_ai_announcement
-chinese_asset_disposal_appraisal classroom_weekly_newsletter
-croatian_regulations_altchunk czech_census_2021_instructions
-czech_expert_witness_law czech_wastewater_discharge_permit
-door_air_cooling_unit_spec dutch_council_member_resignation
-east_asia_conference_form education_consultant_posting
-family_kinship_lesson_plan federal_procurement_terms feminist_voice_dissertation
-go_math_grade4_guide greek_history_lecture_press_release
-indonesian_benchmarking_guide indonesian_school_admission_checklist
-italian_evaluation_minutes italian_project_proposal
-italian_teacher_hiring_preferences japanese_land_development_sign_form
-learning_cultures_dissertation lithuanian_ethics_law
-lithuanian_food_quality_order lithuanian_railway_transport_code
-mandated_reporter_child_abuse nabl_lab_preassessment_guidelines
-pasto_city_hall_press_bulletin polish_archery_range_plan
-romanian_quality_evaluation_strategy russian_chess_pawn_lesson
-russian_regional_spatial_development russian_university_proceedings
-sao_paulo_procurement_contract seminary_hill_board_meeting
-slovak_misdemeanor_amendment stem_partnerships_guide
-strategi_pengembangan_information_center_resort transition_to_work_deed
-turkish_chemistry_course_plan ukrainian_municipal_heating_resolution
-usep_handbook vaccines_history_chapter waste_management_request
-welsh_palliative_care_abstract_form.
-Their print path may also lay out differently from the online converter, so
-re-exporting can shift visual scores.
+**Untagged references:** the 61 macOS print-path references were re-exported
+with Word's online (tagged) preset on 2026-10-03, except 4 kept local on
+purpose — cases/case63, case64, scraped/door_air_cooling_unit_spec and
+fonts/missing_font_substitution: Word shows the comment pane only in a local
+conversion, and these test it. They score `ua_fail` only.
 
 **Starting point (173 scored):** struct 0 / text 0 everywhere (untagged);
 ua_deficit 6–11. Every fixture: 6.2-1 MarkInfo, 7.1-3 untagged content,
