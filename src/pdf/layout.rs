@@ -900,6 +900,24 @@ pub(super) fn size_lines_by_own_runs(
     }
 }
 
+/// What `size_lines_by_own_runs` adds to a one-line paragraph whose runs are
+/// raised or lowered (the highest raise above, the deepest drop below), for a
+/// height estimate that builds no lines. ponytail: assumes the positioned runs
+/// set the line's ascent and descent; build the lines if mixed sizes matter.
+pub(super) fn position_stretch(runs: &[Run], ls: LineSpacing) -> f32 {
+    let (up, down) = runs
+        .iter()
+        .filter(|r| sizes_line(r) && !r.text.is_empty())
+        .fold((0.0f32, 0.0f32), |(u, d), r| {
+            (u.max(r.position), d.max(-r.position))
+        });
+    match ls {
+        LineSpacing::Auto(m) => (up + down) * m,
+        LineSpacing::AtLeast(_) => up + down,
+        LineSpacing::Exact(_) => 0.0,
+    }
+}
+
 /// True when a paragraph has no visible text (may still have phantom font-info runs).
 pub(super) fn is_text_empty(runs: &[Run]) -> bool {
     runs.iter().all(|r| {

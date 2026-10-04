@@ -4,14 +4,16 @@ use pdf_writer::Content;
 
 use crate::model::{
     Alignment, Block, Document, FieldCode, FrameProperties, HRelativeFrom, HeaderFooter, IfPart,
-    Paragraph, Run, SectionProperties, TextAnchor, VRelativeFrom, VerticalPosition, WrapType,
+    LineSpacing, Paragraph, Run, SectionProperties, TextAnchor, VRelativeFrom, VerticalPosition,
+    WrapType,
 };
 
 use super::color::stroke_segment;
 use super::helpers::{align_offset, draw_horizontal_rule};
 use super::layout::{
     LineOpts, LinkAnnotation, build_lines, is_text_empty, lines_height, picture_line_bottom,
-    render_paragraph_lines, runs_max_image_h, tallest_run_metrics,
+    position_stretch, render_paragraph_lines, runs_max_image_h, size_lines_by_own_runs,
+    tallest_run_metrics,
 };
 use super::positioning::resolve_h_position;
 use super::table;
@@ -219,6 +221,13 @@ fn compute_header_height(
                 let line_h = resolve_line_h(effective_ls, font_size, tallest_lhr);
                 height = below_blocking_frames(sp.header_margin + height, line_h, &bands)
                     - sp.header_margin;
+                // Positioned runs and marks stretch their lines as in the render.
+                let line_h = line_h
+                    + if is_text_empty(&para.runs) {
+                        super::mark_position_stretch(para, effective_ls, false)
+                    } else {
+                        position_stretch(&para.runs, effective_ls)
+                    };
                 // Mirrors the render loop's advance: a picture line is the
                 // picture plus the text descent (`inline_line_advance`).
                 let picture_h = runs_max_image_h(&para.runs);
@@ -988,7 +997,9 @@ pub(super) fn render_header_footer(
                 }
 
                 if text_empty {
-                    let mut advance = line_h + bottom_border_band(para);
+                    let mut advance = line_h
+                        + super::mark_position_stretch(para, effective_ls, false)
+                        + bottom_border_band(para);
                     // TopAndBottom textboxes push content below them
                     for tb in &para.textboxes {
                         if matches!(tb.wrap_type, WrapType::TopAndBottom) {
@@ -1127,7 +1138,7 @@ pub(super) fn render_header_footer(
                     .as_ref()
                     .map(|g| g.iter().map(|&(_, w)| w).collect());
 
-                let lines = build_lines(
+                let mut lines = build_lines(
                     &substituted_runs,
                     ctx,
                     para_text_width,
@@ -1144,6 +1155,10 @@ pub(super) fn render_header_footer(
                 );
 
                 let metrics = (font_size * ascender_ratio, picture_bottom);
+                // Each line as tall as its own runs, as in the body.
+                if !matches!(effective_ls, LineSpacing::Exact(_)) {
+                    size_lines_by_own_runs(&mut lines, ctx.fonts, effective_ls, line_h, metrics.0);
+                }
                 render_paragraph_lines(
                     content,
                     &lines,
