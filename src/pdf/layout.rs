@@ -3146,7 +3146,8 @@ pub(super) fn render_paragraph_lines(
                             (y + q(pos * chunk.font_size) - th, th)
                         });
                     let (st_y, st_thick) = os2_strike.unwrap_or((y + chunk.font_size * 0.3, thick));
-                    decorations.push((x, st_y, chunk.width, st_thick, chunk.color));
+                    // One line across the spaces of a struck run, like Word's.
+                    push_decoration(&mut decorations, x, st_y, chunk.width, st_thick, chunk.color);
                 }
                 if chunk.dstrike {
                     let gap = thick * 1.5;
