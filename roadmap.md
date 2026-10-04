@@ -640,8 +640,21 @@ probes (`tools/word_export.py`), not fitted to the fixtures.
 8. **Exact row heights** (`02387b89`): an exact trHeight grows by the bottom
    margin only. candidate_reference J 41.3 → 63.6. vAlign top/center/bottom
    in both row kinds checked against Word (within 0.15pt).
+9. **#82 czech_municipal**, three causes:
+   - `de28189b`: an empty paragraph stretches by its mark's `w:position`, like
+     a positioned text line (Normal lowers 0.5pt: spacers 14.54, not 14.04).
+     J 13.6 → 23.7.
+   - `1956b952`, `0f33757e`: header lines stretch the same way, and a narrow
+     wrapSquare header float no longer extends the header. Page 1 now within
+     0.7pt; J → 26.1, SSIM 55 → 65.
+   - `eae1ae1d`: even pages lay out around the even header (body extent takes
+     the page index; physical parity). czech J → 34.6 (SSIM 89.7), samtale
+     43.4 → 79.5, japanese_medical 37.1 → 56.3 with its page count matching.
 
 Open:
+- Header/footer paragraphs are measured twice (`compute_header_height`, no
+  line building, and `render_header_footer`); `layout::position_stretch` is a
+  one-line estimate. A shared per-paragraph measure would retire the mirrors.
 - #259/#260 door_air are tracked-change balloons ("Deleted: …" for each
   w:del, change bars, insertion markup); needs a revision-markup feature.
   door_air is the only fixture whose reference shows markup.
