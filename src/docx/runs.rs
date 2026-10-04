@@ -154,6 +154,8 @@ pub(super) struct ParsedRuns {
     pub(super) has_page_break_after: bool,
     /// Index into `runs` of the first run after a `<w:br w:type="page"/>`
     /// that has visible content after it in the same paragraph.
+    /// Mid-paragraph break index (`page_break_at`) is a column break.
+    pub(super) column_break_at: bool,
     pub(super) page_break_at: Option<usize>,
     pub(super) has_column_break: bool,
     pub(super) has_clear_break: bool,
@@ -983,6 +985,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
     let mut has_page_break_after = false;
     let mut page_break_before_content = false;
     let mut page_break_at: Option<usize> = None;
+    let mut column_break_at = false;
     let mut has_column_break = false;
     let mut has_clear_break = false;
     let mut field_stack: Vec<FieldFrame> = Vec::new();
@@ -1224,7 +1227,18 @@ pub(super) fn parse_runs<R: Read + Seek>(
                             has_page_break_after = true;
                         }
                     }
-                    Some("column") => has_column_break = true,
+                    // Text after a column break moves on, like after a page break
+                    Some("column") => {
+                        if runs.is_empty() && pending_text.is_empty() {
+                            has_column_break = true;
+                        } else {
+                            flush_pending(&mut pending_text, &mut runs);
+                            if page_break_at.is_none() {
+                                page_break_at = Some(runs.len());
+                                column_break_at = true;
+                            }
+                        }
+                    }
                     _ => {
                         if child.attribute((WML_NS, "clear")) == Some("all") {
                             has_clear_break = true;
@@ -1376,6 +1390,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
         runs,
         has_explicit_page_break_before: page_break_before_content,
         has_page_break_after,
+        column_break_at,
         page_break_at,
         has_column_break,
         has_clear_break,

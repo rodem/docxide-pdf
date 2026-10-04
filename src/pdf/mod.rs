@@ -1497,7 +1497,8 @@ fn render_paragraph_block(
     }
 
     // Handle explicit column breaks
-    if para.column_break_before && col_count > 1 {
+    // In a one-column section Word breaks the page (bosch's page 2 ends there).
+    if para.column_break_before {
         state.pb.advance_column_or_page(
             &mut state.current_col,
             col_count,
@@ -3095,6 +3096,17 @@ fn render_paragraph_block(
         state.pb.is_first_page_of_section = false;
         state.prev_space_after = 0.0;
         state.current_col = 0;
+    }
+    if para.column_break_after {
+        state.pb.advance_column_or_page(
+            &mut state.current_col,
+            col_count,
+            sect_idx,
+            sp,
+            &mut state.effective_margin_bottom,
+            ctx,
+        );
+        state.prev_space_after = 0.0;
     }
 
     false

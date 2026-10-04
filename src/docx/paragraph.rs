@@ -349,6 +349,8 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         page_break_after: parsed.has_page_break_after,
         page_break_at: parsed.page_break_at,
         column_break_before: parsed.has_column_break,
+        // split_at_page_break hands a mid-paragraph one to the continuation
+        column_break_after: parsed.column_break_at,
         clears_floats: parsed.has_clear_break,
         tab_stops,
         floating_images,
@@ -379,6 +381,7 @@ pub(super) fn split_at_page_break(para: &mut Paragraph) -> Option<Paragraph> {
     let runs = para.runs.split_off(at);
     let rest = Paragraph {
         runs,
+        column_break_before: std::mem::take(&mut para.column_break_after),
         style_id: para.style_id.clone(),
         space_after: std::mem::take(&mut para.space_after),
         space_after_auto: std::mem::take(&mut para.space_after_auto),
@@ -494,6 +497,23 @@ pub(super) fn resolve_indents(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn column_break_split_starts_the_continuation_in_the_next_column() {
+        let run = |t: &str| Run {
+            text: t.into(),
+            ..Run::default()
+        };
+        let mut para = Paragraph {
+            runs: vec![run("before"), run("after")],
+            page_break_at: Some(1),
+            column_break_after: true,
+            ..Paragraph::default()
+        };
+        let rest = split_at_page_break(&mut para).unwrap();
+        assert!(!para.column_break_after && !para.page_break_after);
+        assert!(rest.column_break_before && rest.runs[0].text == "after");
+    }
 
     #[test]
     fn page_break_split_moves_the_paragraph_end_to_the_continuation() {
