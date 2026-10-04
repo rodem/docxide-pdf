@@ -48,26 +48,14 @@ pub(super) fn render_comment_pane(
     page_width: f32,
     page_height: f32,
     seen_fonts: &HashMap<String, FontEntry>,
-    // The document's main font, when neither Aptos nor Calibri is in it.
-    main_font: &str,
+    // The pane's body and label font keys (`fonts::comment_pane_keys`).
+    (body_key, label_key): (&str, &str),
 ) {
-    let family = main_font.split('/').next().unwrap_or(main_font);
-    let Some((body_font_key, body_entry)) =
-        pick_font(seen_fonts, &["Aptos", "Calibri", family, main_font])
+    let (Some(body_entry), Some(label_entry)) =
+        (seen_fonts.get(body_key), seen_fonts.get(label_key))
     else {
         return;
     };
-    let label_entry = pick_font(
-        seen_fonts,
-        &[
-            "Aptos/B",
-            "Aptos Bold",
-            "Calibri/B",
-            &format!("{family}/B"),
-            main_font,
-        ],
-    )
-    .unwrap_or((body_font_key.clone(), body_entry));
 
     let pane_x = page_width - PANE_WIDTH - PANE_RIGHT_MARGIN;
     let pane_top = page_height - PANE_VPAD;
@@ -100,7 +88,7 @@ pub(super) fn render_comment_pane(
         };
         let label = format_label(comment);
         let mut lines: Vec<(bool, String)> = Vec::new();
-        let label_w = label_entry.1.word_width(&label, CALLOUT_FONT_SIZE, false);
+        let label_w = label_entry.word_width(&label, CALLOUT_FONT_SIZE, false);
         let first_line_space = (text_w - label_w).max(0.0);
         let mut first_body = String::new();
         let mut remainder = comment.text.as_str();
@@ -146,17 +134,15 @@ pub(super) fn render_comment_pane(
                 let label = format_label_from_text(line_text);
                 let label_only = &line_text[..label.len()];
                 let body_part = &line_text[label.len()..];
-                let label_bytes = label_entry.1.encode(label_only);
+                let label_bytes = label_entry.encode(label_only);
                 content.begin_text();
                 fill_rgb(content, LABEL_RGB);
-                content.set_font(Name(label_entry.1.pdf_name.as_bytes()), CALLOUT_FONT_SIZE);
+                content.set_font(Name(label_entry.pdf_name.as_bytes()), CALLOUT_FONT_SIZE);
                 content.set_text_matrix([1.0, 0.0, 0.0, 1.0, inner_x + CALLOUT_PAD_X, text_y]);
                 content.show(Str(&label_bytes));
                 content.end_text();
                 if !body_part.is_empty() {
-                    let label_w = label_entry
-                        .1
-                        .word_width(label_only, CALLOUT_FONT_SIZE, false);
+                    let label_w = label_entry.word_width(label_only, CALLOUT_FONT_SIZE, false);
                     let body_bytes = body_entry.encode(body_part);
                     content.begin_text();
                     fill_rgb(content, BODY_RGB);
@@ -280,15 +266,6 @@ fn wrap_into_lines(
             remainder = tail.trim_start();
         }
     }
-}
-
-fn pick_font<'a>(
-    seen: &'a HashMap<String, FontEntry>,
-    candidates: &[&str],
-) -> Option<(String, &'a FontEntry)> {
-    candidates
-        .iter()
-        .find_map(|c| seen.get(*c).map(|e| (c.to_string(), e)))
 }
 
 fn draw_rounded_rect(content: &mut Content, x: f32, y: f32, w: f32, h: f32, r: f32) {

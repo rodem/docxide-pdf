@@ -323,6 +323,26 @@ pub(super) fn wml_attr<'a>(node: roxmltree::Node<'a, 'a>, child: &str) -> Option
     wml(node, child).and_then(|n| n.attribute((WML_NS, "val")))
 }
 
+/// First math-namespace child element with the given local name.
+pub(super) fn math_child<'a>(
+    parent: roxmltree::Node<'a, 'a>,
+    name: &str,
+) -> Option<roxmltree::Node<'a, 'a>> {
+    find_child(parent, name, MATH_NS)
+}
+
+/// A math property's `m:val`: `<pr><name m:val="…"/></pr>` under `node`.
+pub(super) fn math_val<'a>(node: roxmltree::Node<'a, 'a>, pr: &str, name: &str) -> Option<&'a str> {
+    math_child(math_child(node, pr)?, name)?.attribute((MATH_NS, "val"))
+}
+
+/// A math run's text (its `m:t` children).
+pub(super) fn math_run_text(r: roxmltree::Node) -> String {
+    find_children(r, "t", MATH_NS)
+        .filter_map(|t| t.text())
+        .collect()
+}
+
 /// A WordprocessingML twips attribute in points.
 pub(super) fn twips_attr(node: roxmltree::Node, attr: &str) -> Option<f32> {
     f32_attr(node, (WML_NS, attr)).map(twips_to_pts)

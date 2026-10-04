@@ -8,6 +8,33 @@ use crate::model::{Block, Document, FieldCode, Paragraph, Run};
 use super::header_footer::hf_paragraphs;
 use super::{collect_paras, label_font_key, para_runs_with_textboxes};
 
+/// The font keys the comment pane draws with: the comment text in the body
+/// font, the "Commented [Rn]:" label in its bold variant. Aptos or Calibri
+/// when the document has either; otherwise pick the body font from the first
+/// NON-bold, NON-italic run we can find (headings are typically bold and would
+/// otherwise point us at the wrong face); fall back to the first run if
+/// nothing else matches. Glyph collection and the pane both ask here, so the
+/// pane never draws a character its face wasn't given.
+pub(super) fn comment_pane_keys(all_runs: &[&Run]) -> Option<(String, String)> {
+    use crate::fonts::primary_font_name;
+    let named = ["Aptos", "Calibri"].into_iter().find(|f| {
+        all_runs
+            .iter()
+            .any(|r| primary_font_name(&r.font_name) == *f)
+    });
+    let body = match named {
+        Some(f) => f,
+        None => {
+            let run = all_runs
+                .iter()
+                .find(|r| !r.bold && !r.italic)
+                .or_else(|| all_runs.first())?;
+            primary_font_name(&run.font_name)
+        }
+    };
+    Some((body.to_string(), format!("{body}/B")))
+}
+
 pub(super) fn collect_all_runs(doc: &Document) -> Vec<&Run> {
     let hf_runs = doc.sections.iter().flat_map(|s| {
         [
@@ -183,48 +210,18 @@ fn collect_used_chars(doc: &Document, all_runs: &[&Run]) -> HashMap<String, Hash
         }
     }
 
-    // Comments rendered in the right-side pane use the body font for the
-    // comment text and the body font's bold variant for the "Commented [Rn]:"
-    // label. Pick the body font from the first NON-bold, NON-italic run we can
-    // find (headings are typically bold and would otherwise point us at the
-    // wrong face); fall back to the first run if nothing else matches.
-    if !doc.comments.is_empty() {
-        let body_run = all_runs
-            .iter()
-            .find(|r| !r.bold && !r.italic)
-            .or_else(|| all_runs.first())
-            .copied();
-        // The pane falls back to the main font's family (the first run's,
-        // `render_comment_pane`), which can differ from the body run's: both
-        // get the glyphs, or the label's brackets draw .notdef.
-        let main_family = all_runs
-            .first()
-            .map(|r| crate::fonts::primary_font_name(&r.font_name).to_string());
-        if let Some(body_run) = body_run {
-            let mut reg = (*body_run).clone();
-            reg.bold = false;
-            reg.italic = false;
-            let reg_key = font_key_buf(&reg, &mut key_buf).to_string();
-            let mut bold = (*body_run).clone();
-            bold.bold = true;
-            bold.italic = false;
-            let bold_key = font_key_buf(&bold, &mut key_buf).to_string();
-
-            for key in std::iter::once(reg_key).chain(main_family.clone()) {
-                let regular = used.entry(key).or_default();
-                for comment in doc.comments.values() {
-                    regular.extend(comment.text.chars());
-                }
-            }
-
-            for key in std::iter::once(bold_key).chain(main_family.map(|f| format!("{f}/B"))) {
-                let bold = used.entry(key).or_default();
-                for comment in doc.comments.values() {
-                    bold.extend("Commented []: ".chars());
-                    bold.extend(comment.initials.chars());
-                    bold.extend(comment.display_index.to_string().chars());
-                }
-            }
+    if !doc.comments.is_empty()
+        && let Some((body_key, label_key)) = comment_pane_keys(all_runs)
+    {
+        let body = used.entry(body_key).or_default();
+        for comment in doc.comments.values() {
+            body.extend(comment.text.chars());
+        }
+        let label = used.entry(label_key).or_default();
+        label.extend("Commented []: ".chars());
+        for comment in doc.comments.values() {
+            label.extend(comment.initials.chars());
+            label.extend(comment.display_index.to_string().chars());
         }
     }
 

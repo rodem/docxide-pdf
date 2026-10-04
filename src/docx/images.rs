@@ -827,12 +827,7 @@ pub(super) fn parse_object_floating_image<R: Read + Seek>(
             }
         }
     }
-    let imagedata = obj
-        .descendants()
-        .find(|n| n.has_tag_name((VML_NS, "imagedata")))?;
-    let embed_id = imagedata.attribute((REL_NS, "id"))?;
-    let (w, h) = object_dimensions(obj)?;
-    let image = with_object_alt(obj, read_image_from_zip(embed_id, ctx.rels, ctx.zip, w, h)?);
+    let image = parse_object_inline_image(obj, ctx)?;
     // An explicit <w10:wrap type="square"/> means the object reflows text
     // (Word wraps centered header text between such logos); without it the
     // logo sits over/beside the text and None keeps the text full-width.

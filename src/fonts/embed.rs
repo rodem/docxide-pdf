@@ -145,7 +145,7 @@ pub(super) fn embed_truetype(
     let tounicode_ref = alloc();
     let cmap_name = format!("{}-UTF16", ps_name);
     let mut cmap = UnicodeCmap::new(Name(cmap_name.as_bytes()), system_info);
-    let pua_unicode: fn(char) -> Option<char> = if font_name.eq_ignore_ascii_case("symbol") {
+    let pua_unicode: fn(u32) -> Option<char> = if font_name.eq_ignore_ascii_case("symbol") {
         symbol_font_unicode
     } else if font_name.eq_ignore_ascii_case("wingdings") {
         wingdings_unicode
@@ -159,7 +159,7 @@ pub(super) fn embed_truetype(
     // form, instead of whichever the HashMap happened to yield last.
     let mut cid_unicode: BTreeMap<u16, char> = BTreeMap::new();
     for (&ch, &new_gid) in &char_to_gid {
-        let uni = pua_unicode(ch).unwrap_or(ch);
+        let uni = pua_unicode(symbol_code(ch)).unwrap_or(ch);
         cid_unicode
             .entry(new_gid)
             .and_modify(|c| *c = (*c).min(uni))
@@ -222,8 +222,8 @@ fn symbol_code(ch: char) -> u32 {
 /// bullets and signs. Word's export maps them the same way, so extracted text
 /// reads "•" rather than U+F0B7 or "·".
 // ponytail: common bullets/signs only; the full Symbol encoding when Greek/math text needs it
-fn symbol_font_unicode(ch: char) -> Option<char> {
-    Some(match symbol_code(ch) {
+fn symbol_font_unicode(code: u32) -> Option<char> {
+    Some(match code {
         0xF0B7 => '•',
         0xF02D => '−',
         0xF0B0 => '°',
@@ -255,8 +255,8 @@ fn symbol_font_unicode(ch: char) -> Option<char> {
 /// which a screen reader skips, and maps to Unicode in others (samtale's ☺).
 // ponytail: the corpus's codes only (no Wingdings 2/3, Webdings); add the
 // full table when other symbols show up
-fn wingdings_unicode(ch: char) -> Option<char> {
-    Some(match symbol_code(ch) {
+fn wingdings_unicode(code: u32) -> Option<char> {
+    Some(match code {
         0xF021 => '✏',
         0xF026 => '📖',
         0xF04A => '☺',
@@ -283,8 +283,8 @@ fn wingdings_unicode(ch: char) -> Option<char> {
 /// → ►), for the list bullets that use them (bosch_software); Word's export
 /// keeps the private-use code.
 // ponytail: the triangles only; its arrows when a document uses them
-fn wingdings3_unicode(ch: char) -> Option<char> {
-    Some(match symbol_code(ch) {
+fn wingdings3_unicode(code: u32) -> Option<char> {
+    Some(match code {
         0xF070 => '▲',
         0xF071 => '▼',
         0xF072 => '△',
@@ -548,23 +548,23 @@ mod tests {
 
     #[test]
     fn wingdings_bullets_extract_as_unicode() {
-        assert_eq!(wingdings_unicode('\u{F0A7}'), Some('▪'));
-        assert_eq!(wingdings_unicode('\u{F0FC}'), Some('✔'));
-        assert_eq!(wingdings_unicode('§'), Some('▪'));
-        assert_eq!(wingdings_unicode(' '), None);
-        assert_eq!(wingdings_unicode('\u{F0FA}'), None);
+        assert_eq!(wingdings_unicode(0xF0A7), Some('▪'));
+        assert_eq!(wingdings_unicode(0xF0FC), Some('✔'));
+        assert_eq!(wingdings_unicode(symbol_code('§')), Some('▪'));
+        assert_eq!(wingdings_unicode(symbol_code(' ')), None);
+        assert_eq!(wingdings_unicode(0xF0FA), None);
     }
 
     #[test]
     fn wingdings3_triangles_extract_as_unicode() {
-        assert_eq!(wingdings3_unicode('\u{F084}'), Some('►'));
-        assert_eq!(wingdings3_unicode('\u{F0FA}'), None);
+        assert_eq!(wingdings3_unicode(0xF084), Some('►'));
+        assert_eq!(wingdings3_unicode(0xF0FA), None);
     }
 
     #[test]
     fn symbol_low_bytes_extract_as_unicode() {
-        assert_eq!(symbol_font_unicode('\u{F0B7}'), Some('•'));
-        assert_eq!(symbol_font_unicode('·'), Some('•'));
-        assert_eq!(symbol_font_unicode('a'), None);
+        assert_eq!(symbol_font_unicode(0xF0B7), Some('•'));
+        assert_eq!(symbol_font_unicode(symbol_code('·')), Some('•'));
+        assert_eq!(symbol_font_unicode(symbol_code('a')), None);
     }
 }

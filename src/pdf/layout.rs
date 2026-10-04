@@ -326,13 +326,9 @@ fn push_decoration(
 ) {
     // Look back past the other line of a double underline (or a strike on the
     // same run), which interleave with this one chunk by chunk.
-    let merged = decorations
-        .iter_mut()
-        .rev()
-        .take(3)
-        .find(|(_, dy, _, dh, dc)| {
-            (*dy - y).abs() < 0.01 && (*dh - height).abs() < 0.01 && *dc == color
-        });
+    let merged = decorations.iter_mut().rev().take(3).find(|(_, dy, _, dh, dc)| {
+        (*dy - y).abs() < 0.01 && (*dh - height).abs() < 0.01 && *dc == color
+    });
     if let Some(prev) = merged {
         prev.2 = (x + width) - prev.0;
     } else {
@@ -601,11 +597,16 @@ pub(super) struct LinkTagger<'a> {
     pub(super) page: usize,
     pub(super) para: usize,
     link: Option<(String, usize)>,
-    /// The open Span (see `span`): its element, its `/Lang`, and whether it
-    /// carries `/ActualText`.
-    span: Option<(usize, Option<String>, bool)>,
-    /// The open Formula (see `formula`): its zone's spoken form and element.
-    formula: Option<(Arc<str>, usize)>,
+    /// The open Span or Formula (see `inline`) and its element.
+    inline: Option<(Inline, usize)>,
+}
+
+/// A stretch of chunks tagged inside the open Link or paragraph.
+enum Inline {
+    /// Its `/Lang`, and whether it carries `/ActualText`.
+    Span { lang: Option<String>, actual: bool },
+    /// An Office Math zone, by its spoken form.
+    Formula(Arc<str>),
 }
 
 impl<'a> LinkTagger<'a> {
@@ -615,28 +616,8 @@ impl<'a> LinkTagger<'a> {
             page,
             para,
             link: None,
-            span: None,
-            formula: None,
+            inline: None,
         }
-    }
-
-    /// An Office Math zone's text goes in a Formula whose `/Alt` speaks it
-    /// (Word: "cap T equals 2 pi"), inside the open Link or paragraph; the
-    /// glyphs stay its content for text extraction. Returns true when the
-    /// marked content switched (the text matrix is reset).
-    fn formula(&mut self, content: &mut Content, spoken: Option<&Arc<str>>) -> bool {
-        match (&self.formula, spoken) {
-            (None, None) => return false,
-            (Some((open, _)), Some(s)) if Arc::ptr_eq(open, s) => return false,
-            _ => {}
-        }
-        content.end_text();
-        self.span = None;
-        self.formula = spoken.map(|s| (s.clone(), self.tags.add_formula(self.open(), s)));
-        let node = self.formula.as_ref().map_or_else(|| self.open(), |f| f.1);
-        self.tags.begin(content, self.page, node);
-        content.begin_text();
-        true
     }
 
     /// Text in another language than the document's goes in a Span with
@@ -645,30 +626,49 @@ impl<'a> LinkTagger<'a> {
     /// carries the source. One Span per stretch of chunks that need the same,
     /// inside the open Link or paragraph: a structure element, not nested
     /// marked content, which Poppler's structure reader loses text after.
-    /// Returns true when the marked content switched (the text matrix is
-    /// reset).
-    fn span(&mut self, content: &mut Content, lang: Option<&str>, actual: Option<&str>) -> bool {
-        // A Formula's /Alt speaks for all of it.
-        if self.formula.is_some() {
-            return false;
-        }
+    /// An Office Math zone's text goes in a Formula instead, whose `/Alt`
+    /// speaks all of it (Word: "cap T equals 2 pi"); its glyphs stay the
+    /// content for text extraction. Returns true when the marked content
+    /// switched (the text matrix is reset).
+    fn inline(
+        &mut self,
+        content: &mut Content,
+        formula: Option<&Arc<str>>,
+        lang: Option<&str>,
+        actual: Option<&str>,
+    ) -> bool {
         let lang = lang.filter(|l| !self.tags.is_document_lang(l));
-        let wanted = (lang.is_some() || actual.is_some()).then_some((lang, actual.is_some()));
-        if wanted == self.span.as_ref().map(|(_, l, a)| (l.as_deref(), *a)) {
-            if let (Some((span, ..)), Some(text)) = (&self.span, actual) {
-                self.tags.push_actual(*span, text);
+        let same = match (&self.inline, formula) {
+            (Some((Inline::Formula(open), _)), Some(f)) => Arc::ptr_eq(open, f),
+            (Some((Inline::Span { lang: l, actual: a }, span)), None) => {
+                let same = l.as_deref() == lang && *a == actual.is_some();
+                if let (true, Some(text)) = (same, actual) {
+                    self.tags.push_actual(*span, text);
+                }
+                same
             }
+            (None, None) => lang.is_none() && actual.is_none(),
+            _ => false,
+        };
+        if same {
             return false;
         }
         content.end_text();
-        match wanted {
-            None => self.resume(content),
-            Some((lang, has_actual)) => {
-                let span = self.tags.add_span(self.open(), lang, actual);
-                self.tags.begin(content, self.page, span);
-                self.span = Some((span, lang.map(str::to_string), has_actual));
+        let parent = self.open();
+        self.inline = match formula {
+            Some(f) => Some((Inline::Formula(f.clone()), self.tags.add_formula(parent, f))),
+            None if lang.is_some() || actual.is_some() => {
+                let span = self.tags.add_span(parent, lang, actual);
+                let state = Inline::Span {
+                    lang: lang.map(str::to_string),
+                    actual: actual.is_some(),
+                };
+                Some((state, span))
             }
-        }
+            None => None,
+        };
+        let node = self.inline.as_ref().map_or(parent, |i| i.1);
+        self.tags.begin(content, self.page, node);
         content.begin_text();
         true
     }
@@ -682,8 +682,7 @@ impl<'a> LinkTagger<'a> {
             return false;
         }
         content.end_text();
-        self.span = None;
-        self.formula = None;
+        self.inline = None;
         let node = match url {
             Some(u) => {
                 let n = self.tags.add(self.para, "Link");
@@ -719,8 +718,7 @@ impl<'a> LinkTagger<'a> {
 
     /// Back to the open element after a picture or a Span.
     fn resume(&mut self, content: &mut Content) {
-        self.span = None;
-        self.formula = None;
+        self.inline = None;
         self.tags.begin(content, self.page, self.open());
     }
 
@@ -729,12 +727,7 @@ impl<'a> LinkTagger<'a> {
     fn artifact(&mut self, content: &mut Content, draw: impl FnOnce(&mut Content)) {
         super::tagging::Tags::end(content);
         draw(content);
-        let node = self
-            .span
-            .as_ref()
-            .map(|s| s.0)
-            .or(self.formula.as_ref().map(|f| f.1))
-            .unwrap_or_else(|| self.open());
+        let node = self.inline.as_ref().map_or_else(|| self.open(), |i| i.1);
         self.tags.begin(content, self.page, node);
     }
 
@@ -751,7 +744,7 @@ impl<'a> LinkTagger<'a> {
     }
 
     fn finish(mut self, content: &mut Content) {
-        if self.link.take().is_some() | self.span.take().is_some() | self.formula.take().is_some() {
+        if self.link.take().is_some() | self.inline.take().is_some() {
             self.tags.begin(content, self.page, self.para);
         }
     }
@@ -2916,10 +2909,6 @@ pub(super) fn render_paragraph_lines(
                     chunk.space_after && primary_entry.is_none_or(|e| e.has_char(' '));
                 // A Span's /ActualText covers the boundary space the Tj carries too.
                 if let Some(lt) = link_tags.as_mut().filter(|_| !chunk.text.is_empty()) {
-                    if lt.formula(content, chunk.formula.as_ref()) {
-                        td_x = 0.0;
-                        td_y = 0.0;
-                    }
                     let actual = chunk.actual_text.as_ref().map(|t| {
                         if boundary_space {
                             format!("{t} ")
@@ -2927,7 +2916,8 @@ pub(super) fn render_paragraph_lines(
                             t.clone()
                         }
                     });
-                    if lt.span(content, chunk.lang.as_deref(), actual.as_deref()) {
+                    let (lang, formula) = (chunk.lang.as_deref(), chunk.formula.as_ref());
+                    if lt.inline(content, formula, lang, actual.as_deref()) {
                         td_x = 0.0;
                         td_y = 0.0;
                     }
@@ -3196,14 +3186,7 @@ pub(super) fn render_paragraph_lines(
                         });
                     let (st_y, st_thick) = os2_strike.unwrap_or((y + chunk.font_size * 0.3, thick));
                     // One line across the spaces of a struck run, like Word's.
-                    push_decoration(
-                        &mut decorations,
-                        x,
-                        st_y,
-                        chunk.width,
-                        st_thick,
-                        chunk.color,
-                    );
+                    push_decoration(&mut decorations, x, st_y, chunk.width, st_thick, chunk.color);
                 }
                 if chunk.dstrike {
                     let gap = thick * 1.5;
@@ -4112,11 +4095,17 @@ mod tests {
         content.begin_text();
         let mut lt = LinkTagger::new(&mut tags, 0, p);
         assert!(
-            lt.span(&mut content, None, Some("Pirmasis ")),
+            lt.inline(&mut content, None, None, Some("Pirmasis ")),
             "opens a Span"
         );
-        assert!(!lt.span(&mut content, None, Some("skirsnis")), "extends it");
-        assert!(lt.span(&mut content, None, None), "back to the paragraph");
+        assert!(
+            !lt.inline(&mut content, None, None, Some("skirsnis")),
+            "extends it"
+        );
+        assert!(
+            lt.inline(&mut content, None, None, None),
+            "back to the paragraph"
+        );
         content.end_text();
         lt.finish(&mut content);
         let stream = String::from_utf8_lossy(&content.finish()).into_owned();
@@ -4145,19 +4134,25 @@ mod tests {
         content.begin_text();
         let mut lt = LinkTagger::new(&mut tags, 0, p);
         assert!(
-            !lt.span(&mut content, Some("en-GB"), None),
+            !lt.inline(&mut content, None, Some("en-GB"), None),
             "same language, no Span"
         );
         assert!(
-            lt.span(&mut content, Some("fr-FR"), None),
+            lt.inline(&mut content, None, Some("fr-FR"), None),
             "French opens one"
         );
-        assert!(!lt.span(&mut content, Some("fr-FR"), None), "and keeps it");
         assert!(
-            lt.span(&mut content, Some("fr-FR"), Some("Bonjour")),
+            !lt.inline(&mut content, None, Some("fr-FR"), None),
+            "and keeps it"
+        );
+        assert!(
+            lt.inline(&mut content, None, Some("fr-FR"), Some("Bonjour")),
             "caps need their own"
         );
-        assert!(lt.span(&mut content, None, None), "back to the paragraph");
+        assert!(
+            lt.inline(&mut content, None, None, None),
+            "back to the paragraph"
+        );
         content.end_text();
         lt.finish(&mut content);
 

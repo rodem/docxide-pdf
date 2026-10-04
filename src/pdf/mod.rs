@@ -3662,7 +3662,6 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
         let mut hf = Content::new();
         let mut has_hf = false;
-        let mut hf_links = Vec::new();
 
         let (header, hdr_type, hdr_si) = resolve_header_for_page(doc, si, is_first, page_num);
         if let Some(header_data) = header {
@@ -3688,7 +3687,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 true,
                 &pc,
                 &mut state.pb.all_gradient_specs[page_idx],
-                &mut hf_links,
+                &mut state.pb.all_links[page_idx],
             );
             has_hf = true;
         }
@@ -3717,27 +3716,29 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 false,
                 &pc,
                 &mut state.pb.all_gradient_specs[page_idx],
-                &mut hf_links,
+                &mut state.pb.all_links[page_idx],
             );
             has_hf = true;
         }
 
-        // The text is a pagination artifact, but PDF/UA puts every link
-        // annotation in a Link element (Word leaves them untagged): one per
-        // link, holding only its annotations.
-        let mut prev: Option<(String, usize)> = None;
-        for mut link in hf_links {
-            let node = match &prev {
-                Some((url, n)) if *url == link.url => *n,
-                _ => state.pb.tags.add(tagging::ROOT, "Link"),
-            };
-            prev = Some((link.url.clone(), node));
-            link.node = Some(node);
-            state.pb.all_links[page_idx].push(link);
-        }
-
         if has_hf {
             *hf_content = Some(hf);
+        }
+    }
+
+    // Links drawn in artifacts (headers and footers, repeated table header
+    // rows) have no Link element, but PDF/UA puts every link annotation in
+    // one (Word leaves them untagged): one per link, holding only its
+    // annotations, after the body.
+    for links in &mut state.pb.all_links {
+        let untagged = |a: &LinkAnnotation, b: &LinkAnnotation| {
+            a.node.is_none() && b.node.is_none() && a.url == b.url
+        };
+        for link in links.chunk_by_mut(untagged) {
+            if link[0].node.is_none() {
+                let node = state.pb.tags.add(tagging::ROOT, "Link");
+                link.iter_mut().for_each(|l| l.node = Some(node));
+            }
         }
     }
 

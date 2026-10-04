@@ -4,7 +4,7 @@
 // ponytail: the structures and symbols the corpus uses; matrices, accents and
 // equation arrays are read as their contents in order
 
-use super::MATH_NS;
+use super::{MATH_NS, find_children, math_child, math_run_text, math_val, parse_on_off};
 
 /// The spoken form of an `m:oMath` zone; empty when it has nothing to say.
 pub(super) fn speak(omath: roxmltree::Node) -> String {
@@ -13,23 +13,25 @@ pub(super) fn speak(omath: roxmltree::Node) -> String {
     words.join(" ")
 }
 
-fn child<'a>(node: roxmltree::Node<'a, 'a>, name: &str) -> Option<roxmltree::Node<'a, 'a>> {
-    node.children().find(|n| n.has_tag_name((MATH_NS, name)))
-}
-
-fn val<'a>(node: roxmltree::Node<'a, 'a>, pr: &str, name: &str) -> Option<&'a str> {
-    child(child(node, pr)?, name)?.attribute((MATH_NS, "val"))
-}
-
 fn speak_into(node: roxmltree::Node, out: &mut Vec<String>) {
     for c in node
         .children()
         .filter(|n| n.tag_name().namespace() == Some(MATH_NS))
     {
         let part = |name: &str, out: &mut Vec<String>| {
-            if let Some(n) = child(c, name) {
+            if let Some(n) = math_child(c, name) {
                 speak_into(n, out);
             }
+        };
+        // `word` and the part after it, when the part has text (an empty
+        // `m:deg` or `m:sub` says nothing); returns whether it spoke.
+        let said = |word: &str, name: &str, out: &mut Vec<String>| {
+            let filled = math_child(c, name).filter(|n| n.descendants().any(|t| t.is_text()));
+            if let Some(n) = filled {
+                out.push(word.into());
+                speak_into(n, out);
+            }
+            filled.is_some()
         };
         match c.tag_name().name() {
             "r" => speak_run(c, out),
@@ -39,46 +41,35 @@ fn speak_into(node: roxmltree::Node, out: &mut Vec<String>) {
                 part("den", out);
             }
             "rad" => {
-                let deg = child(c, "deg").filter(|d| d.descendants().any(|n| n.is_text()));
-                match deg {
-                    Some(d)
-                        if val(c, "radPr", "degHide").is_none_or(|v| v == "0" || v == "off") =>
-                    {
-                        out.push("root".into());
-                        speak_into(d, out);
-                        out.push("of".into());
-                    }
-                    _ => out.push("square root of".into()),
+                let hidden = math_child(c, "radPr")
+                    .and_then(|p| math_child(p, "degHide"))
+                    .is_some_and(|h| h.attribute((MATH_NS, "val")).is_none_or(parse_on_off));
+                if hidden || !said("root", "deg", out) {
+                    out.push("square root of".into());
+                } else {
+                    out.push("of".into());
                 }
                 part("e", out);
             }
             "sSub" | "sSup" | "sSubSup" => {
                 part("e", out);
-                if child(c, "sub").is_some() {
-                    out.push("sub".into());
-                    part("sub", out);
-                }
-                if child(c, "sup").is_some() {
-                    out.push("to the".into());
-                    part("sup", out);
-                }
+                said("sub", "sub", out);
+                said("to the", "sup", out);
             }
             "d" => {
-                let beg = val(c, "dPr", "begChr").unwrap_or("(");
-                let end = val(c, "dPr", "endChr").unwrap_or(")");
+                let beg = math_val(c, "dPr", "begChr").unwrap_or("(");
+                let end = math_val(c, "dPr", "endChr").unwrap_or(")");
                 out.extend(delimiter(beg, "open"));
-                let mut first = true;
-                for e in c.children().filter(|n| n.has_tag_name((MATH_NS, "e"))) {
-                    if !first {
+                for (i, e) in find_children(c, "e", MATH_NS).enumerate() {
+                    if i > 0 {
                         out.push("comma".into());
                     }
-                    first = false;
                     speak_into(e, out);
                 }
                 out.extend(delimiter(end, "close"));
             }
             "nary" => {
-                let op = match val(c, "naryPr", "chr").unwrap_or("∫") {
+                let op = match math_val(c, "naryPr", "chr").unwrap_or("∫") {
                     "∑" => "sum",
                     "∏" => "product",
                     "∮" => "contour integral",
@@ -86,14 +77,8 @@ fn speak_into(node: roxmltree::Node, out: &mut Vec<String>) {
                     other => other,
                 };
                 out.push(op.into());
-                if child(c, "sub").is_some_and(|n| n.descendants().any(|t| t.is_text())) {
-                    out.push("from".into());
-                    part("sub", out);
-                }
-                if child(c, "sup").is_some_and(|n| n.descendants().any(|t| t.is_text())) {
-                    out.push("to".into());
-                    part("sup", out);
-                }
+                said("from", "sub", out);
+                said("to", "sup", out);
                 out.push("of".into());
                 part("e", out);
             }
@@ -118,14 +103,14 @@ fn delimiter(chr: &str, side: &str) -> Option<String> {
 /// One `m:r`: its characters with the run's math style (`m:sty`), which Word
 /// says before each letter ("bold italic cap T") and digit ("bold 1").
 fn speak_run(r: roxmltree::Node, out: &mut Vec<String>) {
-    let text: String = r
-        .children()
-        .filter(|n| n.has_tag_name((MATH_NS, "t")))
-        .filter_map(|t| t.text())
-        .collect();
-    let sty = val(r, "rPr", "sty");
+    let text = math_run_text(r);
+    let sty = math_val(r, "rPr", "sty");
     // Plain (upright) text is a word: a function name or a unit.
-    if sty == Some("p") || child(r, "rPr").and_then(|p| child(p, "nor")).is_some() {
+    if sty == Some("p")
+        || math_child(r, "rPr")
+            .and_then(|p| math_child(p, "nor"))
+            .is_some()
+    {
         out.extend(text.split_whitespace().map(str::to_string));
         return;
     }
@@ -142,18 +127,20 @@ fn speak_run(r: roxmltree::Node, out: &mut Vec<String>) {
         if ch.is_whitespace() {
             continue;
         }
-        let (word, letter) = match symbol_word(ch) {
-            Some(w) => (w.to_string(), false),
-            None => match letter_word(ch) {
-                Some(w) => (w, true),
-                None => (ch.to_string(), ch.is_ascii_digit()),
-            },
-        };
-        let prefix = match (bold, letter && !ch.is_ascii_digit(), sty) {
-            (true, true, Some("bi")) => Some("bold italic"),
-            (true, true, _) => Some("bold"),
-            (true, false, _) if ch.is_ascii_digit() => Some("bold"),
-            _ => None,
+        let (word, prefix) = if let Some(w) = symbol_word(ch) {
+            (w.to_string(), None)
+        } else if let Some(w) = letter_word(ch) {
+            let style = if sty == Some("bi") {
+                "bold italic"
+            } else {
+                "bold"
+            };
+            (w, bold.then_some(style))
+        } else {
+            (
+                ch.to_string(),
+                (bold && ch.is_ascii_digit()).then_some("bold"),
+            )
         };
         out.extend(prefix.map(str::to_string));
         out.push(word);

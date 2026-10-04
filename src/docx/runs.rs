@@ -16,8 +16,8 @@ use super::styles::{
 };
 use super::textbox::parse_textbox_from_vml;
 use super::{
-    MATH_NS, MC_NS_TOP, OFFICE_NS, ParseContext, REL_NS, VML_NS, WML_NS, find_child,
-    parse_hex_color, parse_pt, wml, wml_attr, wml_bool,
+    MATH_NS, MC_NS_TOP, OFFICE_NS, ParseContext, REL_NS, VML_NS, WML_NS, math_child, math_run_text,
+    math_val, parse_hex_color, parse_pt, wml, wml_attr, wml_bool,
 };
 
 fn is_dynamic_field(instr: &str) -> bool {
@@ -736,8 +736,9 @@ fn merge_compatible_runs(runs: Vec<Run>) -> Vec<Run> {
                 && prev.comment_ids == run.comment_ids
                 // One Formula per math zone, never merged into the text around it.
                 && match (&prev.formula, &run.formula) {
+                    (None, None) => true,
                     (Some(a), Some(b)) => std::sync::Arc::ptr_eq(a, b),
-                    (a, b) => a.is_none() && b.is_none(),
+                    _ => false,
                 }
         });
         if can_merge {
@@ -747,11 +748,6 @@ fn merge_compatible_runs(runs: Vec<Run>) -> Vec<Run> {
         }
     }
     result
-}
-
-/// First math-namespace child element with the given local name.
-fn math_child<'a>(parent: roxmltree::Node<'a, 'a>, name: &str) -> Option<roxmltree::Node<'a, 'a>> {
-    find_child(parent, name, MATH_NS)
 }
 
 /// Default alignment for a paragraph that contains a display-math block
@@ -765,9 +761,7 @@ pub(super) fn display_math_alignment(para: roxmltree::Node) -> Option<crate::mod
     let omp = para
         .children()
         .find(|n| n.has_tag_name((MATH_NS, "oMathPara")))?;
-    let jc = math_child(omp, "oMathParaPr")
-        .and_then(|pr| math_child(pr, "jc"))
-        .and_then(|j| j.attribute((MATH_NS, "val")));
+    let jc = math_val(omp, "oMathParaPr", "jc");
     Some(match jc {
         Some("left") => Alignment::Left,
         Some("right") => Alignment::Right,
@@ -803,11 +797,7 @@ fn omath_to_runs(
         }
         match child.tag_name().name() {
             "r" => {
-                let text: String = child
-                    .children()
-                    .filter(|n| n.has_tag_name((MATH_NS, "t")))
-                    .filter_map(|t| t.text())
-                    .collect();
+                let text = math_run_text(child);
                 if !text.is_empty() {
                     // Math runs carry a w:rPr (fonts/size); m:rPr math styling is ignored.
                     let fmt = defaults.resolve_run_format(wml(child, "rPr"), None, None, theme);
@@ -877,10 +867,7 @@ fn omath_to_runs(
                 push_lit(out, ")");
             }
             "nary" => {
-                let chr = math_child(child, "naryPr")
-                    .and_then(|p| math_child(p, "chr"))
-                    .and_then(|c| c.attribute((MATH_NS, "val")))
-                    .unwrap_or("∫");
+                let chr = math_val(child, "naryPr", "chr").unwrap_or("∫");
                 push_lit(out, chr);
                 if let Some(s) = math_child(child, "sub") {
                     omath_to_runs(s, defaults, theme, VertAlign::Subscript, out);

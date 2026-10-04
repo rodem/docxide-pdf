@@ -164,6 +164,9 @@ pub(super) fn assemble_pdf_pages(
 
     let has_any_comments =
         !doc.comments.is_empty() && all_page_comment_anchors.iter().any(|p| !p.is_empty());
+    let comment_keys = has_any_comments
+        .then(|| super::fonts::comment_pane_keys(&super::fonts::collect_all_runs(doc)))
+        .flatten();
 
     // (Link element, page, annotation) for the structure tree's OBJR kids; the
     // annotations' /StructParent keys follow the pages' keys.
@@ -369,7 +372,7 @@ pub(super) fn assemble_pdf_pages(
         };
 
         let mut pane_raw = Vec::new();
-        if has_any_comments {
+        if let Some((body_key, label_key)) = &comment_keys {
             let transformed: Vec<(u32, f32, f32, f32)> = all_page_comment_anchors[i]
                 .iter()
                 .map(|(id, x, y, fs)| (*id, zoom_tx + zoom * x, zoom_ty + zoom * y, zoom * fs))
@@ -382,7 +385,7 @@ pub(super) fn assemble_pdf_pages(
                 zoom_sp.page_width,
                 zoom_sp.page_height,
                 seen_fonts,
-                font_order.first().map_or("", String::as_str),
+                (body_key, label_key),
             );
             pane_raw = pane_content.finish().to_vec();
         }
