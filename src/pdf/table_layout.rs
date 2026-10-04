@@ -534,11 +534,13 @@ pub(super) struct CellParagraphLayout {
 
 pub(super) enum CellContentItem {
     Paragraph(CellParagraphLayout),
-    /// A table inside the cell; `row_heights` let a row split break between
-    /// its rows (the cursor's `line` counts nested rows).
+    /// A table inside the cell, laid out (and drawn) at `col_widths`. A row
+    /// split breaks between its rows (the cursor's `line` counts nested rows)
+    /// or inside one that can split (`CellCursor::nested`).
     NestedTable {
-        height: f32,
-        row_heights: Vec<f32>,
+        col_widths: Vec<f32>,
+        rows: Vec<RowLayout>,
+        cm: CellMargins,
     },
 }
 
@@ -554,6 +556,9 @@ pub(super) struct CellLayout {
 pub(super) struct RowLayout {
     pub(super) height: f32,
     pub(super) cells: Vec<CellLayout>,
+    /// Word breaks a row across pages unless it is cantSplit or has an
+    /// explicit trHeight.
+    pub(super) can_split: bool,
 }
 
 /// When provided, field codes in header/footer table runs are substituted with
@@ -980,15 +985,17 @@ pub(super) fn compute_row_layouts(
                                 para_idx += 1;
                             }
                             Block::Table(nested_table) => {
-                                let nested_cw = auto_fit_columns(nested_table, ctx.fonts, Some(cell_text_w), None);
+                                // The widths the nested table is drawn at, so a split's
+                                // line cursors index the lines it draws.
+                                let mut nested_cw = auto_fit_columns(nested_table, ctx.fonts, Some(cell_text_w), None);
+                                apply_pct_width(nested_table, &mut nested_cw, cell_text_w);
                                 let nested_layouts =
                                     compute_row_layouts(nested_table, &nested_cw, ctx, hf_sub);
-                                let nested_h: f32 =
-                                    nested_layouts.iter().map(|rl| rl.height).sum();
-                                total_h += nested_h;
+                                total_h += nested_layouts.iter().map(|rl| rl.height).sum::<f32>();
                                 items.push(CellContentItem::NestedTable {
-                                    height: nested_h,
-                                    row_heights: nested_layouts.iter().map(|rl| rl.height).collect(),
+                                    col_widths: nested_cw,
+                                    rows: nested_layouts,
+                                    cm: nested_table.cell_margins,
                                 });
                                 prev_space_after = 0.0;
                                 prev_was_nested_table = true;
@@ -1043,7 +1050,11 @@ pub(super) fn compute_row_layouts(
             };
 
 
-            RowLayout { height, cells }
+            RowLayout {
+                height,
+                cells,
+                can_split: !row.cant_split && row.height.is_none(),
+            }
         })
         .collect();
 
@@ -1133,44 +1144,160 @@ pub(super) fn compute_merge_spans(
 
 /// Position in a cell's content for row splitting: items before `item` are
 /// emitted; when `line > 0`, paragraph `item` is emitted up to that line.
-#[derive(Clone, Copy, Default, PartialEq, Debug)]
+#[derive(Clone, Default, PartialEq, Debug)]
 pub(super) struct CellCursor {
     pub(super) item: usize,
     pub(super) line: usize,
+    /// Nested table `item` broken inside its row `line`: where each cell of
+    /// that row stands (empty when the break is between rows).
+    pub(super) nested: Vec<CellCursor>,
 }
 
-/// The (item index, first line, end line) pieces of a cell between two cursors;
-/// `None` for the end line means the rest of the paragraph.
-pub(super) fn cursor_chunks(
-    items: &[CellContentItem],
-    start: CellCursor,
-    end: CellCursor,
-) -> impl Iterator<Item = (usize, usize, Option<usize>)> + '_ {
-    let last = if end.line > 0 { end.item + 1 } else { end.item };
+/// A cell's beginning, for borrowing where a cursor is missing.
+pub(super) static CELL_START: CellCursor = CellCursor {
+    item: 0,
+    line: 0,
+    nested: Vec::new(),
+};
+
+impl CellCursor {
+    pub(super) fn at(item: usize, line: usize) -> Self {
+        CellCursor {
+            item,
+            line,
+            nested: Vec::new(),
+        }
+    }
+}
+
+impl CellContentItem {
+    /// The item's full height (a paragraph's block, a nested table's rows).
+    pub(super) fn height(&self) -> f32 {
+        match self {
+            CellContentItem::Paragraph(p) => para_block_height(p),
+            CellContentItem::NestedTable { rows, .. } => rows.iter().map(|r| r.height).sum(),
+        }
+    }
+}
+
+/// One piece of a cell between two cursors: item `item`, its lines (or nested
+/// rows) `l0..l1` (`l1` None = to the end), and for a nested table the row
+/// cursors `from` continuing row `l0` partway and `to` ending row `l1` partway.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(super) struct Chunk<'a> {
+    pub(super) item: usize,
+    pub(super) l0: usize,
+    pub(super) l1: Option<usize>,
+    pub(super) from: &'a [CellCursor],
+    pub(super) to: &'a [CellCursor],
+}
+
+/// The pieces of a cell between two cursors.
+pub(super) fn cursor_chunks<'a>(
+    items: &'a [CellContentItem],
+    start: &'a CellCursor,
+    end: &'a CellCursor,
+) -> impl Iterator<Item = Chunk<'a>> + 'a {
+    let partial_end = end.line > 0 || !end.nested.is_empty();
+    let last = if partial_end { end.item + 1 } else { end.item };
     (start.item..last.min(items.len())).map(move |pi| {
-        let l0 = if pi == start.item { start.line } else { 0 };
-        let l1 = if pi == end.item && end.line > 0 {
-            Some(end.line)
-        } else {
-            None
-        };
-        (pi, l0, l1)
+        let first = pi == start.item;
+        let at_end = pi == end.item && partial_end;
+        Chunk {
+            item: pi,
+            l0: if first { start.line } else { 0 },
+            l1: at_end.then_some(end.line),
+            from: if first { &start.nested } else { &[] },
+            to: if at_end { &end.nested } else { &[] },
+        }
     })
 }
 
-/// Height of lines `l0..l1` of an item (`l1` None = to the end); items without
-/// lines use their block height.
-pub(super) fn item_chunk_height(item: &CellContentItem, l0: usize, l1: Option<usize>) -> f32 {
+/// How a nested table's chunk draws: whole rows, or one row from `starts` to
+/// `ends` (missing cursors: the cell's start, or its end).
+pub(super) enum RowPiece<'a> {
+    Rows(std::ops::Range<usize>),
+    Partial {
+        row: usize,
+        starts: &'a [CellCursor],
+        ends: &'a [CellCursor],
+    },
+}
+
+/// A nested table chunk as row pieces: the rest of row `l0` when it continues
+/// partway, the whole rows, then row `l1` up to `to` when it ends partway.
+pub(super) fn row_pieces<'a>(n_rows: usize, c: &Chunk<'a>) -> Vec<RowPiece<'a>> {
+    let end = c.l1.unwrap_or(n_rows).min(n_rows);
+    let mut pieces = Vec::new();
+    let mut r = c.l0;
+    if !c.from.is_empty() && r < n_rows {
+        let ends = if c.l1 == Some(r) { c.to } else { &[] };
+        pieces.push(RowPiece::Partial {
+            row: r,
+            starts: c.from,
+            ends,
+        });
+        r += 1;
+    }
+    if r < end {
+        pieces.push(RowPiece::Rows(r..end));
+    }
+    if !c.to.is_empty() && end < n_rows && end >= r {
+        pieces.push(RowPiece::Partial {
+            row: end,
+            starts: &[],
+            ends: c.to,
+        });
+    }
+    pieces
+}
+
+/// Height of a chunk; items without lines use their block height.
+pub(super) fn item_chunk_height(item: &CellContentItem, c: &Chunk) -> f32 {
     match item {
         CellContentItem::Paragraph(p) if !p.lines.is_empty() => {
-            cell_lines_h(p, l0..l1.unwrap_or(p.lines.len()))
+            cell_lines_h(p, c.l0..c.l1.unwrap_or(p.lines.len()))
         }
         CellContentItem::Paragraph(p) => para_block_height(p),
-        CellContentItem::NestedTable { row_heights, .. } => {
-            let end = l1.unwrap_or(row_heights.len()).min(row_heights.len());
-            row_heights[l0.min(end)..end].iter().sum()
-        }
+        CellContentItem::NestedTable { rows, cm, .. } => row_pieces(rows.len(), c)
+            .into_iter()
+            .map(|piece| match piece {
+                RowPiece::Rows(range) => rows[range].iter().map(|rl| rl.height).sum(),
+                RowPiece::Partial { row, starts, ends } => {
+                    partial_row_height(&rows[row], cm, starts, ends)
+                }
+            })
+            .sum(),
     }
+}
+
+/// Height of a row's piece from `starts` to `ends` (one cursor per cell; a
+/// missing start is the cell's beginning, a missing end its finish): its
+/// tallest cell's content.
+pub(super) fn partial_row_height(
+    layout: &RowLayout,
+    cm: &CellMargins,
+    starts: &[CellCursor],
+    ends: &[CellCursor],
+) -> f32 {
+    let mut max_h: f32 = cm.top + cm.bottom;
+    for (ci, cell_layout) in layout.cells.iter().enumerate() {
+        let start = starts.get(ci).unwrap_or(&CELL_START);
+        let done = CellCursor::at(cell_layout.items.len(), 0);
+        let end = ends.get(ci).unwrap_or(&done);
+        let mut h = cm.top + cm.bottom;
+        for c in cursor_chunks(&cell_layout.items, start, end) {
+            let item = &cell_layout.items[c.item];
+            h += chunk_space_before(item, c.item, start) + item_chunk_height(item, &c);
+        }
+        // The chunk that finishes the cell keeps its last paragraph's space
+        // after, as an unsplit row does.
+        if end.item >= cell_layout.items.len() {
+            h += cell_layout.trailing_space_after;
+        }
+        max_h = max_h.max(h);
+    }
+    max_h
 }
 
 /// The paragraph's space_before as charged inside a chunk starting at
@@ -1178,7 +1305,7 @@ pub(super) fn item_chunk_height(item: &CellContentItem, l0: usize, l1: Option<us
 /// a chunk whole keeps it like an unsplit row (croatian_grant's floating
 /// "Važno!" box starts 6pt below its top border in Word; nabl's carried-over
 /// "Remarks" paragraph keeps its 4pt).
-pub(super) fn chunk_space_before(item: &CellContentItem, pi: usize, start: CellCursor) -> f32 {
+pub(super) fn chunk_space_before(item: &CellContentItem, pi: usize, start: &CellCursor) -> f32 {
     match item {
         CellContentItem::Paragraph(p) if pi != start.item || start.line == 0 => p.space_before,
         _ => 0.0,
@@ -1193,14 +1320,11 @@ pub(super) fn chunk_space_before(item: &CellContentItem, pi: usize, start: CellC
 /// ponytail: widowControl is assumed on, not read from the paragraph.
 pub(super) fn find_cell_split(
     cell: &CellLayout,
-    start: CellCursor,
+    start: &CellCursor,
     available_h: f32,
     cm: &CellMargins,
 ) -> CellCursor {
-    let done = CellCursor {
-        item: cell.items.len(),
-        line: 0,
-    };
+    let done = CellCursor::at(cell.items.len(), 0);
     if start.item >= cell.items.len() {
         return done;
     }
@@ -1210,7 +1334,15 @@ pub(super) fn find_cell_split(
         let l0 = if first { start.line } else { 0 };
         let item = &cell.items[pi];
         let sb = chunk_space_before(item, pi, start);
-        let item_h = sb + item_chunk_height(item, l0, None);
+        let from: &[CellCursor] = if first { &start.nested } else { &[] };
+        let rest = Chunk {
+            item: pi,
+            l0,
+            l1: None,
+            from,
+            to: &[],
+        };
+        let item_h = sb + item_chunk_height(item, &rest);
         // A paragraph fits only with its space after: nabl's "Remarks" row
         // moves its last (4pt after) paragraph to the next page in Word.
         let sa = match item {
@@ -1233,32 +1365,58 @@ pub(super) fn find_cell_split(
                 .count();
             let fit = room.min(remaining.saturating_sub(2));
             if fit >= 2 {
-                return CellCursor {
-                    item: pi,
-                    line: l0 + fit,
-                };
+                return CellCursor::at(pi, l0 + fit);
             }
         }
         // Word breaks a nested table between its rows (radiographer's
-        // "Internal / External to the Trust" table starts on page 1).
-        if let CellContentItem::NestedTable { row_heights, .. } = item {
+        // "Internal / External to the Trust" table starts on page 1), and
+        // inside the first row that does not fit when that row may split, each
+        // of its cells by these same rules (its "Administrative teams within
+        // Radiology" closes page 1).
+        if let CellContentItem::NestedTable { rows, cm: ncm, .. } = item {
             let mut used = h + sb;
-            let fit = row_heights[l0.min(row_heights.len())..]
-                .iter()
-                .take_while(|rh| {
-                    used += **rh;
-                    used <= available_h
-                })
-                .count();
-            if fit >= 1 && l0 + fit < row_heights.len() {
-                return CellCursor {
-                    item: pi,
-                    line: l0 + fit,
+            let mut r = l0;
+            // Only the first row can continue partway; the rest are whole.
+            let mut row_start = from;
+            while r < rows.len() {
+                let rest = if row_start.is_empty() {
+                    rows[r].height
+                } else {
+                    partial_row_height(&rows[r], ncm, row_start, &[])
                 };
+                if used + rest > available_h {
+                    break;
+                }
+                used += rest;
+                r += 1;
+                row_start = &[];
+            }
+            if r < rows.len() && rows[r].can_split {
+                let starts: Vec<CellCursor> = (0..rows[r].cells.len())
+                    .map(|ci| row_start.get(ci).unwrap_or(&CELL_START).clone())
+                    .collect();
+                let ends: Vec<CellCursor> = rows[r]
+                    .cells
+                    .iter()
+                    .zip(&starts)
+                    .map(|(c, s)| find_cell_split(c, s, available_h - used, ncm))
+                    .collect();
+                if ends != starts
+                    && used + partial_row_height(&rows[r], ncm, &starts, &ends) <= available_h
+                {
+                    return CellCursor {
+                        item: pi,
+                        line: r,
+                        nested: ends,
+                    };
+                }
+            }
+            if r > l0 && r < rows.len() {
+                return CellCursor::at(pi, r);
             }
         }
         if !first {
-            return CellCursor { item: pi, line: 0 };
+            return CellCursor::at(pi, 0);
         }
         // The first item is force-included so the split makes progress.
         h += item_h;
@@ -1294,8 +1452,8 @@ mod tests {
             bottom: 0.0,
             right: 0.0,
         };
-        let split = |start, avail| find_cell_split(&cell, start, avail, &cm);
-        let at = |item, line| CellCursor { item, line };
+        let split = |start, avail| find_cell_split(&cell, &start, avail, &cm);
+        let at = CellCursor::at;
 
         // the heading's own space_before (5, the cell opens with it) + heading
         // (10) + space_before (5) + four of the ten lines
@@ -1306,7 +1464,9 @@ mod tests {
         assert_eq!(split(at(0, 0), 26.0), at(1, 0));
         // nine lines would fit but two must stay for the next page
         assert_eq!(split(at(0, 0), 110.0), at(1, 8));
-        let chunks: Vec<_> = cursor_chunks(&cell.items, at(0, 0), at(1, 4)).collect();
+        let chunks: Vec<_> = cursor_chunks(&cell.items, &at(0, 0), &at(1, 4))
+            .map(|c| (c.item, c.l0, c.l1))
+            .collect();
         assert_eq!(chunks, vec![(0, 0, None), (1, 0, Some(4))]);
     }
 
