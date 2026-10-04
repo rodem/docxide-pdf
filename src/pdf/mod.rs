@@ -91,6 +91,15 @@ fn first_cell_paragraph(t: &crate::model::Table) -> Option<&Paragraph> {
         })
 }
 
+/// The paragraph contextual spacing compares a neighbour of `blocks[i]` with:
+/// the block itself, or a table's first cell paragraph.
+fn block_para(blocks: &[Block], i: usize) -> Option<&Paragraph> {
+    match blocks.get(i)? {
+        Block::Paragraph(p) => Some(p),
+        Block::Table(t) => first_cell_paragraph(t),
+    }
+}
+
 pub(super) struct RenderContext<'a> {
     pub(super) fonts: &'a HashMap<String, FontEntry>,
     /// The document's sections: a section without its own header or footer
@@ -1468,12 +1477,7 @@ fn render_paragraph_block(
             sp.margin_left - ln.distance.unwrap_or(18.0),
         )
     });
-    let adjacent_para = |idx: usize| -> Option<&Paragraph> {
-        match section_blocks.get(idx)? {
-            Block::Paragraph(p) => Some(p),
-            Block::Table(t) => first_cell_paragraph(t),
-        }
-    };
+    let adjacent_para = |idx: usize| block_para(section_blocks, idx);
 
     // Skip empty section-break paragraphs — Word gives these zero height —
     // unless a continuous break changes the column layout: then the mark keeps

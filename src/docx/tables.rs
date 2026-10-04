@@ -810,6 +810,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         textboxes: parsed.textboxes,
                         connectors: parsed.connectors,
                         style_id: Some(para_style_id.to_string()),
+                        contextual_spacing: super::paragraph::contextual_spacing(ppr, para_style),
                         tab_stops,
                         ..Paragraph::default()
                     }));

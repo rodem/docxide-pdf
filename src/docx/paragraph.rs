@@ -88,9 +88,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         .or_else(|| para_style.and_then(|s| s.alignment))
         .unwrap_or(ctx.styles.defaults.alignment);
 
-    let contextual_spacing = ppr
-        .and_then(|ppr| wml_bool(ppr, "contextualSpacing"))
-        .unwrap_or_else(|| para_style.is_some_and(|s| s.contextual_spacing));
+    let contextual_spacing = contextual_spacing(ppr, para_style);
 
     let keep_next = ppr
         .and_then(|ppr| wml_bool(ppr, "keepNext"))
@@ -405,6 +403,16 @@ pub(super) fn split_at_page_break(para: &mut Paragraph) -> Option<Paragraph> {
         ..Paragraph::default()
     };
     Some(rest)
+}
+
+/// `w:contextualSpacing`, direct or from the style. Shared by body and
+/// table-cell paragraphs.
+pub(super) fn contextual_spacing(
+    ppr: Option<roxmltree::Node>,
+    para_style: Option<&ParagraphStyle>,
+) -> bool {
+    ppr.and_then(|ppr| wml_bool(ppr, "contextualSpacing"))
+        .unwrap_or_else(|| para_style.is_some_and(|s| s.contextual_spacing))
 }
 
 /// A paragraph's indents (left, right, hanging, first line) from its direct

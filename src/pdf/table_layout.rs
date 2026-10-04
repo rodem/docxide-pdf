@@ -13,6 +13,7 @@ use crate::model::{
 
 use super::RenderContext;
 use super::header_footer::substitute_hf_runs;
+use super::helpers::{effective_space_after, effective_space_before};
 use super::layout::{
     TextLine, build_paragraph_lines, build_tabbed_line, east_asian_leading, is_text_empty,
     run_line_metrics, word_width_for_run,
@@ -707,9 +708,17 @@ pub(super) fn compute_row_layouts(
                                     tallest_lhr,
                                     tallest_ar,
                                 ) - line_h;
+                                // Contextual spacing applies between a cell's
+                                // paragraphs as in the body (erasmus_plus: Normal's
+                                // 12pt after "Faculty/Department" goes).
+                                let space_after = effective_space_after(
+                                    para,
+                                    super::block_para(&cell.content, block_idx + 1),
+                                );
                                 // A cell drops HTML auto spacing at its edges.
                                 let space_before = if para_idx > 0 {
-                                    f32::max(prev_space_after, para.space_before)
+                                    let prev = super::block_para(&cell.content, block_idx - 1);
+                                    f32::max(prev_space_after, effective_space_before(para, prev))
                                 } else if para.space_before_auto {
                                     0.0
                                 } else {
@@ -971,7 +980,7 @@ pub(super) fn compute_row_layouts(
                                     content_height: para.content_height,
                                     paragraph_mark_vanish: para.paragraph_mark_vanish,
                                     floating_images: cell_floats,
-                                    space_after: para.space_after,
+                                    space_after,
                                     has_textboxes: !para.textboxes.is_empty(),
                                     has_connectors: !para.connectors.is_empty(),
                                 }));
@@ -979,7 +988,7 @@ pub(super) fn compute_row_layouts(
                                 prev_space_after = if para.space_after_auto && block_idx == block_count - 1 {
                                     0.0
                                 } else {
-                                    para.space_after
+                                    space_after
                                 };
                                 prev_was_nested_table = false;
                                 para_idx += 1;
