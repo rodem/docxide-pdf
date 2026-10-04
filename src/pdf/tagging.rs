@@ -383,6 +383,13 @@ impl Tags {
         id
     }
 
+    /// A Formula under `parent`, read by its `/Alt` (PDF/UA 7.7-1).
+    pub(super) fn add_formula(&mut self, parent: usize, alt: &str) -> usize {
+        let id = self.add(parent, "Formula");
+        self.nodes[id].alt = Some(alt.to_string());
+        id
+    }
+
     /// A Span with `/Lang` for text in another language, and/or `/ActualText`
     /// replacing its glyphs for text extraction and screen readers;
     /// `push_actual` adds to the latter as the Span's content is drawn.

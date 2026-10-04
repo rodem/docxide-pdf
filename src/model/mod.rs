@@ -560,6 +560,9 @@ pub struct Run {
     /// Cambria Math) has very tall metrics for big operators; such runs must not
     /// inflate the surrounding text line height.
     pub is_math: bool,
+    /// The Office Math zone's spoken form, shared by the zone's runs: the
+    /// /Alt of the Formula they are tagged as. None when it says nothing.
+    pub formula: Option<std::sync::Arc<str>>,
 }
 
 impl Run {
@@ -651,6 +654,7 @@ impl Default for Run {
             italic_is_direct: false,
             comment_ids: Vec::new(),
             is_math: false,
+            formula: None,
         }
     }
 }

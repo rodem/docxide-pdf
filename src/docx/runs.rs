@@ -734,6 +734,11 @@ fn merge_compatible_runs(runs: Vec<Run>) -> Vec<Run> {
                 && prev.lang == run.lang
                 && prev.char_style_id == run.char_style_id
                 && prev.comment_ids == run.comment_ids
+                // One Formula per math zone, never merged into the text around it.
+                && match (&prev.formula, &run.formula) {
+                    (Some(a), Some(b)) => std::sync::Arc::ptr_eq(a, b),
+                    (a, b) => a.is_none() && b.is_none(),
+                }
         });
         if can_merge {
             result.last_mut().unwrap().text.push_str(&run.text);
@@ -925,6 +930,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
 
     for (run_node, hyperlink_url, is_anchor_hyperlink, comment_ids) in run_nodes {
         if run_node.has_tag_name((MATH_NS, "oMath")) {
+            let first = runs.len();
             omath_to_runs(
                 run_node,
                 &defaults,
@@ -932,6 +938,11 @@ pub(super) fn parse_runs<R: Read + Seek>(
                 VertAlign::Baseline,
                 &mut runs,
             );
+            let spoken = super::math_speech::speak(run_node);
+            let formula = (!spoken.is_empty()).then(|| std::sync::Arc::<str>::from(spoken));
+            for r in &mut runs[first..] {
+                r.formula = formula.clone();
+            }
             continue;
         }
         let runs_before = runs.len();

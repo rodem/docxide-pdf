@@ -303,6 +303,8 @@ pub(super) struct WordChunk {
     pub(super) space_after: bool,
     /// From an Office Math run: its tall operator metrics never size a line.
     pub(super) is_math: bool,
+    /// The math zone's spoken form, for its Formula (see `Run::formula`).
+    pub(super) formula: Option<Arc<str>>,
     /// Pair kerning is on for this run at this size (`w:kern`); `width` already
     /// includes it, so the glyphs are drawn kerned too.
     pub(super) kern: bool,
@@ -324,9 +326,13 @@ fn push_decoration(
 ) {
     // Look back past the other line of a double underline (or a strike on the
     // same run), which interleave with this one chunk by chunk.
-    let merged = decorations.iter_mut().rev().take(3).find(|(_, dy, _, dh, dc)| {
-        (*dy - y).abs() < 0.01 && (*dh - height).abs() < 0.01 && *dc == color
-    });
+    let merged = decorations
+        .iter_mut()
+        .rev()
+        .take(3)
+        .find(|(_, dy, _, dh, dc)| {
+            (*dy - y).abs() < 0.01 && (*dh - height).abs() < 0.01 && *dc == color
+        });
     if let Some(prev) = merged {
         prev.2 = (x + width) - prev.0;
     } else {
@@ -394,6 +400,7 @@ impl WordChunk {
             lang: chunk_lang(run, word),
             space_after: false,
             is_math: run.is_math,
+            formula: run.formula.clone(),
             kern: run.kerns_at(eff_fs),
         }
     }
@@ -440,6 +447,7 @@ impl WordChunk {
             inline_image_decorative: img.decorative,
             punct_compressed: 0.0,
             is_math: false,
+            formula: None,
             kern: false,
             synthetic_bold: false,
             synthetic_italic: false,
@@ -497,6 +505,7 @@ impl WordChunk {
             inline_image_decorative: false,
             punct_compressed: 0.0,
             is_math: false,
+            formula: None,
             kern: false,
             synthetic_bold: false,
             synthetic_italic: false,
@@ -559,6 +568,7 @@ impl WordChunk {
             inline_image_decorative: false,
             punct_compressed: 0.0,
             is_math: false,
+            formula: None,
             kern: false,
             synthetic_bold: false,
             synthetic_italic: false,
@@ -594,6 +604,8 @@ pub(super) struct LinkTagger<'a> {
     /// The open Span (see `span`): its element, its `/Lang`, and whether it
     /// carries `/ActualText`.
     span: Option<(usize, Option<String>, bool)>,
+    /// The open Formula (see `formula`): its zone's spoken form and element.
+    formula: Option<(Arc<str>, usize)>,
 }
 
 impl<'a> LinkTagger<'a> {
@@ -604,7 +616,27 @@ impl<'a> LinkTagger<'a> {
             para,
             link: None,
             span: None,
+            formula: None,
         }
+    }
+
+    /// An Office Math zone's text goes in a Formula whose `/Alt` speaks it
+    /// (Word: "cap T equals 2 pi"), inside the open Link or paragraph; the
+    /// glyphs stay its content for text extraction. Returns true when the
+    /// marked content switched (the text matrix is reset).
+    fn formula(&mut self, content: &mut Content, spoken: Option<&Arc<str>>) -> bool {
+        match (&self.formula, spoken) {
+            (None, None) => return false,
+            (Some((open, _)), Some(s)) if Arc::ptr_eq(open, s) => return false,
+            _ => {}
+        }
+        content.end_text();
+        self.span = None;
+        self.formula = spoken.map(|s| (s.clone(), self.tags.add_formula(self.open(), s)));
+        let node = self.formula.as_ref().map_or_else(|| self.open(), |f| f.1);
+        self.tags.begin(content, self.page, node);
+        content.begin_text();
+        true
     }
 
     /// Text in another language than the document's goes in a Span with
@@ -616,6 +648,10 @@ impl<'a> LinkTagger<'a> {
     /// Returns true when the marked content switched (the text matrix is
     /// reset).
     fn span(&mut self, content: &mut Content, lang: Option<&str>, actual: Option<&str>) -> bool {
+        // A Formula's /Alt speaks for all of it.
+        if self.formula.is_some() {
+            return false;
+        }
         let lang = lang.filter(|l| !self.tags.is_document_lang(l));
         let wanted = (lang.is_some() || actual.is_some()).then_some((lang, actual.is_some()));
         if wanted == self.span.as_ref().map(|(_, l, a)| (l.as_deref(), *a)) {
@@ -647,6 +683,7 @@ impl<'a> LinkTagger<'a> {
         }
         content.end_text();
         self.span = None;
+        self.formula = None;
         let node = match url {
             Some(u) => {
                 let n = self.tags.add(self.para, "Link");
@@ -683,6 +720,7 @@ impl<'a> LinkTagger<'a> {
     /// Back to the open element after a picture or a Span.
     fn resume(&mut self, content: &mut Content) {
         self.span = None;
+        self.formula = None;
         self.tags.begin(content, self.page, self.open());
     }
 
@@ -691,7 +729,12 @@ impl<'a> LinkTagger<'a> {
     fn artifact(&mut self, content: &mut Content, draw: impl FnOnce(&mut Content)) {
         super::tagging::Tags::end(content);
         draw(content);
-        let node = self.span.as_ref().map_or_else(|| self.open(), |s| s.0);
+        let node = self
+            .span
+            .as_ref()
+            .map(|s| s.0)
+            .or(self.formula.as_ref().map(|f| f.1))
+            .unwrap_or_else(|| self.open());
         self.tags.begin(content, self.page, node);
     }
 
@@ -708,7 +751,7 @@ impl<'a> LinkTagger<'a> {
     }
 
     fn finish(mut self, content: &mut Content) {
-        if self.link.take().is_some() | self.span.take().is_some() {
+        if self.link.take().is_some() | self.span.take().is_some() | self.formula.take().is_some() {
             self.tags.begin(content, self.page, self.para);
         }
     }
@@ -2873,6 +2916,10 @@ pub(super) fn render_paragraph_lines(
                     chunk.space_after && primary_entry.is_none_or(|e| e.has_char(' '));
                 // A Span's /ActualText covers the boundary space the Tj carries too.
                 if let Some(lt) = link_tags.as_mut().filter(|_| !chunk.text.is_empty()) {
+                    if lt.formula(content, chunk.formula.as_ref()) {
+                        td_x = 0.0;
+                        td_y = 0.0;
+                    }
                     let actual = chunk.actual_text.as_ref().map(|t| {
                         if boundary_space {
                             format!("{t} ")
@@ -3149,7 +3196,14 @@ pub(super) fn render_paragraph_lines(
                         });
                     let (st_y, st_thick) = os2_strike.unwrap_or((y + chunk.font_size * 0.3, thick));
                     // One line across the spaces of a struck run, like Word's.
-                    push_decoration(&mut decorations, x, st_y, chunk.width, st_thick, chunk.color);
+                    push_decoration(
+                        &mut decorations,
+                        x,
+                        st_y,
+                        chunk.width,
+                        st_thick,
+                        chunk.color,
+                    );
                 }
                 if chunk.dstrike {
                     let gap = thick * 1.5;

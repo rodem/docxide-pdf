@@ -7,6 +7,7 @@ pub(crate) mod emf;
 mod group;
 mod headers_footers;
 mod images;
+mod math_speech;
 pub(crate) mod numbering;
 mod paragraph;
 mod runs;
