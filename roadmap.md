@@ -205,7 +205,8 @@ symbol glyphs, see SCORING.md.)
 scratchpad; rebuild them from `tests/common/a11y.rs` if needed):**
 1. Math speech reads matrices, accents and equation arrays as their contents
    in order; floating pictures in table cells stay artifacts.
-2. slovak_eu_directive: we emit 9 table rows where Word has 14 (table model).
+2. (Decided, not a gap) slovak_eu_directive: Word has 14 TRs to our 9 because
+   it starts a new TR per page a row runs onto; we keep one TR per row.
 3. Link rects and outline destinations ignore the comment-pane zoom
    (`comments::page_zoom`) and vAlign (`assembly.rs`) — no fixture has links
    with either.
