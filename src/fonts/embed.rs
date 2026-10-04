@@ -207,12 +207,21 @@ pub(super) fn embed_truetype(
     })
 }
 
-/// Adobe Symbol encoding for the Symbol font's private-use codes (U+F0xx) that
-/// documents use as bullets and signs. Word's export maps them the same way, so
-/// extracted text reads "•" rather than U+F0B7.
+/// A symbol font's private-use code (U+F0xx) for `ch`. Runs can hold the low
+/// byte itself (welsh_palliative's U+00B7 bullet); the font maps both to one glyph.
+fn symbol_code(ch: char) -> u32 {
+    match ch as u32 {
+        c @ 0x20..=0xFF => c | 0xF000,
+        c => c,
+    }
+}
+
+/// Adobe Symbol encoding for the Symbol font's codes that documents use as
+/// bullets and signs. Word's export maps them the same way, so extracted text
+/// reads "•" rather than U+F0B7 or "·".
 // ponytail: common bullets/signs only; the full Symbol encoding when Greek/math text needs it
 fn symbol_font_unicode(ch: char) -> Option<char> {
-    Some(match ch as u32 {
+    Some(match symbol_code(ch) {
         0xF0B7 => '•',
         0xF02D => '−',
         0xF0B0 => '°',
@@ -245,12 +254,7 @@ fn symbol_font_unicode(ch: char) -> Option<char> {
 // ponytail: the corpus's codes only (no Wingdings 2/3, Webdings); add the
 // full table when other symbols show up
 fn wingdings_unicode(ch: char) -> Option<char> {
-    // Runs can hold the low byte itself; the font maps both to one glyph.
-    let code = match ch as u32 {
-        c @ 0x20..=0xFF => c | 0xF000,
-        c => c,
-    };
-    Some(match code {
+    Some(match symbol_code(ch) {
         0xF021 => '✏',
         0xF026 => '📖',
         0xF04A => '☺',
@@ -525,5 +529,12 @@ mod tests {
         assert_eq!(wingdings_unicode('§'), Some('▪'));
         assert_eq!(wingdings_unicode(' '), None);
         assert_eq!(wingdings_unicode('\u{F0FA}'), None);
+    }
+
+    #[test]
+    fn symbol_low_bytes_extract_as_unicode() {
+        assert_eq!(symbol_font_unicode('\u{F0B7}'), Some('•'));
+        assert_eq!(symbol_font_unicode('·'), Some('•'));
+        assert_eq!(symbol_font_unicode('a'), None);
     }
 }
