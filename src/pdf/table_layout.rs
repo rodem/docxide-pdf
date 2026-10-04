@@ -540,12 +540,13 @@ pub(super) enum CellContentItem {
     NestedTable {
         col_widths: Vec<f32>,
         rows: Vec<RowLayout>,
-        cm: CellMargins,
     },
 }
 
 pub(super) struct CellLayout {
     pub(super) items: Vec<CellContentItem>,
+    /// The cell's margins (its own or the table's), border bands included.
+    pub(super) cm: CellMargins,
     pub(super) total_height: f32,
     /// The space after the last paragraph that `total_height` includes; the
     /// chunk of a split row that finishes the cell charges it too.
@@ -600,6 +601,7 @@ pub(super) fn compute_row_layouts(
                     if cell.v_merge == VMerge::Continue {
                         return CellLayout {
                             items: vec![],
+                            cm: *cm,
                             total_height: 14.4,
                             trailing_space_after: 0.0,
                             text_direction: TextDirection::LrTb,
@@ -995,7 +997,6 @@ pub(super) fn compute_row_layouts(
                                 items.push(CellContentItem::NestedTable {
                                     col_widths: nested_cw,
                                     rows: nested_layouts,
-                                    cm: nested_table.cell_margins,
                                 });
                                 prev_space_after = 0.0;
                                 prev_was_nested_table = true;
@@ -1023,6 +1024,7 @@ pub(super) fn compute_row_layouts(
                     }
                     CellLayout {
                         items,
+                        cm: *ecm,
                         total_height: total_h,
                         trailing_space_after,
                         text_direction: cell.text_direction,
@@ -1259,12 +1261,12 @@ pub(super) fn item_chunk_height(item: &CellContentItem, c: &Chunk) -> f32 {
             cell_lines_h(p, c.l0..c.l1.unwrap_or(p.lines.len()))
         }
         CellContentItem::Paragraph(p) => para_block_height(p),
-        CellContentItem::NestedTable { rows, cm, .. } => row_pieces(rows.len(), c)
+        CellContentItem::NestedTable { rows, .. } => row_pieces(rows.len(), c)
             .into_iter()
             .map(|piece| match piece {
                 RowPiece::Rows(range) => rows[range].iter().map(|rl| rl.height).sum(),
                 RowPiece::Partial { row, starts, ends } => {
-                    partial_row_height(&rows[row], cm, starts, ends)
+                    partial_row_height(&rows[row], starts, ends)
                 }
             })
             .sum(),
@@ -1276,12 +1278,12 @@ pub(super) fn item_chunk_height(item: &CellContentItem, c: &Chunk) -> f32 {
 /// tallest cell's content.
 pub(super) fn partial_row_height(
     layout: &RowLayout,
-    cm: &CellMargins,
     starts: &[CellCursor],
     ends: &[CellCursor],
 ) -> f32 {
-    let mut max_h: f32 = cm.top + cm.bottom;
+    let mut max_h: f32 = 0.0;
     for (ci, cell_layout) in layout.cells.iter().enumerate() {
+        let cm = &cell_layout.cm;
         let start = starts.get(ci).unwrap_or(&CELL_START);
         let done = CellCursor::at(cell_layout.items.len(), 0);
         let end = ends.get(ci).unwrap_or(&done);
@@ -1322,8 +1324,8 @@ pub(super) fn find_cell_split(
     cell: &CellLayout,
     start: &CellCursor,
     available_h: f32,
-    cm: &CellMargins,
 ) -> CellCursor {
+    let cm = &cell.cm;
     let done = CellCursor::at(cell.items.len(), 0);
     if start.item >= cell.items.len() {
         return done;
@@ -1373,7 +1375,7 @@ pub(super) fn find_cell_split(
         // inside the first row that does not fit when that row may split, each
         // of its cells by these same rules (its "Administrative teams within
         // Radiology" closes page 1).
-        if let CellContentItem::NestedTable { rows, cm: ncm, .. } = item {
+        if let CellContentItem::NestedTable { rows, .. } = item {
             let mut used = h + sb;
             let mut r = l0;
             // Only the first row can continue partway; the rest are whole.
@@ -1382,7 +1384,7 @@ pub(super) fn find_cell_split(
                 let rest = if row_start.is_empty() {
                     rows[r].height
                 } else {
-                    partial_row_height(&rows[r], ncm, row_start, &[])
+                    partial_row_height(&rows[r], row_start, &[])
                 };
                 if used + rest > available_h {
                     break;
@@ -1399,10 +1401,10 @@ pub(super) fn find_cell_split(
                     .cells
                     .iter()
                     .zip(&starts)
-                    .map(|(c, s)| find_cell_split(c, s, available_h - used, ncm))
+                    .map(|(c, s)| find_cell_split(c, s, available_h - used))
                     .collect();
                 if ends != starts
-                    && used + partial_row_height(&rows[r], ncm, &starts, &ends) <= available_h
+                    && used + partial_row_height(&rows[r], &starts, &ends) <= available_h
                 {
                     return CellCursor {
                         item: pi,
@@ -1442,17 +1444,17 @@ mod tests {
         };
         let cell = CellLayout {
             items: vec![para(1), para(10)],
+            cm: CellMargins {
+                top: 0.0,
+                left: 0.0,
+                bottom: 0.0,
+                right: 0.0,
+            },
             total_height: 0.0,
             trailing_space_after: 0.0,
             text_direction: TextDirection::default(),
         };
-        let cm = CellMargins {
-            top: 0.0,
-            left: 0.0,
-            bottom: 0.0,
-            right: 0.0,
-        };
-        let split = |start, avail| find_cell_split(&cell, &start, avail, &cm);
+        let split = |start, avail| find_cell_split(&cell, &start, avail);
         let at = CellCursor::at;
 
         // the heading's own space_before (5, the cell opens with it) + heading

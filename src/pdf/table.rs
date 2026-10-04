@@ -774,7 +774,6 @@ fn render_table_rows(
     mut tag: Option<(&mut Tags, &mut TableTags, usize)>,
     rows: std::ops::Range<usize>,
 ) {
-    let cm = &table.cell_margins;
     for (ri, (row, layout)) in table
         .rows
         .iter()
@@ -822,7 +821,7 @@ fn render_table_rows(
             );
 
             if cell_has_visible_content(&cell_layout.items) {
-                let ecm = cell.cell_margins.as_ref().unwrap_or(cm);
+                let ecm = &cell_layout.cm;
                 let content_h = cell_content_h_for_valign(&cell_layout.items);
 
                 let avail = effective_h - ecm.top - ecm.bottom;
@@ -933,7 +932,6 @@ fn render_nested_table(
                 &table.rows[row],
                 &row_layouts[row],
                 col_widths,
-                &table.cell_margins,
                 table_left,
                 content,
                 cursor_y,
@@ -1150,7 +1148,6 @@ fn render_table_row(
     row: &TableRow,
     layout: &RowLayout,
     col_widths: &[f32],
-    cm: &CellMargins,
     table_left: f32,
     pb: &mut super::PageBuilder,
     ctx: &RenderContext,
@@ -1202,7 +1199,7 @@ fn render_table_row(
         );
 
         let has_content = cell_has_visible_content(&cell_layout.items);
-        let ecm = cell.cell_margins.as_ref().unwrap_or(cm);
+        let ecm = &cell_layout.cm;
         let mut no_links = Vec::new();
 
         if !has_content || cell_layout.text_direction == TextDirection::TbRl {
@@ -1386,7 +1383,6 @@ fn render_partial_row(
     row: &TableRow,
     layout: &RowLayout,
     col_widths: &[f32],
-    cm: &CellMargins,
     table_left: f32,
     content: &mut Content,
     cursor_y: &mut f32,
@@ -1400,7 +1396,7 @@ fn render_partial_row(
     row_idx: usize,
 ) {
     let row_top = *cursor_y;
-    let row_h = partial_row_height(layout, cm, starts, ends);
+    let row_h = partial_row_height(layout, starts, ends);
     let row_bottom = row_top - row_h;
 
     for (ci, ((grid_col, span, cell), cell_layout)) in
@@ -1455,8 +1451,8 @@ fn render_partial_row(
                 end,
                 cell_x,
                 col_w,
-                row_top - cm.top,
-                cm,
+                row_top - cell_layout.cm.top,
+                &cell_layout.cm,
                 ctx,
                 gradient_specs,
                 links,
@@ -1500,7 +1496,6 @@ fn render_header_rows(
     table: &Table,
     row_layouts: &[RowLayout],
     col_widths: &[f32],
-    cm: &CellMargins,
     table_left: f32,
     pb: &mut super::PageBuilder,
     ctx: &RenderContext,
@@ -1514,7 +1509,6 @@ fn render_header_rows(
             &table.rows[hi],
             &row_layouts[hi],
             col_widths,
-            cm,
             table_left,
             pb,
             ctx,
@@ -1697,7 +1691,6 @@ pub(super) fn render_table(
                 table,
                 &row_layouts,
                 &col_widths,
-                cm,
                 table_left,
                 pb,
                 ctx,
@@ -1737,7 +1730,7 @@ pub(super) fn render_table(
             let mut all_done = true;
 
             for ci in 0..ncells {
-                let end = find_cell_split(&layout.cells[ci], &starts[ci], avail, cm);
+                let end = find_cell_split(&layout.cells[ci], &starts[ci], avail);
                 if end.item < layout.cells[ci].items.len() {
                     all_done = false;
                 }
@@ -1749,7 +1742,6 @@ pub(super) fn render_table(
                 row,
                 layout,
                 &col_widths,
-                cm,
                 table_left,
                 &mut pb.content,
                 &mut pb.slot_top,
@@ -1875,8 +1867,8 @@ pub(super) fn render_table(
                         CellContentItem::Paragraph(_) => None,
                         CellContentItem::NestedTable { .. } => Some(1),
                     };
-                    cm.top
-                        + cm.bottom
+                    c.cm.top
+                        + c.cm.bottom
                         + chunk_space_before(it, 0, &CELL_START)
                         + item_chunk_height(
                             it,
@@ -1962,7 +1954,6 @@ pub(super) fn render_table(
                     row,
                     layout,
                     &col_widths,
-                    cm,
                     table_left,
                     pb,
                     ctx,
@@ -1975,7 +1966,6 @@ pub(super) fn render_table(
                 row,
                 layout,
                 &col_widths,
-                cm,
                 table_left,
                 pb,
                 ctx,
