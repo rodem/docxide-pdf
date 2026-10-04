@@ -3320,6 +3320,32 @@ pub(super) fn tallest_glyph_run_metrics(
     ))
 }
 
+/// Distance from the top of a bottom-aligned line box to its baseline, or None
+/// for an ordinary line. Word bottom-aligns an exact-height box, and an at-least
+/// one whose minimum wins (online export: czech_census's 10pt lines under
+/// atLeast 12.05 start 0.55pt lower), at the glyphs' descent: line_h_ratio −
+/// ascender_ratio, less the East Asian leading Word puts below normal lines.
+pub(super) fn bottom_aligned_ascent(
+    ls: LineSpacing,
+    line_h: f32,
+    font_size: f32,
+    lhr: Option<f32>,
+    ar: Option<f32>,
+    runs: &[Run],
+    seen_fonts: &HashMap<String, FontEntry>,
+) -> Option<f32> {
+    let (lhr, ar) = (lhr?, ar?);
+    let bottom_aligned = match ls {
+        LineSpacing::Exact(_) => true,
+        LineSpacing::AtLeast(min) => min > font_size * lhr,
+        LineSpacing::Auto(_) => false,
+    };
+    (lhr > ar && bottom_aligned).then(|| {
+        let half_lead = tallest_glyph_run_half_leading(runs, seen_fonts);
+        line_h - font_size * (lhr - ar - half_lead)
+    })
+}
+
 /// Half the East Asian 1.3× leading, per em, of the tallest glyph run: the part
 /// an exact or at-least box keeps below the glyphs (0 for other fonts).
 pub(super) fn tallest_glyph_run_half_leading(

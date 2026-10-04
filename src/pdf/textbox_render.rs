@@ -471,7 +471,11 @@ pub(super) fn render_textbox_paragraphs(
         }
         let (tb_fs, tb_lhr, tb_ar) = tallest_run_metrics(&tp.runs, ctx.fonts);
         let tb_line_h = resolve_line_h(tp_ls, tb_fs, tb_lhr);
-        let tb_baseline = cursor_y - inter_gap - tb_fs * tb_ar.unwrap_or(0.75) - y_offset;
+        let tb_ascent = super::layout::bottom_aligned_ascent(
+            tp_ls, tb_line_h, tb_fs, tb_lhr, tb_ar, &tp.runs, ctx.fonts,
+        )
+        .unwrap_or(tb_fs * tb_ar.unwrap_or(0.75));
+        let tb_baseline = cursor_y - inter_gap - tb_ascent - y_offset;
         let tb_metrics = (
             tb_fs * tb_ar.unwrap_or(0.75),
             if inline_imgs.is_empty() {

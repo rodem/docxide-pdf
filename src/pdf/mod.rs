@@ -1484,22 +1484,15 @@ fn render_paragraph_block(
     // Placing the baseline at font_size * ascender_ratio instead pushes a
     // large-lineGap CJK substitute's descenders out of the fixed box and
     // into whatever follows (annotation #219: heading into table border).
-    // An at-least line whose minimum wins is bottom-aligned the same way (online
-    // export: czech_census's 10pt lines under atLeast 12.05 start 0.55pt lower);
-    // when the text is taller it is an ordinary line. The descent excludes the
-    // East Asian leading Word puts below the glyphs of a normal line.
-    let bottom_aligned = |lhr: f32| match effective_ls {
-        LineSpacing::Exact(_) => true,
-        LineSpacing::AtLeast(min) => min > font_size * lhr,
-        LineSpacing::Auto(_) => false,
-    };
-    let exact_baseline_base = match (tallest_lhr, tallest_ar) {
-        (Some(lhr), Some(ar)) if lhr > ar && bottom_aligned(lhr) => {
-            let half_lead = layout::tallest_glyph_run_half_leading(&para.runs, ctx.fonts);
-            Some(line_h - font_size * (lhr - ar - half_lead))
-        }
-        _ => None,
-    };
+    let exact_baseline_base = layout::bottom_aligned_ascent(
+        effective_ls,
+        line_h,
+        font_size,
+        tallest_lhr,
+        tallest_ar,
+        &para.runs,
+        ctx.fonts,
+    );
 
     let (col_x, col_w) = col_geometry[state.current_col];
     let mut para_text_x = col_x + para.indent_left;
