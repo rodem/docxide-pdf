@@ -1,5 +1,5 @@
 {
-  "next_id": 258,
+  "next_id": 259,
   "annotations": [
     {
       "id": 208,
@@ -175,7 +175,7 @@
       "y_pt": 224.97614,
       "note": "This is not accurate yet, but close.\n\nFIX (2026-10-02): the gaps between endnotes were missing (a note's last paragraph space-after, 5pt here); now matched. The block still sits ~30pt below Word's because the body drifts by page 3.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 186,
@@ -538,7 +538,7 @@
       "y_pt": 115.726746,
       "note": "Signature and date lines are too short compared to reference",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 234,
@@ -703,7 +703,7 @@
       "y_pt": 692.10095,
       "note": "\"Bullet points\" with arrows are rendered all wrong, overlaps text and the logo. Not enough margin between logo and text either.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 250,
@@ -791,6 +791,17 @@
       "y_pt": 392.90082,
       "note": "Heading for next page?\n\nCHECKED (2026-10-03): same as #256: a fresh render breaks before \"Přílohy\" like Word, nothing heading-like is left at the bottom of page 4.",
       "fixed": true,
+      "cleared": false
+    },
+    {
+      "id": 258,
+      "case": "scraped/czech_wastewater_discharge_permit",
+      "page": 3,
+      "source": "Generated",
+      "x_pt": 441.63513,
+      "y_pt": 549.62573,
+      "note": "missing checkboxes",
+      "fixed": false,
       "cleared": false
     }
   ]
