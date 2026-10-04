@@ -323,28 +323,27 @@ fn break_run_lhr(runs: &[Run], break_fs: f32, fonts: &HashMap<String, FontEntry>
     }
 }
 
+/// Record one STYLEREF value under the style's id and name, with the
+/// paragraph's list number (0 when it has none) for the `\n` switch: running
+/// heads test `IF {STYLEREF X \n} = 0`.
 fn styleref_insert(
-    map: &mut HashMap<String, String>,
+    running: &mut HashMap<String, String>,
+    page_first: &mut HashMap<String, String>,
     id: &str,
     text: &str,
+    number: &str,
     style_id_to_name: &HashMap<String, String>,
 ) {
-    map.insert(id.to_string(), text.to_string());
-    if let Some(name) = style_id_to_name.get(id) {
-        map.insert(name.clone(), text.to_string());
-    }
-}
-
-fn styleref_insert_first(
-    map: &mut HashMap<String, String>,
-    id: &str,
-    text: &str,
-    style_id_to_name: &HashMap<String, String>,
-) {
-    map.entry(id.to_string())
-        .or_insert_with(|| text.to_string());
-    if let Some(name) = style_id_to_name.get(id) {
-        map.entry(name.clone()).or_insert_with(|| text.to_string());
+    for name in std::iter::once(id).chain(style_id_to_name.get(id).map(String::as_str)) {
+        for (key, value) in [
+            (header_footer::styleref_key(name, false), text),
+            (header_footer::styleref_key(name, true), number),
+        ] {
+            if !page_first.contains_key(&key) {
+                page_first.insert(key.clone(), value.to_string());
+            }
+            running.insert(key, value.to_string());
+        }
     }
 }
 
@@ -354,19 +353,28 @@ fn update_styleref_from_para(
     para: &Paragraph,
     style_id_to_name: &HashMap<String, String>,
 ) {
+    let number = if para.list_label.is_empty() {
+        "0"
+    } else {
+        para.list_label.as_str()
+    };
     if let Some(ref sid) = para.style_id {
         let text: String = para.runs.iter().map(|r| r.text.as_str()).collect();
         if !text.is_empty() {
-            styleref_insert(running, sid, &text, style_id_to_name);
-            styleref_insert_first(page_first, sid, &text, style_id_to_name);
+            styleref_insert(running, page_first, sid, &text, number, style_id_to_name);
         }
     }
-    for run in &para.runs {
-        if let Some(ref csid) = run.char_style_id
-            && !run.text.is_empty()
-        {
-            styleref_insert(running, csid, &run.text, style_id_to_name);
-            styleref_insert_first(page_first, csid, &run.text, style_id_to_name);
+    // A character style's text is the whole stretch of runs carrying it.
+    for group in para
+        .runs
+        .chunk_by(|a, b| a.char_style_id == b.char_style_id)
+    {
+        let Some(ref csid) = group[0].char_style_id else {
+            continue;
+        };
+        let text: String = group.iter().map(|r| r.text.as_str()).collect();
+        if !text.is_empty() {
+            styleref_insert(running, page_first, csid, &text, number, style_id_to_name);
         }
     }
 }
@@ -3623,6 +3631,17 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
     }
 
     let empty_styleref: HashMap<String, String> = HashMap::new();
+    // The first occurrence of each style in the document. The running values
+    // hold every style seen up to a page, so a style missing from them and
+    // from the page itself first appears here.
+    let mut styleref_doc_first: HashMap<String, String> = HashMap::new();
+    for first in &state.pb.all_first_styleref {
+        for (k, v) in first {
+            if !styleref_doc_first.contains_key(k) {
+                styleref_doc_first.insert(k.clone(), v.clone());
+            }
+        }
+    }
     let mut page_styleref_merged: HashMap<String, String> = HashMap::new();
     let mut all_hf_contents: Vec<Option<Content>> = (0..total_pages).map(|_| None).collect();
     for (page_idx, hf_content) in all_hf_contents.iter_mut().enumerate() {
@@ -3653,7 +3672,10 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         } else {
             &empty_styleref
         };
-        page_styleref_merged.clone_from(prev_running);
+        // Failing both, Word searches forward to the end: a contents page's
+        // running head names the act whose title paragraph comes later.
+        page_styleref_merged.clone_from(&styleref_doc_first);
+        page_styleref_merged.extend(prev_running.iter().map(|(k, v)| (k.clone(), v.clone())));
         // Current-page first occurrences take priority (top-to-bottom search)
         for (k, v) in page_first {
             page_styleref_merged.insert(k.clone(), v.clone());

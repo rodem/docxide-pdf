@@ -663,8 +663,22 @@ impl Default for Run {
 pub enum FieldCode {
     Page,
     NumPages,
-    StyleRef(String),
+    /// `number` is the `\n` switch: the referenced paragraph's list number.
+    StyleRef {
+        name: String,
+        number: bool,
+    },
     PageRef(String),
+    /// An `IF` over nested fields, evaluated per page: legislation running
+    /// heads read `IF {STYLEREF X \n} = 0 "{STYLEREF X}" "Part {STYLEREF X \n}"`,
+    /// so the cached result is one page's value.
+    If(Vec<IfPart>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum IfPart {
+    Text(String),
+    Field(FieldCode),
 }
 
 pub enum Block {

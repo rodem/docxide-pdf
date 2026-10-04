@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use pdf_writer::Content;
 
 use crate::model::{
-    Alignment, Block, Document, FieldCode, FrameProperties, HRelativeFrom, HeaderFooter, Paragraph,
-    Run, SectionProperties, TextAnchor, VRelativeFrom, VerticalPosition, WrapType,
+    Alignment, Block, Document, FieldCode, FrameProperties, HRelativeFrom, HeaderFooter, IfPart,
+    Paragraph, Run, SectionProperties, TextAnchor, VRelativeFrom, VerticalPosition, WrapType,
 };
 
 use super::color::stroke_segment;
@@ -24,29 +24,121 @@ pub(super) fn substitute_hf_runs(
     styleref_values: &HashMap<String, String>,
     page_num_format: Option<&str>,
 ) -> Vec<Run> {
+    let values = FieldValues {
+        page_num,
+        total_pages,
+        styleref_values,
+        page_num_format,
+    };
     runs.iter()
         .map(|run| {
             let mut r = run.clone();
             if let Some(ref fc) = run.field_code {
                 r.field_code = None;
-                r.text = match fc {
-                    FieldCode::Page => {
-                        if let Some(fmt) = page_num_format {
-                            crate::docx::numbering::format_number(page_num as u32, fmt)
-                        } else {
-                            page_num.to_string()
-                        }
-                    }
-                    FieldCode::NumPages => total_pages.to_string(),
-                    FieldCode::StyleRef(name) => {
-                        styleref_values.get(name).cloned().unwrap_or_default()
-                    }
-                    FieldCode::PageRef(_) => run.text.clone(),
-                };
+                r.text = values.eval(fc).unwrap_or_else(|| run.text.clone());
             }
             r
         })
         .collect()
+}
+
+/// The key a STYLEREF value is stored under: Word matches style names
+/// case-insensitively ("CharSchno" for CharSchNo), and the `\n` switch reads
+/// the paragraph's list number.
+pub(super) fn styleref_key(name: &str, number: bool) -> String {
+    let key = name.to_lowercase();
+    if number { key + "\\n" } else { key }
+}
+
+/// What a header or footer field shows on one page.
+struct FieldValues<'a> {
+    page_num: usize,
+    total_pages: usize,
+    styleref_values: &'a HashMap<String, String>,
+    page_num_format: Option<&'a str>,
+}
+
+impl FieldValues<'_> {
+    /// None keeps the cached result.
+    fn eval(&self, fc: &FieldCode) -> Option<String> {
+        Some(match fc {
+            FieldCode::Page => match self.page_num_format {
+                Some(fmt) => crate::docx::numbering::format_number(self.page_num as u32, fmt),
+                None => self.page_num.to_string(),
+            },
+            FieldCode::NumPages => self.total_pages.to_string(),
+            FieldCode::StyleRef { name, number } => self
+                .styleref_values
+                .get(&styleref_key(name, *number))
+                .cloned()
+                .unwrap_or_default(),
+            FieldCode::PageRef(_) => return None,
+            FieldCode::If(parts) => return self.eval_if(parts),
+        })
+    }
+
+    /// `IF expr1 op expr2 "true" "false"` after substituting the nested
+    /// fields.
+    fn eval_if(&self, parts: &[IfPart]) -> Option<String> {
+        let mut instr = String::new();
+        for part in parts {
+            match part {
+                IfPart::Text(t) => instr.push_str(t),
+                IfPart::Field(fc) => instr.push_str(&self.eval(fc)?),
+            }
+        }
+        let args = field_args(instr.trim_start().get(2..)?);
+        let [a, op, b, t, f] = args.as_slice() else {
+            return None;
+        };
+        let ord = match (a.trim().parse::<f64>(), b.trim().parse::<f64>()) {
+            (Ok(x), Ok(y)) => x.partial_cmp(&y)?,
+            _ => a.cmp(b),
+        };
+        let holds = match op.as_str() {
+            "=" => ord.is_eq(),
+            "<>" => ord.is_ne(),
+            "<" => ord.is_lt(),
+            "<=" => ord.is_le(),
+            ">" => ord.is_gt(),
+            ">=" => ord.is_ge(),
+            _ => return None,
+        };
+        Some(if holds { t } else { f }.clone())
+    }
+}
+
+/// Field arguments: whitespace-separated, double quotes group (and are
+/// dropped), comparison operators stand alone even without spaces.
+fn field_args(s: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut chars = s.chars().peekable();
+    while let Some(&c) = chars.peek() {
+        if c.is_whitespace() {
+            chars.next();
+        } else if c == '"' {
+            chars.next();
+            args.push(chars.by_ref().take_while(|&c| c != '"').collect());
+        } else if "=<>".contains(c) {
+            let mut op = String::new();
+            while let Some(&c) = chars.peek().filter(|c| "=<>".contains(**c)) {
+                op.push(c);
+                chars.next();
+            }
+            args.push(op);
+        } else {
+            let mut word = String::new();
+            while let Some(&c) = chars
+                .peek()
+                .filter(|c| !c.is_whitespace() && !"\"=<>".contains(**c))
+            {
+                word.push(c);
+                chars.next();
+            }
+            args.push(word);
+        }
+    }
+    args
 }
 
 /// Vertical bands (top, bottom from the page top) of the header's page- or
@@ -1159,4 +1251,47 @@ pub(super) fn resolve_footer_for_page(
         }
     }
     (None, t, section_idx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn if_over_stylerefs_takes_the_page_value() {
+        let sr = |number| {
+            IfPart::Field(FieldCode::StyleRef {
+                name: "CharPartNo".into(),
+                number,
+            })
+        };
+        let text = |t: &str| IfPart::Text(t.into());
+        // IF {STYLEREF CharPartNo \n} = 0 "{STYLEREF CharPartNo}" "Part {STYLEREF CharPartNo \n}"
+        let parts = [
+            text(" IF "),
+            sr(true),
+            text(" = 0 \""),
+            sr(false),
+            text("\" \"Part "),
+            sr(true),
+            text("\""),
+        ];
+        let mut styleref_values = HashMap::new();
+        let eval = |values: &HashMap<String, String>| {
+            FieldValues {
+                page_num: 1,
+                total_pages: 1,
+                styleref_values: values,
+                page_num_format: None,
+            }
+            .eval(&FieldCode::If(parts.to_vec()))
+        };
+        assert_eq!(eval(&styleref_values), None);
+        styleref_values.insert(styleref_key("charpartno", false), "Part 3".to_string());
+        styleref_values.insert(styleref_key("charpartno", true), "0".to_string());
+        assert_eq!(eval(&styleref_values).as_deref(), Some("Part 3"));
+        styleref_values.insert(styleref_key("charpartno", true), "4".to_string());
+        assert_eq!(eval(&styleref_values).as_deref(), Some("Part 4"));
+        assert_eq!(field_args("a<>\"b c\" 2"), ["a", "<>", "b c", "2"]);
+    }
 }
