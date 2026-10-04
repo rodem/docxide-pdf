@@ -4,7 +4,8 @@ use super::images::compute_drawing_info;
 use super::numbering::{ListCounters, ListLabelInfo, parse_list_info};
 use super::runs::{parse_runs, push_textbox};
 use super::styles::{
-    ParagraphStyle, StyleDefaults, parse_alignment, parse_font_size, resolve_font_from_node_opt,
+    ParagraphStyle, StyleDefaults, half_points, parse_alignment, parse_font_size,
+    resolve_font_from_node_opt,
 };
 use super::textbox::collect_textboxes_from_paragraph;
 use super::{
@@ -60,6 +61,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         .and_then(|rf| resolve_font_from_node_opt(rf, ctx.theme))
         .or_else(|| para_style.and_then(|s| s.font_name.clone()))
         .or_else(|| Some(ctx.styles.defaults.font_name.clone()));
+    let paragraph_mark_position = paragraph_mark_position(ppr_rpr, para_style);
 
     // A paragraph-level pBdr element overrides the style borders even when
     // all individual borders are set to val="none" (parsed as None).
@@ -363,6 +365,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         paragraph_mark_vanish,
         paragraph_mark_font_size,
         paragraph_mark_font_name,
+        paragraph_mark_position,
         snap_to_grid,
         auto_space_de,
         auto_space_dn,
@@ -397,12 +400,25 @@ pub(super) fn split_at_page_break(para: &mut Paragraph) -> Option<Paragraph> {
         paragraph_mark_vanish: para.paragraph_mark_vanish,
         paragraph_mark_font_size: para.paragraph_mark_font_size,
         paragraph_mark_font_name: para.paragraph_mark_font_name.clone(),
+        paragraph_mark_position: para.paragraph_mark_position,
         snap_to_grid: para.snap_to_grid,
         auto_space_de: para.auto_space_de,
         auto_space_dn: para.auto_space_dn,
         ..Paragraph::default()
     };
     Some(rest)
+}
+
+/// The paragraph mark's `w:position`, from its own rPr or the paragraph style.
+/// Shared by body and table-cell paragraphs.
+pub(super) fn paragraph_mark_position(
+    ppr_rpr: Option<roxmltree::Node>,
+    para_style: Option<&ParagraphStyle>,
+) -> f32 {
+    ppr_rpr
+        .and_then(|rpr| half_points(rpr, "position"))
+        .or_else(|| para_style.and_then(|s| s.position))
+        .unwrap_or(0.0)
 }
 
 /// `w:contextualSpacing`, direct or from the style. Shared by body and

@@ -481,6 +481,8 @@ pub struct Paragraph {
     pub paragraph_mark_vanish: bool,
     pub paragraph_mark_font_size: Option<f32>,
     pub paragraph_mark_font_name: Option<String>,
+    /// The mark's `w:position` in points (negative = lowered).
+    pub paragraph_mark_position: f32,
     pub snap_to_grid: bool,
     pub auto_space_de: bool,
     pub auto_space_dn: bool,

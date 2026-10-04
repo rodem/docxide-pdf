@@ -689,6 +689,8 @@ pub(super) fn compute_row_layouts(
                                         line_h,
                                         grid_pitch,
                                     )
+                                } else if is_text_empty(runs) && para.content_height == 0.0 {
+                                    line_h + super::mark_position_stretch(para, effective_ls, false)
                                 } else {
                                     line_h
                                 };

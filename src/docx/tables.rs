@@ -811,6 +811,10 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         connectors: parsed.connectors,
                         style_id: Some(para_style_id.to_string()),
                         contextual_spacing: super::paragraph::contextual_spacing(ppr, para_style),
+                        paragraph_mark_position: super::paragraph::paragraph_mark_position(
+                            ppr.and_then(|ppr| wml(ppr, "rPr")),
+                            para_style,
+                        ),
                         tab_stops,
                         ..Paragraph::default()
                     }));

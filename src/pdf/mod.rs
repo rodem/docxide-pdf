@@ -321,6 +321,17 @@ fn unsized_line_metrics(
     (para.paragraph_mark_font_size.unwrap_or(font_size), lhr)
 }
 
+/// A raised or lowered mark stretches its empty line, as a positioned run
+/// stretches a text line (czech_municipal's 0.5pt-lowered Normal spacers are
+/// 14.54, not 14.04). Fixed-height lines don't stretch.
+fn mark_position_stretch(para: &Paragraph, ls: LineSpacing, grid_snapped: bool) -> f32 {
+    if grid_snapped || matches!(ls, LineSpacing::Exact(_)) {
+        0.0
+    } else {
+        para.paragraph_mark_position.abs()
+    }
+}
+
 /// Look up the line_h_ratio for a break run's font, matching by font_size.
 fn break_run_lhr(runs: &[Run], break_fs: f32, fonts: &HashMap<String, FontEntry>) -> Option<f32> {
     // Find the break run with the matching font size
@@ -2117,7 +2128,7 @@ fn render_paragraph_block(
         } else if para.content_height > 0.0 {
             para.content_height
         } else {
-            line_h
+            line_h + mark_position_stretch(para, effective_ls, grid_snapped)
         }
     } else {
         let num_lines = lines.len();
