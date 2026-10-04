@@ -67,6 +67,17 @@ pub(crate) fn resolve_line_h(ls: LineSpacing, font_size: f32, tallest_lhr: Optio
     }
 }
 
+/// How much of its ascent a line's first baseline sits below the line top.
+/// Below single spacing Word shrinks the whole line box, ascent and descent
+/// alike; at or above it the extra leading all goes below the baseline (Word
+/// probes: Times New Roman and Arial, 7-20pt lines at 0.8, 0.9, 1, 1.15, 1.5).
+pub(crate) fn auto_ascent_scale(ls: LineSpacing) -> f32 {
+    match ls {
+        LineSpacing::Auto(m) if m < 1.0 => m,
+        _ => 1.0,
+    }
+}
+
 fn border_eq(a: &Option<ParagraphBorder>, b: &Option<ParagraphBorder>) -> bool {
     match (a, b) {
         (None, None) => true,

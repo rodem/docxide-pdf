@@ -44,7 +44,7 @@ use header_footer::{
 };
 pub(super) use helpers::resolve_line_h;
 use helpers::{
-    align_offset, collect_paras, draw_horizontal_rule, drops_contextual_spacing,
+    align_offset, auto_ascent_scale, collect_paras, draw_horizontal_rule, drops_contextual_spacing,
     joins_border_group, para_runs_with_textboxes,
 };
 use images::{EffectXObjs, EmbeddedImages, embed_all_images};
@@ -2053,6 +2053,9 @@ fn render_paragraph_block(
     // `inline_line_advance` and `picture_line_bottom`). The bottom part is only
     // read for picture lines, so most paragraphs skip its run scan.
     let para_ascent = exact_baseline_base.unwrap_or(font_size * tallest_ar.unwrap_or(0.75));
+    let first_baseline_offset =
+        label_boosted_baseline_offset(para, ctx.fonts, para_ascent, font_size)
+            * auto_ascent_scale(effective_ls);
     // A grid or an exact rule gives every line the same box.
     if !grid_snapped && !matches!(effective_ls, LineSpacing::Exact(_)) {
         size_lines_by_own_runs(&mut lines, ctx.fonts, effective_ls, line_h, para_ascent);
@@ -2461,7 +2464,7 @@ fn render_paragraph_block(
             let baseline_offset = if grid_snapped {
                 grid_baseline
             } else {
-                label_boosted_baseline_offset(para, ctx.fonts, para_ascent, font_size)
+                first_baseline_offset
             };
             let baseline_y = state.pb.slot_top - baseline_offset;
 
@@ -2535,7 +2538,7 @@ fn render_paragraph_block(
             let baseline_offset2 = if grid_snapped {
                 grid_baseline
             } else {
-                font_size * ascender_ratio
+                font_size * ascender_ratio * auto_ascent_scale(effective_ls)
             };
             let baseline_y2 = state.pb.slot_top - baseline_offset2;
 
@@ -2962,7 +2965,7 @@ fn render_paragraph_block(
         let baseline_offset = if grid_snapped {
             grid_baseline
         } else {
-            label_boosted_baseline_offset(para, ctx.fonts, para_ascent, font_size)
+            first_baseline_offset
         };
         let baseline_y = state.pb.slot_top - bdr_top_pad - baseline_offset;
 

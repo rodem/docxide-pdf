@@ -947,7 +947,10 @@ pub(super) fn compute_row_layouts(
                                     lines,
                                     line_h,
                                     font_size,
-                                    ascender_ratio,
+                                    // Places the first baseline only, which rises
+                                    // with a box shrunk below single spacing.
+                                    ascender_ratio: ascender_ratio
+                                        * super::helpers::auto_ascent_scale(effective_ls),
                                     descender_ratio,
                                     font_substituted,
                                     alignment: para.alignment,
