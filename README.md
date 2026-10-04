@@ -33,14 +33,15 @@ Every fixture in the test corpus rendered side by side by Word (the reference) a
 * [office2pdf](https://github.com/developer0hye/office2pdf)
 * [jubarte-redlines](https://crates.io/crates/jubarte-redlines).
 
-Each engine is scored against the Word reference with the same three metrics the test
-suite uses:
+Each engine is scored against the Word reference with the same metrics the test
+suite uses: three for how the pages look, and one for how accessible the PDF is.
 
 | Metric | What it measures |
 |---|---|
 | **J** (Jaccard) | Overlap of ink pixels at 150 DPI. Strict: a one-line vertical shift sends it toward zero. |
 | **SSIM** | Structural similarity on 8×8 windows with ±8 px vertical tolerance, so small drift is forgiven. |
 | **TB** (text boundary) | Share of lines whose first and last word match the reference. Measures line breaking and pagination, independent of fonts. |
+| **a11y** | PDF/UA-1 rules failed (veraPDF), how many of those Word passes, and how closely the tag structure and screen-reader text order match Word's. |
 
 
 ## Got a weird DOCX?
