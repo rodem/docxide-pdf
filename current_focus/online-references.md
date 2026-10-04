@@ -186,12 +186,48 @@ Biggest movers (baseline → now, J):
   +6.3, case49 +9.9), 90 down (case9 −7.4, fonts/arial −3.2; also the local
   references, which need exact widths). Missing pieces: reset at source-run
   boundaries, and the right per-font word-start model.
-- **Next step:** find the word-start rule. Per word, compare the online
-  advance to the next word start with (a) exact, (b) glyph-rounded sum, per
-  font and size; `wordadv.py` started this but needs the clean-segment filter
-  from `models2.py`. Then carry source-run boundaries through
-  `merge_compatible_runs` and apply the shift per run, only for online
-  references' conditions.
+- **Correction (second round, 2026-10-04; scripts in `tests/output/probe_adv/`).**
+  Parts of the list above came from a parser that ignored `Tc` and `q`/`Q`,
+  and from documents with `w:kern` on (case42: its "short words" are GPOS
+  kerning). `pdfglyphs.py` now handles Tc/Tw/q/Q/hex strings; `match.py` pairs
+  Word's glyphs (with their TJ segments) with ours (mutool stext) by text.
+  - **Probe** (`probe_adv/mk.py`, online export `adv.pdf`): one run of 25
+    copies of a glyph, then " X"; 6 fonts × 10/11/12pt × 17 glyphs. The X
+    position gives each glyph's layout width to ±0.005pt: **layout widths are
+    the exact font widths** (mean |err| 0.007, i.e. noise). No quantization
+    (1/16, 1/20, 1/32, 1/40, 1/64pt, 1/1000 em, 96 dpi) and no v35-hinted
+    advance at any dpi 72–2880 fits better (`quant.py`, `hint35.py`).
+  - Inside a segment Word draws on a 0.25pt grid, but **not** as a rounding of
+    a constant advance (TNR 12 `e`: steps 5.25/5.25/5.25/5.5, period 4 then 3)
+    and not as per-glyph rounding with a drift threshold either: over 106k
+    glyph steps, uncorrected steps occur at drifts from −0.6 to +0.35pt
+    (`corr.py`). The mechanism is still unknown.
+  - Embedded font programs (`hmtx_cmp.py`): the server's Arial 7.00, TNR 7.02,
+    Calibri 6.24, Cambria 6.99, Georgia 5.59 have **identical advance widths**
+    to our files (only hinting/versions differ).
+  - **Measured effect** over 114k matched glyphs on all online references
+    (`evalm.py`, cache `evalm.pkl`): within a segment Word's glyphs sit
+    **~0.07% closer together** than ours; segment starts carry no accumulated
+    shrink (runs reset it). Mean |error| per glyph: ours 0.201pt, segment-
+    relative scale −0.7‰ 0.168, line-relative scale 0.178, plus 0.25 grid
+    with ±0.2pt hysteresis 0.165, Word's own snapped in-segment offsets
+    (floor) 0.109. The best scale is face-dependent: TNR −1.0‰, Calibri −0.8,
+    Cambria −0.6, Arial −0.4, Aptos −0.2, Arial-Bold 0.
+  - **Experiment** (`dig/width/run_shrink_experiment.patch`, not committed):
+    at draw time each word moves toward its run's start by 0.07% of its
+    distance (run approximated by unchanged font/size/colour and no tab gap;
+    line breaking untouched). Snapshot `exp-shrink` vs `base-4f`: mean J
+    63.85 → 64.45, 88 up / 64 down (> 0.5): hyphenation +6.0, czech_census
+    +5.2, case18 +5.4; losers czech_works −7.1, indonesian_bench −5.2,
+    fonts/arial −3.8 (Arial and TNR Bold/Italic lines overshoot), and the
+    local-reference fixtures (door_air −6.5, case64 −5.8).
+- **Next step:** decide whether a measured constant is acceptable (it is a
+  fit, not a derived rule). If yes: carry source-run boundaries through
+  `merge_compatible_runs` instead of the formatting heuristic, and check
+  justified lines separately. If no: the per-face spread suggests the drawing
+  rule depends on each glyph's width fraction; a probe with two-glyph
+  alternations ("eaeaea…", "eoeo…") at several sizes would show how Word
+  places mixed glyphs, which the single-glyph probe cannot.
 
 ### 4b. Markup / comment pane (open)
 
@@ -289,11 +325,10 @@ Open from this round:
 ### 4f. Next steps (in order)
 
 1. **Glyph-width drift** (§4a): the biggest remaining gap, nearly every
-   fixture. Known: in-word advances are exact widths rounded to 0.25pt; each
-   source run is placed at its exact layout position; line breaking uses exact
-   widths. Unknown: the per-font word-start rule. Needs source-run boundaries
-   carried through `merge_compatible_runs`, then a drawing-time shift per run
-   (`render_shift_attempt.patch` is a starting point).
+   fixture. Known: layout widths are exact; each source run starts at its
+   layout position; inside a run Word draws ~0.07% narrower on a 0.25pt grid
+   (face-dependent). An empirical in-run shrink gives +0.6 J mean
+   (`run_shrink_experiment.patch`); waiting on the user's call (§4a end).
 2. **More probe-derived geometry**: superscript/subscript offset and size,
    highlight box height, double underline placement (thickness = half the
    single, rounded; gap ~1.0pt; vertical placement not yet fitted, data in
