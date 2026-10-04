@@ -1486,10 +1486,17 @@ fn render_paragraph_block(
     // into whatever follows (annotation #219: heading into table border).
     // An at-least line whose minimum wins is bottom-aligned the same way (online
     // export: czech_census's 10pt lines under atLeast 12.05 start 0.55pt lower);
-    // when the text is taller the formula gives the ascent as before.
-    let exact_baseline_base = match (effective_ls, tallest_lhr, tallest_ar) {
-        (LineSpacing::Exact(_) | LineSpacing::AtLeast(_), Some(lhr), Some(ar)) if lhr > ar => {
-            Some(line_h - font_size * (lhr - ar))
+    // when the text is taller it is an ordinary line. The descent excludes the
+    // East Asian leading Word puts below the glyphs of a normal line.
+    let bottom_aligned = |lhr: f32| match effective_ls {
+        LineSpacing::Exact(_) => true,
+        LineSpacing::AtLeast(min) => min > font_size * lhr,
+        LineSpacing::Auto(_) => false,
+    };
+    let exact_baseline_base = match (tallest_lhr, tallest_ar) {
+        (Some(lhr), Some(ar)) if lhr > ar && bottom_aligned(lhr) => {
+            let half_lead = layout::tallest_glyph_run_half_leading(&para.runs, ctx.fonts);
+            Some(line_h - font_size * (lhr - ar - half_lead))
         }
         _ => None,
     };

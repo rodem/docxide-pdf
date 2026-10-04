@@ -3320,6 +3320,38 @@ pub(super) fn tallest_glyph_run_metrics(
     ))
 }
 
+/// Half the East Asian 1.3× leading, per em, of the tallest glyph run: the part
+/// an exact or at-least box keeps below the glyphs (0 for other fonts).
+pub(super) fn tallest_glyph_run_half_leading(
+    runs: &[Run],
+    seen_fonts: &HashMap<String, FontEntry>,
+) -> f32 {
+    let mut best = (0.0f32, 0.0f32);
+    let mut key_buf = String::new();
+    for run in runs
+        .iter()
+        .filter(|r| sizes_line(r) && !r.is_line_break && !r.is_math)
+    {
+        let Some(entry) = seen_fonts.get(font_key_buf(run, &mut key_buf)) else {
+            continue;
+        };
+        let (lhr, ar) = run_line_metrics(entry, &run.text);
+        let ascent = run.font_size * ar.unwrap_or(0.75);
+        if ascent > best.0 {
+            let cjk_box = entry.east_asian && ar == entry.ascender_ratio;
+            best = (
+                ascent,
+                if cjk_box {
+                    lhr.unwrap_or(0.0) * 0.3 / 2.6
+                } else {
+                    0.0
+                },
+            );
+        }
+    }
+    best.1
+}
+
 /// (font_size, line_h_ratio, ascender_ratio) of the run with the tallest ascent
 /// (font_size × ascender ratio); None when no run has one.
 fn tallest_by_ascent<'a>(
