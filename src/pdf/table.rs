@@ -2039,6 +2039,7 @@ pub(super) fn render_header_footer_table(
     styleref_values: &HashMap<String, String>,
     page_num_format: Option<&str>,
     gradient_specs: &mut Vec<super::GradientSpec>,
+    links: &mut Vec<LinkAnnotation>,
 ) {
     let mut col_widths = auto_fit_columns(table, ctx.fonts, None, None);
     apply_pct_width(
@@ -2080,7 +2081,7 @@ pub(super) fn render_header_footer_table(
         cursor_y,
         ctx,
         gradient_specs,
-        &mut Vec::new(),
+        links,
         None,
         0..usize::MAX,
     );

@@ -3659,6 +3659,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
         let mut hf = Content::new();
         let mut has_hf = false;
+        let mut hf_links = Vec::new();
 
         let (header, hdr_type, hdr_si) = resolve_header_for_page(doc, si, is_first, page_num);
         if let Some(header_data) = header {
@@ -3684,6 +3685,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 true,
                 &pc,
                 &mut state.pb.all_gradient_specs[page_idx],
+                &mut hf_links,
             );
             has_hf = true;
         }
@@ -3712,8 +3714,23 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 false,
                 &pc,
                 &mut state.pb.all_gradient_specs[page_idx],
+                &mut hf_links,
             );
             has_hf = true;
+        }
+
+        // The text is a pagination artifact, but PDF/UA puts every link
+        // annotation in a Link element (Word leaves them untagged): one per
+        // link, holding only its annotations.
+        let mut prev: Option<(String, usize)> = None;
+        for mut link in hf_links {
+            let node = match &prev {
+                Some((url, n)) if *url == link.url => *n,
+                _ => state.pb.tags.add(tagging::ROOT, "Link"),
+            };
+            prev = Some((link.url.clone(), node));
+            link.node = Some(node);
+            state.pb.all_links[page_idx].push(link);
         }
 
         if has_hf {

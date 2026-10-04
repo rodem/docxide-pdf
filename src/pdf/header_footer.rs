@@ -10,7 +10,7 @@ use crate::model::{
 use super::color::stroke_segment;
 use super::helpers::{align_offset, draw_horizontal_rule};
 use super::layout::{
-    LineOpts, build_lines, is_text_empty, lines_height, picture_line_bottom,
+    LineOpts, LinkAnnotation, build_lines, is_text_empty, lines_height, picture_line_bottom,
     render_paragraph_lines, runs_max_image_h, tallest_run_metrics,
 };
 use super::positioning::resolve_h_position;
@@ -340,6 +340,8 @@ pub(super) fn render_header_footer(
     is_header: bool,
     pc: &HfPageContext,
     gradient_specs: &mut Vec<super::GradientSpec>,
+    // The page's header/footer links; the text stays an artifact.
+    links: &mut Vec<LinkAnnotation>,
 ) {
     let page_num = pc.page_num;
     let total_pages = pc.total_pages;
@@ -379,6 +381,7 @@ pub(super) fn render_header_footer(
                     styleref_values,
                     page_num_format,
                     gradient_specs,
+                    links,
                 );
                 prev_space_after = 0.0;
             }
@@ -460,7 +463,7 @@ pub(super) fn render_header_footer(
                     (font_size * ascender_ratio, 0.0),
                     lines.len(),
                     0,
-                    &mut Vec::new(),
+                    links,
                     0.0,
                     ctx.fonts,
                     None,
@@ -736,7 +739,7 @@ pub(super) fn render_header_footer(
                             tb_metrics,
                             tb_lines.len(),
                             0,
-                            &mut Vec::new(),
+                            links,
                             0.0,
                             ctx.fonts,
                             None,
@@ -1057,7 +1060,7 @@ pub(super) fn render_header_footer(
                     metrics,
                     lines.len(),
                     0,
-                    &mut Vec::new(),
+                    links,
                     text_hanging,
                     ctx.fonts,
                     hdr_line_geom.as_deref(),
