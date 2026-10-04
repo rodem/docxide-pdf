@@ -642,6 +642,61 @@ pub(super) struct FloatingTablePos {
     pub v_anchor_text: bool,
 }
 
+impl FloatingTablePos {
+    /// Where a floating table goes: `tblpX`/`tblpXSpec` against its anchor
+    /// column (`col_x`, `col_w`), `tblpY` below the page, the margin or the
+    /// text (`text_y`: where its anchor paragraph's flow is).
+    pub(super) fn resolve(
+        table: &crate::model::Table,
+        pos: &crate::model::TablePosition,
+        sp: &SectionProperties,
+        col_x: f32,
+        col_w: f32,
+        text_y: f32,
+        ctx: &RenderContext,
+    ) -> Self {
+        let h_relative_from = match pos.h_anchor {
+            "page" => HRelativeFrom::Page,
+            "margin" => HRelativeFrom::Margin,
+            _ => HRelativeFrom::Column,
+        };
+        let x = resolve_h_position(
+            h_relative_from,
+            &pos.h_position,
+            table.col_widths.iter().sum(),
+            sp,
+            col_x,
+            col_w,
+            sp.text_width(),
+        );
+        // Before compat 15 an offset places the first cell's text, not
+        // its border, as tblInd does inline: Word draws case46's R1 at
+        // the margin and the border a cell margin left of it.
+        let x = if ctx.compat_mode < 15
+            && matches!(pos.h_position, crate::model::HorizontalPosition::Offset(_))
+        {
+            x - table.cell_margins.left
+        } else {
+            x
+        };
+        let y = match pos.v_anchor {
+            "page" => sp.page_height - pos.v_offset_pt,
+            "margin" => sp.page_height - sp.margin_top - pos.v_offset_pt,
+            _ => text_y - pos.v_offset_pt,
+        };
+        FloatingTablePos {
+            x,
+            y,
+            top_from_text: pos.top_from_text,
+            bottom_from_text: pos.bottom_from_text,
+            left_from_text: pos.left_from_text,
+            right_from_text: pos.right_from_text,
+            v_offset_pt: pos.v_offset_pt,
+            v_anchor_text: pos.v_anchor == "text",
+        }
+    }
+}
+
 pub(super) struct PageBuilder {
     // Current page state
     pub(super) content: Content,
@@ -3353,47 +3408,16 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                     state.pb.lists.close();
                     state.pb.toc = None;
                     let override_pos = table.position.as_ref().map(|pos| {
-                        let table_total_w: f32 = table.col_widths.iter().sum();
                         let (col_x, col_w) = col_geometry[state.current_col];
-                        let h_relative_from = match pos.h_anchor {
-                            "page" => HRelativeFrom::Page,
-                            "margin" => HRelativeFrom::Margin,
-                            _ => HRelativeFrom::Column,
-                        };
-                        let x = resolve_h_position(
-                            h_relative_from,
-                            &pos.h_position,
-                            table_total_w,
+                        FloatingTablePos::resolve(
+                            table,
+                            pos,
                             sp,
                             col_x,
                             col_w,
-                            text_width,
-                        );
-                        // Before compat 15 an offset places the first cell's text, not
-                        // its border, as tblInd does inline: Word draws case46's R1 at
-                        // the margin and the border a cell margin left of it.
-                        let x = if ctx.compat_mode < 15
-                            && matches!(pos.h_position, crate::model::HorizontalPosition::Offset(_))
-                        {
-                            x - table.cell_margins.left
-                        } else {
-                            x
-                        };
-                        let y = match pos.v_anchor {
-                            "page" => sp.page_height - pos.v_offset_pt,
-                            "margin" => sp.page_height - sp.margin_top - pos.v_offset_pt,
-                            _ => state.pb.slot_top - pos.v_offset_pt,
-                        };
-                        FloatingTablePos {
-                            x,
-                            y,
-                            top_from_text: pos.top_from_text,
-                            bottom_from_text: pos.bottom_from_text,
-                            left_from_text: pos.left_from_text,
-                            right_from_text: pos.right_from_text,
-                            v_offset_pt: pos.v_offset_pt,
-                            v_anchor_text: pos.v_anchor == "text",
-                        }
+                            state.pb.slot_top,
+                            &ctx,
+                        )
                     });
                     let col_bounds = if col_count > 1 {
                         Some(col_geometry[state.current_col])

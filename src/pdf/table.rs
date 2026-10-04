@@ -2054,19 +2054,35 @@ pub(super) fn render_header_footer_table(
         page_num_format,
     };
     let row_layouts = compute_row_layouts(table, &col_widths, ctx, Some(&hf_sub));
-    let cm = &table.cell_margins;
-    let table_left = {
+    // A floating table sits at its own position and leaves the header's flow
+    // alone (french_sexual: the logo paragraph after it starts at the header top).
+    let mut float_y: f32;
+    let (table_left, y) = if let Some(pos) = &table.position {
+        let fp = super::FloatingTablePos::resolve(
+            table,
+            pos,
+            sp,
+            sp.margin_left,
+            sp.text_width(),
+            *cursor_y,
+            ctx,
+        );
+        float_y = fp.y;
+        (fp.x, &mut float_y)
+    } else {
         use crate::model::TableAlignment;
-        let text_width = sp.page_width - sp.margin_left - sp.margin_right;
+        let cm = &table.cell_margins;
+        let text_width = sp.text_width();
         let table_total_w: f32 = col_widths.iter().sum();
-        match table.alignment {
+        let left = match table.alignment {
             TableAlignment::Center => sp.margin_left + (text_width - table_total_w) / 2.0,
             TableAlignment::Right => sp.margin_left + text_width - table_total_w,
             TableAlignment::Left if ctx.compat_mode >= 15 => {
                 sp.margin_left + table.table_indent + word2013_border_shift(table)
             }
             TableAlignment::Left => sp.margin_left + table.table_indent - cm.left,
-        }
+        };
+        (left, cursor_y)
     };
 
     let merge_spans = compute_merge_spans(table, &row_layouts);
@@ -2078,7 +2094,7 @@ pub(super) fn render_header_footer_table(
         table_left,
         &merge_spans,
         content,
-        cursor_y,
+        y,
         ctx,
         gradient_specs,
         links,

@@ -283,6 +283,8 @@ fn compute_header_height(
                 height += content_h + bottom_border_band(para);
                 prev_space_after = para.space_after;
             }
+            // A floating table takes no room in the header's flow
+            Block::Table(table) if table.position.is_some() => {}
             Block::Table(table) => {
                 let content_w = sp.text_width();
                 height += table::compute_hf_table_height(table, ctx, content_w);
