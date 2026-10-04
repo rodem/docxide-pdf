@@ -1357,11 +1357,23 @@ Measured on case80 and Word probes, now implemented (`pdf/mod.rs`):
 - An autofit table in a newspaper column is sized like a page table, then
   squeezed in proportion to each grid column's room above its longest word.
 
+- A region spanning pages is balanced on its last page (a floor on that
+  page's column bottom during the trial).
+- A paragraph's overflow continues column by column and page by page (it
+  used to be drawn whole in the next column, past the page bottom).
+
+Word probes (2026-10-05, 2–4 columns, widow control on/off, one long
+paragraph, two-page regions): column line counts match in 9 of 10.
+
 Open:
-- A long region (spanning pages) that ends at a continuous break is not
-  balanced on its last page (needs a trial from that page's top).
+- Word's balanced height is not always the minimal one: a 3-column last page
+  came out 14/14/12 lines where 14/13/13 fits (ours). Word's region bottom
+  fits max(top + total height / columns, deepest column) in most probes;
+  single-paragraph regions end ~5pt above ours (we add the trailing space
+  after).
 - Word lets a column-break paragraph's first line sit in the column before
   the break: case80's 4-column separator runs 25pt lower than ours.
+- Each balancing trial lays the whole region out again (~13× for a long one).
 
 ### `w:mirrorMargins` (TODO — MEDIUM IMPACT)
 
