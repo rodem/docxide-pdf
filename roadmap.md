@@ -146,17 +146,20 @@ offset (0.08 em, was 0.12): czech_crisis, isla, uk_commercial move ≤0.4pt.
 Element-level `/ActualText` is ignored by extraction and Poppler; prefer
 content-level fixes (see `current_focus/A11Y.md`).
 
-**Done, round 6 (2026-10-04, branch `a11y-round6`):** measured over the 240
+**Done, round 6 (2026-10-04, `40c351ff`..`cec49b91`):** measured over the 240
 references now tagged (the re-exports added 67). Office Math is a Formula
 with a spoken `/Alt` from Word's own rules (`docx/math_speech.rs`; pendulum
 text 72 → 98%) · textboxes in table cells are `Sect > P` inside their TD/TH
 (japanese_land text 86 → 100%) · header/footer links keep their annotations,
-each in a Link holding only its OBJR (Word leaves them untagged) · OLE
+and every annotation drawn in an artifact gets a Link holding only its OBJR
+(Word leaves them untagged) · OLE
 objects take their alt from the VML shape, or stay artifacts without one,
 and a decorative block picture's paragraph mark keeps its element ·
 Symbol-font low bytes and Wingdings 3 triangles extract as Unicode · the
 comment pane's label draws in the main font's bold face, so its brackets are
-no longer `.notdef` (door_air_cooling, the one visual change).
+no longer `.notdef` (door_air_cooling, the one visual change), nor the ? of
+a label without initials · a `/simplify` pass (one comment-pane font choice,
+one Span/Formula slot in `LinkTagger`, shared math helpers; no score moved).
 ua_deficit 2 → 0, ua_fail 510 → 504, text 96.34 → 96.51%, struct
 95.83 → 95.84%, +1.2 KB. Most of the remaining text gap is Word: rows split
 at page breaks become two TRs, continued footnotes two Ps, and some lists
