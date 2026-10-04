@@ -1955,7 +1955,10 @@ fn render_paragraph_block(
         // A line holding only a w:br is as tall as the break run, wherever it
         // falls: pasto's title opens with an unformatted <w:br/> (11pt) above
         // its 12pt bold text, and Word steps 12.65 for that line, not 13.80.
-        for line in lines.iter_mut().filter(|l| l.ends_with_break && l.pitch.is_none()) {
+        for line in lines
+            .iter_mut()
+            .filter(|l| l.ends_with_break && l.pitch.is_none())
+        {
             if let Some(bfs) = line.break_font_size {
                 let lhr = line
                     .break_lhr

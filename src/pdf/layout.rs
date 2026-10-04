@@ -733,6 +733,9 @@ pub(super) struct TextLine {
     pub(super) break_font_size: Option<f32>,
     /// Line-height ratio of the break run that ended this otherwise empty line.
     pub(super) break_lhr: Option<f32>,
+    /// First chunk after the line's last tab: justification stretches only the
+    /// gaps from here on (Word starts the text at the tab stop).
+    pub(super) justify_from: usize,
     /// The breaker kept this line's last word by narrowing its spaces
     /// (`SPACE_SQUEEZE`), so it is wider than the measure until justified.
     pub(super) squeezed: bool,
@@ -2002,6 +2005,7 @@ pub(super) fn build_tabbed_line(
     ));
 
     let mut result_lines: Vec<TextLine> = Vec::new();
+    let mut justify_from = 0usize;
     let mut all_chunks: Vec<WordChunk> = Vec::new();
     let mut current_x: f32 = 0.0;
     let mut pending_space_w: f32 = 0.0;
@@ -2111,7 +2115,10 @@ pub(super) fn build_tabbed_line(
             // beyond max_width) before forcing a wrap.
             let wrap_limit = line_max + indent_right;
             if seg_start > wrap_limit && !all_chunks.is_empty() {
-                result_lines.push(finish_line(&mut all_chunks));
+                result_lines.push(TextLine {
+                    justify_from: std::mem::take(&mut justify_from),
+                    ..finish_line(&mut all_chunks)
+                });
                 tab_wrapped_line = true;
                 current_x = 0.0;
                 is_first_line = false;
@@ -2197,13 +2204,17 @@ pub(super) fn build_tabbed_line(
 
             current_x = seg_start;
             tab_stop_pos = Some(effective_tab_target);
+            justify_from = all_chunks.len();
         }
 
         // Layout text in this segment from current_x
         for (local_idx, run) in seg_runs.iter().enumerate() {
             if run.is_line_break {
                 mark_space_after(&mut all_chunks);
-                result_lines.push(finish_line_with_break(&mut all_chunks));
+                result_lines.push(TextLine {
+                    justify_from: std::mem::take(&mut justify_from),
+                    ..finish_line_with_break(&mut all_chunks)
+                });
                 tab_wrapped_line = false;
                 current_x = 0.0;
                 is_first_line = false;
@@ -2283,7 +2294,10 @@ pub(super) fn build_tabbed_line(
                 };
                 // Wrap word to new line if it exceeds max_width
                 if current_x + ww > cur_line_max && !all_chunks.is_empty() && !is_continuation {
-                    result_lines.push(finish_line(&mut all_chunks));
+                    result_lines.push(TextLine {
+                        justify_from: std::mem::take(&mut justify_from),
+                        ..finish_line(&mut all_chunks)
+                    });
                     tab_wrapped_line = false;
                     current_x = 0.0;
                     is_first_line = false;
@@ -2328,7 +2342,10 @@ pub(super) fn build_tabbed_line(
     // their line though nothing is drawn on it: bulgarian_road_safety's
     // trailing tabs after "/Зл. Атанасова/" take a second line in Word.
     if !all_chunks.is_empty() {
-        result_lines.push(finish_line(&mut all_chunks));
+        result_lines.push(TextLine {
+            justify_from: std::mem::take(&mut justify_from),
+            ..finish_line(&mut all_chunks)
+        });
     } else if result_lines.is_empty() || tab_wrapped_line {
         result_lines.push(TextLine::default());
     }
@@ -2594,6 +2611,13 @@ pub(super) fn render_paragraph_lines(
             .map(|rr| rr.first_chunk_idx)
             .unwrap_or(line.chunks.len());
         let gaps_before = spaces_before_each(&line.chunks[..left_chunk_count]);
+        let jf = line.justify_from.min(left_chunk_count.saturating_sub(1));
+        let tab_gaps = gaps_before.get(jf).copied().unwrap_or(0);
+        let gaps_before: Vec<usize> = gaps_before
+            .iter()
+            .enumerate()
+            .map(|(i, &g)| if i < jf { 0 } else { g - tab_gaps })
+            .collect();
         let left_gaps = gaps_before.last().copied().unwrap_or(0);
 
         // CJK justification: distribute space between every character, not just chunks.
