@@ -848,6 +848,15 @@ wraps a lone EMR_STRETCHDIBITS DIB as a BMP, and inline pictures honour `a:xfrm@
 
 ## Engine Comparison Findings (2026-09-04, `tools/engine_compare.py`)
 
+CI (2026-10-04): the site is built by 4 shard jobs (`--shard i/4`, own cache
+each) and a `publish` job that joins them (`--merge`); a cold shard takes ~30 min
+where one runner took ~110 min. Competitor versions left the cache key (each PDF
+is stamped with its engine's version instead), so a release no longer cold-starts
+everything. Scoring is 3/4 of the thread time, mostly one veraPDF JVM start per
+competitor PDF (~1,400 per cold run, 0.7–1 s each on a laptop, more on the runner);
+if runs grow again, batch those into one `verapdf` call per shard (its JSON report
+carries one job per file) via a `page-metrics` pre-pass that writes the `.a11y.json` caches.
+
 Across 207 fixtures vs the Word reference we lead LibreOffice on mean Jaccard
 (48.2 vs 39.5) and roughly tie on SSIM and text-boundary; MiniPdf is far behind
 on all three. But LibreOffice beats us by 45+ points averaged over J/SSIM/TB on
