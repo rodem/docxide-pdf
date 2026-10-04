@@ -1428,6 +1428,10 @@ fn para_tag_kind(para: &Paragraph, style_name: Option<&String>) -> &'static str 
     })
 }
 
+/// How far outside its `space` a paragraph's left or right border sits.
+const LEFT_BORDER_GAP: f32 = 1.47;
+const RIGHT_BORDER_GAP: f32 = 1.73;
+
 /// Render a single paragraph block. Returns `true` if the block was skipped
 /// (the caller should `continue` the block loop).
 #[allow(clippy::too_many_arguments)]
@@ -2703,17 +2707,19 @@ fn render_paragraph_block(
 
     // Draw paragraph shading (background), extending outward to match borders
     if let Some(shd_color) = para.shading {
+        // Up to the side borders' inner edges: stopping at their space left a
+        // white seam inside english_town_council's blue section bars.
         let shd_left_outset = para
             .borders
             .left
             .as_ref()
-            .map(|b| b.space_pt)
+            .map(|b| b.space_pt + LEFT_BORDER_GAP)
             .unwrap_or(0.0);
         let shd_right_outset = para
             .borders
             .right
             .as_ref()
-            .map(|b| b.space_pt)
+            .map(|b| b.space_pt + RIGHT_BORDER_GAP)
             .unwrap_or(0.0);
         let shd_left = col_x - shd_left_outset;
         let shd_right = col_x + col_w + shd_right_outset;
@@ -3018,12 +3024,12 @@ fn render_paragraph_block(
         let bdr_left_outset = bdr
             .left
             .as_ref()
-            .map(|b| b.space_pt + 1.47 + b.width_pt / 2.0)
+            .map(|b| b.space_pt + LEFT_BORDER_GAP + b.width_pt / 2.0)
             .unwrap_or(0.0);
         let bdr_right_outset = bdr
             .right
             .as_ref()
-            .map(|b| b.space_pt + 1.73 + b.width_pt / 2.0)
+            .map(|b| b.space_pt + RIGHT_BORDER_GAP + b.width_pt / 2.0)
             .unwrap_or(0.0);
         let box_left = col_x - bdr_left_outset;
         let box_right = col_x + col_w + bdr_right_outset;
