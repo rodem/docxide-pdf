@@ -1899,42 +1899,43 @@ pub(super) fn render_table(
                 })
         });
         // Whether every cell's first chunk fits in the room left: its first
-        // paragraph (with `widow`, two lines of a long one) or first nested row,
-        // with the opening space before that find_cell_split charges.
-        let first_fits = |widow: bool| {
-            layout.cells.iter().all(|c| {
-                c.items.first().is_none_or(|it| {
-                    let end = match it {
-                        CellContentItem::Paragraph(p) if widow && p.lines.len() >= 4 => Some(2),
-                        CellContentItem::Paragraph(_) => None,
-                        CellContentItem::NestedTable { .. } => Some(1),
-                    };
-                    c.cm.top
-                        + c.cm.bottom
-                        + chunk_space_before(it, 0, &CELL_START)
-                        + item_chunk_height(
-                            it,
-                            &Chunk {
-                                item: 0,
-                                l0: 0,
-                                l1: end,
-                                from: &[],
-                                to: &[],
-                            },
-                        )
-                        <= available_h
-                })
+        // paragraph (two lines of a long one) or first nested row, with the
+        // opening space before that find_cell_split charges.
+        let first_chunks_fit = layout.cells.iter().all(|c| {
+            c.items.first().is_none_or(|it| {
+                let end = match it {
+                    CellContentItem::Paragraph(p) if p.lines.len() >= 4 => Some(2),
+                    CellContentItem::Paragraph(_) => None,
+                    CellContentItem::NestedTable { .. } => Some(1),
+                };
+                c.cm.top
+                    + c.cm.bottom
+                    + chunk_space_before(it, 0, &CELL_START)
+                    + item_chunk_height(
+                        it,
+                        &Chunk {
+                            item: 0,
+                            l0: 0,
+                            l1: end,
+                            from: &[],
+                            to: &[],
+                        },
+                    )
+                    <= available_h
             })
-        };
+        });
         // Word splits with one line of room: nabl's "Remarks" row breaks
         // between its paragraphs with 30pt left. ponytail: 14pt (a line) guard
         // so a near-boundary rounding error can't split off nothing; drop it
         // if a reference ever splits with less.
+        // A long first paragraph needs only its first two lines in the room
+        // left, as split rows break between lines (bulgarian_road's row ends
+        // page 2 with three lines of a six-line cell paragraph).
         let can_meaningfully_split = layout.can_split
             && any_cell_multi_item
             && !at_page_top
             && available_h > 14.0
-            && first_fits(false);
+            && first_chunks_fit;
 
         // A row taller than a page must split, but not where its cells can't
         // start: away from the page top each cell needs its first paragraph,
@@ -1943,7 +1944,7 @@ pub(super) fn render_table(
         // the 28pt above a footnote.
         let must_split = (row_h > page_content_h || keep_with_anchor)
             && !row.cant_split
-            && (at_page_top || first_fits(true));
+            && (at_page_top || first_chunks_fit);
         if row_h > available_h && (must_split || can_meaningfully_split) {
             split_row_across_pages(
                 row,
