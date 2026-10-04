@@ -257,6 +257,14 @@ verified on the full suite; one commit each:
 | `347cde15` | Text boxes bottom-align exact/at-least lines (shared `bottom_aligned_ascent`) | classroom +3.1 |
 | `ee150e62` | Header/footer paragraphs and frames too | carbon_farming +1.0, clean_energy +1.0 |
 | `3ec969db` | An empty section-break paragraph keeps its line before a continuous section with a different column count | covid_insomnia +15.0 |
+| `2a1cb7c4` | Single underline: font's post underlinePosition/Thickness, each rounded to 0.25pt (probe `tests/output/probe_ul`, 12/12 exact) | 12 up, case14 +9.9 |
+| `da6a2b2e` | Strikethrough: OS/2 yStrikeoutPosition/Size, same rounding (probe `tests/output/probe_strike`, 12/12) | case9 +1.4 |
+| `f172a28a`, `bef11354` | Strikes and double underlines run unbroken across a run's spaces | matches probes |
+
+Scores after this round (all 244, mean J): old refs 64.30, right after the
+switch 61.08, start of round 62.87, now **63.85**. On the 87 switched
+fixtures: us 56.1 vs jubarte 54.5 (start of round: 53.0); we lead on 46,
+jubarte on 41.
 
 Tried and reverted: explicit-height rows splitting (arizona -52: exact
 trHeight rows stay whole online too), a 0.01pt overflow tolerance
@@ -277,6 +285,31 @@ Open from this round:
 - chinese_student: -2.7 from the CJK split; its grid-snapped at-least lines.
 - greek: needs Windows' Comic Sans Italic (`comici.ttf`, `comicz.ttf`); online
   uses the real face (10 deg), we shear 18.8 deg like local Mac Word.
+
+### 4f. Next steps (in order)
+
+1. **Glyph-width drift** (§4a): the biggest remaining gap, nearly every
+   fixture. Known: in-word advances are exact widths rounded to 0.25pt; each
+   source run is placed at its exact layout position; line breaking uses exact
+   widths. Unknown: the per-font word-start rule. Needs source-run boundaries
+   carried through `merge_compatible_runs`, then a drawing-time shift per run
+   (`render_shift_attempt.patch` is a starting point).
+2. **More probe-derived geometry**: superscript/subscript offset and size,
+   highlight box height, double underline placement (thickness = half the
+   single, rounded; gap ~1.0pt; vertical placement not yet fitted, data in
+   `tests/output/probe_ul`).
+3. **Table splitting**: radiographer (split inside a nested table's row),
+   master_thesis (continued row one line short).
+4. **Small cases**: go_math, estonian, eco_int, chinese_student (§4e).
+5. **User decisions**: Comic Sans Italic fonts (greek), whether
+   missing_font_substitution goes online, accepting baselines.
+
+Method that worked: find where we and the reference first disagree
+(`pdf_lines.py`, `line_diff.py`, `word_x_diff.py`, `ink_diff.py`), read the
+docx XML there, then write a small python-docx probe, export it online with
+`tools/word_export.py` (paced, one process on Word at a time), and fit the
+rule; verify each change with `tools/score_snapshot.sh` against the previous
+snapshot and commit one rule per commit.
 
 ## 5. How to measure
 
