@@ -691,3 +691,9 @@ scraped 58.58 → 59.54; radiographer 24.1 → 75.8; nothing down):
   blocks, and twice in `table.rs`.
 - A floating header table neither wraps header text nor extends the header;
   no fixture shows Word doing either.
+- A column break at the very top of a page (or with a page break before it)
+  starts another page; whether Word leaves that page empty is untested (no
+  fixture has one).
+- `cargo fmt` reformats two spots in `src/pdf/layout.rs` (`push_decoration`
+  and its call) that were committed unformatted; every commit of this round
+  reverted them. Format them in a commit of their own.
