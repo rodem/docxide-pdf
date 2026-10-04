@@ -51,13 +51,21 @@ pub(super) fn render_comment_pane(
     // The document's main font, when neither Aptos nor Calibri is in it.
     main_font: &str,
 ) {
-    let Some((body_font_key, body_entry)) = pick_font(seen_fonts, &["Aptos", "Calibri", main_font])
+    let family = main_font.split('/').next().unwrap_or(main_font);
+    let Some((body_font_key, body_entry)) =
+        pick_font(seen_fonts, &["Aptos", "Calibri", family, main_font])
     else {
         return;
     };
     let label_entry = pick_font(
         seen_fonts,
-        &["Aptos/B", "Aptos Bold", "Calibri/B", main_font],
+        &[
+            "Aptos/B",
+            "Aptos Bold",
+            "Calibri/B",
+            &format!("{family}/B"),
+            main_font,
+        ],
     )
     .unwrap_or((body_font_key.clone(), body_entry));
 

@@ -194,6 +194,12 @@ fn collect_used_chars(doc: &Document, all_runs: &[&Run]) -> HashMap<String, Hash
             .find(|r| !r.bold && !r.italic)
             .or_else(|| all_runs.first())
             .copied();
+        // The pane falls back to the main font's family (the first run's,
+        // `render_comment_pane`), which can differ from the body run's: both
+        // get the glyphs, or the label's brackets draw .notdef.
+        let main_family = all_runs
+            .first()
+            .map(|r| crate::fonts::primary_font_name(&r.font_name).to_string());
         if let Some(body_run) = body_run {
             let mut reg = (*body_run).clone();
             reg.bold = false;
@@ -204,16 +210,20 @@ fn collect_used_chars(doc: &Document, all_runs: &[&Run]) -> HashMap<String, Hash
             bold.italic = false;
             let bold_key = font_key_buf(&bold, &mut key_buf).to_string();
 
-            let regular = used.entry(reg_key).or_default();
-            for comment in doc.comments.values() {
-                regular.extend(comment.text.chars());
+            for key in std::iter::once(reg_key).chain(main_family.clone()) {
+                let regular = used.entry(key).or_default();
+                for comment in doc.comments.values() {
+                    regular.extend(comment.text.chars());
+                }
             }
 
-            let bold = used.entry(bold_key).or_default();
-            for comment in doc.comments.values() {
-                bold.extend("Commented []: ".chars());
-                bold.extend(comment.initials.chars());
-                bold.extend(comment.display_index.to_string().chars());
+            for key in std::iter::once(bold_key).chain(main_family.map(|f| format!("{f}/B"))) {
+                let bold = used.entry(key).or_default();
+                for comment in doc.comments.values() {
+                    bold.extend("Commented []: ".chars());
+                    bold.extend(comment.initials.chars());
+                    bold.extend(comment.display_index.to_string().chars());
+                }
             }
         }
     }
