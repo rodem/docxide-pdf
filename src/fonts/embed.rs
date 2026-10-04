@@ -149,6 +149,8 @@ pub(super) fn embed_truetype(
         symbol_font_unicode
     } else if font_name.eq_ignore_ascii_case("wingdings") {
         wingdings_unicode
+    } else if font_name.eq_ignore_ascii_case("wingdings 3") {
+        wingdings3_unicode
     } else {
         |_| None
     };
@@ -273,6 +275,28 @@ fn wingdings_unicode(ch: char) -> Option<char> {
         0xF0E4 => '↗',
         0xF0FC => '✔',
         0xF0FE => '☑',
+        _ => return None,
+    })
+}
+
+/// Wingdings 3's triangles, by the font's glyph names (0x84 `trianglecentrt`
+/// → ►), for the list bullets that use them (bosch_software); Word's export
+/// keeps the private-use code.
+// ponytail: the triangles only; its arrows when a document uses them
+fn wingdings3_unicode(ch: char) -> Option<char> {
+    Some(match symbol_code(ch) {
+        0xF070 => '▲',
+        0xF071 => '▼',
+        0xF072 => '△',
+        0xF073 => '▽',
+        0xF074 => '◀',
+        0xF075 => '▶',
+        0xF076 => '◁',
+        0xF077 => '▷',
+        0xF081 => '▲',
+        0xF082 => '▼',
+        0xF083 => '◄',
+        0xF084 => '►',
         _ => return None,
     })
 }
@@ -529,6 +553,12 @@ mod tests {
         assert_eq!(wingdings_unicode('§'), Some('▪'));
         assert_eq!(wingdings_unicode(' '), None);
         assert_eq!(wingdings_unicode('\u{F0FA}'), None);
+    }
+
+    #[test]
+    fn wingdings3_triangles_extract_as_unicode() {
+        assert_eq!(wingdings3_unicode('\u{F084}'), Some('►'));
+        assert_eq!(wingdings3_unicode('\u{F0FA}'), None);
     }
 
     #[test]
