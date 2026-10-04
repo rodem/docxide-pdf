@@ -660,12 +660,25 @@ scraped 58.02 → 58.58, SSIM 81.28 → 81.73; nothing down.
 | fa4db3fa | A floating table (`tblpPr`) in a header sits at its `tblpX`/`tblpY` and takes no room in the header flow | french_sexual's logo paragraph starts at the header top, logo 13.6pt above it; body back at the top margin; 22.2 → 44.4 |
 | 00aa38ce | A column break in a one-column section breaks the page; mid-paragraph it splits the paragraph like a page break | bosch page 2 ends 7 lines short in Word (next paragraph opens with `w:br type="column"`); 27.4 → 62.4 |
 
+**radiographer round** (snapshots `fix4b2` → `fix9b`: mean J 64.19 → **64.77**,
+scraped 58.58 → 59.54; radiographer 24.1 → 75.8; nothing down):
+
+| Commit | Rule | Evidence |
+|---|---|---|
+| c28b97ee | A split outer row breaks a nested table inside its first row that does not fit, each nested cell by the outer rules (recursive `CellCursor::nested`); nested tables draw from the cell layout's own widths/rows | radiographer page 1 ends at "Administrative teams within Radiology" as in Word |
+| dd530994 | A section without its own header/footer lays its body out around the inherited one (shared `inherited_hf` walk with the renderer) | radiographer +26.2, wa_child +21.4, transition_to_work +13.3, go_math +13.1, western_australia +6.3, federal_procurement +4.3 |
+| 319ce3b1 | A table at a page top adds no previous space after (the paragraphs' page-top rule with space before 0, shared `page_top_gap`); resetting the space after at the section break instead broke case25/26/28 | radiographer +13.7 |
+| 42d12b9b | A row continued on a new page tops it with each cell's own top border, not the edge resolved with the row above (`CellBorders::own_top`) | radiographer's nested row (`top nil`) starts page 2 with no line; J −0.4 (the removed line overlapped Word's) |
+| 8d33c8db | Split rows use each cell's own margins (border bands included), stored on `CellLayout` | slovak_eu +13.0, radiographer +7.9, education_consultant +4.1, nabl +3.2, isla +3.1 |
+
 **Open (diagnosed, not fixed):**
-- radiographer: Word splits a nested table's row between its lines at a page
-  end ("Administrative teams within Radiology" closes page 1); we split only
-  between nested rows. Needs a third level in `CellCursor` (nested row + a
-  cursor per nested cell) through `find_cell_split` and the partial-row
-  renderer.
+- radiographer: a list label hanging left of its cell (numId 23, `left=65
+  hanging=360`, x 40 vs the cell edge 49.5) is not drawn by Word; we draw it.
+  Word may clip cell content to the cell box: probe before implementing.
+- A continued row's top border sits wholly inside the row in Word (rule
+  centre 62.53 under a 62.28 page top) and its text starts ~0.45pt lower than
+  ours; one sample. Whether a whole row moved to a new page also takes its own
+  top border is untested.
 - estonian: no single break; lines drift down 0.15–0.4pt each through the
   opening paragraphs (first heading +0.4), then hold at +2pt.
 - Table cells build paragraphs with their own parser (`tables.rs`) instead of

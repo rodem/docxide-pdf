@@ -243,8 +243,11 @@ Details in `current_focus/layout-accuracy.md` §12. Mean J 63.85 → 64.19.
   cell-paragraph indents from the style, floating header tables, column
   breaks in one-column sections. bosch +35.0, french_sexual +22.2,
   turkish_prostate +19.5.
-- TODO: radiographer's nested-row split between lines; estonian's per-line
-  drift; table cells through `build_paragraph`; one new-page helper.
+- DONE (radiographer round): nested-row split between lines, inherited
+  header extent, table page-top gap, continued-row top border, per-cell
+  margins in split rows. Mean J 64.19 → 64.77; radiographer 24.1 → 75.8.
+- TODO: estonian's per-line drift; table cells through `build_paragraph`;
+  one new-page helper; labels hanging outside a cell (probe Word first).
 - PARKED: online glyph positioning (`online-references.md` §4a) — the
   correction phase is not derivable from exact widths; fit or more probing is
   the user's call.
