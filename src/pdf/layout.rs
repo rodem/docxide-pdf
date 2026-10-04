@@ -3135,8 +3135,18 @@ pub(super) fn render_paragraph_lines(
                     }
                 }
                 if chunk.strikethrough {
-                    let st_y = y + chunk.font_size * 0.3;
-                    decorations.push((x, st_y, chunk.width, thick, chunk.color));
+                    // The font's OS/2 strikeout, top edge and thickness each on a
+                    // 0.25pt grid (online export probe, the underline's 12 cases).
+                    let os2_strike = pdf_name_to_entry
+                        .get(chunk.pdf_font.as_str())
+                        .and_then(|e| e.strikeout)
+                        .map(|(pos, th)| {
+                            let q = |v: f32| (v * 4.0).round() / 4.0;
+                            let th = q(th * chunk.font_size).max(0.25);
+                            (y + q(pos * chunk.font_size) - th, th)
+                        });
+                    let (st_y, st_thick) = os2_strike.unwrap_or((y + chunk.font_size * 0.3, thick));
+                    decorations.push((x, st_y, chunk.width, st_thick, chunk.color));
                 }
                 if chunk.dstrike {
                     let gap = thick * 1.5;
@@ -3852,6 +3862,7 @@ mod tests {
             superscript_ratio: None,
             subscript_ratio: None,
             underline: None,
+            strikeout: None,
             east_asian: false,
             plain_ascender_ratio: None,
             char_to_gid: None,
