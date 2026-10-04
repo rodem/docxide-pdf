@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use pdf_writer::Content;
 
 use crate::model::{
-    Alignment, Block, Document, FieldCode, FrameProperties, HRelativeFrom, HeaderFooter, Paragraph,
-    Run, SectionProperties, TextAnchor, VRelativeFrom, VerticalPosition, WrapType,
+    Alignment, Block, Document, FieldCode, FrameProperties, HRelativeFrom, HeaderFooter, IfPart,
+    Paragraph, Run, SectionProperties, TextAnchor, VRelativeFrom, VerticalPosition, WrapType,
 };
 
 use super::color::stroke_segment;
@@ -24,29 +24,121 @@ pub(super) fn substitute_hf_runs(
     styleref_values: &HashMap<String, String>,
     page_num_format: Option<&str>,
 ) -> Vec<Run> {
+    let values = FieldValues {
+        page_num,
+        total_pages,
+        styleref_values,
+        page_num_format,
+    };
     runs.iter()
         .map(|run| {
             let mut r = run.clone();
             if let Some(ref fc) = run.field_code {
                 r.field_code = None;
-                r.text = match fc {
-                    FieldCode::Page => {
-                        if let Some(fmt) = page_num_format {
-                            crate::docx::numbering::format_number(page_num as u32, fmt)
-                        } else {
-                            page_num.to_string()
-                        }
-                    }
-                    FieldCode::NumPages => total_pages.to_string(),
-                    FieldCode::StyleRef(name) => {
-                        styleref_values.get(name).cloned().unwrap_or_default()
-                    }
-                    FieldCode::PageRef(_) => run.text.clone(),
-                };
+                r.text = values.eval(fc).unwrap_or_else(|| run.text.clone());
             }
             r
         })
         .collect()
+}
+
+/// The key a STYLEREF value is stored under: Word matches style names
+/// case-insensitively ("CharSchno" for CharSchNo), and the `\n` switch reads
+/// the paragraph's list number.
+pub(super) fn styleref_key(name: &str, number: bool) -> String {
+    let key = name.to_lowercase();
+    if number { key + "\\n" } else { key }
+}
+
+/// What a header or footer field shows on one page.
+struct FieldValues<'a> {
+    page_num: usize,
+    total_pages: usize,
+    styleref_values: &'a HashMap<String, String>,
+    page_num_format: Option<&'a str>,
+}
+
+impl FieldValues<'_> {
+    /// None keeps the cached result.
+    fn eval(&self, fc: &FieldCode) -> Option<String> {
+        Some(match fc {
+            FieldCode::Page => match self.page_num_format {
+                Some(fmt) => crate::docx::numbering::format_number(self.page_num as u32, fmt),
+                None => self.page_num.to_string(),
+            },
+            FieldCode::NumPages => self.total_pages.to_string(),
+            FieldCode::StyleRef { name, number } => self
+                .styleref_values
+                .get(&styleref_key(name, *number))
+                .cloned()
+                .unwrap_or_default(),
+            FieldCode::PageRef(_) => return None,
+            FieldCode::If(parts) => return self.eval_if(parts),
+        })
+    }
+
+    /// `IF expr1 op expr2 "true" "false"` after substituting the nested
+    /// fields.
+    fn eval_if(&self, parts: &[IfPart]) -> Option<String> {
+        let mut instr = String::new();
+        for part in parts {
+            match part {
+                IfPart::Text(t) => instr.push_str(t),
+                IfPart::Field(fc) => instr.push_str(&self.eval(fc)?),
+            }
+        }
+        let args = field_args(instr.trim_start().get(2..)?);
+        let [a, op, b, t, f] = args.as_slice() else {
+            return None;
+        };
+        let ord = match (a.trim().parse::<f64>(), b.trim().parse::<f64>()) {
+            (Ok(x), Ok(y)) => x.partial_cmp(&y)?,
+            _ => a.cmp(b),
+        };
+        let holds = match op.as_str() {
+            "=" => ord.is_eq(),
+            "<>" => ord.is_ne(),
+            "<" => ord.is_lt(),
+            "<=" => ord.is_le(),
+            ">" => ord.is_gt(),
+            ">=" => ord.is_ge(),
+            _ => return None,
+        };
+        Some(if holds { t } else { f }.clone())
+    }
+}
+
+/// Field arguments: whitespace-separated, double quotes group (and are
+/// dropped), comparison operators stand alone even without spaces.
+fn field_args(s: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut chars = s.chars().peekable();
+    while let Some(&c) = chars.peek() {
+        if c.is_whitespace() {
+            chars.next();
+        } else if c == '"' {
+            chars.next();
+            args.push(chars.by_ref().take_while(|&c| c != '"').collect());
+        } else if "=<>".contains(c) {
+            let mut op = String::new();
+            while let Some(&c) = chars.peek().filter(|c| "=<>".contains(**c)) {
+                op.push(c);
+                chars.next();
+            }
+            args.push(op);
+        } else {
+            let mut word = String::new();
+            while let Some(&c) = chars
+                .peek()
+                .filter(|c| !c.is_whitespace() && !"\"=<>".contains(**c))
+            {
+                word.push(c);
+                chars.next();
+            }
+            args.push(word);
+        }
+    }
+    args
 }
 
 /// Vertical bands (top, bottom from the page top) of the header's page- or
@@ -191,6 +283,8 @@ fn compute_header_height(
                 height += content_h + bottom_border_band(para);
                 prev_space_after = para.space_after;
             }
+            // A floating table takes no room in the header's flow
+            Block::Table(table) if table.position.is_some() => {}
             Block::Table(table) => {
                 let content_w = sp.text_width();
                 height += table::compute_hf_table_height(table, ctx, content_w);
@@ -206,12 +300,7 @@ pub(super) fn effective_slot_top(
     is_first: bool,
     ctx: &RenderContext,
 ) -> f32 {
-    let header = select_hf(
-        is_first,
-        sp.different_first_page,
-        &sp.header_first,
-        &sp.header_default,
-    );
+    let header = layout_hf(sp, is_first, true, ctx);
     let base = sp.page_height - sp.margin_top;
     match header {
         Some(_) if sp.margin_top_fixed => base,
@@ -227,12 +316,7 @@ pub(super) fn compute_effective_margin_bottom(
     is_first: bool,
     ctx: &RenderContext,
 ) -> f32 {
-    let footer = select_hf(
-        is_first,
-        sp.different_first_page,
-        &sp.footer_first,
-        &sp.footer_default,
-    );
+    let footer = layout_hf(sp, is_first, false, ctx);
     let base = sp.margin_bottom;
     match footer {
         Some(_) if sp.margin_bottom_fixed => base,
@@ -241,17 +325,28 @@ pub(super) fn compute_effective_margin_bottom(
     }
 }
 
-fn select_hf<'a>(
+/// The header (or footer) whose extent a section's page lays out around: its
+/// own, else the one it inherits, as drawn (radiographer's later sections
+/// inherit a two-line empty header that starts their body 27pt below the
+/// header). ponytail: never the even-page variant, which needs the page's
+/// parity at every caller.
+fn layout_hf<'a>(
+    sp: &'a SectionProperties,
     is_first: bool,
-    different_first_page: bool,
-    first: &'a Option<HeaderFooter>,
-    default: &'a Option<HeaderFooter>,
+    is_header: bool,
+    ctx: &RenderContext<'a>,
 ) -> Option<&'a HeaderFooter> {
-    if is_first && different_first_page {
-        first.as_ref()
+    let variant = if is_first && sp.different_first_page {
+        HfVariant::First
     } else {
-        default.as_ref()
-    }
+        HfVariant::Default
+    };
+    // `sp` is always one of the document's sections
+    let idx = ctx
+        .sections
+        .iter()
+        .position(|s| std::ptr::eq(&s.properties, sp))?;
+    inherited_hf(ctx.sections, idx, variant, is_header).map(|(hf, _)| hf)
 }
 
 pub(super) fn hf_paragraphs(hf: &HeaderFooter) -> Vec<&Paragraph> {
@@ -1105,6 +1200,32 @@ fn hf_variant(
     }
 }
 
+/// A section's header (or footer) of `variant`, else the nearest earlier
+/// section's, with the index of the section that owns it.
+fn inherited_hf(
+    sections: &[crate::model::Section],
+    idx: usize,
+    variant: HfVariant,
+    is_header: bool,
+) -> Option<(&HeaderFooter, usize)> {
+    sections[..=idx]
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(i, s)| {
+            let p = &s.properties;
+            let slot = match (variant, is_header) {
+                (HfVariant::Default, true) => &p.header_default,
+                (HfVariant::First, true) => &p.header_first,
+                (HfVariant::Even, true) => &p.header_even,
+                (HfVariant::Default, false) => &p.footer_default,
+                (HfVariant::First, false) => &p.footer_first,
+                (HfVariant::Even, false) => &p.footer_even,
+            };
+            slot.as_ref().map(|hf| (hf, i))
+        })
+}
+
 /// Resolve which header to use for a given page, walking sections backward
 /// for inheritance. Returns `(header_data, hf_type_id, section_index)`.
 pub(super) fn resolve_header_for_page(
@@ -1119,18 +1240,10 @@ pub(super) fn resolve_header_for_page(
         HfVariant::First => 1,
         HfVariant::Even => 4,
     };
-    for idx in (0..=section_idx).rev() {
-        let s = &doc.sections[idx].properties;
-        let h = match variant {
-            HfVariant::Default => &s.header_default,
-            HfVariant::First => &s.header_first,
-            HfVariant::Even => &s.header_even,
-        };
-        if h.is_some() {
-            return (h.as_ref(), t, idx);
-        }
+    match inherited_hf(&doc.sections, section_idx, variant, true) {
+        Some((hf, idx)) => (Some(hf), t, idx),
+        None => (None, t, section_idx),
     }
-    (None, t, section_idx)
 }
 
 /// Resolve which footer to use for a given page, walking sections backward
@@ -1147,16 +1260,51 @@ pub(super) fn resolve_footer_for_page(
         HfVariant::First => 3,
         HfVariant::Even => 5,
     };
-    for idx in (0..=section_idx).rev() {
-        let s = &doc.sections[idx].properties;
-        let f = match variant {
-            HfVariant::Default => &s.footer_default,
-            HfVariant::First => &s.footer_first,
-            HfVariant::Even => &s.footer_even,
-        };
-        if f.is_some() {
-            return (f.as_ref(), t, idx);
-        }
+    match inherited_hf(&doc.sections, section_idx, variant, false) {
+        Some((hf, idx)) => (Some(hf), t, idx),
+        None => (None, t, section_idx),
     }
-    (None, t, section_idx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn if_over_stylerefs_takes_the_page_value() {
+        let sr = |number| {
+            IfPart::Field(FieldCode::StyleRef {
+                name: "CharPartNo".into(),
+                number,
+            })
+        };
+        let text = |t: &str| IfPart::Text(t.into());
+        // IF {STYLEREF CharPartNo \n} = 0 "{STYLEREF CharPartNo}" "Part {STYLEREF CharPartNo \n}"
+        let parts = [
+            text(" IF "),
+            sr(true),
+            text(" = 0 \""),
+            sr(false),
+            text("\" \"Part "),
+            sr(true),
+            text("\""),
+        ];
+        let mut styleref_values = HashMap::new();
+        let eval = |values: &HashMap<String, String>| {
+            FieldValues {
+                page_num: 1,
+                total_pages: 1,
+                styleref_values: values,
+                page_num_format: None,
+            }
+            .eval(&FieldCode::If(parts.to_vec()))
+        };
+        assert_eq!(eval(&styleref_values), None);
+        styleref_values.insert(styleref_key("charpartno", false), "Part 3".to_string());
+        styleref_values.insert(styleref_key("charpartno", true), "0".to_string());
+        assert_eq!(eval(&styleref_values).as_deref(), Some("Part 3"));
+        styleref_values.insert(styleref_key("charpartno", true), "4".to_string());
+        assert_eq!(eval(&styleref_values).as_deref(), Some("Part 4"));
+        assert_eq!(field_args("a<>\"b c\" 2"), ["a", "<>", "b c", "2"]);
+    }
 }

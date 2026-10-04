@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use pdf_writer::{Pdf, Ref};
 
 use crate::fonts::{FontContext, FontEntry, font_key_buf, register_font};
-use crate::model::{Block, Document, FieldCode, Paragraph, Run};
+use crate::model::{Block, Document, FieldCode, IfPart, Paragraph, Run};
 
 use super::header_footer::hf_paragraphs;
 use super::{collect_paras, label_font_key, para_runs_with_textboxes};
@@ -120,7 +120,7 @@ fn collect_used_chars(doc: &Document, all_runs: &[&Run]) -> HashMap<String, Hash
                 FieldCode::Page | FieldCode::NumPages | FieldCode::PageRef(_) => {
                     chars.extend('0'..='9');
                 }
-                FieldCode::StyleRef(_) => {}
+                FieldCode::StyleRef { .. } | FieldCode::If(_) => {}
             }
         }
         if run.footnote_id.is_some() || run.is_footnote_ref_mark {
@@ -228,6 +228,8 @@ fn collect_used_chars(doc: &Document, all_runs: &[&Run]) -> HashMap<String, Hash
     // body paragraph text (paragraph styles) and run text (character styles).
     let mut styleref_chars: HashSet<char> = HashSet::new();
     for para in &all_paras {
+        // `\n` values: the list number, or 0
+        styleref_chars.extend(para.list_label.chars().chain(['0']));
         if para.style_id.is_some() {
             for run in &para.runs {
                 styleref_chars.extend(run.text.chars());
@@ -277,8 +279,17 @@ fn collect_used_chars(doc: &Document, all_runs: &[&Run]) -> HashMap<String, Hash
                                     extend_chars_for_num_format(chars, fmt);
                                 }
                             }
-                            FieldCode::StyleRef(_) => {
+                            FieldCode::StyleRef { .. } | FieldCode::If(_) => {
                                 chars.extend(styleref_chars.iter());
+                                // An IF shows its own text and nested PAGE digits too
+                                if let FieldCode::If(parts) = fc {
+                                    chars.extend('0'..='9');
+                                    for part in parts {
+                                        if let IfPart::Text(t) = part {
+                                            chars.extend(t.chars());
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

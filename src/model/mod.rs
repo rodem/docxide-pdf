@@ -462,6 +462,9 @@ pub struct Paragraph {
     /// body parser turns the rest into a continuation paragraph.
     pub page_break_at: Option<usize>,
     pub column_break_before: bool,
+    /// A column break with nothing after it: the next paragraph starts in the
+    /// next column (or page, in a one-column section).
+    pub column_break_after: bool,
     /// §17.3.3.1 `w:br w:type="textWrapping" w:clear="all"` — content after
     /// this paragraph restarts below any floating objects.
     pub clears_floats: bool,
@@ -663,8 +666,22 @@ impl Default for Run {
 pub enum FieldCode {
     Page,
     NumPages,
-    StyleRef(String),
+    /// `number` is the `\n` switch: the referenced paragraph's list number.
+    StyleRef {
+        name: String,
+        number: bool,
+    },
     PageRef(String),
+    /// An `IF` over nested fields, evaluated per page: legislation running
+    /// heads read `IF {STYLEREF X \n} = 0 "{STYLEREF X}" "Part {STYLEREF X \n}"`,
+    /// so the cached result is one page's value.
+    If(Vec<IfPart>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum IfPart {
+    Text(String),
+    Field(FieldCode),
 }
 
 pub enum Block {

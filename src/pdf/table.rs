@@ -14,10 +14,11 @@ use super::header_footer::{compute_effective_margin_bottom, effective_slot_top};
 use super::RenderContext;
 use super::layout::{LinkAnnotation, LinkTagger, encode_text_for_pdf, render_paragraph_lines};
 use super::table_layout::{
-    CellContentItem, CellCursor, CellFloatingImageLayout, CellLayout, CellParagraphLayout,
-    HfSubstitution, RowLayout, apply_pct_width, auto_fit_columns, cell_span_width, cell_x_offset,
-    chunk_space_before, compute_merge_spans, compute_row_layouts, cursor_chunks, find_cell_split,
-    item_chunk_height, para_block_height,
+    CELL_START, CellContentItem, CellCursor, CellFloatingImageLayout, CellLayout,
+    CellParagraphLayout, Chunk, HfSubstitution, RowLayout, RowPiece, apply_pct_width,
+    auto_fit_columns, cell_span_width, cell_x_offset, chunk_space_before, compute_merge_spans,
+    compute_row_layouts, cursor_chunks, find_cell_split, item_chunk_height, para_block_height,
+    partial_row_height, row_pieces,
 };
 use super::tagging::{CellTagger, TableTags, Tags};
 
@@ -318,7 +319,7 @@ fn cell_content_h_for_valign(items: &[CellContentItem]) -> f32 {
         .iter()
         .map(|item| match item {
             CellContentItem::Paragraph(p) => p.space_before + para_block_height(p),
-            CellContentItem::NestedTable { height, .. } => *height,
+            nested @ CellContentItem::NestedTable { .. } => nested.height(),
         })
         .sum();
     // Word includes the last paragraph's space_after in the content block height
@@ -346,7 +347,7 @@ fn cell_content_h_for_valign(items: &[CellContentItem]) -> f32 {
 fn cell_has_visible_content(items: &[CellContentItem]) -> bool {
     items.iter().any(|item| match item {
         CellContentItem::Paragraph(p) => para_has_visible_content(p),
-        CellContentItem::NestedTable { height, .. } => *height > 0.0,
+        nested @ CellContentItem::NestedTable { .. } => nested.height() > 0.0,
     })
 }
 
@@ -573,7 +574,9 @@ fn render_cell_content(
                     });
                 }
             }
-            CellContentItem::NestedTable { height, .. } => {
+            item @ CellContentItem::NestedTable {
+                col_widths, rows, ..
+            } => {
                 // Find the corresponding Block::Table
                 let table = loop {
                     if block_idx >= blocks.len() {
@@ -596,10 +599,17 @@ fn render_cell_content(
                         gradient_specs,
                         links,
                         &mut tagger,
-                        0..usize::MAX,
+                        (col_widths, rows),
+                        &Chunk {
+                            item: 0,
+                            l0: 0,
+                            l1: None,
+                            from: &[],
+                            to: &[],
+                        },
                     );
                 } else {
-                    cursor_y -= height;
+                    cursor_y -= item.height();
                 }
             }
         }
@@ -797,7 +807,6 @@ fn render_table_rows(
     mut tag: Option<(&mut Tags, &mut TableTags, usize)>,
     rows: std::ops::Range<usize>,
 ) {
-    let cm = &table.cell_margins;
     for (ri, (row, layout)) in table
         .rows
         .iter()
@@ -845,7 +854,7 @@ fn render_table_rows(
             );
 
             if cell_has_visible_content(&cell_layout.items) {
-                let ecm = cell.cell_margins.as_ref().unwrap_or(cm);
+                let ecm = &cell_layout.cm;
                 let content_h = cell_content_h_for_valign(&cell_layout.items);
 
                 let avail = effective_h - ecm.top - ecm.bottom;
@@ -898,6 +907,15 @@ fn render_table_rows(
     }
 }
 
+/// Reborrow a row renderer's tagging context for one more call.
+fn reborrow<'a>(
+    tag: &'a mut Option<(&mut Tags, &mut TableTags, usize)>,
+) -> Option<(&'a mut Tags, &'a mut TableTags, usize)> {
+    tag.as_mut().map(|(t, n, p)| (&mut **t, &mut **n, *p))
+}
+
+/// Draw `chunk` of a nested table (all of it, or one page's piece of a row
+/// split) from the cell layout's own `(col_widths, rows)`.
 fn render_nested_table(
     table: &Table,
     content: &mut Content,
@@ -909,12 +927,9 @@ fn render_nested_table(
     links: &mut Vec<LinkAnnotation>,
     // The parent cell's tagger: the nested table is tagged inside that cell.
     tagger: &mut Option<CellTagger<'_>>,
-    // The rows to draw: all of them, or one part of a row split.
-    rows: std::ops::Range<usize>,
+    (col_widths, row_layouts): (&[f32], &[RowLayout]),
+    chunk: &Chunk,
 ) {
-    let mut col_widths = auto_fit_columns(table, ctx.fonts, Some(available_w), None);
-    apply_pct_width(table, &mut col_widths, available_w);
-    let row_layouts = compute_row_layouts(table, &col_widths, ctx, None);
     let table_total_w: f32 = col_widths.iter().sum();
     let table_left = match table.alignment {
         TableAlignment::Center => available_x + (available_w - table_total_w) / 2.0,
@@ -922,27 +937,48 @@ fn render_nested_table(
         TableAlignment::Left => available_x + table.table_indent,
     };
 
-    let merge_spans = compute_merge_spans(table, &row_layouts);
+    let merge_spans = compute_merge_spans(table, row_layouts);
 
     let mut nested = tagger.as_mut().map(|t| t.nested_table(table));
-    let tag = tagger
+    let mut tag = tagger
         .as_mut()
         .zip(nested.as_mut())
         .map(|(t, n)| (&mut *t.tags, n, t.page));
-    render_table_rows(
-        table,
-        &row_layouts,
-        &col_widths,
-        table_left,
-        &merge_spans,
-        content,
-        cursor_y,
-        ctx,
-        gradient_specs,
-        links,
-        tag,
-        rows,
-    );
+    let n_rows = table.rows.len().min(row_layouts.len());
+    for piece in row_pieces(n_rows, chunk) {
+        match piece {
+            RowPiece::Rows(range) => render_table_rows(
+                table,
+                row_layouts,
+                col_widths,
+                table_left,
+                &merge_spans,
+                content,
+                cursor_y,
+                ctx,
+                gradient_specs,
+                links,
+                reborrow(&mut tag),
+                range,
+            ),
+            RowPiece::Partial { row, starts, ends } => render_partial_row(
+                &table.rows[row],
+                &row_layouts[row],
+                col_widths,
+                table_left,
+                content,
+                cursor_y,
+                ctx,
+                gradient_specs,
+                links,
+                reborrow(&mut tag),
+                starts,
+                ends,
+                row,
+            ),
+        }
+    }
+    drop(tag);
     if let (Some(t), Some(n)) = (tagger.as_mut(), nested) {
         n.finish(t.tags);
     }
@@ -952,8 +988,8 @@ fn render_partial_cell_content(
     content: &mut Content,
     items: &[CellContentItem],
     blocks: &[Block],
-    start: CellCursor,
-    end: CellCursor,
+    start: &CellCursor,
+    end: &CellCursor,
     cell_x: f32,
     col_w: f32,
     cursor_y_start: f32,
@@ -991,7 +1027,8 @@ fn render_partial_cell_content(
         }
     }
 
-    for (pi, l0, l1) in cursor_chunks(items, start, end) {
+    for chunk in cursor_chunks(items, start, end) {
+        let (pi, l0, l1) = (chunk.item, chunk.l0, chunk.l1);
         match &items[pi] {
             CellContentItem::Paragraph(para) => {
                 let sb = chunk_space_before(&items[pi], pi, start);
@@ -1085,8 +1122,9 @@ fn render_partial_cell_content(
 
                 cursor_y -= super::table_layout::cell_lines_h(para, l0..l1);
             }
-            CellContentItem::NestedTable { .. } => {
-                let height = super::table_layout::item_chunk_height(&items[pi], l0, l1);
+            CellContentItem::NestedTable {
+                col_widths, rows, ..
+            } => {
                 let bi = item_to_block.get(pi).copied().unwrap_or(0);
                 if let Some(Block::Table(table)) = blocks.get(bi) {
                     render_nested_table(
@@ -1099,10 +1137,11 @@ fn render_partial_cell_content(
                         gradient_specs,
                         links,
                         &mut tagger,
-                        l0..l1.unwrap_or(usize::MAX),
+                        (col_widths, rows),
+                        &chunk,
                     );
                 } else {
-                    cursor_y -= height;
+                    cursor_y -= item_chunk_height(&items[pi], &chunk);
                 }
             }
         }
@@ -1144,7 +1183,6 @@ fn render_table_row(
     row: &TableRow,
     layout: &RowLayout,
     col_widths: &[f32],
-    cm: &CellMargins,
     table_left: f32,
     pb: &mut super::PageBuilder,
     ctx: &RenderContext,
@@ -1196,7 +1234,7 @@ fn render_table_row(
         );
 
         let has_content = cell_has_visible_content(&cell_layout.items);
-        let ecm = cell.cell_margins.as_ref().unwrap_or(cm);
+        let ecm = &cell_layout.cm;
         let mut no_links = Vec::new();
 
         if !has_content {
@@ -1402,33 +1440,20 @@ fn render_partial_row(
     row: &TableRow,
     layout: &RowLayout,
     col_widths: &[f32],
-    cm: &CellMargins,
     table_left: f32,
-    pb: &mut super::PageBuilder,
+    content: &mut Content,
+    cursor_y: &mut f32,
     ctx: &RenderContext,
+    gradient_specs: &mut Vec<super::GradientSpec>,
+    links: &mut Vec<LinkAnnotation>,
+    // (tags, this table's structure, page), as in render_table_rows.
+    mut tag: Option<(&mut Tags, &mut TableTags, usize)>,
     starts: &[CellCursor],
     ends: &[CellCursor],
     row_idx: usize,
 ) {
-    let mut max_h: f32 = cm.top + cm.bottom;
-    for (ci, cell_layout) in layout.cells.iter().enumerate() {
-        let start = starts[ci];
-        let end = ends[ci];
-        let mut h = cm.top + cm.bottom;
-        for (pi, l0, l1) in cursor_chunks(&cell_layout.items, start, end) {
-            let item = &cell_layout.items[pi];
-            h += chunk_space_before(item, pi, start) + item_chunk_height(item, l0, l1);
-        }
-        // The chunk that finishes the cell keeps its last paragraph's space
-        // after, as an unsplit row does.
-        if end.item >= cell_layout.items.len() {
-            h += cell_layout.trailing_space_after;
-        }
-        max_h = max_h.max(h);
-    }
-
-    let row_top = pb.slot_top;
-    let row_h = max_h;
+    let row_top = *cursor_y;
+    let row_h = partial_row_height(layout, starts, ends);
     let row_bottom = row_top - row_h;
 
     for (ci, ((grid_col, span, cell), cell_layout)) in
@@ -1436,11 +1461,10 @@ fn render_partial_row(
     {
         let col_w = cell_span_width(col_widths, grid_col, span);
         let cell_x = cell_x_offset(col_widths, table_left, grid_col);
-        let page = pb.all_contents.len();
-        let tagger = pb.table_tags.as_mut().map(|table| CellTagger {
-            tags: &mut pb.tags,
+        let tagger = tag.as_mut().map(|(tags, table, page)| CellTagger {
+            tags,
             table,
-            page,
+            page: *page,
             row: row_idx,
             cell: ci,
             col_span: row_tag_span(row, ci, span, col_widths.len(), grid_col + span),
@@ -1453,11 +1477,12 @@ fn render_partial_row(
             continue;
         }
 
-        let start = starts[ci];
-        let end = ends[ci];
+        let start = starts.get(ci).unwrap_or(&CELL_START);
+        let done = CellCursor::at(cell_layout.items.len(), 0);
+        let end = ends.get(ci).unwrap_or(&done);
 
         draw_cell_shading(
-            &mut pb.content,
+            content,
             cell.shading,
             cell.hatch,
             &cell.borders,
@@ -1467,43 +1492,51 @@ fn render_partial_row(
             row_h,
         );
 
-        let has_content = cursor_chunks(&cell_layout.items, start, end).any(|(pi, _, _)| {
-            match &cell_layout.items[pi] {
-                CellContentItem::Paragraph(p) => para_has_visible_content(p),
-                CellContentItem::NestedTable { height, .. } => *height > 0.0,
-            }
+        let has_content = cursor_chunks(&cell_layout.items, start, end).any(|c| match &cell_layout
+            .items[c.item]
+        {
+            CellContentItem::Paragraph(p) => para_has_visible_content(p),
+            nested @ CellContentItem::NestedTable { .. } => nested.height() > 0.0,
         });
 
         if has_content {
             render_partial_cell_content(
-                &mut pb.content,
+                content,
                 &cell_layout.items,
                 &cell.content,
                 start,
                 end,
                 cell_x,
                 col_w,
-                row_top - cm.top,
-                cm,
+                row_top - cell_layout.cm.top,
+                &cell_layout.cm,
                 ctx,
-                &mut pb.gradient_specs,
-                &mut pb.links,
+                gradient_specs,
+                links,
                 tagger,
             );
-        } else if let Some(t) = tagger.filter(|_| start == CellCursor::default()) {
-            t.empty_para(&mut pb.content);
+        } else if let Some(t) = tagger.filter(|_| *start == CELL_START) {
+            t.empty_para(content);
         }
     }
 
+    // A continued row tops its page with each cell's own top border, not the
+    // edge it shares with the row above (radiographer's nested row, `nil` on
+    // top, starts page 2 with no line).
+    let continued = starts.iter().any(|s| *s != CELL_START);
     for (grid_col, span, cell) in row.grid_cells() {
         let col_w = cell_span_width(col_widths, grid_col, span);
         let bx = cell_x_offset(col_widths, table_left, grid_col);
+        let mut borders = cell.borders;
+        if continued && let Some(own) = borders.own_top {
+            borders.top = own;
+        }
 
         // A merged cell's slice, as in render_table_row; every chunk of a
         // split row closes at its page bottom.
         draw_cell_borders(
-            &mut pb.content,
-            &cell.borders,
+            content,
+            &borders,
             bx,
             row_top,
             row_bottom,
@@ -1513,14 +1546,13 @@ fn render_partial_row(
         );
     }
 
-    pb.slot_top = row_bottom;
+    *cursor_y = row_bottom;
 }
 
 fn render_header_rows(
     table: &Table,
     row_layouts: &[RowLayout],
     col_widths: &[f32],
-    cm: &CellMargins,
     table_left: f32,
     pb: &mut super::PageBuilder,
     ctx: &RenderContext,
@@ -1534,7 +1566,6 @@ fn render_header_rows(
             &table.rows[hi],
             &row_layouts[hi],
             col_widths,
-            cm,
             table_left,
             pb,
             ctx,
@@ -1634,7 +1665,14 @@ pub(super) fn render_table(
 
     // For non-floating tables, prev_space_after offsets the table start.
     // For floating tables, it was already consumed into the saved cursor position.
-    pb.slot_top -= prev_space_after;
+    // At a page top a table follows the paragraphs' rule with no space before:
+    // radiographer's section 2 table starts at its header's bottom, not 10pt below.
+    pb.slot_top -= if is_floating {
+        prev_space_after
+    } else {
+        pb.page_top_gap(sp, 0.0, prev_space_after)
+            .unwrap_or(prev_space_after)
+    };
     // The outer border bands sit inside the table's flow height: the top band
     // starts where the previous text ends and the next paragraph starts below
     // the bottom band. The row insets hold the inner halves (docx::tables).
@@ -1710,7 +1748,6 @@ pub(super) fn render_table(
                 table,
                 &row_layouts,
                 &col_widths,
-                cm,
                 table_left,
                 pb,
                 ctx,
@@ -1750,21 +1787,25 @@ pub(super) fn render_table(
             let mut all_done = true;
 
             for ci in 0..ncells {
-                let end = find_cell_split(&layout.cells[ci], starts[ci], avail, cm);
+                let end = find_cell_split(&layout.cells[ci], &starts[ci], avail);
                 if end.item < layout.cells[ci].items.len() {
                     all_done = false;
                 }
                 ends.push(end);
             }
 
+            let page = pb.all_contents.len();
             render_partial_row(
                 row,
                 layout,
                 &col_widths,
-                cm,
                 table_left,
-                pb,
+                &mut pb.content,
+                &mut pb.slot_top,
                 ctx,
+                &mut pb.gradient_specs,
+                &mut pb.links,
+                pb.table_tags.as_mut().map(|t| (&mut pb.tags, t, page)),
                 &starts,
                 &ends,
                 ri,
@@ -1867,7 +1908,9 @@ pub(super) fn render_table(
             c.items.len() > 1
                 || c.items.iter().any(|it| match it {
                     CellContentItem::Paragraph(p) => p.lines.len() >= 4,
-                    CellContentItem::NestedTable { row_heights, .. } => row_heights.len() >= 2,
+                    CellContentItem::NestedTable { rows, .. } => {
+                        rows.len() >= 2 || rows.iter().any(|r| r.can_split)
+                    }
                 })
         });
         // Whether every cell's first chunk fits in the room left: its first
@@ -1881,10 +1924,19 @@ pub(super) fn render_table(
                         CellContentItem::Paragraph(_) => None,
                         CellContentItem::NestedTable { .. } => Some(1),
                     };
-                    cm.top
-                        + cm.bottom
-                        + chunk_space_before(it, 0, CellCursor::default())
-                        + item_chunk_height(it, 0, end)
+                    c.cm.top
+                        + c.cm.bottom
+                        + chunk_space_before(it, 0, &CELL_START)
+                        + item_chunk_height(
+                            it,
+                            &Chunk {
+                                item: 0,
+                                l0: 0,
+                                l1: end,
+                                from: &[],
+                                to: &[],
+                            },
+                        )
                         <= available_h
                 })
             })
@@ -1893,8 +1945,7 @@ pub(super) fn render_table(
         // between its paragraphs with 30pt left. ponytail: 14pt (a line) guard
         // so a near-boundary rounding error can't split off nothing; drop it
         // if a reference ever splits with less.
-        let can_meaningfully_split = !row.cant_split
-            && row.height.is_none()
+        let can_meaningfully_split = layout.can_split
             && any_cell_multi_item
             && !at_page_top
             && available_h > 14.0
@@ -1960,7 +2011,6 @@ pub(super) fn render_table(
                     row,
                     layout,
                     &col_widths,
-                    cm,
                     table_left,
                     pb,
                     ctx,
@@ -1973,7 +2023,6 @@ pub(super) fn render_table(
                 row,
                 layout,
                 &col_widths,
-                cm,
                 table_left,
                 pb,
                 ctx,
@@ -2111,19 +2160,35 @@ pub(super) fn render_header_footer_table(
         page_num_format,
     };
     let row_layouts = compute_row_layouts(table, &col_widths, ctx, Some(&hf_sub));
-    let cm = &table.cell_margins;
-    let table_left = {
+    // A floating table sits at its own position and leaves the header's flow
+    // alone (french_sexual: the logo paragraph after it starts at the header top).
+    let mut float_y: f32;
+    let (table_left, y) = if let Some(pos) = &table.position {
+        let fp = super::FloatingTablePos::resolve(
+            table,
+            pos,
+            sp,
+            sp.margin_left,
+            sp.text_width(),
+            *cursor_y,
+            ctx,
+        );
+        float_y = fp.y;
+        (fp.x, &mut float_y)
+    } else {
         use crate::model::TableAlignment;
-        let text_width = sp.page_width - sp.margin_left - sp.margin_right;
+        let cm = &table.cell_margins;
+        let text_width = sp.text_width();
         let table_total_w: f32 = col_widths.iter().sum();
-        match table.alignment {
+        let left = match table.alignment {
             TableAlignment::Center => sp.margin_left + (text_width - table_total_w) / 2.0,
             TableAlignment::Right => sp.margin_left + text_width - table_total_w,
             TableAlignment::Left if ctx.compat_mode >= 15 => {
                 sp.margin_left + table.table_indent + word2013_border_shift(table)
             }
             TableAlignment::Left => sp.margin_left + table.table_indent - cm.left,
-        }
+        };
+        (left, cursor_y)
     };
 
     let merge_spans = compute_merge_spans(table, &row_layouts);
@@ -2135,7 +2200,7 @@ pub(super) fn render_header_footer_table(
         table_left,
         &merge_spans,
         content,
-        cursor_y,
+        y,
         ctx,
         gradient_specs,
         links,

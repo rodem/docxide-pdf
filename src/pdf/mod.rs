@@ -93,6 +93,9 @@ fn first_cell_paragraph(t: &crate::model::Table) -> Option<&Paragraph> {
 
 pub(super) struct RenderContext<'a> {
     pub(super) fonts: &'a HashMap<String, FontEntry>,
+    /// The document's sections: a section without its own header or footer
+    /// lays out around the one it inherits.
+    pub(super) sections: &'a [crate::model::Section],
     pub(super) doc_line_spacing: LineSpacing,
     pub(super) default_tab_stop: f32,
     /// Image names for inline images in table cells, keyed by Arc data pointer address.
@@ -323,28 +326,27 @@ fn break_run_lhr(runs: &[Run], break_fs: f32, fonts: &HashMap<String, FontEntry>
     }
 }
 
+/// Record one STYLEREF value under the style's id and name, with the
+/// paragraph's list number (0 when it has none) for the `\n` switch: running
+/// heads test `IF {STYLEREF X \n} = 0`.
 fn styleref_insert(
-    map: &mut HashMap<String, String>,
+    running: &mut HashMap<String, String>,
+    page_first: &mut HashMap<String, String>,
     id: &str,
     text: &str,
+    number: &str,
     style_id_to_name: &HashMap<String, String>,
 ) {
-    map.insert(id.to_string(), text.to_string());
-    if let Some(name) = style_id_to_name.get(id) {
-        map.insert(name.clone(), text.to_string());
-    }
-}
-
-fn styleref_insert_first(
-    map: &mut HashMap<String, String>,
-    id: &str,
-    text: &str,
-    style_id_to_name: &HashMap<String, String>,
-) {
-    map.entry(id.to_string())
-        .or_insert_with(|| text.to_string());
-    if let Some(name) = style_id_to_name.get(id) {
-        map.entry(name.clone()).or_insert_with(|| text.to_string());
+    for name in std::iter::once(id).chain(style_id_to_name.get(id).map(String::as_str)) {
+        for (key, value) in [
+            (header_footer::styleref_key(name, false), text),
+            (header_footer::styleref_key(name, true), number),
+        ] {
+            if !page_first.contains_key(&key) {
+                page_first.insert(key.clone(), value.to_string());
+            }
+            running.insert(key, value.to_string());
+        }
     }
 }
 
@@ -354,19 +356,28 @@ fn update_styleref_from_para(
     para: &Paragraph,
     style_id_to_name: &HashMap<String, String>,
 ) {
+    let number = if para.list_label.is_empty() {
+        "0"
+    } else {
+        para.list_label.as_str()
+    };
     if let Some(ref sid) = para.style_id {
         let text: String = para.runs.iter().map(|r| r.text.as_str()).collect();
         if !text.is_empty() {
-            styleref_insert(running, sid, &text, style_id_to_name);
-            styleref_insert_first(page_first, sid, &text, style_id_to_name);
+            styleref_insert(running, page_first, sid, &text, number, style_id_to_name);
         }
     }
-    for run in &para.runs {
-        if let Some(ref csid) = run.char_style_id
-            && !run.text.is_empty()
-        {
-            styleref_insert(running, csid, &run.text, style_id_to_name);
-            styleref_insert_first(page_first, csid, &run.text, style_id_to_name);
+    // A character style's text is the whole stretch of runs carrying it.
+    for group in para
+        .runs
+        .chunk_by(|a, b| a.char_style_id == b.char_style_id)
+    {
+        let Some(ref csid) = group[0].char_style_id else {
+            continue;
+        };
+        let text: String = group.iter().map(|r| r.text.as_str()).collect();
+        if !text.is_empty() {
+            styleref_insert(running, page_first, csid, &text, number, style_id_to_name);
         }
     }
 }
@@ -632,6 +643,61 @@ pub(super) struct FloatingTablePos {
     /// True when `vertAnchor="text"` — the offset is relative to the anchor
     /// paragraph (re-applicable on a fresh page), not the page/margin.
     pub v_anchor_text: bool,
+}
+
+impl FloatingTablePos {
+    /// Where a floating table goes: `tblpX`/`tblpXSpec` against its anchor
+    /// column (`col_x`, `col_w`), `tblpY` below the page, the margin or the
+    /// text (`text_y`: where its anchor paragraph's flow is).
+    pub(super) fn resolve(
+        table: &crate::model::Table,
+        pos: &crate::model::TablePosition,
+        sp: &SectionProperties,
+        col_x: f32,
+        col_w: f32,
+        text_y: f32,
+        ctx: &RenderContext,
+    ) -> Self {
+        let h_relative_from = match pos.h_anchor {
+            "page" => HRelativeFrom::Page,
+            "margin" => HRelativeFrom::Margin,
+            _ => HRelativeFrom::Column,
+        };
+        let x = resolve_h_position(
+            h_relative_from,
+            &pos.h_position,
+            table.col_widths.iter().sum(),
+            sp,
+            col_x,
+            col_w,
+            sp.text_width(),
+        );
+        // Before compat 15 an offset places the first cell's text, not
+        // its border, as tblInd does inline: Word draws case46's R1 at
+        // the margin and the border a cell margin left of it.
+        let x = if ctx.compat_mode < 15
+            && matches!(pos.h_position, crate::model::HorizontalPosition::Offset(_))
+        {
+            x - table.cell_margins.left
+        } else {
+            x
+        };
+        let y = match pos.v_anchor {
+            "page" => sp.page_height - pos.v_offset_pt,
+            "margin" => sp.page_height - sp.margin_top - pos.v_offset_pt,
+            _ => text_y - pos.v_offset_pt,
+        };
+        FloatingTablePos {
+            x,
+            y,
+            top_from_text: pos.top_from_text,
+            bottom_from_text: pos.bottom_from_text,
+            left_from_text: pos.left_from_text,
+            right_from_text: pos.right_from_text,
+            v_offset_pt: pos.v_offset_pt,
+            v_anchor_text: pos.v_anchor == "text",
+        }
+    }
 }
 
 pub(super) struct PageBuilder {
@@ -904,6 +970,24 @@ impl PageBuilder {
         // drops the space before the first paragraph under it.
         (self.slot_top - (sp.page_height - sp.margin_top)).abs() < 1.0
             || (self.slot_top - self.page_top_y).abs() < 0.01
+    }
+
+    /// The gap above a block at the top of a new page (None elsewhere): none,
+    /// except on a section's first page, where the block's space before
+    /// collapses with the previous section's trailing space after.
+    fn page_top_gap(
+        &self,
+        sp: &SectionProperties,
+        space_before: f32,
+        prev_space_after: f32,
+    ) -> Option<f32> {
+        (!self.all_contents.is_empty() && self.is_at_page_top(sp)).then(|| {
+            if self.is_first_page_of_section {
+                (space_before - prev_space_after).max(0.0)
+            } else {
+                0.0
+            }
+        })
     }
 
     /// Advance to the next column if available, otherwise flush the current page.
@@ -1434,7 +1518,8 @@ fn render_paragraph_block(
     }
 
     // Handle explicit column breaks
-    if para.column_break_before && col_count > 1 {
+    // In a one-column section Word breaks the page (bosch's page 2 ends there).
+    if para.column_break_before {
         state.pb.advance_column_or_page(
             &mut state.current_col,
             col_count,
@@ -2513,14 +2598,11 @@ fn render_paragraph_block(
     }
 
     // Suppress space_before at the top of a page
-    let at_new_page_top = !state.pb.all_contents.is_empty() && state.pb.is_at_page_top(sp);
-    if at_new_page_top {
-        if state.pb.is_first_page_of_section {
-            // Section break: collapse with the previous section's trailing space_after
-            inter_gap = (effective_space_before - state.prev_space_after).max(0.0);
-        } else {
-            inter_gap = 0.0;
-        }
+    if let Some(gap) = state
+        .pb
+        .page_top_gap(sp, effective_space_before, state.prev_space_after)
+    {
+        inter_gap = gap;
     }
 
     let applied_inter_gap = inter_gap;
@@ -3033,6 +3115,17 @@ fn render_paragraph_block(
         state.prev_space_after = 0.0;
         state.current_col = 0;
     }
+    if para.column_break_after {
+        state.pb.advance_column_or_page(
+            &mut state.current_col,
+            col_count,
+            sect_idx,
+            sp,
+            &mut state.effective_margin_bottom,
+            ctx,
+        );
+        state.prev_space_after = 0.0;
+    }
 
     false
 }
@@ -3116,6 +3209,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
     let ctx = RenderContext {
         fonts: &seen_fonts,
+        sections: &doc.sections,
         doc_line_spacing: doc.line_spacing,
         default_tab_stop: doc.default_tab_stop,
         table_cell_image_names: &table_cell_image_names,
@@ -3345,47 +3439,16 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                     state.pb.lists.close();
                     state.pb.toc = None;
                     let override_pos = table.position.as_ref().map(|pos| {
-                        let table_total_w: f32 = table.col_widths.iter().sum();
                         let (col_x, col_w) = col_geometry[state.current_col];
-                        let h_relative_from = match pos.h_anchor {
-                            "page" => HRelativeFrom::Page,
-                            "margin" => HRelativeFrom::Margin,
-                            _ => HRelativeFrom::Column,
-                        };
-                        let x = resolve_h_position(
-                            h_relative_from,
-                            &pos.h_position,
-                            table_total_w,
+                        FloatingTablePos::resolve(
+                            table,
+                            pos,
                             sp,
                             col_x,
                             col_w,
-                            text_width,
-                        );
-                        // Before compat 15 an offset places the first cell's text, not
-                        // its border, as tblInd does inline: Word draws case46's R1 at
-                        // the margin and the border a cell margin left of it.
-                        let x = if ctx.compat_mode < 15
-                            && matches!(pos.h_position, crate::model::HorizontalPosition::Offset(_))
-                        {
-                            x - table.cell_margins.left
-                        } else {
-                            x
-                        };
-                        let y = match pos.v_anchor {
-                            "page" => sp.page_height - pos.v_offset_pt,
-                            "margin" => sp.page_height - sp.margin_top - pos.v_offset_pt,
-                            _ => state.pb.slot_top - pos.v_offset_pt,
-                        };
-                        FloatingTablePos {
-                            x,
-                            y,
-                            top_from_text: pos.top_from_text,
-                            bottom_from_text: pos.bottom_from_text,
-                            left_from_text: pos.left_from_text,
-                            right_from_text: pos.right_from_text,
-                            v_offset_pt: pos.v_offset_pt,
-                            v_anchor_text: pos.v_anchor == "text",
-                        }
+                            state.pb.slot_top,
+                            &ctx,
+                        )
                     });
                     let col_bounds = if col_count > 1 {
                         Some(col_geometry[state.current_col])
@@ -3623,6 +3686,17 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
     }
 
     let empty_styleref: HashMap<String, String> = HashMap::new();
+    // The first occurrence of each style in the document. The running values
+    // hold every style seen up to a page, so a style missing from them and
+    // from the page itself first appears here.
+    let mut styleref_doc_first: HashMap<String, String> = HashMap::new();
+    for first in &state.pb.all_first_styleref {
+        for (k, v) in first {
+            if !styleref_doc_first.contains_key(k) {
+                styleref_doc_first.insert(k.clone(), v.clone());
+            }
+        }
+    }
     let mut page_styleref_merged: HashMap<String, String> = HashMap::new();
     let mut all_hf_contents: Vec<Option<Content>> = (0..total_pages).map(|_| None).collect();
     for (page_idx, hf_content) in all_hf_contents.iter_mut().enumerate() {
@@ -3653,7 +3727,10 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         } else {
             &empty_styleref
         };
-        page_styleref_merged.clone_from(prev_running);
+        // Failing both, Word searches forward to the end: a contents page's
+        // running head names the act whose title paragraph comes later.
+        page_styleref_merged.clone_from(&styleref_doc_first);
+        page_styleref_merged.extend(prev_running.iter().map(|(k, v)| (k.clone(), v.clone())));
         // Current-page first occurrences take priority (top-to-bottom search)
         for (k, v) in page_first {
             page_styleref_merged.insert(k.clone(), v.clone());

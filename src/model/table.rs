@@ -83,6 +83,10 @@ pub struct CellBorders {
     pub bottom: CellBorder,
     pub left: CellBorder,
     pub right: CellBorder,
+    /// The cell's own top before the edge it shares with the row above was
+    /// resolved into `top` (None when unchanged): a row continued on a new
+    /// page draws this one at the page top.
+    pub own_top: Option<CellBorder>,
 }
 
 #[derive(Clone, Copy, Debug)]

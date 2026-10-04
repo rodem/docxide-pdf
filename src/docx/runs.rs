@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::io::{Read, Seek};
 
 use crate::model::{
-    ConnectorShape, FieldCode, FloatingImage, HorizontalRule, InlineChart, Run, SmartArtDiagram,
-    TabAlignment, TextFill, TextGlow, TextOutline, TextShadow, Textbox, VertAlign,
+    ConnectorShape, FieldCode, FloatingImage, HorizontalRule, IfPart, InlineChart, Run,
+    SmartArtDiagram, TabAlignment, TextFill, TextGlow, TextOutline, TextShadow, Textbox, VertAlign,
 };
 
 use super::images::{
@@ -20,12 +20,32 @@ use super::{
     math_val, parse_hex_color, parse_pt, wml, wml_attr, wml_bool,
 };
 
-fn is_dynamic_field(instr: &str) -> bool {
-    let keyword = instr.split_whitespace().next().unwrap_or("");
-    keyword.eq_ignore_ascii_case("PAGE")
-        || keyword.eq_ignore_ascii_case("NUMPAGES")
-        || keyword.eq_ignore_ascii_case("STYLEREF")
-        || keyword.eq_ignore_ascii_case("PAGEREF")
+/// A field the renderer re-evaluates per page, from its instruction.
+fn parse_field_code(instr: &str) -> Option<FieldCode> {
+    let keyword = instr.split_whitespace().next()?;
+    if keyword.eq_ignore_ascii_case("PAGE") {
+        Some(FieldCode::Page)
+    } else if keyword.eq_ignore_ascii_case("NUMPAGES") {
+        Some(FieldCode::NumPages)
+    } else if keyword.eq_ignore_ascii_case("STYLEREF") {
+        parse_styleref_arg(instr).map(|name| FieldCode::StyleRef {
+            name,
+            number: has_switch(instr, "\\n"),
+        })
+    } else if keyword.eq_ignore_ascii_case("PAGEREF") {
+        instr
+            .split_whitespace()
+            .nth(1)
+            .map(|s| FieldCode::PageRef(s.to_string()))
+    } else {
+        None
+    }
+}
+
+fn has_switch(instr: &str, switch: &str) -> bool {
+    instr
+        .split_whitespace()
+        .any(|s| s.eq_ignore_ascii_case(switch))
 }
 
 /// One open complex field while parsing runs. Word fields nest: a field that
@@ -40,6 +60,58 @@ struct FieldFrame {
     visible: bool,
     instr: String,
     result: String,
+    /// The instruction as text and nested fields, for `FieldCode::If`.
+    parts: Vec<IfPart>,
+    /// A nested field we cannot evaluate: an `IF` keeps its cached result.
+    opaque: bool,
+}
+
+impl FieldFrame {
+    fn new(visible: bool) -> Self {
+        Self {
+            seen_sep: false,
+            visible,
+            instr: String::new(),
+            result: String::new(),
+            parts: Vec::new(),
+            opaque: false,
+        }
+    }
+
+    /// A field nested in this one's instruction.
+    fn nest(&mut self, instr: &str) {
+        match parse_field_code(instr) {
+            None | Some(FieldCode::PageRef(_)) => self.opaque = true,
+            Some(code) => self.parts.push(IfPart::Field(code)),
+        }
+    }
+
+    /// Instruction text; a nested field's cached value only joins `instr`.
+    fn push_instr(&mut self, t: &str, nested_value: bool) {
+        self.instr.push_str(t);
+        if nested_value {
+            return;
+        }
+        match self.parts.last_mut() {
+            Some(IfPart::Text(s)) => s.push_str(t),
+            _ => self.parts.push(IfPart::Text(t.to_string())),
+        }
+    }
+
+    fn evaluable_if(&self) -> bool {
+        !self.opaque
+            && self
+                .instr
+                .split_whitespace()
+                .next()
+                .is_some_and(|k| k.eq_ignore_ascii_case("IF"))
+            && self.parts.iter().any(|p| matches!(p, IfPart::Field(_)))
+    }
+
+    /// The cached result is replaced at render time.
+    fn dynamic(&self) -> bool {
+        self.evaluable_if() || parse_field_code(&self.instr).is_some()
+    }
 }
 
 fn parse_styleref_arg(instr: &str) -> Option<String> {
@@ -82,6 +154,8 @@ pub(super) struct ParsedRuns {
     pub(super) has_page_break_after: bool,
     /// Index into `runs` of the first run after a `<w:br w:type="page"/>`
     /// that has visible content after it in the same paragraph.
+    /// Mid-paragraph break index (`page_break_at`) is a column break.
+    pub(super) column_break_at: bool,
     pub(super) page_break_at: Option<usize>,
     pub(super) has_column_break: bool,
     pub(super) has_clear_break: bool,
@@ -911,6 +985,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
     let mut has_page_break_after = false;
     let mut page_break_before_content = false;
     let mut page_break_at: Option<usize> = None;
+    let mut column_break_at = false;
     let mut has_column_break = false;
     let mut has_clear_break = false;
     let mut field_stack: Vec<FieldFrame> = Vec::new();
@@ -933,6 +1008,22 @@ pub(super) fn parse_runs<R: Read + Seek>(
             continue;
         }
         let runs_before = runs.len();
+        // A fldSimple inside an open field's instruction is an argument to it;
+        // its runs carry the nested field's cached value as instrText.
+        let simple = run_node
+            .parent()
+            .filter(|p| p.has_tag_name((WML_NS, "fldSimple")));
+        let simple_instr = simple.and_then(|fs| fs.attribute((WML_NS, "instr")));
+        // The fldSimple's first run stands for the field; the rest are its value.
+        let simple_first_run = simple.is_some_and(|fs| {
+            fs.children().find(|n| n.has_tag_name((WML_NS, "r"))) == Some(run_node)
+        });
+        if simple_first_run
+            && let Some(f) = field_stack.last_mut()
+            && !f.seen_sep
+        {
+            f.nest(simple_instr.unwrap_or(""));
+        }
         let rpr = wml(run_node, "rPr");
 
         let char_style_id_str = rpr.and_then(|n| wml_attr(n, "rStyle"));
@@ -943,6 +1034,28 @@ pub(super) fn parse_runs<R: Read + Seek>(
         };
 
         let fmt = defaults.resolve_run_format(rpr, char_style, char_style_id_str, ctx.theme);
+
+        // A STYLEREF fldSimple on its own is one field run, re-evaluated per
+        // page like the complex form.
+        if field_stack.is_empty()
+            && let Some(code @ FieldCode::StyleRef { .. }) = simple_instr.and_then(parse_field_code)
+        {
+            if simple_first_run {
+                let cached: String = simple
+                    .into_iter()
+                    .flat_map(|fs| fs.descendants())
+                    .filter(|n| n.has_tag_name((WML_NS, "t")))
+                    .filter_map(|n| n.text())
+                    .collect();
+                runs.push(Run {
+                    text: cached,
+                    field_code: Some(code),
+                    hyperlink_url: hyperlink_url.clone(),
+                    ..fmt.styled_run()
+                });
+            }
+            continue;
+        }
 
         let flush_pending = |pending: &mut String, runs: &mut Vec<Run>| {
             if !pending.is_empty() {
@@ -1004,12 +1117,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
                         if field_stack.is_empty() {
                             flush_pending(&mut pending_text, &mut runs);
                         }
-                        field_stack.push(FieldFrame {
-                            seen_sep: false,
-                            visible: parent_visible,
-                            instr: String::new(),
-                            result: String::new(),
-                        });
+                        field_stack.push(FieldFrame::new(parent_visible));
                     }
                     Some("separate") => {
                         if let Some(f) = field_stack.last_mut() {
@@ -1017,45 +1125,39 @@ pub(super) fn parse_runs<R: Read + Seek>(
                         }
                     }
                     Some("end") => {
-                        if let Some(f) = field_stack.pop()
-                            && f.visible
-                        {
-                            let keyword = f.instr.split_whitespace().next().unwrap_or("");
-                            let fc = if keyword.eq_ignore_ascii_case("PAGE") {
-                                Some(FieldCode::Page)
-                            } else if keyword.eq_ignore_ascii_case("NUMPAGES") {
-                                Some(FieldCode::NumPages)
-                            } else if keyword.eq_ignore_ascii_case("STYLEREF") {
-                                parse_styleref_arg(&f.instr).map(FieldCode::StyleRef)
-                            } else if keyword.eq_ignore_ascii_case("PAGEREF") {
-                                f.instr
-                                    .split_whitespace()
-                                    .nth(1)
-                                    .map(|s| FieldCode::PageRef(s.to_string()))
-                            } else {
-                                None
-                            };
-                            if let Some(code) = fc {
-                                // PAGEREF \h is a hyperlink to its bookmark (TOC page
-                                // numbers): Word tags it as the TOCI's Link.
-                                let url = match &code {
-                                    FieldCode::PageRef(bookmark)
-                                        if hyperlink_url.is_none()
-                                            && f.instr
-                                                .split_whitespace()
-                                                .any(|s| s.eq_ignore_ascii_case("\\h")) =>
-                                    {
-                                        Some(format!("#{bookmark}"))
-                                    }
-                                    _ => hyperlink_url.clone(),
-                                };
-                                runs.push(Run {
-                                    text: f.result,
-                                    field_code: Some(code),
-                                    hyperlink_url: url,
-                                    ..fmt.styled_run()
-                                });
+                        let Some(mut f) = field_stack.pop() else {
+                            continue;
+                        };
+                        if !f.visible {
+                            if let Some(parent) = field_stack.last_mut()
+                                && !parent.seen_sep
+                            {
+                                parent.nest(&f.instr);
                             }
+                            continue;
+                        }
+                        let fc = if f.evaluable_if() {
+                            Some(FieldCode::If(std::mem::take(&mut f.parts)))
+                        } else {
+                            parse_field_code(&f.instr)
+                        };
+                        if let Some(code) = fc {
+                            // PAGEREF \h is a hyperlink to its bookmark (TOC page
+                            // numbers): Word tags it as the TOCI's Link.
+                            let url = match &code {
+                                FieldCode::PageRef(bookmark)
+                                    if hyperlink_url.is_none() && has_switch(&f.instr, "\\h") =>
+                                {
+                                    Some(format!("#{bookmark}"))
+                                }
+                                _ => hyperlink_url.clone(),
+                            };
+                            runs.push(Run {
+                                text: f.result,
+                                field_code: Some(code),
+                                hyperlink_url: url,
+                                ..fmt.styled_run()
+                            });
                         }
                     }
                     _ => {}
@@ -1067,14 +1169,14 @@ pub(super) fn parse_runs<R: Read + Seek>(
                         && !f.seen_sep
                         && let Some(t) = child.text()
                     {
-                        f.instr.push_str(t);
+                        f.push_instr(t, simple.is_some());
                     }
                 }
                 "t" => {
                     let visible = field_stack.last().is_none_or(|f| f.seen_sep);
                     let dyn_result = field_stack
                         .last()
-                        .is_some_and(|f| f.seen_sep && is_dynamic_field(&f.instr));
+                        .is_some_and(|f| f.seen_sep && f.dynamic());
                     if dyn_result {
                         // Cached result of a dynamic field — keep it as the
                         // field run's placeholder text (re-evaluated at render).
@@ -1092,7 +1194,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
                     let visible = field_stack.last().is_none_or(|f| f.seen_sep);
                     let dyn_result = field_stack
                         .last()
-                        .is_some_and(|f| f.seen_sep && is_dynamic_field(&f.instr));
+                        .is_some_and(|f| f.seen_sep && f.dynamic());
                     if visible && !dyn_result {
                         flush_pending(&mut pending_text, &mut runs);
                         runs.push(fmt.tab_run());
@@ -1104,7 +1206,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
                     let visible = field_stack.last().is_none_or(|f| f.seen_sep);
                     let dyn_result = field_stack
                         .last()
-                        .is_some_and(|f| f.seen_sep && is_dynamic_field(&f.instr));
+                        .is_some_and(|f| f.seen_sep && f.dynamic());
                     if visible && !dyn_result {
                         let alignment = match child.attribute((WML_NS, "alignment")) {
                             Some("center") => TabAlignment::Center,
@@ -1125,7 +1227,18 @@ pub(super) fn parse_runs<R: Read + Seek>(
                             has_page_break_after = true;
                         }
                     }
-                    Some("column") => has_column_break = true,
+                    // Text after a column break moves on, like after a page break
+                    Some("column") => {
+                        if runs.is_empty() && pending_text.is_empty() {
+                            has_column_break = true;
+                        } else {
+                            flush_pending(&mut pending_text, &mut runs);
+                            if page_break_at.is_none() {
+                                page_break_at = Some(runs.len());
+                                column_break_at = true;
+                            }
+                        }
+                    }
                     _ => {
                         if child.attribute((WML_NS, "clear")) == Some("all") {
                             has_clear_break = true;
@@ -1277,6 +1390,7 @@ pub(super) fn parse_runs<R: Read + Seek>(
         runs,
         has_explicit_page_break_before: page_break_before_content,
         has_page_break_after,
+        column_break_at,
         page_break_at,
         has_column_break,
         has_clear_break,
