@@ -300,12 +300,7 @@ pub(super) fn effective_slot_top(
     is_first: bool,
     ctx: &RenderContext,
 ) -> f32 {
-    let header = select_hf(
-        is_first,
-        sp.different_first_page,
-        &sp.header_first,
-        &sp.header_default,
-    );
+    let header = layout_hf(sp, is_first, true, ctx);
     let base = sp.page_height - sp.margin_top;
     match header {
         Some(_) if sp.margin_top_fixed => base,
@@ -321,12 +316,7 @@ pub(super) fn compute_effective_margin_bottom(
     is_first: bool,
     ctx: &RenderContext,
 ) -> f32 {
-    let footer = select_hf(
-        is_first,
-        sp.different_first_page,
-        &sp.footer_first,
-        &sp.footer_default,
-    );
+    let footer = layout_hf(sp, is_first, false, ctx);
     let base = sp.margin_bottom;
     match footer {
         Some(_) if sp.margin_bottom_fixed => base,
@@ -335,17 +325,28 @@ pub(super) fn compute_effective_margin_bottom(
     }
 }
 
-fn select_hf<'a>(
+/// The header (or footer) whose extent a section's page lays out around: its
+/// own, else the one it inherits, as drawn (radiographer's later sections
+/// inherit a two-line empty header that starts their body 27pt below the
+/// header). ponytail: never the even-page variant, which needs the page's
+/// parity at every caller.
+fn layout_hf<'a>(
+    sp: &'a SectionProperties,
     is_first: bool,
-    different_first_page: bool,
-    first: &'a Option<HeaderFooter>,
-    default: &'a Option<HeaderFooter>,
+    is_header: bool,
+    ctx: &RenderContext<'a>,
 ) -> Option<&'a HeaderFooter> {
-    if is_first && different_first_page {
-        first.as_ref()
+    let variant = if is_first && sp.different_first_page {
+        HfVariant::First
     } else {
-        default.as_ref()
-    }
+        HfVariant::Default
+    };
+    // `sp` is always one of the document's sections
+    let idx = ctx
+        .sections
+        .iter()
+        .position(|s| std::ptr::eq(&s.properties, sp))?;
+    inherited_hf(ctx.sections, idx, variant, is_header).map(|(hf, _)| hf)
 }
 
 pub(super) fn hf_paragraphs(hf: &HeaderFooter) -> Vec<&Paragraph> {
@@ -1199,6 +1200,32 @@ fn hf_variant(
     }
 }
 
+/// A section's header (or footer) of `variant`, else the nearest earlier
+/// section's, with the index of the section that owns it.
+fn inherited_hf(
+    sections: &[crate::model::Section],
+    idx: usize,
+    variant: HfVariant,
+    is_header: bool,
+) -> Option<(&HeaderFooter, usize)> {
+    sections[..=idx]
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(i, s)| {
+            let p = &s.properties;
+            let slot = match (variant, is_header) {
+                (HfVariant::Default, true) => &p.header_default,
+                (HfVariant::First, true) => &p.header_first,
+                (HfVariant::Even, true) => &p.header_even,
+                (HfVariant::Default, false) => &p.footer_default,
+                (HfVariant::First, false) => &p.footer_first,
+                (HfVariant::Even, false) => &p.footer_even,
+            };
+            slot.as_ref().map(|hf| (hf, i))
+        })
+}
+
 /// Resolve which header to use for a given page, walking sections backward
 /// for inheritance. Returns `(header_data, hf_type_id, section_index)`.
 pub(super) fn resolve_header_for_page(
@@ -1213,18 +1240,10 @@ pub(super) fn resolve_header_for_page(
         HfVariant::First => 1,
         HfVariant::Even => 4,
     };
-    for idx in (0..=section_idx).rev() {
-        let s = &doc.sections[idx].properties;
-        let h = match variant {
-            HfVariant::Default => &s.header_default,
-            HfVariant::First => &s.header_first,
-            HfVariant::Even => &s.header_even,
-        };
-        if h.is_some() {
-            return (h.as_ref(), t, idx);
-        }
+    match inherited_hf(&doc.sections, section_idx, variant, true) {
+        Some((hf, idx)) => (Some(hf), t, idx),
+        None => (None, t, section_idx),
     }
-    (None, t, section_idx)
 }
 
 /// Resolve which footer to use for a given page, walking sections backward
@@ -1241,18 +1260,10 @@ pub(super) fn resolve_footer_for_page(
         HfVariant::First => 3,
         HfVariant::Even => 5,
     };
-    for idx in (0..=section_idx).rev() {
-        let s = &doc.sections[idx].properties;
-        let f = match variant {
-            HfVariant::Default => &s.footer_default,
-            HfVariant::First => &s.footer_first,
-            HfVariant::Even => &s.footer_even,
-        };
-        if f.is_some() {
-            return (f.as_ref(), t, idx);
-        }
+    match inherited_hf(&doc.sections, section_idx, variant, false) {
+        Some((hf, idx)) => (Some(hf), t, idx),
+        None => (None, t, section_idx),
     }
-    (None, t, section_idx)
 }
 
 #[cfg(test)]

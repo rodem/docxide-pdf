@@ -93,6 +93,9 @@ fn first_cell_paragraph(t: &crate::model::Table) -> Option<&Paragraph> {
 
 pub(super) struct RenderContext<'a> {
     pub(super) fonts: &'a HashMap<String, FontEntry>,
+    /// The document's sections: a section without its own header or footer
+    /// lays out around the one it inherits.
+    pub(super) sections: &'a [crate::model::Section],
     pub(super) doc_line_spacing: LineSpacing,
     pub(super) default_tab_stop: f32,
     /// Image names for inline images in table cells, keyed by Arc data pointer address.
@@ -3191,6 +3194,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
 
     let ctx = RenderContext {
         fonts: &seen_fonts,
+        sections: &doc.sections,
         doc_line_spacing: doc.line_spacing,
         default_tab_stop: doc.default_tab_stop,
         table_cell_image_names: &table_cell_image_names,
