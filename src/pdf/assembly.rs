@@ -382,8 +382,8 @@ pub(super) fn assemble_pdf_pages(
                 &mut pane_content,
                 &doc.comments,
                 &transformed,
-                zoom_sp.page_width,
-                zoom_sp.page_height,
+                zoom_sp,
+                (zoom, zoom_tx, zoom_ty),
                 seen_fonts,
                 (body_key, label_key),
             );

@@ -4,14 +4,14 @@ use pdf_writer::{Content, Name, Str};
 
 use super::color::{fill_rgb, stroke_rgb};
 use crate::fonts::FontEntry;
-use crate::model::Comment;
+use crate::model::{Comment, SectionProperties};
 
-/// Width of the right-side pane drawn inside the page when the document has comments.
-const PANE_WIDTH: f32 = 197.0;
-/// Distance from the right page edge to the right edge of the pane.
-const PANE_RIGHT_MARGIN: f32 = 10.0;
-/// Whitespace above and below the gray pane band.
-const PANE_VPAD: f32 = 94.0;
+/// Width of the balloon area Word adds beside the text column.
+const BALLOON_AREA: f32 = 279.7;
+/// Unzoomed gaps from the text column to the gray pane, and from the pane to
+/// the balloon area's end.
+const PANE_LEFT_GAP: f32 = 9.1;
+const PANE_RIGHT_GAP: f32 = 13.3;
 
 /// Word's zoom `(scale, tx, ty)` for a page of a document with comments: the
 /// text column plus a 279.7pt balloon area fills the page width, so 12pt text
@@ -19,7 +19,7 @@ const PANE_VPAD: f32 = 94.0;
 /// 72pt (door_air_cooling_unit_spec). The zoomed page sits 0.96pt from the left
 /// edge and 0.54pt below vertical centre (Word's ty 94.32 and 100.80).
 pub(super) fn page_zoom(page_width: f32, page_height: f32, margin_right: f32) -> (f32, f32, f32) {
-    let scale = page_width / (page_width - margin_right + 279.7);
+    let scale = page_width / (page_width - margin_right + BALLOON_AREA);
     (scale, 0.96, page_height * (1.0 - scale) / 2.0 + 0.54)
 }
 
@@ -30,13 +30,16 @@ const CONNECTOR_RGB: [u8; 3] = [209, 52, 56];
 const LABEL_RGB: [u8; 3] = [80, 30, 30];
 const BODY_RGB: [u8; 3] = [50, 30, 30];
 
-const CALLOUT_PAD_X: f32 = 5.0;
+/// Unzoomed: a balloon's gaps to the pane's left and right edges, and its
+/// text's inset (case63's balloons span 423.8-599.5, text from 427.0).
+const BALLOON_LEFT_GAP: f32 = 22.8;
+const BALLOON_RIGHT_GAP: f32 = 4.3;
+const BALLOON_TEXT_PAD: f32 = 4.3;
 const CALLOUT_PAD_Y: f32 = 3.0;
 const CALLOUT_GAP: f32 = 0.0;
 const CALLOUT_RADIUS: f32 = 4.0;
 const CALLOUT_FONT_SIZE: f32 = 7.0;
 const CALLOUT_LINE_H: f32 = 8.5;
-const PANE_LEFT_PAD: f32 = 8.0;
 
 /// Anchor tuple: (comment_id, end_x, highlight_top_y, font_size). The highlight
 /// top is what callouts align to; the connector originates from
@@ -45,8 +48,9 @@ pub(super) fn render_comment_pane(
     content: &mut Content,
     comments: &HashMap<u32, Comment>,
     anchors: &[(u32, f32, f32, f32)],
-    page_width: f32,
-    page_height: f32,
+    sp: &SectionProperties,
+    // The page's `page_zoom`, which `anchors` are already zoomed by.
+    (zoom, tx, ty): (f32, f32, f32),
     seen_fonts: &HashMap<String, FontEntry>,
     // The pane's body and label font keys (`fonts::comment_pane_keys`).
     (body_key, label_key): (&str, &str),
@@ -57,14 +61,17 @@ pub(super) fn render_comment_pane(
         return;
     };
 
-    let pane_x = page_width - PANE_WIDTH - PANE_RIGHT_MARGIN;
-    let pane_top = page_height - PANE_VPAD;
-    let pane_bottom = PANE_VPAD;
-    let pane_h = pane_top - pane_bottom;
+    // The pane is the zoomed page's balloon area, as tall as the zoomed page:
+    // 406.4-602.8 at case63's 90pt right margin, 411.0-603.1 at door_air's 72pt.
+    let pane_x = tx + (sp.page_width - sp.margin_right + PANE_LEFT_GAP) * zoom;
+    let pane_width = (BALLOON_AREA - PANE_LEFT_GAP - PANE_RIGHT_GAP) * zoom;
+    let pane_bottom = ty;
+    let pane_h = sp.page_height * zoom;
+    let pane_top = pane_bottom + pane_h;
 
     content.save_state();
     fill_rgb(content, PANE_BG);
-    content.rect(pane_x, pane_bottom, PANE_WIDTH, pane_h);
+    content.rect(pane_x, pane_bottom, pane_width, pane_h);
     content.fill_nonzero();
     content.restore_state();
 
@@ -72,9 +79,10 @@ pub(super) fn render_comment_pane(
         return;
     }
 
-    let inner_x = pane_x + PANE_LEFT_PAD;
-    let inner_w = PANE_WIDTH - 2.0 * PANE_LEFT_PAD;
-    let text_w = inner_w - 2.0 * CALLOUT_PAD_X;
+    let inner_x = pane_x + BALLOON_LEFT_GAP * zoom;
+    let inner_w = pane_width - (BALLOON_LEFT_GAP + BALLOON_RIGHT_GAP) * zoom;
+    let text_x = inner_x + BALLOON_TEXT_PAD * zoom;
+    let text_w = inner_w - 2.0 * BALLOON_TEXT_PAD * zoom;
 
     let mut placements: Vec<(u32, f32, f32, Vec<(bool, String)>)> = Vec::new();
     // Stack callouts flush top-to-bottom: only the first uses its anchor_y to
@@ -138,7 +146,7 @@ pub(super) fn render_comment_pane(
                 content.begin_text();
                 fill_rgb(content, LABEL_RGB);
                 content.set_font(Name(label_entry.pdf_name.as_bytes()), CALLOUT_FONT_SIZE);
-                content.set_text_matrix([1.0, 0.0, 0.0, 1.0, inner_x + CALLOUT_PAD_X, text_y]);
+                content.set_text_matrix([1.0, 0.0, 0.0, 1.0, text_x, text_y]);
                 content.show(Str(&label_bytes));
                 content.end_text();
                 if !body_part.is_empty() {
@@ -147,14 +155,7 @@ pub(super) fn render_comment_pane(
                     content.begin_text();
                     fill_rgb(content, BODY_RGB);
                     content.set_font(Name(body_entry.pdf_name.as_bytes()), CALLOUT_FONT_SIZE);
-                    content.set_text_matrix([
-                        1.0,
-                        0.0,
-                        0.0,
-                        1.0,
-                        inner_x + CALLOUT_PAD_X + label_w,
-                        text_y,
-                    ]);
+                    content.set_text_matrix([1.0, 0.0, 0.0, 1.0, text_x + label_w, text_y]);
                     content.show(Str(&body_bytes));
                     content.end_text();
                 }
@@ -163,7 +164,7 @@ pub(super) fn render_comment_pane(
                 content.begin_text();
                 fill_rgb(content, BODY_RGB);
                 content.set_font(Name(body_entry.pdf_name.as_bytes()), CALLOUT_FONT_SIZE);
-                content.set_text_matrix([1.0, 0.0, 0.0, 1.0, inner_x + CALLOUT_PAD_X, text_y]);
+                content.set_text_matrix([1.0, 0.0, 0.0, 1.0, text_x, text_y]);
                 content.show(Str(&body_bytes));
                 content.end_text();
             }
