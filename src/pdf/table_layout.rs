@@ -1058,7 +1058,16 @@ pub(super) fn compute_row_layouts(
                 .map(|c| c.cm.top + c.cm.bottom)
                 .fold(0.0f32, f32::max);
             let height = match (row.height, row.height_exact) {
-                (Some(h), true) => h,
+                // An exact one gains only the bottom margin: 30pt with 5pt
+                // margins is 35.0, with only a 5pt top margin 30.0 (Word probes).
+                // The inset's half band is already in the exact pitch.
+                (Some(h), true) => {
+                    h + cells
+                        .iter()
+                        .zip(row.grid_cells())
+                        .map(|(l, (_, _, c))| l.cm.bottom - c.borders.bottom.band() / 2.0)
+                        .fold(0.0f32, f32::max)
+                }
                 (Some(h), false) => content_h.max(h + insets),
                 _ => content_h,
             };
