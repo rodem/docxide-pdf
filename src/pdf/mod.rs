@@ -1028,7 +1028,9 @@ impl PageBuilder {
 
     /// Text that didn't fit: on to the next column, but when this column is
     /// still empty the others are no taller, so to the next page (case80's
-    /// five-column region starts on page 2).
+    /// five-column region starts on page 2). The column's separator reaches
+    /// the `trailing_space` after its last paragraph (case80 page 5).
+    #[allow(clippy::too_many_arguments)]
     fn overflow_column_or_page(
         &mut self,
         current_col: &mut usize,
@@ -1037,10 +1039,12 @@ impl PageBuilder {
         sp: &SectionProperties,
         effective_margin_bottom: &mut f32,
         ctx: &RenderContext,
+        trailing_space: f32,
     ) {
         let col_count = if self.slot_top >= self.column_top_y - 0.01 {
             1
         } else {
+            self.slot_top -= trailing_space;
             col_count
         };
         self.advance_column_or_page(
@@ -2603,6 +2607,8 @@ fn render_paragraph_block(
                 track_page_footnote(state, doc, ctx, text_width, id);
             }
 
+            // The column ends below the lines that stay (its separator reaches them).
+            state.pb.slot_top -= lines_height(first_part, line_h, para_metrics);
             state.pb.first_overflow_block.get_or_insert(block_idx);
             state.pb.advance_column_or_page(
                 &mut state.current_col,
@@ -2688,6 +2694,7 @@ fn render_paragraph_block(
             sp,
             &mut state.effective_margin_bottom,
             ctx,
+            state.prev_space_after,
         );
         inter_gap = 0.0;
     }
