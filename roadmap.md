@@ -139,7 +139,7 @@ ua_deficit 2 → 0, ua_fail 510 → 504, text 96.34 → 96.51%, struct
 at page breaks become two TRs, continued footnotes two Ps, and some lists
 lose their labels into LBody or entirely (see `current_focus/A11Y.md`).
 
-**Done, round 7 (2026-10-04, branch `a11y-round7`):** two content losses
+**Done, round 7 (2026-10-04, `4f610d12`..`de1ebce7`):** two content losses
 fixed: vertical table-cell text was untagged (japanese_interlibrary text
 95 → 100%), and a continuous break to landscape put transition_to_work's
 clause 108 above the top of its page (now a new page, as in Word) · pictures in table cells and textboxes are
