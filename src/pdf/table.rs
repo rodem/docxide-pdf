@@ -1164,24 +1164,23 @@ fn render_table_row(
         let ecm = cell.cell_margins.as_ref().unwrap_or(cm);
         let mut no_links = Vec::new();
 
-        if !has_content || cell_layout.text_direction == TextDirection::TbRl {
-            if has_content {
-                render_vertical_cjk_cell(
-                    &mut pb.content,
-                    cell_layout,
-                    cell,
-                    cell_x,
-                    row_top,
-                    effective_h,
-                    col_w,
-                    ecm,
-                    ctx,
-                );
-            }
-            // ponytail: vertical cell text stays an artifact; the TD keeps rows the same width
+        if !has_content {
             if let Some(t) = tagger {
                 t.empty_para(&mut pb.content);
             }
+        } else if cell_layout.text_direction == TextDirection::TbRl {
+            render_vertical_cjk_cell(
+                &mut pb.content,
+                cell_layout,
+                cell,
+                cell_x,
+                row_top,
+                effective_h,
+                col_w,
+                ecm,
+                ctx,
+                tagger,
+            );
         } else {
             let content_h = cell_content_h_for_valign(&cell_layout.items);
 
@@ -1247,6 +1246,8 @@ fn render_vertical_cjk_cell(
     col_w: f32,
     cm: &CellMargins,
     ctx: &RenderContext,
+    // Tags each paragraph as the cell's P, like a horizontal cell's.
+    mut tagger: Option<CellTagger<'_>>,
 ) {
     let pdf_name_to_entry: HashMap<&str, &FontEntry> = ctx
         .fonts
@@ -1287,7 +1288,14 @@ fn render_vertical_cjk_cell(
     let mut char_y = row_top - cm.top - v_offset;
     let mut char_buf = [0u8; 4];
 
-    for para in &paras {
+    for (item, content_item) in cell_layout.items.iter().enumerate() {
+        let CellContentItem::Paragraph(para) = content_item else {
+            continue;
+        };
+        let nodes = tagger
+            .as_mut()
+            .map(|t| t.begin(content, item, para.list_item, false));
+        let mut link_tags = cell_link_tagger(&mut tagger, nodes.map(|(_, body)| body));
         for line in &para.lines {
             for chunk in &line.chunks {
                 if chunk.text.is_empty() {
@@ -1302,7 +1310,13 @@ fn render_vertical_cjk_cell(
                     fill_rgb(content, c);
                 }
 
+                let boundary_space = chunk.boundary_space(entry.copied());
                 content.begin_text();
+                // ponytail: no link annotations in vertical text, so no Link
+                // elements either; add both if a document has one
+                if let Some(lt) = link_tags.as_mut() {
+                    lt.chunk(content, chunk, None, boundary_space);
+                }
                 content.set_font(Name(chunk.pdf_font.as_bytes()), fs);
 
                 let mut td_x = 0.0f32;
@@ -1324,6 +1338,10 @@ fn render_vertical_cjk_cell(
 
                     char_y -= fs;
                 }
+                if boundary_space {
+                    let space = encode_text_for_pdf(" ", &chunk.pdf_font, &pdf_name_to_entry);
+                    content.show(Str(&space));
+                }
                 content.end_text();
 
                 if chunk.color.is_some() {
@@ -1331,6 +1349,10 @@ fn render_vertical_cjk_cell(
                 }
             }
         }
+        if let Some(lt) = link_tags {
+            lt.finish(content);
+        }
+        end_cell_tag(content, &tagger);
     }
 }
 

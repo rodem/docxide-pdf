@@ -337,6 +337,19 @@ fn push_decoration(
 }
 
 impl WordChunk {
+    /// The note this chunk is the reference mark of: (endnote, id).
+    fn note(&self) -> Option<(bool, u32)> {
+        self.footnote_id
+            .map(|id| (false, id))
+            .or(self.endnote_id.map(|id| (true, id)))
+    }
+
+    /// A space glyph goes after the word, marking the word boundary for text
+    /// extraction (a font without one leaves it out).
+    pub(super) fn boundary_space(&self, entry: Option<&FontEntry>) -> bool {
+        self.space_after && entry.is_none_or(|e| e.has_char(' '))
+    }
+
     fn text(
         entry: &FontEntry,
         run: &Run,
@@ -673,6 +686,40 @@ impl<'a> LinkTagger<'a> {
         true
     }
 
+    /// Before drawing `chunk` in a text object: switch to its Link (a note's
+    /// reference mark links to the note), Span or Formula, and nest its Note.
+    /// Returns true when the marked content switched (the text matrix is
+    /// reset).
+    pub(super) fn chunk(
+        &mut self,
+        content: &mut Content,
+        chunk: &WordChunk,
+        link_url: Option<&str>,
+        boundary_space: bool,
+    ) -> bool {
+        let mut switched = false;
+        // Glyph-less chunks (underline bridges over spaces) don't break a link.
+        if !chunk.text.is_empty() {
+            switched |= self.enter(content, link_url);
+            // A Span's /ActualText covers the boundary space the Tj carries too.
+            let actual = chunk.actual_text.as_ref().map(|t| {
+                if boundary_space {
+                    format!("{t} ")
+                } else {
+                    t.clone()
+                }
+            });
+            let (lang, formula) = (chunk.lang.as_deref(), chunk.formula.as_ref());
+            switched |= self.inline(content, formula, lang, actual.as_deref());
+        }
+        // The Note goes inside the link on its reference mark (Word nests it there).
+        if let Some((endnote, id)) = chunk.note() {
+            let parent = self.open();
+            self.tags.note(endnote, id, parent);
+        }
+        switched
+    }
+
     /// Switch the open marked content to the chunk's Link (or back to the
     /// paragraph). Like Word, marked content never changes inside a text
     /// object, so it is ended and reopened around the switch; returns true
@@ -743,7 +790,7 @@ impl<'a> LinkTagger<'a> {
         content.begin_text();
     }
 
-    fn finish(mut self, content: &mut Content) {
+    pub(super) fn finish(mut self, content: &mut Content) {
         if self.link.take().is_some() | self.inline.take().is_some() {
             self.tags.begin(content, self.page, self.para);
         }
@@ -2887,45 +2934,20 @@ pub(super) fn render_paragraph_lines(
                 // A note's reference mark links to the note text (keyboard and
                 // screen-reader navigation), like Word's. Kept apart from
                 // hyperlink_url, which also moves the underline.
-                let note = chunk
-                    .footnote_id
-                    .map(|id| (false, id))
-                    .or(chunk.endnote_id.map(|id| (true, id)));
+                let note = chunk.note();
                 let note_url = note.map(|(endnote, id)| {
                     format!("#{}", super::footnotes::note_anchor(endnote, id))
                 });
                 let link_url = chunk.hyperlink_url.as_deref().or(note_url.as_deref());
-                // Glyph-less chunks (underline bridges over spaces) don't break a link.
-                if let Some(lt) = link_tags.as_mut().filter(|_| !chunk.text.is_empty())
-                    && lt.enter(content, link_url)
-                {
-                    td_x = 0.0;
-                    td_y = 0.0;
-                }
                 let primary_entry = pdf_name_to_entry.get(chunk.pdf_font.as_str());
                 // The next chunk is positioned from the line start, so the
                 // space's advance moves nothing; it only marks the word boundary.
-                let boundary_space =
-                    chunk.space_after && primary_entry.is_none_or(|e| e.has_char(' '));
-                // A Span's /ActualText covers the boundary space the Tj carries too.
-                if let Some(lt) = link_tags.as_mut().filter(|_| !chunk.text.is_empty()) {
-                    let actual = chunk.actual_text.as_ref().map(|t| {
-                        if boundary_space {
-                            format!("{t} ")
-                        } else {
-                            t.clone()
-                        }
-                    });
-                    let (lang, formula) = (chunk.lang.as_deref(), chunk.formula.as_ref());
-                    if lt.inline(content, formula, lang, actual.as_deref()) {
-                        td_x = 0.0;
-                        td_y = 0.0;
-                    }
-                }
-                // The Note goes inside the link on its reference mark (Word nests it there).
-                if let (Some(lt), Some((endnote, id))) = (link_tags.as_mut(), note) {
-                    let parent = lt.open();
-                    lt.tags.note(endnote, id, parent);
+                let boundary_space = chunk.boundary_space(primary_entry.copied());
+                if let Some(lt) = link_tags.as_mut()
+                    && lt.chunk(content, chunk, link_url, boundary_space)
+                {
+                    td_x = 0.0;
+                    td_y = 0.0;
                 }
 
                 let x = chunk_abs_x(chunk_idx, chunk);
