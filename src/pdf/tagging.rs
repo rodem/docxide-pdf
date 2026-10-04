@@ -105,6 +105,9 @@ pub(crate) struct TableTags {
     cells: HashMap<(usize, usize), usize>,
     paras: HashMap<(usize, usize, usize), usize>,
     lists: HashMap<(usize, usize), Lists>,
+    /// Tables nested in a cell, by (row, cell, item), kept between the pieces
+    /// of a row split across pages.
+    nested: HashMap<(usize, usize, usize), TableTags>,
 }
 
 impl TableTags {
@@ -127,13 +130,14 @@ impl TableTags {
             cells: HashMap::new(),
             paras: HashMap::new(),
             lists: HashMap::new(),
+            nested: HashMap::new(),
         }
     }
 
     /// Word gives a table whose rows are all headers an empty TBody (PDF/UA 7.2-14).
-    pub(super) fn finish(self, tags: &mut Tags) {
+    pub(super) fn finish(&mut self, tags: &mut Tags) {
         if self.head.is_some() && self.body.is_none() {
-            tags.add(self.table, "TBody");
+            self.body = Some(tags.add(self.table, "TBody"));
         }
     }
 
@@ -226,9 +230,23 @@ impl CellTagger<'_> {
 
     /// Structure for a table nested in this cell: a Table inside the cell
     /// element, between the paragraphs around it. It ends the cell's list.
-    pub(super) fn nested_table(&mut self, table: &crate::model::Table) -> TableTags {
+    /// The table at `item` carries on in the Table its first piece started
+    /// when its row is split across pages, so a row split partway stays one
+    /// TR with all its cells (7.2-42). Returns (tags, the nested table's
+    /// structure, page), as `render_table_rows` takes them.
+    pub(super) fn nested_table(
+        &mut self,
+        table: &crate::model::Table,
+        item: usize,
+    ) -> (&mut Tags, &mut TableTags, usize) {
         let cell = self.close_list();
-        TableTags::for_table(self.tags, cell, table)
+        let tags = &mut *self.tags;
+        let nested = self
+            .table
+            .nested
+            .entry((self.row, self.cell, item))
+            .or_insert_with(|| TableTags::for_table(tags, cell, table));
+        (tags, nested, self.page)
     }
 
     /// A Figure inside the cell element for a picture floating in it, after

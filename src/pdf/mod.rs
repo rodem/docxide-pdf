@@ -3470,7 +3470,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                         &mut state.effective_margin_bottom,
                         col_bounds,
                     );
-                    if let Some(tags) = state.pb.table_tags.take() {
+                    if let Some(mut tags) = state.pb.table_tags.take() {
                         tags.finish(&mut state.pb.tags);
                     }
                     state.prev_space_after = 0.0;

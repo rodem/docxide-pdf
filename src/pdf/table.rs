@@ -601,7 +601,7 @@ fn render_cell_content(
                         &mut tagger,
                         (col_widths, rows),
                         &Chunk {
-                            item: 0,
+                            item: item_idx,
                             l0: 0,
                             l1: None,
                             from: &[],
@@ -939,11 +939,7 @@ fn render_nested_table(
 
     let merge_spans = compute_merge_spans(table, row_layouts);
 
-    let mut nested = tagger.as_mut().map(|t| t.nested_table(table));
-    let mut tag = tagger
-        .as_mut()
-        .zip(nested.as_mut())
-        .map(|(t, n)| (&mut *t.tags, n, t.page));
+    let mut tag = tagger.as_mut().map(|t| t.nested_table(table, chunk.item));
     let n_rows = table.rows.len().min(row_layouts.len());
     for piece in row_pieces(n_rows, chunk) {
         match piece {
@@ -978,9 +974,8 @@ fn render_nested_table(
             ),
         }
     }
-    drop(tag);
-    if let (Some(t), Some(n)) = (tagger.as_mut(), nested) {
-        n.finish(t.tags);
+    if let Some((tags, nested, _)) = tag {
+        nested.finish(tags);
     }
 }
 
