@@ -418,6 +418,13 @@ pub(super) fn render_textbox_paragraphs(
                     + x_offset
                     + align_offset(tp.alignment, (tp_align_w - img.display_width).max(0.0));
                 let img_y = cursor_y - inter_gap - img.display_height - y_offset;
+                // The paragraph's P stays empty and the picture follows it as
+                // a Figure in the Sect, as in the body.
+                let figure = tag.as_mut().filter(|_| !img.decorative);
+                if let Some((tags, page, sect)) = figure {
+                    let figure = tags.add_figure(*sect, img.alt.as_deref());
+                    tags.begin(content, *page, figure);
+                }
                 super::smartart::render_image_with_clip(
                     content,
                     pdf_name,
@@ -427,6 +434,9 @@ pub(super) fn render_textbox_paragraphs(
                     img.display_height,
                     img.clip_geometry.as_ref(),
                 );
+                if tag.is_some() && !img.decorative {
+                    Tags::end(content);
+                }
             }
             cursor_y -= inter_gap + img.display_height + img.layout_extra_height;
             prev_space_after = tp.space_after;

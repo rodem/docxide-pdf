@@ -489,6 +489,16 @@ pub(super) struct CellFloatingImageLayout {
     /// wp:anchor relativeHeight, so a cell picture can paint over a
     /// connector/textbox anchored in the same paragraph (annotation #241).
     pub(super) z_index: u32,
+    /// The picture's `docPr@descr` and decorative flag, for tagging.
+    pub(super) alt: Option<String>,
+    pub(super) decorative: bool,
+}
+
+impl CellFloatingImageLayout {
+    /// (alt, decorative), for `cell_figure`.
+    pub(super) fn tagging(&self) -> (Option<&str>, bool) {
+        (self.alt.as_deref(), self.decorative)
+    }
 }
 
 #[derive(Default)]
@@ -515,6 +525,9 @@ pub(super) struct CellParagraphLayout {
     pub(super) label_color: Option<[u8; 3]>,
     pub(super) first_run_font_key: String,
     pub(super) image_name: Option<String>,
+    /// The picture's `docPr@descr` and decorative flag, for tagging.
+    pub(super) image_alt: Option<String>,
+    pub(super) image_decorative: bool,
     pub(super) image_width: f32,
     pub(super) image_height: f32,
     pub(super) image_stroke_color: Option<[u8; 3]>,
@@ -930,6 +943,8 @@ pub(super) fn compute_row_layouts(
                                             v_offset,
                                             rotation_deg: fi.image.rotation_deg,
                                             z_index: fi.z_index,
+                                            alt: fi.image.alt.clone(),
+                                            decorative: fi.image.decorative,
                                         })
                                     })
                                     .collect();
@@ -954,6 +969,11 @@ pub(super) fn compute_row_layouts(
                                     label_color: para.runs.first().and_then(|r| r.color),
                                     first_run_font_key,
                                     image_name,
+                                    image_alt: para.image.as_ref().and_then(|i| i.alt.clone()),
+                                    image_decorative: para
+                                        .image
+                                        .as_ref()
+                                        .is_some_and(|i| i.decorative),
                                     image_width,
                                     image_height,
                                     image_stroke_color: img_stroke_color,

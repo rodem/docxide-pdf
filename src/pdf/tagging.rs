@@ -231,6 +231,13 @@ impl CellTagger<'_> {
         TableTags::for_table(self.tags, cell, table)
     }
 
+    /// A Figure inside the cell element for a picture floating in it, after
+    /// its anchor paragraph, as Word tags one. It ends the cell's list.
+    pub(super) fn figure(&mut self, alt: Option<&str>) -> usize {
+        let cell = self.close_list();
+        self.tags.add_figure(cell, alt)
+    }
+
     /// A Sect inside the cell element for a textbox anchored in it, after its
     /// anchor paragraph (Word: `TD > Sect > P`). It ends the cell's list.
     pub(super) fn sect(&mut self) -> usize {

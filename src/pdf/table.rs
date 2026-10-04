@@ -458,6 +458,9 @@ fn render_cell_content(
                 }
 
                 cursor_y -= para.space_before;
+                // Word anchors paragraph-relative floats to the cell's content
+                // top, unaffected by vAlign (see `valign_off`).
+                let float_y = cursor_y + valign_off;
 
                 // Word stacks anchored objects by relativeHeight: a picture
                 // above the paragraph's connectors/textboxes must paint after
@@ -473,19 +476,25 @@ fn render_cell_content(
                 let above_shapes =
                     |fi: &&CellFloatingImageLayout| shape_z.is_some_and(|z| fi.z_index > z);
                 for fi in para.floating_images.iter().filter(|fi| !above_shapes(fi)) {
-                    draw_cell_float(content, fi, cell_x, cursor_y + valign_off);
+                    cell_figure(content, &mut tagger, cell_para, fi.tagging(), |c| {
+                        draw_cell_float(c, fi, cell_x, float_y)
+                    });
                 }
 
                 if let Some(ref img_name) = para.image_name {
                     for fi in para.floating_images.iter().filter(above_shapes) {
-                        draw_cell_float(content, fi, cell_x, cursor_y + valign_off);
+                        cell_figure(content, &mut tagger, cell_para, fi.tagging(), |c| {
+                            draw_cell_float(c, fi, cell_x, float_y)
+                        });
                     }
                     // distT/distB in layout_extra_height contribute to row
                     // height but don't add spacing between image and text.
-                    cursor_y -= render_cell_inline_image(
-                        content, para, img_name, cell_x, col_w, cursor_y, cm,
-                    );
-                    end_cell_tag(content, &tagger);
+                    // The paragraph's P stays empty and the picture follows
+                    // it as a Figure, as in the body.
+                    let picture = (para.image_alt.as_deref(), para.image_decorative);
+                    cursor_y -= cell_figure(content, &mut tagger, None, picture, |c| {
+                        render_cell_inline_image(c, para, img_name, cell_x, col_w, cursor_y, cm)
+                    });
                     continue;
                 }
 
@@ -559,12 +568,9 @@ fn render_cell_content(
                     );
                 }
                 for fi in para.floating_images.iter().filter(above_shapes) {
-                    draw_cell_float(
-                        content,
-                        fi,
-                        cell_x,
-                        para_top - para.space_before + valign_off,
-                    );
+                    cell_figure(content, &mut tagger, None, fi.tagging(), |c| {
+                        draw_cell_float(c, fi, cell_x, float_y)
+                    });
                 }
             }
             CellContentItem::NestedTable { height, .. } => {
@@ -598,6 +604,33 @@ fn render_cell_content(
             }
         }
     }
+}
+
+/// Draw a picture in a cell as a Figure inside the cell element, as Word tags
+/// one (an artifact when decorative), then go back into the cell paragraph
+/// `resume` while it is still open.
+fn cell_figure<R>(
+    content: &mut Content,
+    tagger: &mut Option<CellTagger<'_>>,
+    resume: Option<usize>,
+    (alt, decorative): (Option<&str>, bool),
+    draw: impl FnOnce(&mut Content) -> R,
+) -> R {
+    let Some(t) = tagger.as_mut() else {
+        return draw(content);
+    };
+    if decorative {
+        Tags::end(content);
+    } else {
+        let figure = t.figure(alt);
+        t.switch(content, figure);
+    }
+    let drawn = draw(content);
+    match resume {
+        Some(para) => t.switch(content, para),
+        None => Tags::end(content),
+    }
+    drawn
 }
 
 /// Draw one floating picture anchored to a cell paragraph whose top is `para_y`.
@@ -979,15 +1012,17 @@ fn render_partial_cell_content(
                 // paragraph's first line; a continuation chunk has neither.
                 if l0 == 0 {
                     for fi in &para.floating_images {
-                        draw_cell_float(content, fi, cell_x, cursor_y);
+                        cell_figure(content, &mut tagger, cell_para, fi.tagging(), |c| {
+                            draw_cell_float(c, fi, cell_x, cursor_y)
+                        });
                     }
                 }
 
                 if let Some(ref img_name) = para.image_name {
-                    cursor_y -= render_cell_inline_image(
-                        content, para, img_name, cell_x, col_w, cursor_y, cm,
-                    );
-                    end_cell_tag(content, &tagger);
+                    let picture = (para.image_alt.as_deref(), para.image_decorative);
+                    cursor_y -= cell_figure(content, &mut tagger, None, picture, |c| {
+                        render_cell_inline_image(c, para, img_name, cell_x, col_w, cursor_y, cm)
+                    });
                     continue;
                 }
 
