@@ -194,7 +194,7 @@ pub(super) fn render_comment_pane(
     content.restore_state();
 }
 
-fn format_label(c: &Comment) -> String {
+pub(super) fn format_label(c: &Comment) -> String {
     let initials = if c.initials.is_empty() {
         "?".to_string()
     } else {

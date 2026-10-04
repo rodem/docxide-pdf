@@ -217,11 +217,10 @@ fn collect_used_chars(doc: &Document, all_runs: &[&Run]) -> HashMap<String, Hash
         for comment in doc.comments.values() {
             body.extend(comment.text.chars());
         }
+        // The labels exactly as drawn: one without initials says "[?1]".
         let label = used.entry(label_key).or_default();
-        label.extend("Commented []: ".chars());
         for comment in doc.comments.values() {
-            label.extend(comment.initials.chars());
-            label.extend(comment.display_index.to_string().chars());
+            label.extend(super::comments::format_label(comment).chars());
         }
     }
 
