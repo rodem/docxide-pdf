@@ -5,6 +5,7 @@
     "text_boundary": 1.0,
     "convert_ms": 35.5,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -15,6 +16,7 @@
     "text_boundary": 0.9063,
     "convert_ms": 10.2,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9512,
     "a11y_text": 0.5672
@@ -25,6 +27,7 @@
     "text_boundary": 1.0,
     "convert_ms": 13.4,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -35,6 +38,7 @@
     "text_boundary": 1.0,
     "convert_ms": 5.1,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -45,6 +49,7 @@
     "text_boundary": 1.0,
     "convert_ms": 4.6,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -55,6 +60,7 @@
     "text_boundary": 1.0,
     "convert_ms": 7.5,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -65,6 +71,7 @@
     "text_boundary": 1.0,
     "convert_ms": 51.2,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -75,6 +82,7 @@
     "text_boundary": 1.0,
     "convert_ms": 4.4,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -85,6 +93,7 @@
     "text_boundary": 0.9545,
     "convert_ms": 8.4,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -95,6 +104,7 @@
     "text_boundary": 1.0,
     "convert_ms": 4.9,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -105,6 +115,7 @@
     "text_boundary": 1.0,
     "convert_ms": 1.8,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -115,6 +126,7 @@
     "text_boundary": 1.0,
     "convert_ms": 6.4,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -125,6 +137,7 @@
     "text_boundary": 1.0,
     "convert_ms": 5.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -135,6 +148,7 @@
     "text_boundary": 1.0,
     "convert_ms": 9.5,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -145,6 +159,7 @@
     "text_boundary": 0.6875,
     "convert_ms": 6.3,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -155,6 +170,7 @@
     "text_boundary": 1.0,
     "convert_ms": 12.2,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -165,6 +181,7 @@
     "text_boundary": 1.0,
     "convert_ms": 8.3,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -175,6 +192,7 @@
     "text_boundary": 0.9048,
     "convert_ms": 8.8,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -185,6 +203,7 @@
     "text_boundary": 1.0,
     "convert_ms": 4.9,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -195,6 +214,7 @@
     "text_boundary": 1.0,
     "convert_ms": 10.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -205,6 +225,7 @@
     "text_boundary": 0.9474,
     "convert_ms": 6.9,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -215,6 +236,7 @@
     "text_boundary": 0.6,
     "convert_ms": 2.5,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -225,6 +247,7 @@
     "text_boundary": 1.0,
     "convert_ms": 6.7,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -235,6 +258,7 @@
     "text_boundary": 0.875,
     "convert_ms": 7.0,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -245,6 +269,7 @@
     "text_boundary": 1.0,
     "convert_ms": 5.2,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -255,6 +280,7 @@
     "text_boundary": 0.7273,
     "convert_ms": 7.2,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -265,6 +291,7 @@
     "text_boundary": 0.75,
     "convert_ms": 6.4,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -275,6 +302,7 @@
     "text_boundary": 1.0,
     "convert_ms": 6.6,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -285,6 +313,7 @@
     "text_boundary": 0.0,
     "convert_ms": 4.4,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.5714,
     "a11y_text": 0.0
@@ -295,6 +324,7 @@
     "text_boundary": 0.0,
     "convert_ms": 4.2,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -305,6 +335,7 @@
     "text_boundary": 1.0,
     "convert_ms": 5.4,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -315,6 +346,7 @@
     "text_boundary": 1.0,
     "convert_ms": 4.5,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -325,6 +357,7 @@
     "text_boundary": 0.9833,
     "convert_ms": 10.7,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -334,6 +367,7 @@
     "ssim": 0.6974,
     "text_boundary": 0.5,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9831,
     "a11y_text": 1.0
@@ -343,6 +377,7 @@
     "ssim": 0.9554,
     "text_boundary": 0.6702,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.85,
     "a11y_text": 1.0
@@ -352,6 +387,7 @@
     "ssim": 0.8944,
     "text_boundary": 0.1707,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -361,6 +397,7 @@
     "ssim": 0.5342,
     "text_boundary": 0.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.875,
     "a11y_text": 0.7101
@@ -370,6 +407,7 @@
     "ssim": 0.5448,
     "text_boundary": 0.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.875,
     "a11y_text": 0.6202
@@ -379,6 +417,7 @@
     "ssim": 0.7077,
     "text_boundary": 0.5902,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9917,
     "a11y_text": 1.0
@@ -388,6 +427,7 @@
     "ssim": 0.8404,
     "text_boundary": 0.7516,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9517,
     "a11y_text": 1.0
@@ -397,6 +437,7 @@
     "ssim": 0.8977,
     "text_boundary": 0.9381,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.7656,
     "a11y_text": 1.0
@@ -406,6 +447,7 @@
     "ssim": 0.8698,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -415,6 +457,7 @@
     "ssim": 0.7912,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 0.7958
@@ -425,6 +468,7 @@
     "text_boundary": 1.0,
     "convert_ms": 9.3,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -434,6 +478,7 @@
     "ssim": 0.9408,
     "text_boundary": 0.8919,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -443,6 +488,7 @@
     "ssim": 0.8559,
     "text_boundary": 0.8286,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8702,
     "a11y_text": 1.0
@@ -452,6 +498,7 @@
     "ssim": 0.7802,
     "text_boundary": 0.814,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -461,6 +508,7 @@
     "ssim": 0.5493,
     "text_boundary": 0.7561,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -470,6 +518,7 @@
     "ssim": 0.8712,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -479,6 +528,7 @@
     "ssim": 0.9548,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -488,6 +538,7 @@
     "ssim": 0.9653,
     "text_boundary": 1.0,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -497,6 +548,7 @@
     "ssim": 0.9199,
     "text_boundary": 1.0,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -506,6 +558,7 @@
     "ssim": 0.9241,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8889,
     "a11y_text": 1.0
@@ -516,6 +569,7 @@
     "text_boundary": 0.9818,
     "convert_ms": 15.3,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -525,6 +579,7 @@
     "ssim": 0.9156,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -534,6 +589,7 @@
     "ssim": 0.764,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -543,6 +599,7 @@
     "ssim": 0.934,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -551,19 +608,22 @@
     "jaccard": 0.3512,
     "ssim": 0.652,
     "text_boundary": 0.5556,
-    "ua_fail": 2
+    "ua_fail": 2,
+    "a11y_missing": 0
   },
   "cases/case64": {
     "jaccard": 0.7485,
     "ssim": 0.8912,
     "text_boundary": 0.5625,
-    "ua_fail": 2
+    "ua_fail": 2,
+    "a11y_missing": 0
   },
   "cases/case66": {
     "jaccard": 0.7492,
     "ssim": 0.7111,
     "text_boundary": 0.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.875,
     "a11y_text": 0.8462
@@ -573,6 +633,7 @@
     "ssim": 0.9275,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -582,6 +643,7 @@
     "ssim": 0.9459,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -591,6 +653,7 @@
     "ssim": 0.9618,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -601,6 +664,7 @@
     "text_boundary": 1.0,
     "convert_ms": 8.1,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -610,6 +674,7 @@
     "ssim": 0.9412,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 0.0
@@ -619,6 +684,7 @@
     "ssim": 0.966,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -628,6 +694,7 @@
     "ssim": 0.9596,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -637,6 +704,7 @@
     "ssim": 0.9559,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -646,6 +714,7 @@
     "ssim": 0.8564,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -655,6 +724,7 @@
     "ssim": 0.8453,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -664,6 +734,7 @@
     "ssim": 0.9363,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -672,6 +743,7 @@
     "jaccard": 0.521,
     "ssim": 0.7046,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -680,6 +752,7 @@
     "jaccard": 0.9962,
     "ssim": 0.9937,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -688,6 +761,7 @@
     "jaccard": 0.7205,
     "ssim": 0.9158,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -698,6 +772,7 @@
     "text_boundary": 1.0,
     "convert_ms": 37.8,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -708,6 +783,7 @@
     "text_boundary": 1.0,
     "convert_ms": 4.9,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -717,6 +793,7 @@
     "ssim": 0.9466,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -726,6 +803,7 @@
     "ssim": 0.9295,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -735,6 +813,7 @@
     "ssim": 0.9225,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -744,6 +823,7 @@
     "ssim": 0.9356,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -751,13 +831,15 @@
   "fonts/missing_font_sub..": {
     "jaccard": 0.399,
     "ssim": 0.8852,
-    "ua_fail": 2
+    "ua_fail": 2,
+    "a11y_missing": 0
   },
   "fonts/multi_font": {
     "jaccard": 0.3493,
     "ssim": 0.5182,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -767,6 +849,7 @@
     "ssim": 0.8998,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -776,6 +859,7 @@
     "ssim": 0.8564,
     "text_boundary": 0.9773,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -785,6 +869,7 @@
     "ssim": 0.8468,
     "text_boundary": 0.9885,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -794,6 +879,7 @@
     "ssim": 0.8393,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -803,6 +889,7 @@
     "ssim": 0.8541,
     "text_boundary": 0.9888,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -812,6 +899,7 @@
     "ssim": 0.8503,
     "text_boundary": 0.9398,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -821,6 +909,7 @@
     "ssim": 0.847,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -830,6 +919,7 @@
     "ssim": 0.8506,
     "text_boundary": 0.9515,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -839,6 +929,7 @@
     "ssim": 0.8467,
     "text_boundary": 0.9667,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 0.5636
@@ -847,6 +938,7 @@
     "jaccard": 0.8569,
     "ssim": 0.954,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9815,
     "a11y_text": 1.0
@@ -856,6 +948,7 @@
     "ssim": 0.8626,
     "text_boundary": 1.0,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -865,6 +958,7 @@
     "ssim": 0.5837,
     "text_boundary": 0.1752,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -875,6 +969,7 @@
     "text_boundary": 0.7816,
     "convert_ms": 18.3,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -885,6 +980,7 @@
     "text_boundary": 0.8627,
     "convert_ms": 11.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.991,
     "a11y_text": 1.0
@@ -895,6 +991,7 @@
     "text_boundary": 0.9714,
     "convert_ms": 12.0,
     "ua_fail": 2,
+    "a11y_missing": 18,
     "ua_deficit": 0,
     "a11y_struct": 0.9735,
     "a11y_text": 0.5821
@@ -904,6 +1001,7 @@
     "ssim": 0.7984,
     "text_boundary": 0.9405,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9949,
     "a11y_text": 1.0
@@ -913,8 +1011,9 @@
     "ssim": 0.9332,
     "text_boundary": 0.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.9467,
+    "a11y_struct": 1.0,
     "a11y_text": 0.985
   },
   "scraped/americas_counter..": {
@@ -922,6 +1021,7 @@
     "ssim": 0.8843,
     "text_boundary": 0.9259,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9888,
     "a11y_text": 0.8816
@@ -931,6 +1031,7 @@
     "ssim": 0.8928,
     "text_boundary": 0.9064,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9655,
     "a11y_text": 0.9969
@@ -940,6 +1041,7 @@
     "ssim": 0.8153,
     "text_boundary": 0.5942,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.7879,
     "a11y_text": 0.9879
@@ -949,6 +1051,7 @@
     "ssim": 0.9021,
     "text_boundary": 0.6857,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9815,
     "a11y_text": 1.0
@@ -958,8 +1061,9 @@
     "ssim": 0.8925,
     "text_boundary": 1.0,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.9922,
+    "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "scraped/biochemistry_pen..": {
@@ -967,15 +1071,17 @@
     "ssim": 0.8427,
     "text_boundary": 0.9846,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "scraped/bosch_software_a..": {
-    "jaccard": 0.2737,
-    "ssim": 0.42,
+    "jaccard": 0.6238,
+    "ssim": 0.898,
     "text_boundary": 0.0201,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9398,
     "a11y_text": 0.9937
@@ -986,24 +1092,27 @@
     "text_boundary": 0.1624,
     "convert_ms": 744.0,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9897,
     "a11y_text": 0.9928
   },
   "scraped/bulgarian_road_s..": {
-    "jaccard": 0.3069,
-    "ssim": 0.4627,
+    "jaccard": 0.3071,
+    "ssim": 0.4626,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9147,
     "a11y_text": 0.8826
   },
   "scraped/bush_fires_act_c..": {
-    "jaccard": 0.6826,
-    "ssim": 0.8849,
+    "jaccard": 0.6873,
+    "ssim": 0.8979,
     "text_boundary": 0.8734,
     "convert_ms": 248.6,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8096,
     "a11y_text": 0.9985
@@ -1013,15 +1122,17 @@
     "ssim": 0.5295,
     "text_boundary": 0.2273,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "scraped/carbon_farming_i..": {
-    "jaccard": 0.3333,
-    "ssim": 0.5491,
+    "jaccard": 0.3334,
+    "ssim": 0.5487,
     "text_boundary": 0.4458,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8076,
     "a11y_text": 0.8918
@@ -1032,6 +1143,7 @@
     "text_boundary": 1.0,
     "convert_ms": 40.9,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9311,
     "a11y_text": 0.9751
@@ -1040,6 +1152,7 @@
     "jaccard": 0.7355,
     "ssim": 0.9333,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1048,6 +1161,7 @@
     "jaccard": 0.205,
     "ssim": 0.4508,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 0.7054
@@ -1057,6 +1171,7 @@
     "ssim": 0.7914,
     "text_boundary": 0.8033,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9456,
     "a11y_text": 1.0
@@ -1067,14 +1182,16 @@
     "text_boundary": 0.2609,
     "convert_ms": 59.6,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9403,
     "a11y_text": 1.0
   },
   "scraped/clean_energy_reg..": {
-    "jaccard": 0.3697,
-    "ssim": 0.5916,
+    "jaccard": 0.3708,
+    "ssim": 0.5977,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9281,
     "a11y_text": 0.8759
@@ -1084,6 +1201,7 @@
     "ssim": 0.8631,
     "text_boundary": 0.9355,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9104,
     "a11y_text": 0.9794
@@ -1092,6 +1210,7 @@
     "jaccard": 0.8031,
     "ssim": 0.9507,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9803,
     "a11y_text": 0.9978
@@ -1101,16 +1220,18 @@
     "ssim": 0.6792,
     "text_boundary": 0.1331,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9784,
     "a11y_text": 0.9895
   },
   "scraped/croatian_grant_g..": {
-    "jaccard": 0.2837,
-    "ssim": 0.4532,
+    "jaccard": 0.2992,
+    "ssim": 0.4577,
     "text_boundary": 0.0129,
     "convert_ms": 270.5,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9157,
     "a11y_text": 0.9195
@@ -1120,6 +1241,7 @@
     "ssim": 0.8785,
     "text_boundary": 0.9492,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9857,
     "a11y_text": 1.0
@@ -1130,6 +1252,7 @@
     "text_boundary": 0.4737,
     "convert_ms": 22.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8397,
     "a11y_text": 1.0
@@ -1139,6 +1262,7 @@
     "ssim": 0.9487,
     "text_boundary": 0.5385,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9405,
     "a11y_text": 1.0
@@ -1149,6 +1273,7 @@
     "text_boundary": 1.0,
     "convert_ms": 6.9,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1158,6 +1283,7 @@
     "ssim": 0.836,
     "text_boundary": 0.6667,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1167,6 +1293,7 @@
     "ssim": 0.9138,
     "text_boundary": 0.4662,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8402,
     "a11y_text": 0.9193
@@ -1177,6 +1304,7 @@
     "text_boundary": 1.0,
     "convert_ms": 39.4,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1186,6 +1314,7 @@
     "ssim": 0.8861,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1196,6 +1325,7 @@
     "text_boundary": 0.4118,
     "convert_ms": 34.9,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8978,
     "a11y_text": 1.0
@@ -1206,6 +1336,7 @@
     "text_boundary": 1.0,
     "convert_ms": 4.8,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1214,6 +1345,7 @@
     "jaccard": 0.5016,
     "ssim": 0.7667,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8048,
     "a11y_text": 0.9962
@@ -1223,6 +1355,7 @@
     "ssim": 0.8503,
     "text_boundary": 0.6508,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9807,
     "a11y_text": 0.9083
@@ -1232,6 +1365,7 @@
     "ssim": 0.91,
     "text_boundary": 0.8056,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1241,6 +1375,7 @@
     "ssim": 0.9084,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1250,6 +1385,7 @@
     "ssim": 0.882,
     "text_boundary": 0.5556,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1257,13 +1393,15 @@
   "scraped/door_air_cooling..": {
     "jaccard": 0.8237,
     "ssim": 0.8712,
-    "ua_fail": 2
+    "ua_fail": 2,
+    "a11y_missing": 0
   },
   "scraped/dutch_council_me..": {
     "jaccard": 0.5816,
     "ssim": 0.8989,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1272,9 +1410,10 @@
     "jaccard": 0.2225,
     "ssim": 0.9269,
     "text_boundary": 0.9091,
-    "ua_fail": 2,
+    "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.6733,
+    "a11y_struct": 0.6765,
     "a11y_text": 0.9807
   },
   "scraped/dutch_school_eva..": {
@@ -1282,6 +1421,7 @@
     "ssim": 0.9139,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8522,
     "a11y_text": 1.0
@@ -1292,6 +1432,7 @@
     "text_boundary": 0.619,
     "convert_ms": 22.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1301,34 +1442,38 @@
     "ssim": 0.9205,
     "text_boundary": 0.8,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "scraped/education_consul..": {
-    "jaccard": 0.2924,
-    "ssim": 0.5646,
+    "jaccard": 0.3338,
+    "ssim": 0.565,
     "text_boundary": 0.2899,
     "convert_ms": 47.1,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8509,
     "a11y_text": 0.7072
   },
   "scraped/english_town_cou..": {
-    "jaccard": 0.7567,
-    "ssim": 0.8227,
+    "jaccard": 0.7585,
+    "ssim": 0.8223,
     "text_boundary": 0.7628,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9778,
     "a11y_text": 1.0
   },
   "scraped/environmental_la..": {
-    "jaccard": 0.4359,
+    "jaccard": 0.4361,
     "ssim": 0.6434,
     "text_boundary": 0.0328,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9963,
     "a11y_text": 0.9905
@@ -1338,6 +1483,7 @@
     "ssim": 0.5408,
     "text_boundary": 0.3043,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8048,
     "a11y_text": 0.8056
@@ -1345,9 +1491,10 @@
   "scraped/estonian_communi..": {
     "jaccard": 0.2153,
     "ssim": 0.4607,
-    "ua_fail": 2,
+    "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.9875,
+    "a11y_struct": 0.9906,
     "a11y_text": 1.0
   },
   "scraped/family_kinship_l..": {
@@ -1355,16 +1502,18 @@
     "ssim": 0.8413,
     "text_boundary": 0.3188,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.95,
     "a11y_text": 1.0
   },
   "scraped/federal_procurem..": {
-    "jaccard": 0.6705,
-    "ssim": 0.8542,
+    "jaccard": 0.7133,
+    "ssim": 0.8965,
     "text_boundary": 0.8827,
     "convert_ms": 57.1,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9904,
     "a11y_text": 1.0
@@ -1375,6 +1524,7 @@
     "text_boundary": 0.8571,
     "convert_ms": 305.8,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9925,
     "a11y_text": 0.9805
@@ -1384,15 +1534,17 @@
     "ssim": 0.8475,
     "text_boundary": 0.82,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "scraped/french_sexual_he..": {
-    "jaccard": 0.2223,
-    "ssim": 0.2971,
+    "jaccard": 0.4443,
+    "ssim": 0.691,
     "text_boundary": 0.8269,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8049,
     "a11y_text": 1.0
@@ -1403,24 +1555,27 @@
     "text_boundary": 0.8276,
     "convert_ms": 33.4,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "scraped/go_math_grade4_g..": {
-    "jaccard": 0.4227,
-    "ssim": 0.6486,
+    "jaccard": 0.554,
+    "ssim": 0.7637,
     "text_boundary": 0.6491,
     "convert_ms": 70.6,
-    "ua_fail": 2,
+    "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.9775,
+    "a11y_struct": 0.9864,
     "a11y_text": 0.9886
   },
   "scraped/greek_history_le..": {
     "jaccard": 0.4913,
     "ssim": 0.6556,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1430,6 +1585,7 @@
     "ssim": 0.9011,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9911,
     "a11y_text": 1.0
@@ -1439,6 +1595,7 @@
     "ssim": 0.4565,
     "text_boundary": 0.0065,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.7529,
     "a11y_text": 0.8992
@@ -1449,6 +1606,7 @@
     "text_boundary": 0.4351,
     "convert_ms": 170.5,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.99,
     "a11y_text": 0.9994
@@ -1457,6 +1615,7 @@
     "jaccard": 0.2618,
     "ssim": 0.8735,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9954,
     "a11y_text": 0.9279
@@ -1466,6 +1625,7 @@
     "ssim": 0.8854,
     "text_boundary": 0.1661,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9764,
     "a11y_text": 0.994
@@ -1474,18 +1634,20 @@
     "jaccard": 0.7386,
     "ssim": 0.8766,
     "text_boundary": 0.7054,
-    "ua_fail": 2,
+    "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.925,
+    "a11y_struct": 0.9193,
     "a11y_text": 0.9811
   },
   "scraped/isla_language_le..": {
-    "jaccard": 0.6169,
-    "ssim": 0.8513,
+    "jaccard": 0.6476,
+    "ssim": 0.8516,
     "text_boundary": 0.7744,
-    "ua_fail": 2,
+    "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.7802,
+    "a11y_struct": 0.7826,
     "a11y_text": 0.8412
   },
   "scraped/italian_evaluati..": {
@@ -1494,6 +1656,7 @@
     "text_boundary": 0.5768,
     "convert_ms": 115.1,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9646,
     "a11y_text": 0.9544
@@ -1504,6 +1667,7 @@
     "text_boundary": 0.75,
     "convert_ms": 2.4,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1512,6 +1676,7 @@
     "jaccard": 0.5301,
     "ssim": 0.8982,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9773,
     "a11y_text": 1.0
@@ -1522,17 +1687,19 @@
     "text_boundary": 0.2381,
     "convert_ms": 4.5,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9733,
-    "a11y_text": 0.9534
+    "a11y_text": 1.0
   },
   "scraped/japanese_land_de..": {
     "jaccard": 0.2089,
     "ssim": 0.7132,
     "text_boundary": 0.1111,
-    "ua_fail": 3,
+    "ua_fail": 4,
+    "a11y_missing": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.8421,
+    "a11y_struct": 0.848,
     "a11y_text": 1.0
   },
   "scraped/japanese_medical..": {
@@ -1540,6 +1707,7 @@
     "ssim": 0.5424,
     "text_boundary": 0.4634,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.7921,
     "a11y_text": 0.8057
@@ -1549,6 +1717,7 @@
     "ssim": 0.809,
     "text_boundary": 0.9892,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.7826,
     "a11y_text": 1.0
@@ -1559,6 +1728,7 @@
     "text_boundary": 0.4073,
     "convert_ms": 1027.5,
     "ua_fail": 3,
+    "a11y_missing": 43,
     "ua_deficit": 0,
     "a11y_struct": 0.9449,
     "a11y_text": 0.9995
@@ -1568,6 +1738,7 @@
     "ssim": 0.9716,
     "text_boundary": 1.0,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8889,
     "a11y_text": 1.0
@@ -1578,6 +1749,7 @@
     "text_boundary": 0.65,
     "convert_ms": 7.3,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1587,6 +1759,7 @@
     "ssim": 0.8574,
     "text_boundary": 0.9107,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1597,6 +1770,7 @@
     "text_boundary": 0.4815,
     "convert_ms": 5.6,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1606,6 +1780,7 @@
     "ssim": 0.9055,
     "text_boundary": 0.2987,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1615,6 +1790,7 @@
     "ssim": 0.8,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1625,6 +1801,7 @@
     "text_boundary": 0.7368,
     "convert_ms": 43.3,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9783,
     "a11y_text": 1.0
@@ -1633,15 +1810,17 @@
     "jaccard": 0.0831,
     "ssim": 0.2023,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9962,
     "a11y_text": 1.0
   },
   "scraped/master_thesis_le..": {
-    "jaccard": 0.4196,
-    "ssim": 0.6331,
+    "jaccard": 0.4226,
+    "ssim": 0.6336,
     "text_boundary": 0.8343,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.965,
     "a11y_text": 1.0
@@ -1652,16 +1831,18 @@
     "text_boundary": 0.1949,
     "convert_ms": 32.0,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9812,
     "a11y_text": 1.0
   },
   "scraped/nabl_lab_preasse..": {
-    "jaccard": 0.5682,
-    "ssim": 0.841,
+    "jaccard": 0.624,
+    "ssim": 0.8843,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.947,
+    "a11y_struct": 0.9467,
     "a11y_text": 0.9806
   },
   "scraped/old_blue_truck_g..": {
@@ -1669,6 +1850,7 @@
     "ssim": 0.9415,
     "text_boundary": 1.0,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1679,6 +1861,7 @@
     "text_boundary": 0.9059,
     "convert_ms": 97.8,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9573,
     "a11y_text": 1.0
@@ -1687,6 +1870,7 @@
     "jaccard": 0.8849,
     "ssim": 0.9505,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8824,
     "a11y_text": 1.0
@@ -1696,8 +1880,9 @@
     "ssim": 0.3816,
     "text_boundary": 0.3043,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.9348,
+    "a11y_struct": 0.9496,
     "a11y_text": 0.9753
   },
   "scraped/physical_therapy..": {
@@ -1705,6 +1890,7 @@
     "ssim": 0.9319,
     "text_boundary": 0.9167,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1715,6 +1901,7 @@
     "text_boundary": 0.6294,
     "convert_ms": 16.3,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1725,6 +1912,7 @@
     "text_boundary": 0.215,
     "convert_ms": 56.9,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9942,
     "a11y_text": 0.9569
@@ -1735,6 +1923,7 @@
     "text_boundary": 0.3902,
     "convert_ms": 10.4,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9811,
     "a11y_text": 1.0
@@ -1744,6 +1933,7 @@
     "ssim": 0.8518,
     "text_boundary": 0.9412,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 0.9562
@@ -1752,6 +1942,7 @@
     "jaccard": 0.3328,
     "ssim": 0.6469,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.986,
     "a11y_text": 0.9892
@@ -1762,8 +1953,9 @@
     "text_boundary": 0.9259,
     "convert_ms": 11.8,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.7391,
+    "a11y_struct": 0.7234,
     "a11y_text": 1.0
   },
   "scraped/polish_procureme..": {
@@ -1771,6 +1963,7 @@
     "ssim": 0.9132,
     "text_boundary": 0.48,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1781,24 +1974,27 @@
     "text_boundary": 0.4366,
     "convert_ms": 19.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "scraped/premises_approva..": {
-    "jaccard": 0.6489,
-    "ssim": 0.8696,
+    "jaccard": 0.6676,
+    "ssim": 0.8694,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9831,
     "a11y_text": 0.9896
   },
   "scraped/radiographer_int..": {
-    "jaccard": 0.2415,
-    "ssim": 0.3639,
+    "jaccard": 0.7584,
+    "ssim": 0.8657,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.9699,
+    "a11y_struct": 0.9739,
     "a11y_text": 0.9645
   },
   "scraped/rehab_centre_phy..": {
@@ -1807,6 +2003,7 @@
     "text_boundary": 0.6341,
     "convert_ms": 9.8,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9434,
     "a11y_text": 0.8721
@@ -1816,6 +2013,7 @@
     "ssim": 0.6916,
     "text_boundary": 0.4859,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9439,
     "a11y_text": 0.9785
@@ -1825,6 +2023,7 @@
     "ssim": 0.9392,
     "text_boundary": 0.8958,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9792,
     "a11y_text": 1.0
@@ -1834,6 +2033,7 @@
     "ssim": 0.9144,
     "text_boundary": 0.95,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.6923,
     "a11y_text": 1.0
@@ -1843,6 +2043,7 @@
     "ssim": 0.9179,
     "text_boundary": 0.8043,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9865,
     "a11y_text": 0.9015
@@ -1852,6 +2053,7 @@
     "ssim": 0.8906,
     "text_boundary": 0.9402,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1862,6 +2064,7 @@
     "text_boundary": 0.4211,
     "convert_ms": 11.7,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1871,6 +2074,7 @@
     "ssim": 0.9206,
     "text_boundary": 0.9574,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9848,
     "a11y_text": 1.0
@@ -1881,6 +2085,7 @@
     "text_boundary": 0.5934,
     "convert_ms": 23.3,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1890,6 +2095,7 @@
     "ssim": 0.8766,
     "text_boundary": 0.1174,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 0.9918
@@ -1898,6 +2104,7 @@
     "jaccard": 0.7241,
     "ssim": 0.8902,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1913,6 +2120,7 @@
     "ssim": 0.9066,
     "text_boundary": 0.3465,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9855,
     "a11y_text": 1.0
@@ -1922,6 +2130,7 @@
     "ssim": 0.8861,
     "text_boundary": 0.7612,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.5722,
     "a11y_text": 1.0
@@ -1932,6 +2141,7 @@
     "text_boundary": 1.0,
     "convert_ms": 12.9,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1941,6 +2151,7 @@
     "ssim": 0.9141,
     "text_boundary": 0.9762,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1950,15 +2161,17 @@
     "ssim": 0.8757,
     "text_boundary": 0.3861,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9828,
     "a11y_text": 1.0
   },
   "scraped/slovak_eu_direct..": {
-    "jaccard": 0.485,
-    "ssim": 0.8106,
+    "jaccard": 0.6153,
+    "ssim": 0.8103,
     "text_boundary": 0.1629,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.6871,
     "a11y_text": 0.8876
@@ -1968,6 +2181,7 @@
     "ssim": 0.908,
     "text_boundary": 1.0,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1978,6 +2192,7 @@
     "text_boundary": 0.7385,
     "convert_ms": 13.2,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1987,6 +2202,7 @@
     "ssim": 0.8649,
     "text_boundary": 0.1379,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -1996,16 +2212,18 @@
     "ssim": 0.8226,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "scraped/stem_partnership..": {
-    "jaccard": 0.6775,
-    "ssim": 0.7903,
+    "jaccard": 0.677,
+    "ssim": 0.7904,
     "text_boundary": 0.3098,
     "convert_ms": 32.2,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9168,
     "a11y_text": 0.8932
@@ -2015,23 +2233,26 @@
     "ssim": 0.9307,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
   "scraped/strategi_pengemb..": {
-    "jaccard": 0.6274,
-    "ssim": 0.8664,
+    "jaccard": 0.6448,
+    "ssim": 0.8663,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9541,
     "a11y_text": 0.992
   },
   "scraped/streamnet_steeri..": {
-    "jaccard": 0.7763,
-    "ssim": 0.9277,
+    "jaccard": 0.7769,
+    "ssim": 0.9281,
     "text_boundary": 0.9264,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.7185,
     "a11y_text": 0.8008
@@ -2041,6 +2262,7 @@
     "ssim": 0.6183,
     "text_boundary": 0.1875,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -2050,6 +2272,7 @@
     "ssim": 0.6488,
     "text_boundary": 0.5455,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9875,
     "a11y_text": 1.0
@@ -2060,26 +2283,29 @@
     "text_boundary": 0.7614,
     "convert_ms": 22.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9558,
     "a11y_text": 1.0
   },
   "scraped/transition_to_wo..": {
-    "jaccard": 0.3514,
-    "ssim": 0.5043,
+    "jaccard": 0.4232,
+    "ssim": 0.5831,
     "text_boundary": 0.3971,
     "convert_ms": 493.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8889,
-    "a11y_text": 0.8992
+    "a11y_text": 0.8991
   },
   "scraped/turkish_ancient_..": {
-    "jaccard": 0.4134,
-    "ssim": 0.6083,
+    "jaccard": 0.448,
+    "ssim": 0.6577,
     "text_boundary": 1.0,
     "convert_ms": 4.2,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9758,
     "a11y_text": 0.9381
@@ -2089,6 +2315,7 @@
     "ssim": 0.8524,
     "text_boundary": 1.0,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9565,
     "a11y_text": 1.0
@@ -2098,16 +2325,18 @@
     "ssim": 0.8563,
     "text_boundary": 0.9231,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 0.9825
   },
   "scraped/turkish_prostate..": {
-    "jaccard": 0.6341,
-    "ssim": 0.7753,
+    "jaccard": 0.8289,
+    "ssim": 0.908,
     "text_boundary": 1.0,
     "convert_ms": 2.4,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -2118,6 +2347,7 @@
     "text_boundary": 0.0911,
     "convert_ms": 326.3,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8038,
     "a11y_text": 0.7653
@@ -2128,6 +2358,7 @@
     "text_boundary": 0.2407,
     "convert_ms": 12.9,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -2136,6 +2367,7 @@
     "jaccard": 0.5668,
     "ssim": 0.7391,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.969,
     "a11y_text": 1.0
@@ -2146,6 +2378,7 @@
     "text_boundary": 0.6171,
     "convert_ms": 38.6,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9849,
     "a11y_text": 0.9579
@@ -2155,6 +2388,7 @@
     "ssim": 0.8558,
     "text_boundary": 0.3448,
     "ua_fail": 3,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -2165,6 +2399,7 @@
     "text_boundary": 0.1379,
     "convert_ms": 23.3,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8133,
     "a11y_text": 1.0
@@ -2174,16 +2409,18 @@
     "ssim": 0.8254,
     "text_boundary": 0.7645,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.8878,
     "a11y_text": 0.8763
   },
   "scraped/wa_child_service..": {
-    "jaccard": 0.4299,
-    "ssim": 0.6118,
+    "jaccard": 0.6484,
+    "ssim": 0.8455,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.9791,
+    "a11y_struct": 0.981,
     "a11y_text": 0.9452
   },
   "scraped/waste_management..": {
@@ -2192,6 +2429,7 @@
     "text_boundary": 1.0,
     "convert_ms": 5.6,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -2200,15 +2438,17 @@
     "jaccard": 0.5489,
     "ssim": 0.7566,
     "ua_fail": 4,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9617,
     "a11y_text": 0.8339
   },
   "scraped/western_australi..": {
-    "jaccard": 0.5301,
-    "ssim": 0.7291,
+    "jaccard": 0.6083,
+    "ssim": 0.8069,
     "text_boundary": 0.524,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9652,
     "a11y_text": 0.9355
@@ -2218,6 +2458,7 @@
     "ssim": 0.8754,
     "text_boundary": 0.9667,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.4856,
     "a11y_text": 1.0
@@ -2227,6 +2468,7 @@
     "ssim": 0.9204,
     "text_boundary": 1.0,
     "ua_fail": 2,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
@@ -2236,6 +2478,7 @@
     "ssim": 0.8223,
     "text_boundary": 0.9669,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 0.9948,
     "a11y_text": 1.0
@@ -2245,6 +2488,7 @@
     "ssim": 0.4628,
     "text_boundary": 0.3403,
     "ua_fail": 0,
+    "a11y_missing": 0,
     "ua_deficit": 0,
     "a11y_struct": 1.0,
     "a11y_text": 1.0
