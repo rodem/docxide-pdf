@@ -649,6 +649,7 @@ fn convert_table(
                 right: td_css.border_right.unwrap_or_default(),
                 bottom: td_css.border_bottom.unwrap_or_default(),
                 left: td_css.border_left.unwrap_or_default(),
+                own_top: None,
             };
 
             let v_align = match td_css.vertical_align.as_deref() {

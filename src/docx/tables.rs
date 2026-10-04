@@ -496,6 +496,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                 } else {
                     tb.inside_v
                 },
+                own_top: None,
             });
 
             // Apply conditional formatting overrides from tblStylePr.
@@ -599,6 +600,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                     ),
                     left: border_or_fallback(parse_cell_border_left(bdr), cond.borders.left),
                     right: border_or_fallback(parse_cell_border_right(bdr), cond.borders.right),
+                    own_top: None,
                 })
                 .unwrap_or(cond.borders);
 
@@ -894,7 +896,9 @@ fn resolve_h_border_conflicts(rows: &mut [TableRow]) {
                 let lb = &lower_row.cells[li].borders.top;
                 let winner = resolve_h_border(*ub, *lb);
                 upper_row.cells[ui].borders.bottom = winner;
-                lower_row.cells[li].borders.top = winner;
+                let lower = &mut lower_row.cells[li].borders;
+                lower.own_top = Some(lower.top);
+                lower.top = winner;
             }
             let u_end = ug + u_span;
             let l_end = lg + l_span;

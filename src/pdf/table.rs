@@ -1467,15 +1467,23 @@ fn render_partial_row(
         }
     }
 
+    // A continued row tops its page with each cell's own top border, not the
+    // edge it shares with the row above (radiographer's nested row, `nil` on
+    // top, starts page 2 with no line).
+    let continued = starts.iter().any(|s| *s != CELL_START);
     for (grid_col, span, cell) in row.grid_cells() {
         let col_w = cell_span_width(col_widths, grid_col, span);
         let bx = cell_x_offset(col_widths, table_left, grid_col);
+        let mut borders = cell.borders;
+        if continued && let Some(own) = borders.own_top {
+            borders.top = own;
+        }
 
         // A merged cell's slice, as in render_table_row; every chunk of a
         // split row closes at its page bottom.
         draw_cell_borders(
             content,
-            &cell.borders,
+            &borders,
             bx,
             row_top,
             row_bottom,
