@@ -20,6 +20,8 @@ Usage:
     python3 tools/engine_compare.py --skip-libreoffice --no-scores
     python3 tools/engine_compare.py --fresh         # reconvert everything, ignoring every cache
     python3 tools/engine_compare.py --html-only     # rebuild index.html from the cached manifest, no re-scoring
+    python3 tools/engine_compare.py --shard 1/4     # every 4th fixture from the 2nd: CI runs the shards in parallel ...
+    python3 tools/engine_compare.py --merge comparison/manifest.*.json   # ... and builds the site from their manifests
 
 rdocx: `rdocx` on PATH (cargo install rdocx) or RDOCX_BIN.
 MiniPdf: the Rust crate's CLI, `minipdf` on PATH (cargo install minipdf-cli) or MINIPDF_BIN.
@@ -409,6 +411,12 @@ def timed(convert, *args) -> tuple[bool, float | None]:
         with _SPENT_LOCK:
             TIMEOUTS.append((pdf.stem, case, False))
         return False, None
+    # A competitor's cached PDF is dropped when its engine changed version. The binary's mtime alone
+    # does not catch that: apt dates soffice by the package's build, older than any cached PDF. (Ours
+    # is rebuilt every run; convert_ours reconverts and keeps the PDF when the bytes are unchanged.)
+    engine_stamp = pdf.with_suffix(".engine")
+    if engine != OURS_BIN and pdf.exists() and (not engine_stamp.exists() or engine_stamp.read_text() != engine_id(engine)):
+        pdf.unlink()
     before = pdf.stat().st_mtime if pdf.exists() else None
     t = time.perf_counter()
     try:
@@ -423,6 +431,8 @@ def timed(convert, *args) -> tuple[bool, float | None]:
         return False, None
     if ok:
         timeout_marker.unlink(missing_ok=True)  # converts in time again (new engine or document)
+        if engine != OURS_BIN:
+            engine_stamp.write_text(engine_id(engine))
     if ok and pdf.stat().st_mtime != before:
         stamp.write_text(f"{time.perf_counter() - t:.3f}")
     return ok, float(stamp.read_text()) if ok and stamp.exists() else None
@@ -736,6 +746,9 @@ def main() -> None:
     ap.add_argument("--open", action="store_true", help="open the HTML when done")
     ap.add_argument("--html-only", action="store_true",
                     help="rebuild comparison/index.html from comparison/work/manifest.json (no conversion or scoring)")
+    ap.add_argument("--shard", metavar="I/N", help="only every N-th fixture, starting at the I-th (0-based)")
+    ap.add_argument("--merge", nargs="+", metavar="MANIFEST",
+                    help="build the site from these shard manifests (no conversion or scoring)")
     ap.add_argument("--format", choices=["webp", "png"], default="webp",
                     help="site image format; webp is lossless and ~3.5x smaller than png (needs cwebp)")
     opts = ap.parse_args()
@@ -763,6 +776,10 @@ def main() -> None:
     if opts.html_only:
         m = load_manifest()
         finish(m["cases"], m["versions"])
+        return
+    if opts.merge:
+        parts = [json.loads(Path(p).read_text()) for p in opts.merge]
+        finish([c for m in parts for c in m["cases"]], {k: v for m in parts for k, v in m["versions"].items()})
         return
 
     if not shutil.which("mutool"):
@@ -810,7 +827,10 @@ def main() -> None:
                 for d in sorted((FIXTURES / g).iterdir()) if d.is_dir()]
     if opts.case:
         fixtures = [(g, d) for g, d in fixtures if any(fnmatch(d.name, c) for c in opts.case)]
-    print(f"{len(fixtures)} fixtures, {opts.jobs} jobs")
+    if opts.shard:
+        i, n = map(int, opts.shard.split("/"))
+        fixtures = fixtures[i::n]   # ponytail: round robin; weight by page count if one shard keeps lagging
+    print(f"{len(fixtures)} fixtures, {opts.jobs} jobs" + (f", shard {opts.shard}" if opts.shard else ""))
 
     results: list[dict] = []
     with ThreadPoolExecutor(max_workers=opts.jobs) as pool:

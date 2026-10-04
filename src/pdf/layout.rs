@@ -731,6 +731,11 @@ pub(super) struct TextLine {
     /// Used to compute the correct line height for break-created lines
     /// (Word uses the break run's font metrics, not the paragraph's).
     pub(super) break_font_size: Option<f32>,
+    /// Line-height ratio of the break run that ended this otherwise empty line.
+    pub(super) break_lhr: Option<f32>,
+    /// First chunk after the line's last tab: justification stretches only the
+    /// gaps from here on (Word starts the text at the tab stop).
+    pub(super) justify_from: usize,
     /// The breaker kept this line's last word by narrowing its spaces
     /// (`SPACE_SQUEEZE`), so it is wider than the measure until justified.
     pub(super) squeezed: bool,
@@ -1336,6 +1341,9 @@ pub(super) fn build_paragraph_lines(
 
         if run.is_line_break {
             mark_space_after(&mut current_chunks);
+            let holds_only_break = current_chunks
+                .iter()
+                .all(|c| c.text.trim().is_empty() && c.inline_image_name.is_none());
             let line = finish_dual_line(
                 &mut current_chunks,
                 &mut in_right_region,
@@ -1343,6 +1351,11 @@ pub(super) fn build_paragraph_lines(
             );
             let line = TextLine {
                 ends_with_break: true,
+                break_font_size: holds_only_break.then_some(run.font_size),
+                break_lhr: holds_only_break
+                    .then(|| seen_fonts.get(&crate::fonts::font_key(run)))
+                    .flatten()
+                    .and_then(|e| e.line_h_ratio),
                 ..line
             };
             lines.push(line);
@@ -1992,6 +2005,7 @@ pub(super) fn build_tabbed_line(
     ));
 
     let mut result_lines: Vec<TextLine> = Vec::new();
+    let mut justify_from = 0usize;
     let mut all_chunks: Vec<WordChunk> = Vec::new();
     let mut current_x: f32 = 0.0;
     let mut pending_space_w: f32 = 0.0;
@@ -2101,7 +2115,10 @@ pub(super) fn build_tabbed_line(
             // beyond max_width) before forcing a wrap.
             let wrap_limit = line_max + indent_right;
             if seg_start > wrap_limit && !all_chunks.is_empty() {
-                result_lines.push(finish_line(&mut all_chunks));
+                result_lines.push(TextLine {
+                    justify_from: std::mem::take(&mut justify_from),
+                    ..finish_line(&mut all_chunks)
+                });
                 tab_wrapped_line = true;
                 current_x = 0.0;
                 is_first_line = false;
@@ -2187,13 +2204,17 @@ pub(super) fn build_tabbed_line(
 
             current_x = seg_start;
             tab_stop_pos = Some(effective_tab_target);
+            justify_from = all_chunks.len();
         }
 
         // Layout text in this segment from current_x
         for (local_idx, run) in seg_runs.iter().enumerate() {
             if run.is_line_break {
                 mark_space_after(&mut all_chunks);
-                result_lines.push(finish_line_with_break(&mut all_chunks));
+                result_lines.push(TextLine {
+                    justify_from: std::mem::take(&mut justify_from),
+                    ..finish_line_with_break(&mut all_chunks)
+                });
                 tab_wrapped_line = false;
                 current_x = 0.0;
                 is_first_line = false;
@@ -2273,7 +2294,10 @@ pub(super) fn build_tabbed_line(
                 };
                 // Wrap word to new line if it exceeds max_width
                 if current_x + ww > cur_line_max && !all_chunks.is_empty() && !is_continuation {
-                    result_lines.push(finish_line(&mut all_chunks));
+                    result_lines.push(TextLine {
+                        justify_from: std::mem::take(&mut justify_from),
+                        ..finish_line(&mut all_chunks)
+                    });
                     tab_wrapped_line = false;
                     current_x = 0.0;
                     is_first_line = false;
@@ -2318,7 +2342,10 @@ pub(super) fn build_tabbed_line(
     // their line though nothing is drawn on it: bulgarian_road_safety's
     // trailing tabs after "/Зл. Атанасова/" take a second line in Word.
     if !all_chunks.is_empty() {
-        result_lines.push(finish_line(&mut all_chunks));
+        result_lines.push(TextLine {
+            justify_from: std::mem::take(&mut justify_from),
+            ..finish_line(&mut all_chunks)
+        });
     } else if result_lines.is_empty() || tab_wrapped_line {
         result_lines.push(TextLine::default());
     }
@@ -2584,6 +2611,13 @@ pub(super) fn render_paragraph_lines(
             .map(|rr| rr.first_chunk_idx)
             .unwrap_or(line.chunks.len());
         let gaps_before = spaces_before_each(&line.chunks[..left_chunk_count]);
+        let jf = line.justify_from.min(left_chunk_count.saturating_sub(1));
+        let tab_gaps = gaps_before.get(jf).copied().unwrap_or(0);
+        let gaps_before: Vec<usize> = gaps_before
+            .iter()
+            .enumerate()
+            .map(|(i, &g)| if i < jf { 0 } else { g - tab_gaps })
+            .collect();
         let left_gaps = gaps_before.last().copied().unwrap_or(0);
 
         // CJK justification: distribute space between every character, not just chunks.
@@ -3284,6 +3318,64 @@ pub(super) fn tallest_glyph_run_metrics(
         None,
         None,
     ))
+}
+
+/// Distance from the top of a bottom-aligned line box to its baseline, or None
+/// for an ordinary line. Word bottom-aligns an exact-height box, and an at-least
+/// one whose minimum wins (online export: czech_census's 10pt lines under
+/// atLeast 12.05 start 0.55pt lower), at the glyphs' descent: line_h_ratio −
+/// ascender_ratio, less the East Asian leading Word puts below normal lines.
+pub(super) fn bottom_aligned_ascent(
+    ls: LineSpacing,
+    line_h: f32,
+    font_size: f32,
+    lhr: Option<f32>,
+    ar: Option<f32>,
+    runs: &[Run],
+    seen_fonts: &HashMap<String, FontEntry>,
+) -> Option<f32> {
+    let (lhr, ar) = (lhr?, ar?);
+    let bottom_aligned = match ls {
+        LineSpacing::Exact(_) => true,
+        LineSpacing::AtLeast(min) => min > font_size * lhr,
+        LineSpacing::Auto(_) => false,
+    };
+    (lhr > ar && bottom_aligned).then(|| {
+        let half_lead = tallest_glyph_run_half_leading(runs, seen_fonts);
+        line_h - font_size * (lhr - ar - half_lead)
+    })
+}
+
+/// Half the East Asian 1.3× leading, per em, of the tallest glyph run: the part
+/// an exact or at-least box keeps below the glyphs (0 for other fonts).
+pub(super) fn tallest_glyph_run_half_leading(
+    runs: &[Run],
+    seen_fonts: &HashMap<String, FontEntry>,
+) -> f32 {
+    let mut best = (0.0f32, 0.0f32);
+    let mut key_buf = String::new();
+    for run in runs
+        .iter()
+        .filter(|r| sizes_line(r) && !r.is_line_break && !r.is_math)
+    {
+        let Some(entry) = seen_fonts.get(font_key_buf(run, &mut key_buf)) else {
+            continue;
+        };
+        let (lhr, ar) = run_line_metrics(entry, &run.text);
+        let ascent = run.font_size * ar.unwrap_or(0.75);
+        if ascent > best.0 {
+            let cjk_box = entry.east_asian && ar == entry.ascender_ratio;
+            best = (
+                ascent,
+                if cjk_box {
+                    lhr.unwrap_or(0.0) * 0.3 / 2.6
+                } else {
+                    0.0
+                },
+            );
+        }
+    }
+    best.1
 }
 
 /// (font_size, line_h_ratio, ascender_ratio) of the run with the tallest ascent

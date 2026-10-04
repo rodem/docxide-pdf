@@ -407,8 +407,12 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         image: para_image,
         borders,
         shading: para_shading,
-        page_break_before: parsed.has_page_break_before
-            || para_style.is_some_and(|s| s.page_break_before),
+        // A direct pageBreakBefore, on or off, overrides the style's
+        // (wa_child's Part 1 heading turns its Heading2 break off).
+        page_break_before: parsed.has_explicit_page_break_before
+            || ppr
+                .and_then(|ppr| wml_bool(ppr, "pageBreakBefore"))
+                .unwrap_or_else(|| para_style.is_some_and(|s| s.page_break_before)),
         page_break_before_explicit: parsed.has_explicit_page_break_before,
         page_break_after: parsed.has_page_break_after,
         page_break_at: parsed.page_break_at,

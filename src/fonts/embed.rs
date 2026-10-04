@@ -416,7 +416,7 @@ fn is_east_asian_font(face: &Face) -> bool {
 
 /// Word lays out an East Asian font 1.3× taller than its Windows metrics
 /// (10.5pt SimSun → the classic 15.6pt line), no hhea lineGap, the extra leading
-/// above the glyphs so an exact-height box still bottom-aligns at winDescent.
+/// split evenly above and below the glyphs.
 /// Whitespace-only runs keep the plain values. Measurements: roadmap, "CJK
 /// Rendering Polish" item 3.
 fn compute_line_metrics(face: &Face, units: f32) -> LineMetrics {
@@ -426,7 +426,10 @@ fn compute_line_metrics(face: &Face, units: f32) -> LineMetrics {
             let win_desc = -(os2.windows_descender() as f32) / units;
             let win_h = (os2.windows_ascender() - os2.windows_descender()) as f32 / units;
             let line_h = win_h * 1.3;
-            Some((line_h, line_h - win_desc))
+            // The extra leading is split evenly above and below the glyphs:
+            // online exports put SimSun/YaHei baselines (10.5-36pt) 0.15/0.19
+            // em above where all-leading-above would (local Mac Word's way).
+            Some((line_h, line_h - win_desc - (line_h - win_h) / 2.0))
         }
         _ => None,
     };

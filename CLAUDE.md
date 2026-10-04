@@ -48,6 +48,7 @@ cd tools && cargo build && cd ..
 python3 tools/engine_compare.py --open                 # all fixtures (reuses tests/output PNGs, caches the rest in comparison/work/)
 python3 tools/engine_compare.py --case case41 --case 'case2*'   # exact name or glob
 python3 tools/engine_compare.py --html-only            # rebuild index.html from comparison/work/manifest.json (no re-scoring)
+python3 tools/engine_compare.py --shard 0/4            # every 4th fixture (CI runs 4 such jobs, then --merge joins their manifests)
 tools/deploy_comparison.sh [remote] [branch]           # publish comparison/ (work/ excluded) as an orphan gh-pages commit (DRY_RUN=1 to preview)
 # CI does both on every push to main: .github/workflows/comparison.yml (fonts come from the private sverrejb/docxide-pdf-assets repo; only tracked cases/ are compared)
 # MiniPdf = the Rust crate's CLI (`cargo install minipdf-cli`), never the .NET engine; rdocx via `cargo install rdocx`; office2pdf via `cargo install office2pdf-cli`; jubarte-redlines via `cargo install jubarte-redlines` (binary `jubarte`); LibreOffice via soffice
@@ -226,7 +227,7 @@ Measured for case1: reference baseline at y=708.72pt from bottom (83.28pt from t
 `w:sectPr/w:docGrid @w:linePitch` (in twips) defines the baseline-to-baseline distance for grid-snapped text. Divide by 20 to get points (360 twips = 18pt for case1).
 
 ### East Asian Line Height
-Word lays out East Asian fonts (any face with CJK/Hangul/kana glyphs) at **1.3 × (usWinAscent + usWinDescent)** per line, with no hhea lineGap and the extra leading above the glyphs. This is why 10.5pt SimSun gives the classic 15.6pt line, why 16pt Microsoft YaHei takes two cells of an 18pt grid, and why Yu Mincho lines double past 10.5pt. Exact-height boxes still bottom-align at winDescent. A run of only spaces uses the plain metrics (it must not raise a Latin line); empty paragraph marks, tabs and blank lines after a break keep the font's real metrics. Implemented in `src/fonts/embed.rs` (`compute_line_metrics`) and `src/pdf/layout.rs` (`run_line_metrics`).
+Word lays out East Asian fonts (any face with CJK/Hangul/kana glyphs) at **1.3 × (usWinAscent + usWinDescent)** per line, with no hhea lineGap and the extra leading split evenly above and below the glyphs (online export; local Mac Word put it all above). This is why 10.5pt SimSun gives the classic 15.6pt line, why 16pt Microsoft YaHei takes two cells of an 18pt grid, and why Yu Mincho lines double past 10.5pt. Exact-height boxes (and at-least ones whose minimum wins) still bottom-align at winDescent. A run of only spaces uses the plain metrics (it must not raise a Latin line); empty paragraph marks, tabs and blank lines after a break keep the font's real metrics. Implemented in `src/fonts/embed.rs` (`compute_line_metrics`) and `src/pdf/layout.rs` (`run_line_metrics`).
 
 ### Missing CJK Fonts
 Word substitutes by fontTable `w:charset` (hex: 80 Shift-JIS, 81 Hangul, 86 GB2312, 88 Big5) and `w:family` (roman → Batang/MS Mincho/SimSun/PMingLiU, otherwise Malgun Gothic/MS Gothic/Microsoft YaHei), rescuing single missing glyphs per character (kanji missing from Batang → MS Mincho). One platform-independent list in `src/fonts/mod.rs` (`cjk_fallback_fonts`) leads with the vendored Word fonts so CI and macOS agree.

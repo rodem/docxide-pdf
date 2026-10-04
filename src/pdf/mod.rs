@@ -1484,12 +1484,15 @@ fn render_paragraph_block(
     // Placing the baseline at font_size * ascender_ratio instead pushes a
     // large-lineGap CJK substitute's descenders out of the fixed box and
     // into whatever follows (annotation #219: heading into table border).
-    let exact_baseline_base = match (effective_ls, tallest_lhr, tallest_ar) {
-        (LineSpacing::Exact(_), Some(lhr), Some(ar)) if lhr > ar => {
-            Some(line_h - font_size * (lhr - ar))
-        }
-        _ => None,
-    };
+    let exact_baseline_base = layout::bottom_aligned_ascent(
+        effective_ls,
+        line_h,
+        font_size,
+        tallest_lhr,
+        tallest_ar,
+        &para.runs,
+        ctx.fonts,
+    );
 
     let (col_x, col_w) = col_geometry[state.current_col];
     let mut para_text_x = col_x + para.indent_left;
@@ -1949,6 +1952,23 @@ fn render_paragraph_block(
     // A grid or an exact rule gives every line the same box.
     if !grid_snapped && !matches!(effective_ls, LineSpacing::Exact(_)) {
         size_lines_by_own_runs(&mut lines, ctx.fonts, effective_ls, line_h, para_ascent);
+        // A line holding only a w:br is as tall as the break run, wherever it
+        // falls: pasto's title opens with an unformatted <w:br/> (11pt) above
+        // its 12pt bold text, and Word steps 12.65 for that line, not 13.80.
+        for line in lines
+            .iter_mut()
+            .filter(|l| l.ends_with_break && l.pitch.is_none())
+        {
+            if let Some(bfs) = line.break_font_size {
+                let lhr = line
+                    .break_lhr
+                    .or_else(|| break_run_lhr(&effective_runs, bfs, ctx.fonts));
+                let pitch = resolve_line_h(effective_ls, bfs, lhr);
+                if (pitch - line_h).abs() > 0.01 {
+                    line.pitch = Some(pitch);
+                }
+            }
+        }
     }
     let para_metrics = (
         para_ascent,
@@ -2896,15 +2916,18 @@ fn render_paragraph_block(
         let bdr = &para.borders;
         let box_top = state.pb.slot_top - bdr_top_half_band;
         let box_bottom = state.pb.slot_top - bdr_top_pad - content_h - bdr_bottom_pad;
+        // Word puts a side border's inner edge its space plus 1.47pt (left) or
+        // 1.73pt (right) outside the text, whatever its width (online export
+        // probes: sz 4/12/24 × space 0/4/12, with and without indents).
         let bdr_left_outset = bdr
             .left
             .as_ref()
-            .map(|b| b.space_pt + b.width_pt / 2.0)
+            .map(|b| b.space_pt + 1.47 + b.width_pt / 2.0)
             .unwrap_or(0.0);
         let bdr_right_outset = bdr
             .right
             .as_ref()
-            .map(|b| b.space_pt + b.width_pt / 2.0)
+            .map(|b| b.space_pt + 1.73 + b.width_pt / 2.0)
             .unwrap_or(0.0);
         let box_left = col_x - bdr_left_outset;
         let box_right = col_x + col_w + bdr_right_outset;

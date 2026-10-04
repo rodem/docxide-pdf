@@ -10,13 +10,22 @@
 #   gh repo deploy-key add assets_key.pub -R sverrejb/docxide-pdf-assets -t docxide-pdf-ci
 #   gh secret set ASSETS_DEPLOY_KEY -R sverrejb/docxide-pdf < assets_key && rm assets_key assets_key.pub
 #
+# Shards: the fixtures are split round-robin over SHARDS parallel jobs (engine_compare.py --shard i/n), each
+# with its own comparison/ cache; `publish` joins their site images and manifests and deploys. A cold run
+# took ~110 min on one runner (scoring is 3/4 of it: veraPDF + pdfinfo + SSIM per competitor PDF), which
+# is over the job limit once anything cold-starts the cache.
+#
 # Caching: Rust deps (rust-cache), competitor binaries (keyed by the version resolved at run time, so a
 # new release is built once and then reused), and comparison/ itself (PDFs, screenshots, WebP pages).
 # engine_compare.py skips work whose output is newer than its input, so tools/restore_mtime.py gives
 # checked-out files their commit times and only changed fixtures are reconverted. (Not the
 # git-restore-mtime package: it is built on `git whatchanged`, which the runner's Git refuses, and
-# then dates nothing, so every run was cold.) Our binary is rebuilt
-# every run and always reconverted; a competitor version or font change is in the cache key and starts cold.
+# then dates nothing, so every run was cold.) Our binary is rebuilt every run and always reconverted.
+# Competitor and tool versions are deliberately NOT in the cache key: engine_compare.py stamps each
+# competitor PDF with the engine version that made it and reconverts on a change, and fingerprints
+# veraPDF/pdfinfo/mutool for the analyses and screenshots, so a new release redoes that engine's or
+# tool's work only. (With the versions in the key, every competitor release started a 2-hour cold run.)
+# A font change is in the key: no engine's cache knows which fonts it converted with.
 name: Engine comparison
 on:
   push:
@@ -26,12 +35,18 @@ permissions:
   contents: write   # force-push gh-pages
 concurrency:
   group: engine-comparison   # deploy is a force-push; a queued run starts warm from the cache the running one saves
+env:
+  SHARDS: 4   # keep in step with the matrix below
 jobs:
   compare:
     # 26.04's archive has mupdf 1.27 and LibreOffice 26.2; 24.04's mupdf 1.23 lacks the stext `text=`
     # attribute the text-boundary metric parses.
     runs-on: ubuntu-26.04
     timeout-minutes: 120
+    strategy:
+      fail-fast: false   # one shard's failure must not cancel the others' progress (their caches are saved either way)
+      matrix:
+        shard: [0, 1, 2, 3]
     env:
       VERAPDF: "1.30.2"
       PYTHONUNBUFFERED: "1"   # engine_compare.py's per-case lines get real timestamps in the log
@@ -103,22 +118,44 @@ jobs:
       - uses: taiki-e/cache-cargo-install-action@v3
         with:
           tool: jubarte-redlines   # installs `jubarte`; engine_compare.py hands it the fonts via JUBARTE_FONT_DIR
-      - name: Competitor versions for the cache key
-        id: ver
-        # "fontdir2": competitors now get the fonts through comparison/work/fonts_flat (rdocx had none before);
-        # cached PDFs from earlier keys were rendered without them and must not be reused.
-        run: echo "key=lo$(soffice --version | awk '{print $2}')-minipdf$(minipdf --version | awk '{print $NF}')-rdocx$(rdocx --version | awk '{print $NF}')-o2p$(office2pdf --version | awk '{print $NF}')-jub$(jubarte --version | awk '{print $NF}')-verapdf${VERAPDF}-fonts${{ hashFiles('assets/fonts/**') }}-fontdir2" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v6
         with:
           path: comparison
-          key: comparison-${{ steps.ver.outputs.key }}-${{ github.run_id }}
-          restore-keys: comparison-${{ steps.ver.outputs.key }}-
-      - run: python3 tools/engine_compare.py
+          key: comparison-${{ matrix.shard }}of${{ env.SHARDS }}-fonts${{ hashFiles('assets/fonts/**') }}-${{ github.run_id }}
+          restore-keys: comparison-${{ matrix.shard }}of${{ env.SHARDS }}-fonts${{ hashFiles('assets/fonts/**') }}-
+      - run: python3 tools/engine_compare.py --shard "${{ matrix.shard }}/$SHARDS"
       - uses: actions/cache/save@v6
         if: always()   # keep the progress of a failed run
         with:
           path: comparison
-          key: comparison-${{ steps.ver.outputs.key }}-${{ github.run_id }}
+          key: comparison-${{ matrix.shard }}of${{ env.SHARDS }}-fonts${{ hashFiles('assets/fonts/**') }}-${{ github.run_id }}
+      - name: Hand the shard's site and manifest to publish
+        run: cp comparison/work/manifest.json "comparison/manifest.${{ matrix.shard }}.json"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: site-${{ matrix.shard }}
+          path: |
+            comparison
+            !comparison/work/**
+          compression-level: 0   # lossless WebP does not shrink further
+          retention-days: 1
+          if-no-files-found: error
+  publish:
+    needs: compare
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get install -y -q --no-install-recommends webp   # engine_compare.py insists on cwebp for a webp site
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: site-*
+          path: comparison
+          merge-multiple: true   # the shards' case directories are disjoint
+      - name: Join the shards
+        run: |
+          python3 tools/engine_compare.py --merge comparison/manifest.*.json
+          rm comparison/manifest.*.json
       - name: Publish to gh-pages
         env:
           GH_TOKEN: ${{ github.token }}
