@@ -731,6 +731,8 @@ pub(super) struct TextLine {
     /// Used to compute the correct line height for break-created lines
     /// (Word uses the break run's font metrics, not the paragraph's).
     pub(super) break_font_size: Option<f32>,
+    /// Line-height ratio of the break run that ended this otherwise empty line.
+    pub(super) break_lhr: Option<f32>,
     /// The breaker kept this line's last word by narrowing its spaces
     /// (`SPACE_SQUEEZE`), so it is wider than the measure until justified.
     pub(super) squeezed: bool,
@@ -1336,6 +1338,9 @@ pub(super) fn build_paragraph_lines(
 
         if run.is_line_break {
             mark_space_after(&mut current_chunks);
+            let holds_only_break = current_chunks
+                .iter()
+                .all(|c| c.text.trim().is_empty() && c.inline_image_name.is_none());
             let line = finish_dual_line(
                 &mut current_chunks,
                 &mut in_right_region,
@@ -1343,6 +1348,11 @@ pub(super) fn build_paragraph_lines(
             );
             let line = TextLine {
                 ends_with_break: true,
+                break_font_size: holds_only_break.then_some(run.font_size),
+                break_lhr: holds_only_break
+                    .then(|| seen_fonts.get(&crate::fonts::font_key(run)))
+                    .flatten()
+                    .and_then(|e| e.line_h_ratio),
                 ..line
             };
             lines.push(line);

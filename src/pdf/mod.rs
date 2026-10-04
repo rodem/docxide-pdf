@@ -1952,6 +1952,20 @@ fn render_paragraph_block(
     // A grid or an exact rule gives every line the same box.
     if !grid_snapped && !matches!(effective_ls, LineSpacing::Exact(_)) {
         size_lines_by_own_runs(&mut lines, ctx.fonts, effective_ls, line_h, para_ascent);
+        // A line holding only a w:br is as tall as the break run, wherever it
+        // falls: pasto's title opens with an unformatted <w:br/> (11pt) above
+        // its 12pt bold text, and Word steps 12.65 for that line, not 13.80.
+        for line in lines.iter_mut().filter(|l| l.ends_with_break && l.pitch.is_none()) {
+            if let Some(bfs) = line.break_font_size {
+                let lhr = line
+                    .break_lhr
+                    .or_else(|| break_run_lhr(&effective_runs, bfs, ctx.fonts));
+                let pitch = resolve_line_h(effective_ls, bfs, lhr);
+                if (pitch - line_h).abs() > 0.01 {
+                    line.pitch = Some(pitch);
+                }
+            }
+        }
     }
     let para_metrics = (
         para_ascent,
