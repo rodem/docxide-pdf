@@ -218,6 +218,24 @@ metric-clone fallback (Liberation Serif, Carlito, Caladea) on Linux.
 `engine_compare.py` `pdf_creator()` truncates Quartz producers at the escaped
 paren.
 
+## Synthetic-Case Gaps (DONE — 2026-10-04, branch `synthetic-gaps`)
+
+Six rules from the lowest-scoring handcrafted `cases/` fixtures, each one
+commit verified by a full suite run, no fixture regressed by more than 2.3 J.
+`cases` mean 74.08 → **75.81** J; details in `current_focus/layout-accuracy.md` §11.
+
+- Character styles inherit along `basedOn` (case50 +24.8)
+- A list marker's extra ascent adds to an auto-spaced line once, unscaled (case3, case33, 4 scraped)
+- Before compat 15 a floating table's `tblpX` places its first cell's text (case40/45/46 +12–16)
+- Tight wrap clears the polygon over the line's whole height; a word too wide for the gap
+  beside a float goes whole to the other side (case42 +19.5)
+- Glyphs inside a word are drawn with the pair kerning the word was measured with
+  (TJ; case3 +13.5, russian_sports +15.5, czech_health +9.2, no regressions, +0.2% PDF size)
+
+**Open:** case37's reference shows five black boxes where its shapes are (broken
+export; re-export it). case69: Word steps the last line 15.00, we 14.83 (0.25pt grid
+under `vAlign=center`).
+
 ## New-Case Accuracy Round (IN PROGRESS — 2026-10-03, branch `accuracy-oct3`)
 
 10 scraped fixtures added with references exported by `tools/word_export.py`

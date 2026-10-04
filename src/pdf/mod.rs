@@ -240,9 +240,28 @@ pub(super) fn label_boosted_line_h(
     // not 15.5), while a Courier New "o" or a Symbol bullet on Arial, whose
     // descents are deeper than the text's, leave the line at the text height
     // (streamnet p5, dialysis). Measured against Word, not from the spec.
-    let ascent = (text_font_size * text_ar.unwrap_or(0.75)).max(label_fs * label_ar);
-    let descent = text_font_size * descender_ratio(text_lhr, text_ar);
-    resolve_line_h(effective_ls, 1.0, Some(ascent + descent)).max(text_line_h)
+    let text_ascent = text_font_size * text_ar.unwrap_or(0.75);
+    let label_ascent = label_fs * label_ar;
+    let natural = match effective_ls {
+        // A multiple scales the text's own line and the marker's extra ascent
+        // is added once, unscaled: SymbolMT on 12pt Aptos at 278/240 gives
+        // 16.97 + 0.80 = 17.76 (Word 17.75, case3), on 11pt Calibri at 1.15
+        // 15.44 + 0.59 = 16.03 (Word 16.00, case33); scaling the marker's
+        // ascent with the text gave 17.89 and 16.12.
+        LineSpacing::Auto(_) => {
+            resolve_line_h(effective_ls, text_font_size, text_lhr)
+                + (label_ascent - text_ascent).max(0.0)
+        }
+        _ => {
+            let descent = text_font_size * descender_ratio(text_lhr, text_ar);
+            resolve_line_h(
+                effective_ls,
+                1.0,
+                Some(text_ascent.max(label_ascent) + descent),
+            )
+        }
+    };
+    natural.max(text_line_h)
 }
 
 /// First-baseline offset including the list label's ascent. The label is a run
@@ -404,6 +423,24 @@ impl FloatZone {
             return (left, right);
         }
         (self.obj_left, self.obj_right)
+    }
+
+    /// Exclusion over a whole line box, `top` to `bottom`: Word keeps a line
+    /// clear of the polygon anywhere in its height (case42's wrap edges match
+    /// it to 0.3pt), where one scanline at the line top lags a line behind
+    /// a shape that widens downwards.
+    fn exclusion_in_band(&self, top: f32, bottom: f32) -> (f32, f32) {
+        let Some(pts) = self.polygon_pts.as_ref() else {
+            return (self.obj_left, self.obj_right);
+        };
+        // A polygon's extremes over a band lie on the band's edges or its vertices.
+        let inner = pts.iter().map(|p| p.1).filter(|&y| y < top && y > bottom);
+        [top, bottom]
+            .into_iter()
+            .chain(inner)
+            .filter_map(|y| poly_scanline(pts, y))
+            .reduce(|(l0, r0), (l1, r1)| (l0.min(l1), r0.max(r1)))
+            .unwrap_or((self.obj_left, self.obj_right))
     }
 
     /// Narrow a paragraph's text box (`text_x`, `text_w`, `label_x`) to fit
@@ -1706,8 +1743,8 @@ fn render_paragraph_block(
                             if !(in_zone && line_top > z.bottom_y + line_h * 0.2) {
                                 continue;
                             }
-                            let query_y = line_top.min(z.top_y);
-                            let (ex_left, ex_right) = z.exclusion_at_y(query_y);
+                            let (ex_left, ex_right) =
+                                z.exclusion_in_band(line_top.min(z.top_y), line_bottom);
                             let sl = ex_left - z.left_from_text;
                             let sr = ex_right + z.right_from_text;
                             let mut next = Vec::with_capacity(intervals.len() + 1);
@@ -1778,8 +1815,8 @@ fn render_paragraph_block(
                         line_top <= fz.top_y
                     };
                     if in_zone && line_top > bottom_threshold {
-                        let query_y = line_top.min(fz.top_y);
-                        let (ex_left, ex_right) = fz.exclusion_at_y(query_y);
+                        let (ex_left, ex_right) =
+                            fz.exclusion_in_band(line_top.min(fz.top_y), line_bottom);
                         let float_right = ex_right + fz.right_from_text;
                         let sr = col_right - float_right;
                         let sl = (ex_left - fz.left_from_text) - col_x;
@@ -3290,6 +3327,16 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                             col_w,
                             text_width,
                         );
+                        // Before compat 15 an offset places the first cell's text, not
+                        // its border, as tblInd does inline: Word draws case46's R1 at
+                        // the margin and the border a cell margin left of it.
+                        let x = if ctx.compat_mode < 15
+                            && matches!(pos.h_position, crate::model::HorizontalPosition::Offset(_))
+                        {
+                            x - table.cell_margins.left
+                        } else {
+                            x
+                        };
                         let y = match pos.v_anchor {
                             "page" => sp.page_height - pos.v_offset_pt,
                             "margin" => sp.page_height - sp.margin_top - pos.v_offset_pt,
@@ -3778,7 +3825,7 @@ mod tests {
     /// case33: an 11pt Symbol bullet on 11pt Calibri gives Word a 16.0pt line
     /// (marker ascent + text descent, ×1.15), not the 15.5pt of either font alone.
     #[test]
-    fn symbol_bullet_line_combines_ascent_and_descent() {
+    fn symbol_bullet_adds_its_extra_ascent_once() {
         let (cal_lhr, cal_ar) = (1.220703, 0.952148);
         let fonts = HashMap::from([
             ("Symbol".to_string(), font(1.225098, 1.005371)),
@@ -3803,8 +3850,9 @@ mod tests {
         };
 
         para.list_label_font = Some("Symbol".to_string());
+        // 15.44 (Calibri at 1.15) + 0.59 unscaled extra ascent; Word 16.00.
         assert!(
-            (boosted(&para) - 16.115).abs() < 0.01,
+            (boosted(&para) - 16.027).abs() < 0.01,
             "got {}",
             boosted(&para)
         );

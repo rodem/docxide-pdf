@@ -126,7 +126,7 @@ impl FontEntry {
         w
     }
 
-    fn kern_1000(&self, left: char, right: char) -> f32 {
+    pub(crate) fn kern_1000(&self, left: char, right: char) -> f32 {
         let (Some(pairs), Some(c2g)) = (&self.kern_pairs, &self.char_to_gid) else {
             return 0.0;
         };

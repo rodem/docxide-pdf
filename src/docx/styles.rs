@@ -211,7 +211,7 @@ pub(super) struct ParagraphStyle {
 /// Run properties read from one `w:rPr`; every field is `None` when the
 /// element doesn't set it. Shared by docDefaults, paragraph styles,
 /// character styles (which are exactly this) and inline runs.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct RunProps {
     pub(super) font_size: Option<f32>,
     pub(super) font_name: Option<String>,
@@ -273,6 +273,46 @@ pub(super) fn parse_run_props(rpr: roxmltree::Node, theme: &ThemeFonts) -> RunPr
         text_fill: parse_text_fill(rpr, theme),
         text_shadow: parse_text_shadow(rpr, theme),
         text_glow: parse_text_glow(rpr, theme),
+    }
+}
+
+impl RunProps {
+    /// Takes every property this style leaves unset from its basedOn parent.
+    fn inherit(&mut self, parent: &RunProps) {
+        macro_rules! fill {
+            ($($f:ident),+ $(,)?) => {{
+                // Exhaustive on purpose: a new field fails to compile until it is listed here.
+                let RunProps { $($f),+ } = parent;
+                $(if self.$f.is_none() { self.$f = $f.clone(); })+
+            }};
+        }
+        fill!(
+            font_size,
+            font_name,
+            east_asia_font,
+            bold,
+            italic,
+            underline,
+            double_underline,
+            strikethrough,
+            dstrike,
+            caps,
+            small_caps,
+            lang,
+            lang_east_asia,
+            vanish,
+            color,
+            highlight,
+            shading,
+            border,
+            char_spacing,
+            kern_threshold,
+            position,
+            text_outline,
+            text_fill,
+            text_shadow,
+            text_glow,
+        );
     }
 }
 
@@ -583,7 +623,10 @@ pub(super) fn resolve_east_asia_font_from_node(
 
 /// `w:spacing @line/@lineRule`, or None when `@line` is absent.
 pub(super) fn parse_line_spacing(spacing_node: roxmltree::Node) -> Option<LineSpacing> {
-    let line_val = spacing_node.attribute((WML_NS, "line"))?.parse::<f32>().ok()?;
+    let line_val = spacing_node
+        .attribute((WML_NS, "line"))?
+        .parse::<f32>()
+        .ok()?;
     Some(match spacing_node.attribute((WML_NS, "lineRule")) {
         Some("exact") => LineSpacing::Exact(twips_to_pts(line_val)),
         Some("atLeast") => LineSpacing::AtLeast(twips_to_pts(line_val)),
@@ -693,6 +736,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
     };
     let mut paragraph_styles = HashMap::new();
     let mut character_styles = HashMap::new();
+    let mut character_parents = HashMap::new();
     let mut style_id_to_name = HashMap::new();
     let mut default_paragraph_style_id = String::from("Normal");
 
@@ -953,8 +997,12 @@ pub(super) fn parse_styles<R: Read + Seek>(
                 );
             }
             Some("character") => {
-                if let Some(rpr) = wml(style_node, "rPr") {
-                    character_styles.insert(style_id.to_string(), parse_run_props(rpr, theme));
+                let props = wml(style_node, "rPr")
+                    .map(|rpr| parse_run_props(rpr, theme))
+                    .unwrap_or_default();
+                character_styles.insert(style_id.to_string(), props);
+                if let Some(parent) = wml_attr(style_node, "basedOn") {
+                    character_parents.insert(style_id.to_string(), parent.to_string());
                 }
             }
             Some("table") => {
@@ -970,7 +1018,8 @@ pub(super) fn parse_styles<R: Read + Seek>(
                 let base_italic = base_rpr.and_then(|rpr| wml_bool(rpr, "i"));
 
                 let cell_mar = wml(style_node, "tblPr").and_then(|pr| wml(pr, "tblCellMar"));
-                let side = |a: &str, b: &str| cell_mar.and_then(|m| super::tables::margin_twips(m, a, b));
+                let side =
+                    |a: &str, b: &str| cell_mar.and_then(|m| super::tables::margin_twips(m, a, b));
                 let cell_margins = [
                     side("top", "top"),
                     side("left", "start"),
@@ -1047,6 +1096,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
     }
 
     resolve_based_on(&mut paragraph_styles);
+    resolve_character_based_on(&mut character_styles, &character_parents);
 
     // The default paragraph style (w:default="1") may carry properties like w:kern
     // that aren't in docDefaults. Merge kern_threshold into defaults if missing.
@@ -1064,6 +1114,31 @@ pub(super) fn parse_styles<R: Read + Seek>(
         style_id_to_name,
         default_paragraph_style_id,
     }
+}
+
+fn resolve_character_based_on(
+    styles: &mut HashMap<String, RunProps>,
+    parents: &HashMap<String, String>,
+) {
+    let resolved: Vec<(String, RunProps)> = parents
+        .keys()
+        .filter_map(|id| {
+            let mut props = styles.get(id)?.clone();
+            let mut seen = HashSet::from([id.as_str()]);
+            let mut current = id.as_str();
+            while let Some(parent) = parents.get(current).map(String::as_str) {
+                if !seen.insert(parent) {
+                    break;
+                }
+                if let Some(p) = styles.get(parent) {
+                    props.inherit(p);
+                }
+                current = parent;
+            }
+            Some((id.clone(), props))
+        })
+        .collect();
+    styles.extend(resolved);
 }
 
 fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
@@ -1301,5 +1376,48 @@ mod tests {
         resolve_based_on(&mut styles);
         assert_eq!(styles["BodyText3"].lang.as_deref(), Some("lt-LT"));
         assert_eq!(styles["BodyText3"].lang_east_asia.as_deref(), Some("ja-JP"));
+    }
+
+    #[test]
+    fn character_styles_inherit_through_based_on_chain() {
+        let mut styles = HashMap::from([
+            (
+                "Base".to_string(),
+                RunProps {
+                    font_name: Some("Georgia".into()),
+                    bold: Some(true),
+                    font_size: Some(14.0),
+                    ..Default::default()
+                },
+            ),
+            (
+                "Mid".to_string(),
+                RunProps {
+                    italic: Some(true),
+                    font_size: Some(12.0),
+                    ..Default::default()
+                },
+            ),
+            (
+                "Leaf".to_string(),
+                RunProps {
+                    underline: Some(true),
+                    ..Default::default()
+                },
+            ),
+        ]);
+        let parents = HashMap::from([
+            ("Mid".to_string(), "Base".to_string()),
+            ("Leaf".to_string(), "Mid".to_string()),
+            ("Base".to_string(), "Leaf".to_string()), // a cycle must not hang
+        ]);
+        resolve_character_based_on(&mut styles, &parents);
+        let leaf = &styles["Leaf"];
+        assert_eq!(leaf.font_name.as_deref(), Some("Georgia"));
+        assert_eq!(
+            (leaf.bold, leaf.italic, leaf.underline),
+            (Some(true), Some(true), Some(true))
+        );
+        assert_eq!(leaf.font_size, Some(12.0), "the closer ancestor wins");
     }
 }

@@ -623,3 +623,25 @@ closes part of §6's "cells built by hand" item (auto spacing).
 - Not done from the cleanup review: cache a split nested table's layout
   across pages (relaid per page now), resolve table-style basedOn at parse
   time, drop the derivable `NestedTable.height`.
+
+## 11. Synthetic-case gaps (2026-10-04, branch `synthetic-gaps`)
+
+The lowest-scoring handcrafted `cases/` fixtures, re-scored first on the
+current references with fresh conversions. Snapshots `base` → `fix6`
+(`tests/output/snapshots/` in the worktrees); `cases` 74.08 → **75.81** J.
+
+| Commit | Rule | Evidence |
+|---|---|---|
+| 46738736 | Character styles inherit along `basedOn` (closer style wins) | case50 54.4 → 79.2 |
+| 78db4626 | Auto line spacing: text line × multiple, plus the marker's extra ascent **unscaled** (was (marker ascent + text descent) × multiple) | SymbolMT on Aptos 12 at 278: 17.76 vs Word 17.75 (was 17.89); on Calibri 11 at 1.15: 16.03 vs 16.00 (was 16.12). case3 +17.8, case33 +5.9, dialysis +8.9, romanian +3.2, german +2.5; scottish −2.3 (pre-existing −1.3pt page-top offset), polish_ministry −1.2 (0.1pt shifts, its marker steps moved closer to Word) |
+| 58cb8d02 | Before compat 15 a floating table's `tblpX` places the first cell's text (border a cell margin left), as `tblInd` does inline | case46 R1 at the margin, border at 66.8; case46 +15.7, case40 +15.5, case45 +12.0 |
+| 97249e22 | Tight/through wrap: the polygon's extent over the line's whole box (top to bottom), not a scanline at its top | case42 right wrap edges within 0.3pt of Word on 17 lines; +11.7 |
+| 43803d1b | A word too wide for the left gap beside a both-sides float goes whole to the right region (Word leaves the gap empty) | case42 "ullamcorper." in a 56pt gap; +7.8 |
+| f8985f80 | Glyphs inside a word drawn with the pair kerning its width already includes (TJ) | Aptos Display "Te" 20pt advances 8.0 in Word, 9.5 unkerned; case1's l-l, o-, and w-o land on Word's positions. case3 +13.5, russian_sports +15.5, czech_health +9.2, case18 +3.7, 6 more small gains, none lost; total PDF size +0.22% |
+
+The kerning result overturns the March 2026 "TJ kerning is a dead end"
+finding: that was measured against local (print-preset) references, which
+carry plain hmtx advances; the online references do apply the font's pair
+kerning. Word's extra per-size hinting adjustments (a few 1000ths of an em)
+remain unmodelled.
+
