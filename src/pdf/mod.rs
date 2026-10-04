@@ -1632,6 +1632,11 @@ fn render_paragraph_block(
     // Handle explicit column breaks
     // In a one-column section Word breaks the page (bosch's page 2 ends there).
     if para.column_break_before {
+        // The column ends below the space after its last paragraph (its
+        // separator reaches there, Word probe).
+        if col_count > 1 {
+            state.pb.slot_top -= state.prev_space_after;
+        }
         state.pb.advance_column_or_page(
             &mut state.current_col,
             col_count,
