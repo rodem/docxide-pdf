@@ -1484,8 +1484,11 @@ fn render_paragraph_block(
     // Placing the baseline at font_size * ascender_ratio instead pushes a
     // large-lineGap CJK substitute's descenders out of the fixed box and
     // into whatever follows (annotation #219: heading into table border).
+    // An at-least line whose minimum wins is bottom-aligned the same way (online
+    // export: czech_census's 10pt lines under atLeast 12.05 start 0.55pt lower);
+    // when the text is taller the formula gives the ascent as before.
     let exact_baseline_base = match (effective_ls, tallest_lhr, tallest_ar) {
-        (LineSpacing::Exact(_), Some(lhr), Some(ar)) if lhr > ar => {
+        (LineSpacing::Exact(_) | LineSpacing::AtLeast(_), Some(lhr), Some(ar)) if lhr > ar => {
             Some(line_h - font_size * (lhr - ar))
         }
         _ => None,
