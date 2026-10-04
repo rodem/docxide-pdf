@@ -1606,7 +1606,14 @@ pub(super) fn render_table(
 
     // For non-floating tables, prev_space_after offsets the table start.
     // For floating tables, it was already consumed into the saved cursor position.
-    pb.slot_top -= prev_space_after;
+    // At a page top a table follows the paragraphs' rule with no space before:
+    // radiographer's section 2 table starts at its header's bottom, not 10pt below.
+    pb.slot_top -= if is_floating {
+        prev_space_after
+    } else {
+        pb.page_top_gap(sp, 0.0, prev_space_after)
+            .unwrap_or(prev_space_after)
+    };
     // The outer border bands sit inside the table's flow height: the top band
     // starts where the previous text ends and the next paragraph starts below
     // the bottom band. The row insets hold the inner halves (docx::tables).

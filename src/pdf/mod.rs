@@ -972,6 +972,24 @@ impl PageBuilder {
             || (self.slot_top - self.page_top_y).abs() < 0.01
     }
 
+    /// The gap above a block at the top of a new page (None elsewhere): none,
+    /// except on a section's first page, where the block's space before
+    /// collapses with the previous section's trailing space after.
+    fn page_top_gap(
+        &self,
+        sp: &SectionProperties,
+        space_before: f32,
+        prev_space_after: f32,
+    ) -> Option<f32> {
+        (!self.all_contents.is_empty() && self.is_at_page_top(sp)).then(|| {
+            if self.is_first_page_of_section {
+                (space_before - prev_space_after).max(0.0)
+            } else {
+                0.0
+            }
+        })
+    }
+
     /// Advance to the next column if available, otherwise flush the current page.
     fn advance_column_or_page(
         &mut self,
@@ -2580,14 +2598,11 @@ fn render_paragraph_block(
     }
 
     // Suppress space_before at the top of a page
-    let at_new_page_top = !state.pb.all_contents.is_empty() && state.pb.is_at_page_top(sp);
-    if at_new_page_top {
-        if state.pb.is_first_page_of_section {
-            // Section break: collapse with the previous section's trailing space_after
-            inter_gap = (effective_space_before - state.prev_space_after).max(0.0);
-        } else {
-            inter_gap = 0.0;
-        }
+    if let Some(gap) = state
+        .pb
+        .page_top_gap(sp, effective_space_before, state.prev_space_after)
+    {
+        inter_gap = gap;
     }
 
     let applied_inter_gap = inter_gap;
