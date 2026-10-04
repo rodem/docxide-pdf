@@ -980,6 +980,19 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
         properties: final_props,
         blocks,
     });
+    // A continuous break can't change the paper mid-page: Word starts a new
+    // page when the size or orientation changes (transition_to_work's
+    // landscape Annexure B1, whose page would otherwise take the portrait
+    // text above it off the top).
+    for i in 1..sections.len() {
+        let prev = &sections[i - 1].properties;
+        let size = (prev.page_width, prev.page_height);
+        let sp = &mut sections[i].properties;
+        if sp.break_type == SectionBreakType::Continuous && (sp.page_width, sp.page_height) != size
+        {
+            sp.break_type = SectionBreakType::NextPage;
+        }
+    }
 
     // Word's PDF export scales the body content via a wrapping `cm` operator
     // when comments are present, so glyphs render at ~76% and a column opens
