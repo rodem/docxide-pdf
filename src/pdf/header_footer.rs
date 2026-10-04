@@ -391,8 +391,20 @@ pub(super) fn render_header_footer(
                     styleref_values,
                     page_num_format,
                 );
-                let (font_size, _, tallest_ar) = tallest_run_metrics(&substituted_runs, ctx.fonts);
+                let (font_size, tallest_lhr, tallest_ar) =
+                    tallest_run_metrics(&substituted_runs, ctx.fonts);
                 let ascender_ratio = tallest_ar.unwrap_or(0.75);
+                let frame_ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
+                let frame_ascent = super::layout::bottom_aligned_ascent(
+                    frame_ls,
+                    resolve_line_h(frame_ls, font_size, tallest_lhr),
+                    font_size,
+                    tallest_lhr,
+                    tallest_ar,
+                    &substituted_runs,
+                    ctx.fonts,
+                )
+                .unwrap_or(font_size * ascender_ratio);
 
                 let lines = build_lines(
                     &substituted_runs,
@@ -434,7 +446,7 @@ pub(super) fn render_header_footer(
                 // keep the in-flow position.
                 let frame_top =
                     anchored_frame_top(fp, sp).map_or(cursor_y, |top| sp.page_height - top);
-                let frame_baseline = frame_top - font_size * ascender_ratio;
+                let frame_baseline = frame_top - frame_ascent;
 
                 // Frame text carries no inline pictures, so no descent is needed.
                 render_paragraph_lines(
@@ -485,7 +497,17 @@ pub(super) fn render_header_footer(
                 cursor_y = sp.page_height
                     - below_blocking_frames(sp.page_height - cursor_y, line_h, &bands);
 
-                let baseline_y = cursor_y - font_size * ascender_ratio;
+                let baseline_y = cursor_y
+                    - super::layout::bottom_aligned_ascent(
+                        effective_ls,
+                        line_h,
+                        font_size,
+                        tallest_lhr,
+                        tallest_ar,
+                        &substituted_runs,
+                        ctx.fonts,
+                    )
+                    .unwrap_or(font_size * ascender_ratio);
                 let slot_top = cursor_y;
 
                 // Render textboxes
@@ -1065,7 +1087,12 @@ enum HfVariant {
     Even,
 }
 
-fn hf_variant(doc: &Document, section_idx: usize, is_first_page: bool, page_num: usize) -> HfVariant {
+fn hf_variant(
+    doc: &Document,
+    section_idx: usize,
+    is_first_page: bool,
+    page_num: usize,
+) -> HfVariant {
     if is_first_page && doc.sections[section_idx].properties.different_first_page {
         HfVariant::First
     } else if doc.even_and_odd_headers && page_num.is_multiple_of(2) {
