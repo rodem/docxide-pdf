@@ -105,6 +105,8 @@ pub(super) struct RenderContext<'a> {
     /// The document's sections: a section without its own header or footer
     /// lays out around the one it inherits.
     pub(super) sections: &'a [crate::model::Section],
+    /// `w:evenAndOddHeaders`: even pages lay out around the even header.
+    pub(super) even_and_odd_headers: bool,
     pub(super) doc_line_spacing: LineSpacing,
     pub(super) default_tab_stop: f32,
     /// Image names for inline images in table cells, keyed by Arc data pointer address.
@@ -1028,13 +1030,25 @@ impl PageBuilder {
             self.pending_float_anchor = None;
         } else {
             *current_col = 0;
-            self.flush_page(sect_idx);
-            self.slot_top = effective_slot_top(sp, false, ctx);
-            self.column_top_y = self.slot_top;
-            self.page_top_y = self.slot_top;
-            *effective_margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
-            self.is_first_page_of_section = false;
+            self.begin_next_page(sect_idx, sp, effective_margin_bottom, ctx);
         }
+    }
+
+    /// Flush this page and open the next one of section `sp`.
+    pub(super) fn begin_next_page(
+        &mut self,
+        sect_idx: usize,
+        sp: &SectionProperties,
+        effective_margin_bottom: &mut f32,
+        ctx: &RenderContext,
+    ) {
+        self.flush_page(sect_idx);
+        let page = self.page_count();
+        self.slot_top = effective_slot_top(sp, false, page, ctx);
+        self.column_top_y = self.slot_top;
+        self.page_top_y = self.slot_top;
+        *effective_margin_bottom = compute_effective_margin_bottom(sp, false, page, ctx);
+        self.is_first_page_of_section = false;
     }
 }
 
@@ -1295,8 +1309,8 @@ fn compute_bookmark_positions(
     let mut page_idx = 0usize;
     let first_sp = &doc.sections[0].properties;
     let mut sp = first_sp;
-    let mut slot_top = effective_slot_top(sp, true, ctx);
-    let mut margin_bottom = compute_effective_margin_bottom(sp, true, ctx);
+    let mut slot_top = effective_slot_top(sp, true, page_idx, ctx);
+    let mut margin_bottom = compute_effective_margin_bottom(sp, true, page_idx, ctx);
     let mut prev_space_after: f32 = 0.0;
     let mut prev_para: Option<&Paragraph> = None;
 
@@ -1308,8 +1322,8 @@ fn compute_bookmark_positions(
                 | SectionBreakType::OddPage
                 | SectionBreakType::EvenPage => {
                     page_idx += 1;
-                    slot_top = effective_slot_top(sp, true, ctx);
-                    margin_bottom = compute_effective_margin_bottom(sp, true, ctx);
+                    slot_top = effective_slot_top(sp, true, page_idx, ctx);
+                    margin_bottom = compute_effective_margin_bottom(sp, true, page_idx, ctx);
                     prev_space_after = 0.0;
                 }
                 SectionBreakType::Continuous => {}
@@ -1320,10 +1334,12 @@ fn compute_bookmark_positions(
         for (bi, block) in blocks.iter().enumerate() {
             match block {
                 Block::Paragraph(para) => {
-                    if para.page_break_before && slot_top < effective_slot_top(sp, false, ctx) {
+                    if para.page_break_before
+                        && slot_top < effective_slot_top(sp, false, page_idx, ctx)
+                    {
                         page_idx += 1;
-                        slot_top = effective_slot_top(sp, false, ctx);
-                        margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
+                        slot_top = effective_slot_top(sp, false, page_idx, ctx);
+                        margin_bottom = compute_effective_margin_bottom(sp, false, page_idx, ctx);
                         prev_space_after = 0.0;
                     }
                     for bm in &para.bookmarks {
@@ -1400,11 +1416,11 @@ fn compute_bookmark_positions(
                     let inter_gap = f32::max(prev_space_after, effective_sb);
                     let needed = inter_gap + content_h;
                     if slot_top - needed < margin_bottom
-                        && slot_top < effective_slot_top(sp, false, ctx)
+                        && slot_top < effective_slot_top(sp, false, page_idx, ctx)
                     {
                         page_idx += 1;
-                        slot_top = effective_slot_top(sp, false, ctx);
-                        margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
+                        slot_top = effective_slot_top(sp, false, page_idx, ctx);
+                        margin_bottom = compute_effective_margin_bottom(sp, false, page_idx, ctx);
                         slot_top -= content_h;
                     } else {
                         slot_top -= inter_gap + content_h;
@@ -1424,8 +1440,8 @@ fn compute_bookmark_positions(
                     let est_h = para_count as f32 * 14.0;
                     if slot_top - est_h < margin_bottom {
                         page_idx += 1;
-                        slot_top = effective_slot_top(sp, false, ctx);
-                        margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
+                        slot_top = effective_slot_top(sp, false, page_idx, ctx);
+                        margin_bottom = compute_effective_margin_bottom(sp, false, page_idx, ctx);
                     }
                     slot_top -= est_h;
                     prev_space_after = 0.0;
@@ -1524,12 +1540,9 @@ fn render_paragraph_block(
     if para.page_break_before {
         let at_top = state.pb.is_at_page_top(sp);
         if !at_top || para.page_break_before_explicit {
-            state.pb.flush_page(sect_idx);
-            state.pb.slot_top = effective_slot_top(sp, false, ctx);
-            state.pb.column_top_y = state.pb.slot_top;
-            state.pb.page_top_y = state.pb.slot_top;
-            state.effective_margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
-            state.pb.is_first_page_of_section = false;
+            state
+                .pb
+                .begin_next_page(sect_idx, sp, &mut state.effective_margin_bottom, ctx);
             state.current_col = 0;
         }
         state.prev_space_after = 0.0;
@@ -3133,12 +3146,9 @@ fn render_paragraph_block(
     );
 
     if para.page_break_after {
-        state.pb.flush_page(sect_idx);
-        state.pb.slot_top = effective_slot_top(sp, false, ctx);
-        state.pb.column_top_y = state.pb.slot_top;
-        state.pb.page_top_y = state.pb.slot_top;
-        state.effective_margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
-        state.pb.is_first_page_of_section = false;
+        state
+            .pb
+            .begin_next_page(sect_idx, sp, &mut state.effective_margin_bottom, ctx);
         state.prev_space_after = 0.0;
         state.current_col = 0;
     }
@@ -3237,6 +3247,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
     let ctx = RenderContext {
         fonts: &seen_fonts,
         sections: &doc.sections,
+        even_and_odd_headers: doc.even_and_odd_headers,
         doc_line_spacing: doc.line_spacing,
         default_tab_stop: doc.default_tab_stop,
         table_cell_image_names: &table_cell_image_names,
@@ -3260,11 +3271,11 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
     // Phase 2: build multi-page content streams (section-aware)
     let first_sp = &doc.sections[0].properties;
     let mut cur_sp = first_sp;
-    let initial_slot_top = effective_slot_top(cur_sp, true, &ctx);
+    let initial_slot_top = effective_slot_top(cur_sp, true, 0, &ctx);
     let mut state = LayoutState {
         pb: PageBuilder::new(initial_slot_top),
         prev_space_after: 0.0,
-        effective_margin_bottom: compute_effective_margin_bottom(cur_sp, true, &ctx),
+        effective_margin_bottom: compute_effective_margin_bottom(cur_sp, true, 0, &ctx),
         current_col: 0,
         global_block_idx: 0,
         heading_entries: Vec::new(),
@@ -3331,10 +3342,11 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                         }
                     }
 
-                    state.pb.slot_top = effective_slot_top(sp, true, &ctx);
+                    state.pb.slot_top = effective_slot_top(sp, true, state.pb.page_count(), &ctx);
                     state.pb.column_top_y = state.pb.slot_top;
                     state.pb.page_top_y = state.pb.slot_top;
-                    state.effective_margin_bottom = compute_effective_margin_bottom(sp, true, &ctx);
+                    state.effective_margin_bottom =
+                        compute_effective_margin_bottom(sp, true, state.pb.page_count(), &ctx);
                     state.pb.page_hf_section = sect_idx;
                     state.pb.is_first_page_of_section = true;
                 }
@@ -3591,7 +3603,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
     for (page_idx, content) in state.pb.all_contents.iter_mut().enumerate() {
         let (hf_si, is_first, si) = state.pb.page_section_indices[page_idx];
         let sp = &doc.sections[hf_si].properties;
-        let eff_bottom = compute_effective_margin_bottom(sp, is_first, &ctx);
+        let eff_bottom = compute_effective_margin_bottom(sp, is_first, page_idx, &ctx);
         let content_sp = &doc.sections[si].properties;
         let text_width = content_sp.text_width();
         let bottom = eff_bottom;
@@ -3859,7 +3871,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 PageVerticalAlign::Bottom => 1.0,
                 _ => return 0.0,
             };
-            let region_bottom = compute_effective_margin_bottom(sp, is_first, &ctx);
+            let region_bottom = compute_effective_margin_bottom(sp, is_first, page_idx, &ctx);
             let slack = state.pb.all_content_bottom[page_idx] - region_bottom;
             if slack > 0.0 { slack * frac } else { 0.0 }
         })

@@ -302,12 +302,15 @@ fn compute_header_height(
     height + prev_space_after
 }
 
+/// The body top of a section's page; `page_idx` (0-based) picks the even
+/// header where the document has them.
 pub(super) fn effective_slot_top(
     sp: &SectionProperties,
     is_first: bool,
+    page_idx: usize,
     ctx: &RenderContext,
 ) -> f32 {
-    let header = layout_hf(sp, is_first, true, ctx);
+    let header = layout_hf(sp, is_first, page_idx, true, ctx);
     let base = sp.page_height - sp.margin_top;
     match header {
         Some(_) if sp.margin_top_fixed => base,
@@ -321,9 +324,10 @@ pub(super) fn effective_slot_top(
 pub(super) fn compute_effective_margin_bottom(
     sp: &SectionProperties,
     is_first: bool,
+    page_idx: usize,
     ctx: &RenderContext,
 ) -> f32 {
-    let footer = layout_hf(sp, is_first, false, ctx);
+    let footer = layout_hf(sp, is_first, page_idx, false, ctx);
     let base = sp.margin_bottom;
     match footer {
         Some(_) if sp.margin_bottom_fixed => base,
@@ -335,19 +339,16 @@ pub(super) fn compute_effective_margin_bottom(
 /// The header (or footer) whose extent a section's page lays out around: its
 /// own, else the one it inherits, as drawn (radiographer's later sections
 /// inherit a two-line empty header that starts their body 27pt below the
-/// header). ponytail: never the even-page variant, which needs the page's
-/// parity at every caller.
+/// header), and on an even page (0-based `page_idx` odd) the even header.
+/// ponytail: physical parity; the drawn header follows the displayed number.
 fn layout_hf<'a>(
     sp: &'a SectionProperties,
     is_first: bool,
+    page_idx: usize,
     is_header: bool,
     ctx: &RenderContext<'a>,
 ) -> Option<&'a HeaderFooter> {
-    let variant = if is_first && sp.different_first_page {
-        HfVariant::First
-    } else {
-        HfVariant::Default
-    };
+    let variant = hf_variant(ctx.even_and_odd_headers, sp, is_first, page_idx + 1);
     // `sp` is always one of the document's sections
     let idx = ctx
         .sections
@@ -1199,14 +1200,14 @@ enum HfVariant {
 }
 
 fn hf_variant(
-    doc: &Document,
-    section_idx: usize,
+    even_and_odd_headers: bool,
+    sp: &SectionProperties,
     is_first_page: bool,
     page_num: usize,
 ) -> HfVariant {
-    if is_first_page && doc.sections[section_idx].properties.different_first_page {
+    if is_first_page && sp.different_first_page {
         HfVariant::First
-    } else if doc.even_and_odd_headers && page_num.is_multiple_of(2) {
+    } else if even_and_odd_headers && page_num.is_multiple_of(2) {
         HfVariant::Even
     } else {
         HfVariant::Default
@@ -1247,7 +1248,8 @@ pub(super) fn resolve_header_for_page(
     is_first_page: bool,
     page_num: usize,
 ) -> (Option<&HeaderFooter>, u8, usize) {
-    let variant = hf_variant(doc, section_idx, is_first_page, page_num);
+    let sp = &doc.sections[section_idx].properties;
+    let variant = hf_variant(doc.even_and_odd_headers, sp, is_first_page, page_num);
     let t = match variant {
         HfVariant::Default => 0,
         HfVariant::First => 1,
@@ -1267,7 +1269,8 @@ pub(super) fn resolve_footer_for_page(
     is_first_page: bool,
     page_num: usize,
 ) -> (Option<&HeaderFooter>, u8, usize) {
-    let variant = hf_variant(doc, section_idx, is_first_page, page_num);
+    let sp = &doc.sections[section_idx].properties;
+    let variant = hf_variant(doc.even_and_odd_headers, sp, is_first_page, page_num);
     let t = match variant {
         HfVariant::Default => 2,
         HfVariant::First => 3,

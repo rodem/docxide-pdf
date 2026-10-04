@@ -9,7 +9,7 @@ use crate::model::{
 };
 
 use super::color::{fill_rgb, stroke_rgb};
-use super::header_footer::{compute_effective_margin_bottom, effective_slot_top};
+use super::header_footer::effective_slot_top;
 
 use super::RenderContext;
 use super::layout::{LinkAnnotation, LinkTagger, encode_text_for_pdf, render_paragraph_lines};
@@ -1732,12 +1732,7 @@ pub(super) fn render_table(
     let fn_text_width = sp.page_width - sp.margin_left - sp.margin_right;
 
     let flush_and_render_headers = |pb: &mut super::PageBuilder, ri: usize, emb: &mut f32| {
-        pb.flush_page(sect_idx);
-        pb.is_first_page_of_section = false;
-        pb.slot_top = effective_slot_top(sp, false, ctx);
-        pb.column_top_y = pb.slot_top;
-        pb.page_top_y = pb.slot_top;
-        *emb = compute_effective_margin_bottom(sp, false, ctx);
+        pb.begin_next_page(sect_idx, sp, emb, ctx);
         if header_count > 0 && ri >= header_count {
             render_header_rows(
                 table,
@@ -1829,7 +1824,7 @@ pub(super) fn render_table(
     // (Pendulum #172/#173: the data table was landing on page 1 over list
     // item 10, which also pushed the following illustration off-page.)
     if keep_with_anchor && !row_layouts.is_empty() {
-        let eff_top = effective_slot_top(sp, pb.is_first_page_of_section, ctx);
+        let eff_top = effective_slot_top(sp, pb.is_first_page_of_section, pb.page_count(), ctx);
         let at_page_top = (pb.slot_top - eff_top).abs() < 1.0;
         let available = pb.slot_top - *effective_margin_bottom;
         let total_h: f32 = row_layouts.iter().map(|r| r.height).sum();
@@ -1840,12 +1835,7 @@ pub(super) fn render_table(
         // the first row) is robust to short header rows. Tables taller than a
         // full page fall through to the per-row split path below.
         if !at_page_top && total_h > available && total_h <= page_content_h {
-            pb.flush_page(sect_idx);
-            pb.is_first_page_of_section = false;
-            pb.slot_top = effective_slot_top(sp, false, ctx);
-            pb.column_top_y = pb.slot_top;
-            pb.page_top_y = pb.slot_top;
-            *effective_margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
+            pb.begin_next_page(sect_idx, sp, effective_margin_bottom, ctx);
             did_flush_while_floating = true;
             // The body top is where the anchor paragraph flows (and where its
             // paragraph-relative shapes anchor). The table itself, however,
@@ -1882,7 +1872,7 @@ pub(super) fn render_table(
             layout.cells.len(),
             pb.slot_top
         );
-        let eff_top = effective_slot_top(sp, pb.is_first_page_of_section, ctx);
+        let eff_top = effective_slot_top(sp, pb.is_first_page_of_section, pb.page_count(), ctx);
         let eff_bottom = *effective_margin_bottom + row_fn_extra;
         let at_page_top = (pb.slot_top - eff_top).abs() < 1.0;
         let available_h = pb.slot_top - eff_bottom;
@@ -1987,7 +1977,8 @@ pub(super) fn render_table(
             // fits on the fresh page.  If repeating headers consumed enough
             // space that the row no longer fits, split it across pages
             // instead of rendering blindly (which would overflow the footer).
-            let new_eff_top = effective_slot_top(sp, pb.is_first_page_of_section, ctx);
+            let new_eff_top =
+                effective_slot_top(sp, pb.is_first_page_of_section, pb.page_count(), ctx);
             let new_eff_bot = *effective_margin_bottom;
             let new_available = pb.slot_top - new_eff_bot;
             let new_page_h = new_eff_top - new_eff_bot;
