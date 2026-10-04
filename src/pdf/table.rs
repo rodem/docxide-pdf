@@ -17,8 +17,8 @@ use super::table_layout::{
     CELL_START, CellContentItem, CellCursor, CellFloatingImageLayout, CellLayout,
     CellParagraphLayout, Chunk, HfSubstitution, RowLayout, RowPiece, apply_pct_width,
     auto_fit_columns, cell_span_width, cell_x_offset, chunk_space_before, compute_merge_spans,
-    compute_row_layouts, cursor_chunks, find_cell_split, item_chunk_height, para_block_height,
-    partial_row_height, row_pieces,
+    compute_row_layouts, cursor_chunks, find_cell_split, item_chunk_height, min_content_widths,
+    para_block_height, partial_row_height, row_pieces, squeeze_to_width,
 };
 use super::tagging::{CellTagger, TableTags, Tags};
 
@@ -1604,6 +1604,12 @@ pub(super) fn render_table(
     let fit_w = available_w.unwrap_or(sp.page_width - sp.margin_left - sp.margin_right);
     let mut col_widths = if table.fixed_layout {
         table.col_widths.clone()
+    } else if let Some(col_w) = available_w {
+        // A table in a newspaper column sizes like one on the page, then is
+        // squeezed into the column (the nested-table path shrank it to content).
+        let mut w = auto_fit_columns(table, ctx.fonts, None, Some(fit_w));
+        squeeze_to_width(&mut w, &min_content_widths(table, ctx.fonts), col_w);
+        w
     } else {
         auto_fit_columns(table, ctx.fonts, available_w, Some(fit_w))
     };
