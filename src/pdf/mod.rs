@@ -388,6 +388,7 @@ fn update_styleref_from_para(
 /// strips) stacks them below.
 const MIN_EMPTY_STRIP: f32 = 18.0;
 
+#[derive(Clone)]
 pub(super) struct FloatZone {
     pub top_y: f32,
     pub bottom_y: f32,
@@ -769,10 +770,18 @@ pub(super) struct PageBuilder {
     /// hf_section: which section provides headers/footers.
     /// content_section: which section is being rendered (for page numbering, geometry).
     page_section_indices: Vec<(usize, bool, usize)>,
-    /// Highest column index reached on the current page; Word draws a column
-    /// separator only beside columns that hold text.
+    /// Highest column index the current column region reached on this page;
+    /// Word draws a column separator only up to the last column holding text.
     last_col: usize,
-    all_last_cols: Vec<usize>,
+    /// Lowest point a finished column of the current region reached on this page.
+    col_bottom: f32,
+    /// Separator x positions of the current column region (empty without w:sep).
+    pub(super) region_sep_xs: Vec<f32>,
+    /// Separator lines on the current page: (x positions, top y, bottom y).
+    col_seps: Vec<(Vec<f32>, f32, f32)>,
+    all_col_seps: Vec<Vec<(Vec<f32>, f32, f32)>>,
+    /// First block whose text overflowed into the next column (balancing trials).
+    first_overflow_block: Option<usize>,
     all_styleref: Vec<HashMap<String, String>>,
     all_first_styleref: Vec<HashMap<String, String>>,
     pub(super) tags: tagging::Tags,
@@ -818,7 +827,11 @@ impl PageBuilder {
             filler_pages: Vec::new(),
             page_section_indices: Vec::new(),
             last_col: 0,
-            all_last_cols: Vec::new(),
+            col_bottom: f32::INFINITY,
+            region_sep_xs: Vec::new(),
+            col_seps: Vec::new(),
+            all_col_seps: Vec::new(),
+            first_overflow_block: None,
             all_styleref: Vec::new(),
             all_first_styleref: Vec::new(),
             tags: tagging::Tags::new(),
@@ -932,7 +945,8 @@ impl PageBuilder {
             self.is_first_page_of_section,
             sect_idx,
         ));
-        self.all_last_cols.push(std::mem::take(&mut self.last_col));
+        self.push_col_seps(self.slot_top);
+        self.all_col_seps.push(std::mem::take(&mut self.col_seps));
         self.all_styleref.push(self.styleref_running.clone());
         self.all_first_styleref
             .push(std::mem::take(&mut self.styleref_page_first));
@@ -954,7 +968,7 @@ impl PageBuilder {
         self.all_gradient_specs.push(Vec::new());
         self.page_section_indices
             .push((self.page_hf_section, false, sect_idx));
-        self.all_last_cols.push(0);
+        self.all_col_seps.push(Vec::new());
         self.all_styleref.push(self.styleref_running.clone());
         self.all_first_styleref
             .push(std::mem::take(&mut self.styleref_page_first));
@@ -963,6 +977,20 @@ impl PageBuilder {
 
     fn page_count(&self) -> usize {
         self.all_contents.len()
+    }
+
+    /// Close the current column region's separators on this page: Word draws
+    /// them from the region's top down to its deepest column (`bottom` is the
+    /// column in progress), and none when the text never left column 1.
+    fn push_col_seps(&mut self, bottom: f32) {
+        let n = self.last_col.min(self.region_sep_xs.len());
+        if n > 0 {
+            let bottom = bottom.min(self.col_bottom);
+            self.col_seps
+                .push((self.region_sep_xs[..n].to_vec(), self.column_top_y, bottom));
+        }
+        self.last_col = 0;
+        self.col_bottom = f32::INFINITY;
     }
 
     /// Endnotes render at the end of the document: collect the id once, in
@@ -998,6 +1026,33 @@ impl PageBuilder {
         })
     }
 
+    /// Text that didn't fit: on to the next column, but when this column is
+    /// still empty the others are no taller, so to the next page (case80's
+    /// five-column region starts on page 2).
+    fn overflow_column_or_page(
+        &mut self,
+        current_col: &mut usize,
+        col_count: usize,
+        sect_idx: usize,
+        sp: &SectionProperties,
+        effective_margin_bottom: &mut f32,
+        ctx: &RenderContext,
+    ) {
+        let col_count = if self.slot_top >= self.column_top_y - 0.01 {
+            1
+        } else {
+            col_count
+        };
+        self.advance_column_or_page(
+            current_col,
+            col_count,
+            sect_idx,
+            sp,
+            effective_margin_bottom,
+            ctx,
+        );
+    }
+
     /// Advance to the next column if available, otherwise flush the current page.
     fn advance_column_or_page(
         &mut self,
@@ -1011,6 +1066,7 @@ impl PageBuilder {
         if *current_col + 1 < col_count {
             *current_col += 1;
             self.last_col = self.last_col.max(*current_col);
+            self.col_bottom = self.col_bottom.min(self.slot_top);
             self.slot_top = self.column_top_y;
         } else {
             *current_col = 0;
@@ -1037,6 +1093,35 @@ pub(super) struct LayoutState {
     /// ponytail: never reset — only `continuous` restart is exercised; newPage/
     /// newSection resets aren't implemented.
     pub(super) line_number_counter: u32,
+}
+
+impl LayoutState {
+    /// A throwaway copy for laying out a column region again with its
+    /// columns ending at `bottom`; its output is discarded.
+    fn trial(&self, bottom: f32) -> LayoutState {
+        let mut pb = PageBuilder::new(self.pb.slot_top);
+        pb.column_top_y = self.pb.column_top_y;
+        pb.page_top_y = self.pb.page_top_y;
+        pb.is_first_page_of_section = self.pb.is_first_page_of_section;
+        pb.page_hf_section = self.pb.page_hf_section;
+        pb.float_zone = self.pb.float_zone.clone();
+        pb.pending_float_anchor = self.pb.pending_float_anchor;
+        pb.footnote_ids_set = self.pb.footnote_ids_set.clone();
+        // Page-top rules look at whether a page was already flushed.
+        if !self.pb.all_contents.is_empty() {
+            pb.all_contents.push(Content::new());
+        }
+        LayoutState {
+            pb,
+            prev_space_after: self.prev_space_after,
+            effective_margin_bottom: bottom,
+            current_col: self.current_col,
+            global_block_idx: self.global_block_idx,
+            heading_entries: Vec::new(),
+            bookmark_positions: self.bookmark_positions.clone(),
+            line_number_counter: self.line_number_counter,
+        }
+    }
 }
 
 /// Book footnote `id` into the current page's footnote area (once per page)
@@ -1477,16 +1562,8 @@ fn render_paragraph_block(
         }
     };
 
-    // Skip empty section-break paragraphs — Word gives these zero height —
-    // unless a continuous break changes the column layout: then the mark keeps
-    // its line (covid_insomnia's break into two columns: 11.9pt; romanian's
-    // and strategi's single-column continuous breaks stay at zero).
-    let keeps_line = doc.sections.get(sect_idx + 1).is_some_and(|next| {
-        next.properties.break_type == SectionBreakType::Continuous
-            && column_count(&next.properties) != column_count(sp)
-    });
+    // Skip empty section-break paragraphs — Word gives these zero height.
     if para.is_section_break
-        && !keeps_line
         && is_text_empty(&para.runs)
         && para.image.is_none()
         && para.inline_chart.is_none()
@@ -1497,6 +1574,13 @@ fn render_paragraph_block(
         // Its space after still meets the next section's first space before:
         // case25's sections (break paragraph after=10pt) start their 24pt
         // heading 14pt down, victorian's (after=0) its 26pt heading 26pt down.
+        // Mid-page, the paragraph before keeps its whole space after and the
+        // next space before counts only beyond this one's (Word probes,
+        // 2026-10-05: gap = prev after + max(0, next before − break after),
+        // the break's own space before ignored; covid's empty keyword line).
+        if !state.pb.is_at_page_top(sp) {
+            state.pb.slot_top -= state.prev_space_after - para.space_after;
+        }
         state.prev_space_after = para.space_after;
         state.global_block_idx += 1;
         return true;
@@ -2519,6 +2603,7 @@ fn render_paragraph_block(
                 track_page_footnote(state, doc, ctx, text_width, id);
             }
 
+            state.pb.first_overflow_block.get_or_insert(block_idx);
             state.pb.advance_column_or_page(
                 &mut state.current_col,
                 col_count,
@@ -2595,7 +2680,8 @@ fn render_paragraph_block(
             return true;
         }
 
-        state.pb.advance_column_or_page(
+        state.pb.first_overflow_block.get_or_insert(block_idx);
+        state.pb.overflow_column_or_page(
             &mut state.current_col,
             col_count,
             sect_idx,
@@ -3348,183 +3434,260 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             vec![(sp.margin_left, text_width)]
         };
         state.current_col = 0;
+        // A mid-page column region starts below the pending space after, so
+        // every column's top lines up (case80's two-column region).
+        if col_count > 1 && !state.pb.is_at_page_top(sp) {
+            state.pb.slot_top -= state.prev_space_after;
+            state.prev_space_after = 0.0;
+        }
         // Record the starting y for this section's columns on the current
         // page. For a mid-page continuous section, both columns begin at the
         // same y rather than at the top of the page.
         state.pb.column_top_y = state.pb.slot_top;
+        state.pb.region_sep_xs = match col_config {
+            Some(cfg) if cfg.sep => col_geometry
+                .iter()
+                .zip(&cfg.columns)
+                .take(col_count - 1)
+                .map(|(&(x, w), col)| x + w + col.space / 2.0)
+                .collect(),
+            _ => Vec::new(),
+        };
 
-        for (block_idx, block) in section.blocks.iter().enumerate() {
-            // If a float zone is active, decide whether to wrap text beside
-            // the object or push it below.
-            if let Some(ref fz) = state.pb.float_zone {
-                if state.pb.slot_top <= fz.bottom_y {
-                    // Already past the zone — clear it
-                    state.pb.float_zone = None;
-                } else if state.pb.slot_top <= fz.top_y
-                    || (fz.para_relative && state.pb.slot_top <= fz.top_y + 30.0)
-                {
-                    // Cursor is within, entering, or (for paragraph-relative
-                    // zones) slightly above the zone.  Paragraph-relative
-                    // images with a positive vertical offset create zones that
-                    // start below the anchor paragraph; the next paragraph's
-                    // cursor may still be above the zone top.
-                    let (col_x, col_w) = col_geometry[state.current_col];
-                    let (ex_left, ex_right) = fz.exclusion_at_y(state.pb.slot_top);
-                    let space_right = (col_x + col_w) - (ex_right + fz.right_from_text);
-                    let space_left = (ex_left - fz.left_from_text) - col_x;
-                    let min_wrap_w: f32 = 72.0;
-                    let enough_space = if fz.wrap_text == WrapText::BothSides {
-                        // For bothSides, check combined width of both regions
-                        (space_left + space_right) >= min_wrap_w
-                    } else {
-                        let best_side = match fz.wrap_text {
-                            WrapText::Left => space_left,
-                            WrapText::Right => space_right,
-                            _ => space_right.max(space_left),
+        let layout_blocks = |state: &mut LayoutState| {
+            for (block_idx, block) in section.blocks.iter().enumerate() {
+                // If a float zone is active, decide whether to wrap text beside
+                // the object or push it below.
+                if let Some(ref fz) = state.pb.float_zone {
+                    if state.pb.slot_top <= fz.bottom_y {
+                        // Already past the zone — clear it
+                        state.pb.float_zone = None;
+                    } else if state.pb.slot_top <= fz.top_y
+                        || (fz.para_relative && state.pb.slot_top <= fz.top_y + 30.0)
+                    {
+                        // Cursor is within, entering, or (for paragraph-relative
+                        // zones) slightly above the zone.  Paragraph-relative
+                        // images with a positive vertical offset create zones that
+                        // start below the anchor paragraph; the next paragraph's
+                        // cursor may still be above the zone top.
+                        let (col_x, col_w) = col_geometry[state.current_col];
+                        let (ex_left, ex_right) = fz.exclusion_at_y(state.pb.slot_top);
+                        let space_right = (col_x + col_w) - (ex_right + fz.right_from_text);
+                        let space_left = (ex_left - fz.left_from_text) - col_x;
+                        let min_wrap_w: f32 = 72.0;
+                        let enough_space = if fz.wrap_text == WrapText::BothSides {
+                            // For bothSides, check combined width of both regions
+                            (space_left + space_right) >= min_wrap_w
+                        } else {
+                            let best_side = match fz.wrap_text {
+                                WrapText::Left => space_left,
+                                WrapText::Right => space_right,
+                                _ => space_right.max(space_left),
+                            };
+                            best_side >= min_wrap_w
                         };
-                        best_side >= min_wrap_w
-                    };
-                    if !enough_space {
-                        // Empty paragraphs can be absorbed within a wide
-                        // image's vertical extent without needing wrap space —
-                        // but only when a usable side strip exists for their
-                        // line boxes. When the float spans the full column
-                        // (sample500kB: image width == text width) Word stacks
-                        // even empty paragraphs below it; with a real strip
-                        // (brazilian: ~42pt) they sit beside. 18pt threshold
-                        // splits the two observed cases.
-                        // Include paragraphs with only line breaks (w:br)
-                        // as "empty" — they have no visible text content.
-                        let has_side_strip = space_right.max(space_left) >= MIN_EMPTY_STRIP;
-                        let is_empty_para = matches!(block,
-                            Block::Paragraph(p) if p.runs.iter().all(|r|
-                                r.vanish || r.is_line_break
-                                || (r.text.is_empty() && !r.is_tab && r.inline_image.is_none())
-                            )
-                                && p.image.is_none()
-                                && p.inline_chart.is_none()
-                                && p.smartart.is_empty()
+                        if !enough_space {
+                            // Empty paragraphs can be absorbed within a wide
+                            // image's vertical extent without needing wrap space —
+                            // but only when a usable side strip exists for their
+                            // line boxes. When the float spans the full column
+                            // (sample500kB: image width == text width) Word stacks
+                            // even empty paragraphs below it; with a real strip
+                            // (brazilian: ~42pt) they sit beside. 18pt threshold
+                            // splits the two observed cases.
+                            // Include paragraphs with only line breaks (w:br)
+                            // as "empty" — they have no visible text content.
+                            let has_side_strip = space_right.max(space_left) >= MIN_EMPTY_STRIP;
+                            let is_empty_para = matches!(block,
+                                Block::Paragraph(p) if p.runs.iter().all(|r|
+                                    r.vanish || r.is_line_break
+                                    || (r.text.is_empty() && !r.is_tab && r.inline_image.is_none())
+                                )
+                                    && p.image.is_none()
+                                    && p.inline_chart.is_none()
+                                    && p.smartart.is_empty()
+                            );
+                            if !is_empty_para || !has_side_strip {
+                                state.pb.slot_top = fz.bottom_y;
+                                state.pb.float_zone = None;
+                            }
+                        }
+                        // Otherwise leave zone active — paragraph layout adjusts width
+                    }
+                }
+
+                match block {
+                    Block::Paragraph(para) => {
+                        let skip = render_paragraph_block(
+                            para,
+                            state,
+                            &ctx,
+                            cur_sp,
+                            &col_geometry,
+                            col_count,
+                            text_width,
+                            sect_idx,
+                            block_idx,
+                            &section.blocks,
+                            &floating_image_pdf_names,
+                            &inline_image_pdf_names,
+                            &image_pdf_names,
+                            &effect_names,
+                            &effect_floating_names,
+                            &effect_inline_names,
+                            doc,
+                            smartart_font_key,
+                            &smartart_image_names,
+                            debug_wrap,
                         );
-                        if !is_empty_para || !has_side_strip {
-                            state.pb.slot_top = fz.bottom_y;
-                            state.pb.float_zone = None;
+                        state.pb.tags.attach_hoisted();
+                        if skip {
+                            continue;
                         }
                     }
-                    // Otherwise leave zone active — paragraph layout adjusts width
-                }
-            }
 
-            match block {
-                Block::Paragraph(para) => {
-                    let skip = render_paragraph_block(
-                        para,
-                        &mut state,
-                        &ctx,
-                        cur_sp,
-                        &col_geometry,
-                        col_count,
-                        text_width,
-                        sect_idx,
-                        block_idx,
-                        &section.blocks,
-                        &floating_image_pdf_names,
-                        &inline_image_pdf_names,
-                        &image_pdf_names,
-                        &effect_names,
-                        &effect_floating_names,
-                        &effect_inline_names,
-                        doc,
-                        smartart_font_key,
-                        &smartart_image_names,
-                        debug_wrap,
-                    );
-                    state.pb.tags.attach_hoisted();
-                    if skip {
-                        continue;
-                    }
-                }
-
-                Block::Table(table) => {
-                    state.pb.lists.close();
-                    state.pb.toc = None;
-                    let override_pos = table.position.as_ref().map(|pos| {
-                        let (col_x, col_w) = col_geometry[state.current_col];
-                        FloatingTablePos::resolve(
+                    Block::Table(table) => {
+                        state.pb.lists.close();
+                        state.pb.toc = None;
+                        let override_pos = table.position.as_ref().map(|pos| {
+                            let (col_x, col_w) = col_geometry[state.current_col];
+                            FloatingTablePos::resolve(
+                                table,
+                                pos,
+                                sp,
+                                col_x,
+                                col_w,
+                                state.pb.slot_top,
+                                &ctx,
+                            )
+                        });
+                        let col_bounds = if col_count > 1 {
+                            Some(col_geometry[state.current_col])
+                        } else {
+                            None
+                        };
+                        let table_tags =
+                            tagging::TableTags::for_table(&mut state.pb.tags, tagging::ROOT, table);
+                        state.pb.table_tags = Some(table_tags);
+                        render_table(
                             table,
-                            pos,
                             sp,
-                            col_x,
-                            col_w,
-                            state.pb.slot_top,
                             &ctx,
-                        )
-                    });
-                    let col_bounds = if col_count > 1 {
-                        Some(col_geometry[state.current_col])
-                    } else {
-                        None
-                    };
-                    let table_tags =
-                        tagging::TableTags::for_table(&mut state.pb.tags, tagging::ROOT, table);
-                    state.pb.table_tags = Some(table_tags);
-                    render_table(
-                        table,
-                        sp,
-                        &ctx,
-                        &mut state.pb,
-                        sect_idx,
-                        state.prev_space_after,
-                        override_pos,
-                        &doc.footnotes,
-                        &mut state.effective_margin_bottom,
-                        col_bounds,
-                    );
-                    if let Some(mut tags) = state.pb.table_tags.take() {
-                        tags.finish(&mut state.pb.tags);
-                    }
-                    state.prev_space_after = 0.0;
+                            &mut state.pb,
+                            sect_idx,
+                            state.prev_space_after,
+                            override_pos,
+                            &doc.footnotes,
+                            &mut state.effective_margin_bottom,
+                            col_bounds,
+                        );
+                        if let Some(mut tags) = state.pb.table_tags.take() {
+                            tags.finish(&mut state.pb.tags);
+                        }
+                        state.prev_space_after = 0.0;
 
-                    // Update styleref tracking (footnotes are already tracked
-                    // inside render_table incrementally per row).
-                    for row in &table.rows {
-                        for cell in &row.cells {
-                            for p in cell.all_paragraphs() {
-                                update_styleref_from_para(
-                                    &mut state.pb.styleref_running,
-                                    &mut state.pb.styleref_page_first,
-                                    p,
-                                    &doc.style_id_to_name,
-                                );
+                        // Update styleref tracking (footnotes are already tracked
+                        // inside render_table incrementally per row).
+                        for row in &table.rows {
+                            for cell in &row.cells {
+                                for p in cell.all_paragraphs() {
+                                    update_styleref_from_para(
+                                        &mut state.pb.styleref_running,
+                                        &mut state.pb.styleref_page_first,
+                                        p,
+                                        &doc.style_id_to_name,
+                                    );
+                                }
                             }
                         }
                     }
                 }
-            }
-            // §17.3.3.1 br clear="all": content after this paragraph restarts
-            // below any floating objects.
-            if let Block::Paragraph(p) = block
-                && p.clears_floats
-                && let Some(ref fz) = state.pb.float_zone
-            {
-                if state.pb.slot_top > fz.bottom_y {
-                    // The line following the break resumes below the
-                    // float and still occupies its full line height
-                    // there (the break paragraph's mark line).
-                    let (fs, lhr, _) = tallest_run_metrics(&p.runs, ctx.fonts);
-                    let ls = p.line_spacing.unwrap_or(ctx.doc_line_spacing);
-                    state.pb.slot_top = fz.bottom_y - resolve_line_h(ls, fs, lhr);
+                // §17.3.3.1 br clear="all": content after this paragraph restarts
+                // below any floating objects.
+                if let Block::Paragraph(p) = block
+                    && p.clears_floats
+                    && let Some(ref fz) = state.pb.float_zone
+                {
+                    if state.pb.slot_top > fz.bottom_y {
+                        // The line following the break resumes below the
+                        // float and still occupies its full line height
+                        // there (the break paragraph's mark line).
+                        let (fs, lhr, _) = tallest_run_metrics(&p.runs, ctx.fonts);
+                        let ls = p.line_spacing.unwrap_or(ctx.doc_line_spacing);
+                        state.pb.slot_top = fz.bottom_y - resolve_line_h(ls, fs, lhr);
+                    }
+                    state.pb.float_zone = None;
                 }
-                state.pb.float_zone = None;
-            }
-            // Clear float zone once cursor passes below it
-            if let Some(ref fz) = state.pb.float_zone
-                && state.pb.slot_top <= fz.bottom_y
-            {
-                state.pb.float_zone = None;
-            }
+                // Clear float zone once cursor passes below it
+                if let Some(ref fz) = state.pb.float_zone
+                    && state.pb.slot_top <= fz.bottom_y
+                {
+                    state.pb.float_zone = None;
+                }
 
-            state.global_block_idx += 1;
+                state.global_block_idx += 1;
+            }
+        };
+
+        // Word balances the columns of a region that ends at a continuous
+        // section break: the shortest column height that still holds it all.
+        // Text before the last column break keeps its columns (case80's
+        // 4-column region is as tall as its first column).
+        let balance = col_count > 1
+            && doc
+                .sections
+                .get(sect_idx + 1)
+                .is_some_and(|s| s.properties.break_type == SectionBreakType::Continuous);
+        let free_from = section
+            .blocks
+            .iter()
+            .enumerate()
+            .filter_map(|(i, b)| match b {
+                Block::Paragraph(p) if p.column_break_after => Some(i + 1),
+                Block::Paragraph(p) if p.column_break_before => Some(i),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0);
+        let fits = |state: &LayoutState, bottom: f32| {
+            let mut trial = state.trial(bottom);
+            layout_blocks(&mut trial);
+            trial.pb.page_count() == state.pb.page_count().min(1)
+                && trial.pb.first_overflow_block.is_none_or(|b| b >= free_from)
+        };
+        // ponytail: only a region whose rest fits on the current page is
+        // balanced; a long region's last page needs a trial from that page's top.
+        if balance && fits(&state, state.effective_margin_bottom) {
+            let page_bottom = state.effective_margin_bottom;
+            let (mut lo, mut hi) = (page_bottom, state.pb.slot_top);
+            for _ in 0..12 {
+                let mid = (lo + hi) / 2.0;
+                if fits(&state, mid) {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            state.effective_margin_bottom = lo;
+            layout_blocks(&mut state);
+            // Keep footnote space booked while the region was laid out.
+            state.effective_margin_bottom += page_bottom - lo;
+        } else {
+            layout_blocks(&mut state);
         }
+
+        if col_count > 1 {
+            // What follows a column region starts below its deepest column,
+            // that column's trailing space after included.
+            let bottom = state
+                .pb
+                .col_bottom
+                .min(state.pb.slot_top - state.prev_space_after);
+            state.pb.push_col_seps(bottom);
+            state.pb.slot_top = bottom;
+            state.prev_space_after = 0.0;
+        }
+        state.pb.region_sep_xs.clear();
     }
     state.pb.flush_page(doc.sections.len() - 1);
     // For §17.6.23 vAlign centering, Word's content box includes the trailing
@@ -3538,28 +3701,11 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
     let t_layout = t0.elapsed();
 
     // Phase 2b: column separator lines
-    for (page_idx, content) in state.pb.all_contents.iter_mut().enumerate() {
-        let (.., si) = state.pb.page_section_indices[page_idx];
-        let sp = &doc.sections[si].properties;
-
-        if let Some(cfg) = &sp.columns
-            && cfg.sep
-        {
-            let mut x = sp.margin_left;
-            let last_col = state.pb.all_last_cols[page_idx];
-            for (i, col) in cfg.columns.iter().enumerate() {
-                x += col.width;
-                if i < last_col {
-                    let mid_x = x + col.space / 2.0;
-                    stroke_segment(
-                        content,
-                        (mid_x, sp.margin_bottom),
-                        (mid_x, sp.page_height - sp.margin_top),
-                        0.5,
-                        None,
-                    );
-                    x += col.space;
-                }
+    for (content, seps) in state.pb.all_contents.iter_mut().zip(&state.pb.all_col_seps) {
+        for (xs, top, bottom) in seps {
+            for &x in xs {
+                // Word's separator is a 0.75pt bar.
+                stroke_segment(content, (x, *bottom), (x, *top), 0.75, None);
             }
         }
     }
@@ -4044,10 +4190,6 @@ fn page_numbers(doc: &Document, page_section_indices: &[(usize, bool, usize)]) -
         prev_si = Some(last_si);
     }
     numbers
-}
-
-fn column_count(sp: &SectionProperties) -> usize {
-    sp.columns.as_ref().map_or(1, |c| c.columns.len().max(1))
 }
 
 /// The docGrid pitch table-cell lines snap to in a section: only under

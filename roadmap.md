@@ -1333,6 +1333,36 @@ a text outline with no fill.
 `gutterAtTop`/`rtlGutter`), `w:pgBorders` and sectPr `w:vAlign` (`79b7f850`) are
 done.
 
+### Column regions (MOSTLY DONE — 2026-10-05, branch `columns`, case80 J 47.8 → 65.4)
+
+Measured on case80 and Word probes, now implemented (`pdf/mod.rs`):
+- A region ending at a continuous section break is balanced: the shortest
+  column height that holds it (found by trial layouts on a throwaway
+  `LayoutState`). Widow control makes that Word's split. Text before the last
+  column break keeps its columns (the 4-column region is as tall as column 1).
+  Next-page breaks and the document end are not balanced.
+- What follows starts below the deepest column, its trailing space after
+  included; a mid-page region starts below the pending space after so all
+  column tops line up.
+- `w:sep` lines run from the region top on that page to its deepest column,
+  0.75pt, only up to the last column holding text (also beside an empty
+  middle column).
+- Text overflowing an empty mid-page column goes to the next page, not into
+  the next column (the others are no taller).
+- An empty section-break paragraph has zero height; mid-page the paragraph
+  before keeps its whole space after and the next space before counts only
+  beyond the break's (probes: gap = prev after + max(0, next before − break
+  after)). This replaced the "keeps its line when the columns change" rule:
+  covid's 11.9pt was its empty keyword paragraph's 12pt after.
+- An autofit table in a newspaper column is sized like a page table, then
+  squeezed in proportion to each grid column's room above its longest word.
+
+Open:
+- A long region (spanning pages) that ends at a continuous break is not
+  balanced on its last page (needs a trial from that page's top).
+- Word lets a column-break paragraph's first line sit in the column before
+  the break: case80's 4-column separator runs 25pt lower than ours.
+
 ### `w:mirrorMargins` (TODO — MEDIUM IMPACT)
 
 Parsed in `settings.rs` into `Document::mirror_margins` (used only for odd/even
