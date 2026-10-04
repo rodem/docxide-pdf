@@ -7,8 +7,8 @@ use pdf_writer::{Content, Name, Rect, Str};
 
 use crate::fonts::{FontEntry, encode_as_gids, font_key_buf, to_winansi_bytes};
 use crate::model::{
-    Alignment, LineSpacing, ParagraphBorder, Run, TabAlignment, TabStop, TextFill, TextOutline,
-    TextShadow, VertAlign,
+    Alignment, FormCheckbox, LineSpacing, ParagraphBorder, Run, TabAlignment, TabStop, TextFill,
+    TextOutline, TextShadow, VertAlign,
 };
 
 use super::RenderContext;
@@ -308,6 +308,8 @@ pub(super) struct WordChunk {
     /// Pair kerning is on for this run at this size (`w:kern`); `width` already
     /// includes it, so the glyphs are drawn kerned too.
     pub(super) kern: bool,
+    /// Drawn as a square in place of the text (`Run::checkbox`).
+    pub(super) checkbox: Option<FormCheckbox>,
 }
 
 /// Pale-pink highlight color Word uses for comment-anchored text spans.
@@ -411,6 +413,7 @@ impl WordChunk {
             is_math: run.is_math,
             formula: run.formula.clone(),
             kern: run.kerns_at(eff_fs),
+            checkbox: run.checkbox,
         }
     }
 
@@ -458,6 +461,7 @@ impl WordChunk {
             is_math: false,
             formula: None,
             kern: false,
+            checkbox: None,
             synthetic_bold: false,
             synthetic_italic: false,
             text_outline: None,
@@ -516,6 +520,7 @@ impl WordChunk {
             is_math: false,
             formula: None,
             kern: false,
+            checkbox: None,
             synthetic_bold: false,
             synthetic_italic: false,
             text_outline: None,
@@ -579,6 +584,7 @@ impl WordChunk {
             is_math: false,
             formula: None,
             kern: false,
+            checkbox: None,
             synthetic_bold: false,
             synthetic_italic: false,
             text_outline: None,
@@ -979,7 +985,7 @@ fn fitting_prefix_len(word: &str, room: f32, width: impl Fn(&str) -> f32) -> Opt
     Some(ends[fits.saturating_sub(1)])
 }
 
-fn word_width_for_run(
+pub(super) fn word_width_for_run(
     entry: &FontEntry,
     run: &Run,
     word: &str,
@@ -988,6 +994,9 @@ fn word_width_for_run(
     cs: f32,
     ts: f32,
 ) -> f32 {
+    if let Some(cb) = run.checkbox {
+        return checkbox_cell(entry, cb).0;
+    }
     if run.small_caps {
         smallcaps_segments(word, eff_fs)
             .iter()
@@ -1000,6 +1009,43 @@ fn word_width_for_run(
         let char_count = word.chars().count();
         entry.word_width(word, eff_fs, kern) * ts + cs * char_count as f32
     }
+}
+
+/// Word sets a legacy check box in a square cell as wide and tall as one line
+/// of the run's font at the box's size, down to that line's descent, and
+/// strokes the box 1pt inside its top and left edges, 1.5pt inside the others
+/// (Word probes: Arial, Calibri, Courier New). Returns (side, descent).
+fn checkbox_cell(entry: &FontEntry, cb: FormCheckbox) -> (f32, f32) {
+    let (line, ascent) = run_line_metrics(entry, FormCheckbox::TEXT);
+    let line = line.unwrap_or(1.15);
+    (cb.size * line, cb.size * (line - ascent.unwrap_or(0.9)))
+}
+
+fn draw_checkbox(
+    content: &mut Content,
+    entry: &FontEntry,
+    cb: FormCheckbox,
+    x: f32,
+    baseline: f32,
+    color: Option<[u8; 3]>,
+) {
+    let (cell, descent) = checkbox_cell(entry, cb);
+    let side = (cell - 2.5).max(0.5);
+    let (left, bottom) = (x + 1.0, baseline - descent + 1.5);
+    content.save_state();
+    stroke_color_or_black(content, color);
+    content.set_line_width(0.75);
+    content.rect(left, bottom, side, side);
+    content.stroke();
+    if cb.checked {
+        content.set_line_width(0.5);
+        content.move_to(left, bottom);
+        content.line_to(left + side, bottom + side);
+        content.move_to(left, bottom + side);
+        content.line_to(left + side, bottom);
+        content.stroke();
+    }
+    content.restore_state();
 }
 
 /// Record a break-space before the next word on the last glyph chunk laid out
@@ -1992,8 +2038,7 @@ fn segment_width(runs: &[&Run], seen_fonts: &HashMap<String, FontEntry>) -> f32 
             if !first || i > 0 {
                 w += space_w;
             }
-            let kern = run.kerns_at(eff_fs);
-            w += entry.word_width(word, eff_fs, kern) * ts + cs * word.chars().count() as f32;
+            w += word_width_for_run(entry, run, word, eff_fs, run.kerns_at(eff_fs), cs, ts);
             first = false;
         }
     }
@@ -2890,6 +2935,15 @@ pub(super) fn render_paragraph_lines(
             flush_border(content, active, border_start_x, border_end_x, border_fs, y);
         }
 
+        for (chunk_idx, chunk) in line.chunks.iter().enumerate() {
+            if let Some(cb) = chunk.checkbox
+                && let Some(entry) = pdf_name_to_entry.get(chunk.pdf_font.as_str())
+            {
+                let x = chunk_abs_x(chunk_idx, chunk);
+                draw_checkbox(content, entry, cb, x, y + chunk.y_offset, chunk.color);
+            }
+        }
+
         if let Some(ref mut anchors) = comment_anchors {
             for (chunk_idx, chunk) in line.chunks.iter().enumerate() {
                 if chunk.comment_ids.is_empty() {
@@ -2928,7 +2982,7 @@ pub(super) fn render_paragraph_lines(
             let mut cur_shear = 0.0_f32;
 
             for (chunk_idx, chunk) in line.chunks.iter().enumerate() {
-                if chunk.inline_image_name.is_some() {
+                if chunk.inline_image_name.is_some() || chunk.checkbox.is_some() {
                     continue;
                 }
                 // A note's reference mark links to the note text (keyboard and

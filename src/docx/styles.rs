@@ -403,7 +403,7 @@ pub(super) fn parse_alignment(val: &str) -> Alignment {
 }
 
 /// A half-point child value (`w:sz`, `w:kern`) in points.
-fn half_points(rpr: roxmltree::Node, name: &str) -> Option<f32> {
+pub(super) fn half_points(rpr: roxmltree::Node, name: &str) -> Option<f32> {
     wml_attr(rpr, name)
         .and_then(|v| v.parse::<f32>().ok())
         .map(|hp| hp / 2.0)

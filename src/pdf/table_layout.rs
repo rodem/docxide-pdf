@@ -15,7 +15,7 @@ use super::RenderContext;
 use super::header_footer::substitute_hf_runs;
 use super::layout::{
     TextLine, build_paragraph_lines, build_tabbed_line, east_asian_leading, is_text_empty,
-    run_line_metrics,
+    run_line_metrics, word_width_for_run,
 };
 use super::resolve_line_h;
 
@@ -121,18 +121,7 @@ fn natural_widths(
                     } else {
                         std::borrow::Cow::Borrowed(&run.text)
                     };
-                    if run.small_caps {
-                        para_w += super::layout::smallcaps_segments(&text, fs)
-                            .iter()
-                            .map(|(seg, seg_fs, _)| {
-                                let kern = run.kerns_at(*seg_fs);
-                                entry.word_width(seg, *seg_fs, kern)
-                            })
-                            .sum::<f32>();
-                    } else {
-                        let kern = run.kerns_at(fs);
-                        para_w += entry.word_width(&text, fs, kern);
-                    }
+                    para_w += word_width_for_run(entry, run, &text, fs, run.kerns_at(fs), 0.0, 1.0);
                 }
                 natural[grid_col] = natural[grid_col].max(para_w + h_pad);
             }
@@ -270,20 +259,9 @@ pub(super) fn auto_fit_columns(
                         .into_iter()
                         .map(|(_, w)| w);
                     for word in words {
-                        let ww = if run.small_caps {
-                            super::layout::smallcaps_segments(word, fs)
-                                .iter()
-                                .map(|(seg, seg_fs, _)| {
-                                    let kern = run.kerns_at(*seg_fs);
-                                    entry.word_width(seg, *seg_fs, kern)
-                                })
-                                .sum::<f32>()
-                                + h_pad
-                        } else {
-                            let kern = run.kerns_at(fs);
-                            entry.word_width(word, fs, kern) + h_pad
-                        };
-                        min_widths[grid_col] = min_widths[grid_col].max(ww);
+                        let ww =
+                            word_width_for_run(entry, run, word, fs, run.kerns_at(fs), 0.0, 1.0);
+                        min_widths[grid_col] = min_widths[grid_col].max(ww + h_pad);
                     }
                 }
             }

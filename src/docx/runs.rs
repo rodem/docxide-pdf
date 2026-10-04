@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::io::{Read, Seek};
 
 use crate::model::{
-    ConnectorShape, FieldCode, FloatingImage, HorizontalRule, IfPart, InlineChart, Run,
-    SmartArtDiagram, TabAlignment, TextFill, TextGlow, TextOutline, TextShadow, Textbox, VertAlign,
+    ConnectorShape, FieldCode, FloatingImage, FormCheckbox, HorizontalRule, IfPart, InlineChart,
+    Run, SmartArtDiagram, TabAlignment, TextFill, TextGlow, TextOutline, TextShadow, Textbox,
+    VertAlign,
 };
 
 use super::images::{
@@ -11,8 +12,8 @@ use super::images::{
 };
 use super::is_east_asian_char;
 use super::styles::{
-    ParagraphStyle, RunProps, StyleDefaults, ThemeFonts, parse_font_size, parse_run_props,
-    resolve_font_from_node_opt,
+    ParagraphStyle, RunProps, StyleDefaults, ThemeFonts, half_points, parse_font_size,
+    parse_run_props, resolve_font_from_node_opt,
 };
 use super::textbox::parse_textbox_from_vml;
 use super::{
@@ -64,6 +65,7 @@ struct FieldFrame {
     parts: Vec<IfPart>,
     /// A nested field we cannot evaluate: an `IF` keeps its cached result.
     opaque: bool,
+    checkbox: Option<FormCheckbox>,
 }
 
 impl FieldFrame {
@@ -75,6 +77,7 @@ impl FieldFrame {
             result: String::new(),
             parts: Vec::new(),
             opaque: false,
+            checkbox: None,
         }
     }
 
@@ -112,6 +115,17 @@ impl FieldFrame {
     fn dynamic(&self) -> bool {
         self.evaluable_if() || parse_field_code(&self.instr).is_some()
     }
+}
+
+/// A legacy check box form field (`w:ffData/w:checkBox` on its begin
+/// `fldChar`); `w:checked` overrides `w:default`.
+fn parse_checkbox(fld_char: roxmltree::Node, run_size: f32) -> Option<FormCheckbox> {
+    let cb = wml(wml(fld_char, "ffData")?, "checkBox")?;
+    let size = half_points(cb, "size").unwrap_or(run_size);
+    let checked = wml_bool(cb, "checked")
+        .or_else(|| wml_bool(cb, "default"))
+        .unwrap_or(false);
+    Some(FormCheckbox { size, checked })
 }
 
 fn parse_styleref_arg(instr: &str) -> Option<String> {
@@ -780,6 +794,8 @@ fn merge_compatible_runs(runs: Vec<Run>) -> Vec<Run> {
                 && !run.is_endnote_ref_mark
                 && prev.field_code.is_none()
                 && run.field_code.is_none()
+                && prev.checkbox.is_none()
+                && run.checkbox.is_none()
                 && prev.font_name == run.font_name
                 && prev.east_asia_font_name == run.east_asia_font_name
                 && prev.font_size == run.font_size
@@ -1117,7 +1133,10 @@ pub(super) fn parse_runs<R: Read + Seek>(
                         if field_stack.is_empty() {
                             flush_pending(&mut pending_text, &mut runs);
                         }
-                        field_stack.push(FieldFrame::new(parent_visible));
+                        field_stack.push(FieldFrame {
+                            checkbox: parse_checkbox(child, fmt.font_size),
+                            ..FieldFrame::new(parent_visible)
+                        });
                     }
                     Some("separate") => {
                         if let Some(f) = field_stack.last_mut() {
@@ -1134,6 +1153,15 @@ pub(super) fn parse_runs<R: Read + Seek>(
                             {
                                 parent.nest(&f.instr);
                             }
+                            continue;
+                        }
+                        if let Some(cb) = f.checkbox {
+                            runs.push(Run {
+                                text: FormCheckbox::TEXT.to_string(),
+                                checkbox: Some(cb),
+                                hyperlink_url: hyperlink_url.clone(),
+                                ..fmt.styled_run()
+                            });
                             continue;
                         }
                         let fc = if f.evaluable_if() {
@@ -1464,6 +1492,36 @@ mod tests {
             highlight,
             ..Run::default()
         }
+    }
+
+    #[test]
+    fn checkbox_size_and_state() {
+        let parse = |check_box: &str| {
+            let xml = format!(
+                r#"<w:fldChar xmlns:w="{WML_NS}" w:fldCharType="begin"><w:ffData><w:checkBox>{check_box}</w:checkBox></w:ffData></w:fldChar>"#
+            );
+            let doc = roxmltree::Document::parse(&xml).unwrap();
+            parse_checkbox(doc.root_element(), 11.0)
+        };
+        let cb = |size, checked| Some(FormCheckbox { size, checked });
+        assert_eq!(
+            parse(r#"<w:size w:val="20"/><w:default w:val="0"/>"#),
+            cb(10.0, false)
+        );
+        assert_eq!(
+            parse(r#"<w:sizeAuto/><w:default w:val="1"/>"#),
+            cb(11.0, true)
+        );
+        assert_eq!(
+            parse(r#"<w:sizeAuto/><w:default w:val="1"/><w:checked w:val="0"/>"#),
+            cb(11.0, false)
+        );
+        assert_eq!(parse(r#"<w:sizeAuto/><w:checked/>"#), cb(11.0, true));
+        let text_field = format!(
+            r#"<w:fldChar xmlns:w="{WML_NS}" w:fldCharType="begin"><w:ffData><w:textInput/></w:ffData></w:fldChar>"#
+        );
+        let doc = roxmltree::Document::parse(&text_field).unwrap();
+        assert_eq!(parse_checkbox(doc.root_element(), 11.0), None);
     }
 
     #[test]

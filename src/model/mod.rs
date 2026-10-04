@@ -566,6 +566,21 @@ pub struct Run {
     /// The Office Math zone's spoken form, shared by the zone's runs: the
     /// /Alt of the Formula they are tagged as. None when it says nothing.
     pub formula: Option<std::sync::Arc<str>>,
+    /// A legacy FORMCHECKBOX field, drawn as a square in place of `text`.
+    pub checkbox: Option<FormCheckbox>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FormCheckbox {
+    /// `w:size` in points, or the run's size for `w:sizeAuto`.
+    pub size: f32,
+    pub checked: bool,
+}
+
+impl FormCheckbox {
+    /// The check box's run text: a ballot box that only carries it through
+    /// line layout, which sizes it; the renderer draws a square instead.
+    pub const TEXT: &'static str = "\u{2610}";
 }
 
 impl Run {
@@ -658,6 +673,7 @@ impl Default for Run {
             comment_ids: Vec::new(),
             is_math: false,
             formula: None,
+            checkbox: None,
         }
     }
 }
