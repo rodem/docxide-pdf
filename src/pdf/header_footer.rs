@@ -201,9 +201,6 @@ fn compute_header_height(
     let text_width = sp.text_width();
     let mut height = 0.0f32;
     let mut prev_space_after = 0.0f32;
-    // Track bottom of wrapping float zones (Square/Tight/Through): subsequent
-    // paragraphs flow beside the image so their height is absorbed, not additive.
-    let mut float_bottom_h = 0.0f32;
     let bands = if is_header {
         blocking_frame_bands(hf, sp)
     } else {
@@ -238,7 +235,14 @@ fn compute_header_height(
                 };
 
                 for fi in &para.floating_images {
-                    if matches!(fi.wrap_type, WrapType::None) {
+                    // Text flows beside a narrow wrapping image, and Word does
+                    // not extend the header to its bottom: czech_municipal's
+                    // logo hangs 5.5pt below the header text, where the body
+                    // starts.
+                    if matches!(fi.wrap_type, WrapType::None)
+                        || (fi.wrap_type.wraps_beside()
+                            && fi.image.display_width < text_width * 0.5)
+                    {
                         continue;
                     }
                     let fi_h = match fi.v_position {
@@ -254,14 +258,8 @@ fn compute_header_height(
                         VerticalPosition::Offset(o) => o.max(0.0) + fi.image.display_height,
                         _ => fi.image.display_height,
                     };
-                    if fi.wrap_type.wraps_beside() && fi.image.display_width < text_width * 0.5 {
-                        // Narrow wrapping image: text flows beside it. Track
-                        // its bottom separately instead of inflating content_h.
-                        float_bottom_h = float_bottom_h.max(height + fi_h);
-                    } else {
-                        // TopAndBottom or wide wrapping image
-                        content_h = content_h.max(fi_h);
-                    }
+                    // TopAndBottom or wide wrapping image
+                    content_h = content_h.max(fi_h);
                 }
 
                 for tb in &para.textboxes {
@@ -301,7 +299,7 @@ fn compute_header_height(
             }
         }
     }
-    (height + prev_space_after).max(float_bottom_h)
+    height + prev_space_after
 }
 
 pub(super) fn effective_slot_top(
