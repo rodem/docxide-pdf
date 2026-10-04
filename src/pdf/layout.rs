@@ -322,7 +322,9 @@ fn push_decoration(
     height: f32,
     color: Option<[u8; 3]>,
 ) {
-    let merged = decorations.last_mut().filter(|(_, dy, _, dh, dc)| {
+    // Look back past the other line of a double underline (or a strike on the
+    // same run), which interleave with this one chunk by chunk.
+    let merged = decorations.iter_mut().rev().take(3).find(|(_, dy, _, dh, dc)| {
         (*dy - y).abs() < 0.01 && (*dh - height).abs() < 0.01 && *dc == color
     });
     if let Some(prev) = merged {
