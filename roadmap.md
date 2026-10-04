@@ -650,8 +650,19 @@ probes (`tools/word_export.py`), not fitted to the fixtures.
    - `eae1ae1d`: even pages lay out around the even header (body extent takes
      the page index; physical parity). czech J → 34.6 (SSIM 89.7), samtale
      43.4 → 79.5, japanese_medical 37.1 → 56.3 with its page count matching.
+10. **Row splits** (both gates in `render_table` / `find_cell_split`):
+   - `3383e6b3`: an optional split needs only two lines of a long first cell
+     paragraph in the room left (rows break between lines). bulgarian_road
+     J 30.7 → 48.3, pages 7 → 6 matching; stem_partnerships +4.7.
+   - `e7291b93`: an at-least trHeight row splits where trHeight + cell
+     margins still fits (`RowLayout.split_min`); cantSplit and exact rows
+     never split. croatian_grant J 30.2 → 43.1, pages 69 → 65 matching;
+     education_consultant 44.6 → 53.9.
 
 Open:
+- The must-split path (row taller than a page) still tests only
+  `!cant_split`, so an exact row taller than a page splits; Word likely clips
+  it. Unprobed, no fixture.
 - Header/footer paragraphs are measured twice (`compute_header_height`, no
   line building, and `render_header_footer`); `layout::position_stretch` is a
   one-line estimate. A shared per-paragraph measure would retire the mirrors.
