@@ -191,6 +191,10 @@ pub(super) fn embed_truetype(
             .subscript_metrics()
             .map(|m| m.y_size as f32 / units)
             .filter(|r| *r > 0.0),
+        underline: face
+            .underline_metrics()
+            .map(|m| (-(m.position as f32) / units, m.thickness as f32 / units))
+            .filter(|&(_, t)| t > 0.0),
         east_asian: lm.east_asian,
         plain_ascender_ratio: lm.plain_ascender_ratio,
         char_to_gid,

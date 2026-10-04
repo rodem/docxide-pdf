@@ -28,6 +28,8 @@ pub(crate) struct FontMetrics {
     /// OS/2 ySuperscriptYSize / ySubscriptYSize per em (`pdf::layout::effective_font_size`).
     pub(crate) superscript_ratio: Option<f32>,
     pub(crate) subscript_ratio: Option<f32>,
+    /// post underlinePosition (below the baseline) and underlineThickness, per em.
+    pub(crate) underline: Option<(f32, f32)>,
     pub(crate) east_asian: bool,
     pub(crate) char_to_gid: HashMap<char, u16>,
     pub(crate) char_widths_1000: HashMap<char, f32>,
@@ -61,6 +63,8 @@ pub(crate) struct FontEntry {
     /// lowered runs (`pdf::layout::effective_font_size`).
     pub(crate) superscript_ratio: Option<f32>,
     pub(crate) subscript_ratio: Option<f32>,
+    /// post underlinePosition (below the baseline) and underlineThickness, per em.
+    pub(crate) underline: Option<(f32, f32)>,
     /// See `embed::LineMetrics::east_asian`.
     pub(crate) east_asian: bool,
     pub(crate) char_to_gid: Option<HashMap<char, u16>>,
@@ -754,6 +758,7 @@ pub(crate) fn register_font(
             grid_baseline_shift: Some(r.metrics.grid_baseline_shift),
             superscript_ratio: r.metrics.superscript_ratio,
             subscript_ratio: r.metrics.subscript_ratio,
+            underline: r.metrics.underline,
             east_asian: r.metrics.east_asian,
             plain_ascender_ratio: Some(r.metrics.plain_ascender_ratio),
             char_to_gid: Some(r.metrics.char_to_gid),
@@ -799,6 +804,7 @@ pub(crate) fn register_font(
                 grid_baseline_shift: None,
                 superscript_ratio: None,
                 subscript_ratio: None,
+                underline: None,
                 east_asian: false,
                 plain_ascender_ratio: None,
                 char_to_gid: None,

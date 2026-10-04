@@ -3838,6 +3838,7 @@ mod tests {
             grid_baseline_shift: None,
             superscript_ratio: None,
             subscript_ratio: None,
+            underline: None,
             east_asian: false,
             plain_ascender_ratio: Some(ar),
             char_to_gid: None,

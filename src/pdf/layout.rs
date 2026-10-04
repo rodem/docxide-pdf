@@ -3092,7 +3092,29 @@ pub(super) fn render_paragraph_lines(
                 };
 
                 let thick = (chunk.font_size * 0.05).max(0.5);
-                if chunk.underline {
+                // Word draws a single underline from the font's post table, its
+                // offset below the baseline and its thickness each on a 0.25pt
+                // grid (online export probe: Calibri, Times New Roman, Arial,
+                // Aptos at 10/12/22pt). Double underlines keep the old geometry.
+                let post_ul = (!chunk.double_underline)
+                    .then(|| pdf_name_to_entry.get(chunk.pdf_font.as_str()))
+                    .flatten()
+                    .and_then(|e| e.underline)
+                    .map(|(pos, th)| {
+                        let q = |v: f32| (v * 4.0).round() / 4.0;
+                        (q(pos * chunk.font_size), q(th * chunk.font_size).max(0.25))
+                    });
+                if let (true, Some((offset, ul_thick))) = (chunk.underline, post_ul) {
+                    let bottom = y - offset - ul_thick;
+                    push_decoration(
+                        &mut decorations,
+                        x,
+                        bottom,
+                        chunk.width,
+                        ul_thick,
+                        chunk.color,
+                    );
+                } else if chunk.underline {
                     let ul_y = if chunk.hyperlink_url.is_some() {
                         y - chunk.font_size * 0.08
                     } else {
@@ -3829,6 +3851,7 @@ mod tests {
             grid_baseline_shift: None,
             superscript_ratio: None,
             subscript_ratio: None,
+            underline: None,
             east_asian: false,
             plain_ascender_ratio: None,
             char_to_gid: None,
