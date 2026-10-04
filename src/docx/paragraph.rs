@@ -3,7 +3,9 @@ use crate::model::{Paragraph, Run, TabAlignment, TabStop};
 use super::images::compute_drawing_info;
 use super::numbering::{ListCounters, ListLabelInfo, parse_list_info};
 use super::runs::{parse_runs, push_textbox};
-use super::styles::{parse_alignment, parse_font_size, resolve_font_from_node_opt};
+use super::styles::{
+    ParagraphStyle, StyleDefaults, parse_alignment, parse_font_size, resolve_font_from_node_opt,
+};
 use super::textbox::collect_textboxes_from_paragraph;
 use super::{
     ParseContext, WML_NS, extract_indents, merge_tab_stops, parse_frame_props,
@@ -121,18 +123,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
     let num_pr = ppr.and_then(|ppr| wml(ppr, "numPr"));
     let style_num = opts.style_num_id.as_deref();
     let style_ilvl = opts.style_num_ilvl;
-    let ListLabelInfo {
-        mut indent_left,
-        mut indent_hanging,
-        tab_stop: mut num_tab_stop,
-        label: mut list_label,
-        font: mut list_label_font,
-        font_size: mut list_label_font_size,
-        bold: mut list_label_bold,
-        color: mut list_label_color,
-        suff: list_label_suff,
-        item: list_item,
-    } = parse_list_info(
+    let numbering = parse_list_info(
         num_pr,
         style_num,
         style_ilvl,
@@ -141,6 +132,20 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         ctx.numbering,
         lists,
     );
+    let (indent_left, indent_right, indent_hanging, indent_first_line) =
+        resolve_indents(ppr, para_style, &numbering, &ctx.styles.defaults);
+    let ListLabelInfo {
+        indent_left: _,
+        indent_hanging: _,
+        tab_stop: mut num_tab_stop,
+        label: mut list_label,
+        font: mut list_label_font,
+        font_size: mut list_label_font_size,
+        bold: mut list_label_bold,
+        color: mut list_label_color,
+        suff: list_label_suff,
+        item: list_item,
+    } = numbering;
     // Paragraph-level `<w:tab val="num" pos="..."/>` overrides the numbering
     // level's num tab (paired with a `clear` of the inherited value when
     // Word-authored). `pos="0"` is a Word sentinel meaning "disable the num
@@ -155,79 +160,6 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
                 num_tab_stop = Some(pos);
             }
         }
-    }
-
-    let mut indent_first_line = ctx.styles.defaults.indent_first_line;
-    let mut indent_right = ctx.styles.defaults.indent_right;
-    let char_width_fs = para_style
-        .and_then(|s| s.font_size)
-        .unwrap_or(ctx.styles.defaults.font_size);
-    // Numbering-level ind (already in indent_left/indent_hanging) outranks
-    // style ind (§17.9.27); only directly-specified attributes override it.
-    // Numbering that comes from the paragraph style sits below an ind set on
-    // the same style or one below it (§17.7.2): an AC Bullet style setting
-    // 340/340 over its list level's 153/360 indents by 340 in Word; an ind
-    // only on a style above the numPr stays under the level's.
-    let style_ind_wins = num_pr.is_none() && para_style.is_some_and(|s| s.ind_over_numbering);
-    let numbering_ind = !style_ind_wins && (indent_left != 0.0 || indent_hanging != 0.0);
-    let (left, right, hanging, first) = if let Some(ind) = ppr.and_then(|ppr| wml(ppr, "ind")) {
-        let (l, r, h, f) = extract_indents(ind, Some(char_width_fs / 2.0));
-        // firstLine and hanging are one value: a direct either replaces the
-        // style's both (indonesian's title, ind left=281 firstLine=0 over
-        // Heading1's hanging=543, starts at 281 in Word).
-        let first_hanging_direct = h.is_some() || f.is_some();
-        // Merge: inline w:ind attributes override style, but missing
-        // attributes fall back to the paragraph style values.
-        if let Some(s) = para_style {
-            if numbering_ind {
-                let f = if first_hanging_direct {
-                    f
-                } else {
-                    s.indent_first_line
-                };
-                (l, r.or(s.indent_right), h, f)
-            } else if first_hanging_direct {
-                (l.or(s.indent_left), r.or(s.indent_right), h, f)
-            } else {
-                (
-                    l.or(s.indent_left),
-                    r.or(s.indent_right),
-                    s.indent_hanging,
-                    s.indent_first_line,
-                )
-            }
-        } else {
-            (l, r, h, f)
-        }
-    } else if (list_label.is_empty() || style_ind_wins)
-        && let Some(s) = para_style
-    {
-        (
-            s.indent_left,
-            s.indent_right,
-            s.indent_hanging,
-            s.indent_first_line,
-        )
-    } else {
-        (None, None, None, None)
-    };
-    if let Some(v) = left {
-        indent_left = v;
-    } else if indent_left == 0.0 {
-        indent_left = ctx.styles.defaults.indent_left;
-    }
-    if let Some(v) = right {
-        indent_right = v;
-    }
-    if let Some(v) = hanging {
-        indent_hanging = v;
-    } else if first.is_some() {
-        indent_hanging = 0.0;
-    } else if indent_hanging == 0.0 {
-        indent_hanging = ctx.styles.defaults.indent_hanging;
-    }
-    if let Some(v) = first {
-        indent_first_line = v;
     }
 
     let parsed = parse_runs(node, ctx);
@@ -470,6 +402,93 @@ pub(super) fn split_at_page_break(para: &mut Paragraph) -> Option<Paragraph> {
         ..Paragraph::default()
     };
     Some(rest)
+}
+
+/// A paragraph's indents (left, right, hanging, first line) from its direct
+/// `w:ind`, its style and its numbering level, over the document defaults.
+/// Shared by body and table-cell paragraphs.
+pub(super) fn resolve_indents(
+    ppr: Option<roxmltree::Node>,
+    para_style: Option<&ParagraphStyle>,
+    numbering: &ListLabelInfo,
+    defaults: &StyleDefaults,
+) -> (f32, f32, f32, f32) {
+    let mut indent_left = numbering.indent_left;
+    let mut indent_hanging = numbering.indent_hanging;
+    let mut indent_first_line = defaults.indent_first_line;
+    let mut indent_right = defaults.indent_right;
+    let char_width_fs = para_style
+        .and_then(|s| s.font_size)
+        .unwrap_or(defaults.font_size);
+    // Numbering-level ind (already in indent_left/indent_hanging) outranks
+    // style ind (§17.9.27); only directly-specified attributes override it.
+    // Numbering that comes from the paragraph style sits below an ind set on
+    // the same style or one below it (§17.7.2): an AC Bullet style setting
+    // 340/340 over its list level's 153/360 indents by 340 in Word; an ind
+    // only on a style above the numPr stays under the level's.
+    let style_ind_wins = ppr.and_then(|ppr| wml(ppr, "numPr")).is_none()
+        && para_style.is_some_and(|s| s.ind_over_numbering);
+    let numbering_ind = !style_ind_wins && (indent_left != 0.0 || indent_hanging != 0.0);
+    let (left, right, hanging, first) = if let Some(ind) = ppr.and_then(|ppr| wml(ppr, "ind")) {
+        let (l, r, h, f) = extract_indents(ind, Some(char_width_fs / 2.0));
+        // firstLine and hanging are one value: a direct either replaces the
+        // style's both (indonesian's title, ind left=281 firstLine=0 over
+        // Heading1's hanging=543, starts at 281 in Word).
+        let first_hanging_direct = h.is_some() || f.is_some();
+        // Merge: inline w:ind attributes override style, but missing
+        // attributes fall back to the paragraph style values.
+        if let Some(s) = para_style {
+            if numbering_ind {
+                let f = if first_hanging_direct {
+                    f
+                } else {
+                    s.indent_first_line
+                };
+                (l, r.or(s.indent_right), h, f)
+            } else if first_hanging_direct {
+                (l.or(s.indent_left), r.or(s.indent_right), h, f)
+            } else {
+                (
+                    l.or(s.indent_left),
+                    r.or(s.indent_right),
+                    s.indent_hanging,
+                    s.indent_first_line,
+                )
+            }
+        } else {
+            (l, r, h, f)
+        }
+    } else if (numbering.label.is_empty() || style_ind_wins)
+        && let Some(s) = para_style
+    {
+        (
+            s.indent_left,
+            s.indent_right,
+            s.indent_hanging,
+            s.indent_first_line,
+        )
+    } else {
+        (None, None, None, None)
+    };
+    if let Some(v) = left {
+        indent_left = v;
+    } else if indent_left == 0.0 {
+        indent_left = defaults.indent_left;
+    }
+    if let Some(v) = right {
+        indent_right = v;
+    }
+    if let Some(v) = hanging {
+        indent_hanging = v;
+    } else if first.is_some() {
+        indent_hanging = 0.0;
+    } else if indent_hanging == 0.0 {
+        indent_hanging = defaults.indent_hanging;
+    }
+    if let Some(v) = first {
+        indent_first_line = v;
+    }
+    (indent_left, indent_right, indent_hanging, indent_first_line)
 }
 
 #[cfg(test)]

@@ -10,7 +10,7 @@ use super::numbering::{ListCounters, ListLabelInfo, parse_list_info};
 use super::runs::parse_runs;
 use super::styles::{TableBordersDef, TableStyleDef, parse_alignment, parse_table_borders_def};
 use super::{
-    ParseContext, WML_NS, collect_block_nodes, extract_indents, merge_tab_stops, parse_cell_border,
+    ParseContext, WML_NS, collect_block_nodes, merge_tab_stops, parse_cell_border,
     parse_cell_border_left, parse_cell_border_right, parse_hex_color, parse_on_off,
     parse_paragraph_spacing, parse_tab_stops_with_clears, twips_attr, wml, wml_attr, wml_bool,
 };
@@ -738,18 +738,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                     let num_pr = ppr.and_then(|ppr| wml(ppr, "numPr"));
                     let style_num = para_style.and_then(|s| s.num_id.as_deref());
                     let style_ilvl = para_style.and_then(|s| s.num_ilvl);
-                    let ListLabelInfo {
-                        mut indent_left,
-                        mut indent_hanging,
-                        tab_stop: _,
-                        label: list_label,
-                        font: list_label_font,
-                        font_size: list_label_font_size,
-                        bold: list_label_bold,
-                        color: list_label_color,
-                        suff: _,
-                        item: list_item,
-                    } = parse_list_info(
+                    let numbering = parse_list_info(
                         num_pr,
                         style_num,
                         style_ilvl,
@@ -758,26 +747,25 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         ctx.numbering,
                         cell_lists,
                     );
-                    let mut indent_first_line = 0.0;
-                    let mut indent_right = 0.0;
-                    if let Some(ind) = ppr.and_then(|ppr| wml(ppr, "ind")) {
-                        let cw_fs = para_style
-                            .and_then(|s| s.font_size)
-                            .unwrap_or(ctx.styles.defaults.font_size);
-                        let (left, right, hanging, first) = extract_indents(ind, Some(cw_fs / 2.0));
-                        if let Some(v) = left {
-                            indent_left = v;
-                        }
-                        if let Some(v) = right {
-                            indent_right = v;
-                        }
-                        if let Some(v) = hanging {
-                            indent_hanging = v;
-                        }
-                        if let Some(v) = first {
-                            indent_first_line = v;
-                        }
-                    }
+                    let (indent_left, indent_right, indent_hanging, indent_first_line) =
+                        super::paragraph::resolve_indents(
+                            ppr,
+                            para_style,
+                            &numbering,
+                            &ctx.styles.defaults,
+                        );
+                    let ListLabelInfo {
+                        indent_left: _,
+                        indent_hanging: _,
+                        tab_stop: _,
+                        label: list_label,
+                        font: list_label_font,
+                        font_size: list_label_font_size,
+                        bold: list_label_bold,
+                        color: list_label_color,
+                        suff: _,
+                        item: list_item,
+                    } = numbering;
                     let space_before = sp_before.or(style_space_before).unwrap_or(0.0);
                     let space_after = sp_after.or(style_space_after).unwrap_or(if has_tbl_style {
                         0.0
