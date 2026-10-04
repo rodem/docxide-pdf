@@ -146,6 +146,22 @@ offset (0.08 em, was 0.12): czech_crisis, isla, uk_commercial move ≤0.4pt.
 Element-level `/ActualText` is ignored by extraction and Poppler; prefer
 content-level fixes (see `current_focus/A11Y.md`).
 
+**Done, round 6 (2026-10-04, branch `a11y-round6`):** measured over the 240
+references now tagged (the re-exports added 67). Office Math is a Formula
+with a spoken `/Alt` from Word's own rules (`docx/math_speech.rs`; pendulum
+text 72 → 98%) · textboxes in table cells are `Sect > P` inside their TD/TH
+(japanese_land text 86 → 100%) · header/footer links keep their annotations,
+each in a Link holding only its OBJR (Word leaves them untagged) · OLE
+objects take their alt from the VML shape, or stay artifacts without one,
+and a decorative block picture's paragraph mark keeps its element ·
+Symbol-font low bytes and Wingdings 3 triangles extract as Unicode · the
+comment pane's label draws in the main font's bold face, so its brackets are
+no longer `.notdef` (door_air_cooling, the one visual change).
+ua_deficit 2 → 0, ua_fail 510 → 504, text 96.34 → 96.51%, struct
+95.83 → 95.84%, +1.2 KB. Most of the remaining text gap is Word: rows split
+at page breaks become two TRs, continued footnotes two Ps, and some lists
+lose their labels into LBody or entirely (see `current_focus/A11Y.md`).
+
 Progress over the 173 tagged references: struct 0 → 94.8%, text 0 → 95.2%,
 ua_deficit 1165 → 0 (every fixture fails no PDF/UA-1 rule Word passes);
 LibreOffice's own tagged export scores 76% / 84% on the same yardstick. Over
@@ -184,15 +200,13 @@ symbol glyphs, see SCORING.md.)
 
 **Backlog, ordered by gap data (`tag_gaps.py` / `text_gaps.py` in the session
 scratchpad; rebuild them from `tests/common/a11y.rs` if needed):**
-1. Math: Word tags OMML as `Formula` with spoken `/Alt`; ours is linear text
-   in the P (a Formula needs alt, 7.7-1). Table-cell and header/footer
-   textboxes and floats stay artifacts.
+1. Math speech reads matrices, accents and equation arrays as their contents
+   in order; floating pictures in table cells stay artifacts.
 2. slovak_eu_directive: we emit 9 table rows where Word has 14 (table model).
-3. Links in headers/footers are still dropped (Word writes them untagged);
-   link rects and outline destinations ignore the comment-pane zoom
+3. Link rects and outline destinations ignore the comment-pane zoom
    (`comments::page_zoom`) and vAlign (`assembly.rs`) — no fixture has links
    with either.
-4. Wingdings 2/3 and Webdings still extract as private-use code points;
+4. Wingdings 2 and Webdings still extract as private-use code points;
    `w:lang/@bidi` (complex-script text) ignored. (`w:softHyphen` dropped and
    `w:noBreakHyphen` → U+002D both match Word's extraction.)
 5. Missing glyphs other than spaces still draw `.notdef`: Word rescues them per
