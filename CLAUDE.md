@@ -200,7 +200,7 @@ tests/
 - Rust edition: 2024
 - Test output is compared using **Jaccard similarity on ink pixels** (luma < 200 = ink) and **SSIM** with spatial tolerance (±8px). Run tests with `cargo test -- --nocapture` to see scores.
 - Jaccard threshold: **20.5%**, SSIM threshold: **75%** (defined in `tests/visual_comparison.rs`)
-- Accessibility (`tests/accessibility.rs`, `tests/common/a11y.rs`): `ua_deficit` (veraPDF PDF/UA-1 rules we fail worse than Word; 0 = as good as Word), `a11y_struct` (tag sequence vs Word's), `a11y_text` (block text in structure order vs Word's). Untagged references score N/A. See the Accessibility section of `roadmap.md`
+- Accessibility (`tests/accessibility.rs`, `tests/common/a11y.rs`): `ua_deficit` (veraPDF PDF/UA-1 rules we fail worse than Word; 0 = as good as Word), `a11y_struct` (tag sequence vs Word's), `a11y_text` (block text in structure order vs Word's), `a11y_missing` (DOCX letters and digits that never reach our structure tree; needs no reference, any increase fails). Untagged references score N/A on the Word-relative three. See the Accessibility section of `roadmap.md`
 - 79 handcrafted test cases (`tests/fixtures/cases/`) covering text, tables, images, charts, shapes, SmartArt, and more, plus the fonts/, hyphenation/, samples/ and scraped/ groups
 
 ## Word Layout Learnings

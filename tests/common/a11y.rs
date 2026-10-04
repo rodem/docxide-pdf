@@ -1,9 +1,10 @@
 //! Accessibility metrics, always relative to the Word reference: veraPDF
 //! PDF/UA-1 rule parity plus a comparison of the structure trees as Poppler
-//! reads them (`pdfinfo -struct-text`).
+//! reads them (`pdfinfo -struct-text`). `coverage` alone needs no reference:
+//! it checks the DOCX's own text against our structure tree.
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -335,4 +336,125 @@ pub fn text_score(reference: &[Elem], generated: &[Elem]) -> f64 {
         prev = cur;
     }
     prev[b.len()] as f64 / n as f64
+}
+
+const W_NS: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const MC_NS: &str = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+
+/// How much of the DOCX's text (body, footnotes, endnotes) reaches the
+/// structure tree, which is what a screen reader gets.
+pub struct Coverage {
+    /// Letters and digits that never do (case-folded, counted with repeats).
+    pub missing: usize,
+    /// Paragraphs whose text isn't there whole, when anything is missing.
+    pub lost: Vec<String>,
+}
+
+/// Text hidden by a style and textbox overflow Word clips too still count as
+/// missing; the baselines absorb them, as `ua_fail` does source-limited rules.
+pub fn coverage(docx: &Path, generated: &[Elem]) -> Result<Coverage, String> {
+    let file = fs::File::open(docx).map_err(|e| format!("{}: {e}", docx.display()))?;
+    let mut zip = zip::ZipArchive::new(file).map_err(|e| format!("zip: {e}"))?;
+    let mut paras = Vec::new();
+    for part in [
+        "word/document.xml",
+        "word/footnotes.xml",
+        "word/endnotes.xml",
+    ] {
+        let Ok(entry) = zip.by_name(part) else {
+            continue;
+        };
+        let xml = std::io::read_to_string(entry).map_err(|e| format!("{part}: {e}"))?;
+        paras.extend(docx_paragraphs(&xml)?);
+    }
+    let got: String = generated
+        .iter()
+        .filter(|e| e.kind == TEXT)
+        .map(|e| letters(&e.text))
+        .collect();
+    let count = |s: &str| {
+        let mut n: HashMap<char, usize> = HashMap::new();
+        s.chars().for_each(|c| *n.entry(c).or_default() += 1);
+        n
+    };
+    let have = count(&got);
+    let missing = count(&letters(&paras.concat()))
+        .iter()
+        .map(|(c, n)| n.saturating_sub(have.get(c).copied().unwrap_or(0)))
+        .sum();
+    // Paragraphs come in reading order: look after the last one found first.
+    let mut from = 0;
+    let lost = paras
+        .into_iter()
+        .filter(|p| {
+            let own = letters(p);
+            if missing == 0 || own.chars().count() <= 3 {
+                return false;
+            }
+            match got[from..]
+                .find(&own)
+                .map(|i| from + i)
+                .or_else(|| got.find(&own))
+            {
+                Some(at) => {
+                    from = at + own.len();
+                    false
+                }
+                None => true,
+            }
+        })
+        .collect();
+    Ok(Coverage { missing, lost })
+}
+
+/// Letters and digits only, case-folded: what coverage compares.
+fn letters(text: &str) -> String {
+    text.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// A WordprocessingML part's paragraph texts as a reader should get them: no
+/// deleted, hidden or field-code text, no `mc:Fallback` copies, no note
+/// separators; a textbox's paragraphs follow the one that anchors it.
+pub fn docx_paragraphs(xml: &str) -> Result<Vec<String>, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| format!("xml: {e}"))?;
+    let mut out = Vec::new();
+    collect_paragraphs(doc.root_element(), None, &mut out);
+    Ok(out)
+}
+
+fn collect_paragraphs(node: roxmltree::Node, mut para: Option<usize>, out: &mut Vec<String>) {
+    let separator = || {
+        matches!(
+            node.attribute((W_NS, "type")),
+            Some("separator" | "continuationSeparator" | "continuationNotice")
+        )
+    };
+    match (node.tag_name().namespace(), node.tag_name().name()) {
+        (Some(MC_NS), "Fallback") | (Some(W_NS), "del") => return,
+        (Some(W_NS), "footnote" | "endnote") if separator() => return,
+        (Some(W_NS), "r") if hidden_run(node) => return,
+        (Some(W_NS), "p") => {
+            out.push(String::new());
+            para = Some(out.len() - 1);
+        }
+        (Some(W_NS), "t") => {
+            if let (Some(i), Some(t)) = (para, node.text()) {
+                out[i].push_str(t);
+            }
+        }
+        _ => {}
+    }
+    for child in node.children().filter(|n| n.is_element()) {
+        collect_paragraphs(child, para, out);
+    }
+}
+
+fn hidden_run(run: roxmltree::Node) -> bool {
+    run.children()
+        .find(|n| n.has_tag_name((W_NS, "rPr")))
+        .and_then(|p| p.children().find(|n| n.has_tag_name((W_NS, "vanish"))))
+        .is_some_and(|v| !matches!(v.attribute((W_NS, "val")), Some("0" | "false" | "off")))
 }

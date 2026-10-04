@@ -11,6 +11,8 @@ struct Scored {
     /// `ua_fail` counts the rules the source can't satisfy too (no title,
     /// pictures without descr); the baseline absorbs them.
     scores: a11y::Scores,
+    /// Letters and digits of the DOCX that never reach the structure tree.
+    missing: usize,
 }
 
 /// Which PDF in tests/output/<group>/<case>/ to score; e.g. `libreoffice.pdf`
@@ -84,16 +86,26 @@ fn analyze_fixture(fixture: &Path, gen_name: &str) -> Option<Result<Scored, Stri
         .map(|(id, r)| (id.as_str(), r.failed))
         .collect();
     let scores = a11y::scores(&ref_a, &gen_a);
-    let detail = match &scores.vs_word {
+    let coverage = match a11y::coverage(&fixture.join("input.docx"), &gen_a.elems) {
+        Ok(c) => c,
+        Err(e) => return fail(e),
+    };
+    let mut detail = match &scores.vs_word {
         Some(v) => detail_json(&ref_a, &gen_a, v, &failing),
         None => serde_json::json!({ "ua_fail": failing }),
     };
+    detail["a11y_missing"] = coverage.missing.into();
+    detail["lost_paragraphs"] = coverage.lost.into();
     fs::write(
         out.join(format!("{stem}.deficit.json")),
         serde_json::to_string_pretty(&detail).unwrap(),
     )
     .ok();
-    Some(Ok(Scored { name, scores }))
+    Some(Ok(Scored {
+        name,
+        scores,
+        missing: coverage.missing,
+    }))
 }
 
 #[test]
@@ -172,6 +184,11 @@ fn accessibility_vs_reference() {
         results.iter().filter(|r| r.scores.ua_fail == 1).count(),
         claims.len(),
     );
+    println!(
+        "  DOCX text missing from the structure tree: {} letters and digits in {} PDFs (lost paragraphs in *.deficit.json)",
+        results.iter().map(|r| r.missing).sum::<usize>(),
+        results.iter().filter(|r| r.missing > 0).count(),
+    );
     for e in &errors {
         println!("  ERROR {e}");
     }
@@ -191,6 +208,7 @@ fn accessibility_vs_reference() {
             let v = r.scores.vs_word.as_ref();
             let b = common::Baselines {
                 ua_fail: Some(r.scores.ua_fail),
+                a11y_missing: Some(r.missing),
                 ua_deficit: v.map(|v| v.deficit.len()),
                 a11y_struct: v.map(|v| v.struct_score),
                 a11y_text: v.map(|v| v.text_score),
@@ -223,6 +241,7 @@ fn accessibility_vs_reference() {
                     matches!((old, new), (Some(o), Some(n)) if n < o - common::REGRESSION_SLACK)
                 };
                 worse(b.ua_fail, r.ua_fail)
+                    || worse(b.a11y_missing, r.a11y_missing)
                     || worse(b.ua_deficit, r.ua_deficit)
                     || dropped(b.a11y_struct, r.a11y_struct)
                     || dropped(b.a11y_text, r.a11y_text)
@@ -353,4 +372,20 @@ fn deficit_counts_only_rules_worse_than_word() {
     assert!(a11y::ua_deficit(&word, &word).is_empty());
     let ours = json(&[("5", 1, 1, 0), ("7.1", 3, 50, 50), ("6.2", 1, 1, 0)]);
     assert_eq!(a11y::ua_deficit(&word, &ours), ["6.2-1", "7.1-3"]);
+}
+
+#[test]
+fn docx_paragraphs_keep_what_a_reader_gets() {
+    let w = r#"xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006""#;
+    let xml = format!(
+        r#"<w:document {w}><w:body>
+          <w:p><w:r><w:t>Kept </w:t></w:r><w:del><w:r><w:t>deleted</w:t></w:r></w:del>
+            <w:r><w:rPr><w:vanish/></w:rPr><w:t>hidden</w:t></w:r>
+            <w:r><w:rPr><w:vanish w:val="0"/></w:rPr><w:t>shown</w:t></w:r>
+            <mc:AlternateContent><mc:Choice><w:txbxContent><w:p><w:r><w:t>box</w:t></w:r></w:p></w:txbxContent></mc:Choice>
+            <mc:Fallback><w:txbxContent><w:p><w:r><w:t>copy</w:t></w:r></w:p></w:txbxContent></mc:Fallback></mc:AlternateContent></w:p>
+          <w:endnote w:type="separator"><w:p><w:r><w:t>separator</w:t></w:r></w:p></w:endnote>
+        </w:body></w:document>"#
+    );
+    assert_eq!(a11y::docx_paragraphs(&xml).unwrap(), ["Kept shown", "box"]);
 }

@@ -16,14 +16,16 @@ METRIC_NAMES = {
     "ssim": "SSIM",
     "text_boundary": "TxtBnd",
     "ua_fail": "UaFail",
+    "a11y_missing": "Missing",
     "ua_deficit": "UaDef",
     "a11y_struct": "A11ySt",
     "a11y_text": "A11yTx",
 }
-METRICS = ["jaccard", "ssim", "text_boundary", "ua_fail", "ua_deficit", "a11y_struct", "a11y_text"]
+METRICS = ["jaccard", "ssim", "text_boundary", "ua_fail", "a11y_missing", "ua_deficit", "a11y_struct", "a11y_text"]
 # Counts of PDF/UA-1 rules we fail worse than Word: any increase is a regression.
-# ua_fail (rules we fail on our own, Word or not) is a count the same way.
-LOWER_IS_BETTER = {"ua_deficit", "ua_fail"}
+# ua_fail (rules we fail on our own, Word or not) is a count the same way,
+# and so is a11y_missing (DOCX letters and digits missing from our tags).
+LOWER_IS_BETTER = {"ua_deficit", "ua_fail", "a11y_missing"}
 
 
 def short_name(name: str, max_len: int = 30) -> str:
