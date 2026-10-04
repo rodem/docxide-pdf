@@ -780,8 +780,12 @@ pub(super) struct PageBuilder {
     /// Separator lines on the current page: (x positions, top y, bottom y).
     col_seps: Vec<(Vec<f32>, f32, f32)>,
     all_col_seps: Vec<Vec<(Vec<f32>, f32, f32)>>,
-    /// First block whose text overflowed into the next column (balancing trials).
+    /// First block on this page whose text overflowed into the next column
+    /// (balancing trials).
     first_overflow_block: Option<usize>,
+    /// (page index, y): columns on that page end no lower than y, to balance
+    /// the last page of a region spanning pages.
+    balance_floor: Option<(usize, f32)>,
     all_styleref: Vec<HashMap<String, String>>,
     all_first_styleref: Vec<HashMap<String, String>>,
     pub(super) tags: tagging::Tags,
@@ -832,6 +836,7 @@ impl PageBuilder {
             col_seps: Vec::new(),
             all_col_seps: Vec::new(),
             first_overflow_block: None,
+            balance_floor: None,
             all_styleref: Vec::new(),
             all_first_styleref: Vec::new(),
             tags: tagging::Tags::new(),
@@ -947,6 +952,7 @@ impl PageBuilder {
         ));
         self.push_col_seps(self.slot_top);
         self.all_col_seps.push(std::mem::take(&mut self.col_seps));
+        self.first_overflow_block = None;
         self.all_styleref.push(self.styleref_running.clone());
         self.all_first_styleref
             .push(std::mem::take(&mut self.styleref_page_first));
@@ -1079,6 +1085,11 @@ impl PageBuilder {
             self.column_top_y = self.slot_top;
             self.page_top_y = self.slot_top;
             *effective_margin_bottom = compute_effective_margin_bottom(sp, false, ctx);
+            if let Some((page, y)) = self.balance_floor
+                && page == self.page_count()
+            {
+                *effective_margin_bottom = effective_margin_bottom.max(y);
+            }
             self.is_first_page_of_section = false;
         }
     }
@@ -2619,55 +2630,85 @@ fn render_paragraph_block(
                 ctx,
             );
 
-            let rest = &lines[lines_that_fit..];
-            let rest_content_h = lines_height(rest, line_h, para_metrics);
             let baseline_offset2 = if grid_snapped {
                 grid_baseline
             } else {
                 font_size * ascender_ratio
             };
-            let baseline_y2 = state.pb.slot_top - baseline_offset2;
+            // The rest may itself outrun the column: a long paragraph spans as
+            // many columns or pages as it needs (case80 probes: one paragraph
+            // balanced over three columns).
+            let mut start = lines_that_fit;
+            loop {
+                let remaining = &lines[start..];
+                let room = state.pb.slot_top - state.effective_margin_bottom;
+                let mut fit = 0usize;
+                let mut above = 0.0f32;
+                for l in remaining {
+                    if above + l.pitch.map_or(first_line_h, |p| p.min(first_line_h)) > room {
+                        break;
+                    }
+                    fit += 1;
+                    above += l.pitch.unwrap_or(line_h);
+                }
+                if para.widow_control && fit < remaining.len() && remaining.len() - fit < 2 {
+                    fit = remaining.len().saturating_sub(2);
+                }
+                let chunk = &remaining[..fit.clamp(1, remaining.len())];
+                let baseline_y2 = state.pb.slot_top - baseline_offset2;
+                let (rest_col_x, rest_col_w) = col_geometry[state.current_col];
+                let rest_text_x = rest_col_x + para.indent_left;
+                let rest_text_width = (rest_col_w - para.indent_left - para.indent_right).max(1.0);
 
-            let (rest_col_x, rest_col_w) = col_geometry[state.current_col];
-            let rest_text_x = rest_col_x + para.indent_left;
-            let rest_text_width = (rest_col_w - para.indent_left - para.indent_right).max(1.0);
+                state.pb.begin_tag(tag);
+                render_paragraph_lines(
+                    &mut state.pb.content,
+                    chunk,
+                    &para.alignment,
+                    rest_text_x,
+                    rest_text_width,
+                    baseline_y2,
+                    line_h,
+                    para_metrics,
+                    lines.len(),
+                    start,
+                    &mut state.pb.links,
+                    text_hanging,
+                    ctx.fonts,
+                    None,
+                    &mut state.pb.gradient_specs,
+                    Some(&mut state.pb.comment_anchors),
+                    ln_cfg.map(
+                        |(start, count_by, continuous_offset, right_x)| LineNumberArg {
+                            counter: &mut state.line_number_counter,
+                            start,
+                            count_by,
+                            continuous_offset,
+                            right_x,
+                        },
+                    ),
+                    Some(LinkTagger::new(
+                        &mut state.pb.tags,
+                        state.pb.all_contents.len(),
+                        tag,
+                    )),
+                );
+                state.pb.end_tag();
 
-            state.pb.begin_tag(tag);
-            render_paragraph_lines(
-                &mut state.pb.content,
-                rest,
-                &para.alignment,
-                rest_text_x,
-                rest_text_width,
-                baseline_y2,
-                line_h,
-                para_metrics,
-                lines.len(),
-                lines_that_fit,
-                &mut state.pb.links,
-                text_hanging,
-                ctx.fonts,
-                None,
-                &mut state.pb.gradient_specs,
-                Some(&mut state.pb.comment_anchors),
-                ln_cfg.map(
-                    |(start, count_by, continuous_offset, right_x)| LineNumberArg {
-                        counter: &mut state.line_number_counter,
-                        start,
-                        count_by,
-                        continuous_offset,
-                        right_x,
-                    },
-                ),
-                Some(LinkTagger::new(
-                    &mut state.pb.tags,
-                    state.pb.all_contents.len(),
-                    tag,
-                )),
-            );
-            state.pb.end_tag();
-
-            state.pb.slot_top -= rest_content_h;
+                state.pb.slot_top -= lines_height(chunk, line_h, para_metrics);
+                start += chunk.len();
+                if start >= lines.len() {
+                    break;
+                }
+                state.pb.advance_column_or_page(
+                    &mut state.current_col,
+                    col_count,
+                    sect_idx,
+                    sp,
+                    &mut state.effective_margin_bottom,
+                    ctx,
+                );
+            }
             state.prev_space_after = effective_space_after;
 
             // Track the remaining footnotes for the split paragraph on the new page
@@ -3656,27 +3697,52 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             })
             .max()
             .unwrap_or(0);
-        let fits = |state: &LayoutState, bottom: f32| {
-            let mut trial = state.trial(bottom);
+        // A region spanning pages is balanced on its last page (Word probes:
+        // a two-page region splits its last page 10/10 lines). `flushes` is
+        // how many pages it fills before that one at full height.
+        let base = state.pb.page_count().min(1);
+        let trial_at = |state: &LayoutState, flushes: usize, bottom: f32| {
+            let mut trial = state.trial(state.effective_margin_bottom);
+            if flushes == 0 {
+                trial.effective_margin_bottom = bottom;
+            } else {
+                trial.pb.balance_floor = Some((base + flushes, bottom));
+            }
             layout_blocks(&mut trial);
-            trial.pb.page_count() == state.pb.page_count().min(1)
-                && trial.pb.first_overflow_block.is_none_or(|b| b >= free_from)
+            let ok = trial.pb.first_overflow_block.is_none_or(|b| b >= free_from);
+            (trial.pb.page_count() - base, ok)
         };
-        // ponytail: only a region whose rest fits on the current page is
-        // balanced; a long region's last page needs a trial from that page's top.
-        if balance && fits(&state, state.effective_margin_bottom) {
-            let page_bottom = state.effective_margin_bottom;
-            let (mut lo, mut hi) = (page_bottom, state.pb.slot_top);
+        let flushes = balance
+            .then(|| trial_at(&state, 0, state.effective_margin_bottom))
+            .and_then(|(flushes, ok)| ok.then_some(flushes));
+        // ponytail: every trial lays the whole region out again, so a region of
+        // n pages costs ~13n page layouts; start trials at its last page if slow.
+        if let Some(flushes) = flushes {
+            let (floor_page, page_bottom, top) = if flushes == 0 {
+                (0, state.effective_margin_bottom, state.pb.slot_top)
+            } else {
+                (
+                    state.pb.page_count() + flushes,
+                    compute_effective_margin_bottom(sp, false, &ctx),
+                    effective_slot_top(sp, false, &ctx),
+                )
+            };
+            let (mut lo, mut hi) = (page_bottom, top);
             for _ in 0..12 {
                 let mid = (lo + hi) / 2.0;
-                if fits(&state, mid) {
+                if trial_at(&state, flushes, mid) == (flushes, true) {
                     lo = mid;
                 } else {
                     hi = mid;
                 }
             }
-            state.effective_margin_bottom = lo;
+            if flushes == 0 {
+                state.effective_margin_bottom = lo;
+            } else {
+                state.pb.balance_floor = Some((floor_page, lo));
+            }
             layout_blocks(&mut state);
+            state.pb.balance_floor = None;
             // Keep footnote space booked while the region was laid out.
             state.effective_margin_bottom += page_bottom - lo;
         } else {
