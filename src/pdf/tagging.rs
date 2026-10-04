@@ -227,13 +227,24 @@ impl CellTagger<'_> {
     /// Structure for a table nested in this cell: a Table inside the cell
     /// element, between the paragraphs around it. It ends the cell's list.
     pub(super) fn nested_table(&mut self, table: &crate::model::Table) -> TableTags {
+        let cell = self.close_list();
+        TableTags::for_table(self.tags, cell, table)
+    }
+
+    /// A Sect inside the cell element for a textbox anchored in it, after its
+    /// anchor paragraph (Word: `TD > Sect > P`). It ends the cell's list.
+    pub(super) fn sect(&mut self) -> usize {
+        let cell = self.close_list();
+        self.tags.add(cell, "Sect")
+    }
+
+    /// End the cell's list and return the cell element.
+    fn close_list(&mut self) -> usize {
         if let Some(lists) = self.table.lists.get_mut(&(self.row, self.cell)) {
             lists.close();
         }
-        let cell = self
-            .table
-            .cell(self.tags, self.row, self.cell, self.col_span);
-        TableTags::for_table(self.tags, cell, table)
+        self.table
+            .cell(self.tags, self.row, self.cell, self.col_span)
     }
 
     /// The cell element alone: Word keeps a vertically merged cell's

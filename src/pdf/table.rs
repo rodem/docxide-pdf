@@ -554,6 +554,8 @@ fn render_cell_content(
                         para_top + valign_off,
                         ctx,
                         gradient_specs,
+                        links,
+                        &mut tagger,
                     );
                 }
                 for fi in para.floating_images.iter().filter(above_shapes) {
@@ -632,6 +634,8 @@ fn render_cell_floating_shapes(
     para_top: f32,
     ctx: &RenderContext,
     gradient_specs: &mut Vec<super::GradientSpec>,
+    links: &mut Vec<LinkAnnotation>,
+    tagger: &mut Option<CellTagger<'_>>,
 ) {
     use super::positioning::render_connector;
     use crate::model::HorizontalPosition;
@@ -650,7 +654,14 @@ fn render_cell_floating_shapes(
         };
         let tb_x = cell_x + h_off;
         let tb_y_top = para_top - tb.v_offset_pt;
-        render_simple_textbox(content, tb, tb_x, tb_y_top, ctx, gradient_specs);
+        let tag = tagger
+            .as_mut()
+            .filter(|_| !tb.paragraphs.is_empty())
+            .map(|t| {
+                let sect = t.sect();
+                (&mut *t.tags, t.page, sect)
+            });
+        render_simple_textbox(content, tb, tb_x, tb_y_top, ctx, gradient_specs, links, tag);
     }
 }
 
@@ -663,6 +674,9 @@ fn render_simple_textbox(
     tb_y_top: f32,
     ctx: &RenderContext,
     gradient_specs: &mut Vec<super::GradientSpec>,
+    links: &mut Vec<LinkAnnotation>,
+    // As in `render_textbox_paragraphs`: the Sect the text is tagged in.
+    tag: Option<(&mut Tags, usize, usize)>,
 ) {
     use super::smartart::{draw_shape_path, draw_shape_stroke_path};
     use super::textbox_render::render_textbox_paragraphs;
@@ -709,7 +723,7 @@ fn render_simple_textbox(
     }
 
     // Text: route through the shared textbox renderer (same path as body
-    // textboxes). Cell context has no link sink, so hyperlinks are discarded.
+    // textboxes).
     let content_x = tb_x + tb.margin_left;
     let content_w = (tb_width - tb.margin_left - tb.margin_right).max(0.0);
     render_textbox_paragraphs(
@@ -723,11 +737,11 @@ fn render_simple_textbox(
         0.0,
         None,
         true,
-        &mut Vec::new(),
+        links,
         ctx,
         None,
         gradient_specs,
-        None,
+        tag,
     );
 }
 
