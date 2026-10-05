@@ -896,19 +896,15 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
                 };
                 let mut para = paragraph::build_paragraph(node, &mut ctx, &mut lists, &opts);
 
-                // HTML auto spacing never opens the document, and it drops
-                // between items of one list: russian_university's auto-spaced
-                // list items step a plain line apart, case42's first Normal
-                // (Web) paragraph sits at the top margin.
+                // HTML auto spacing drops between items of one list:
+                // russian_university's auto-spaced list items step a plain
+                // line apart.
                 let num_id = ppr
                     .and_then(|ppr| wml(ppr, "numPr"))
                     .and_then(|np| wml_attr(np, "numId"))
                     .map(str::to_string)
                     .or_else(|| para_style.and_then(|s| s.num_id.clone()))
                     .filter(|id| id != "0");
-                if sections.is_empty() && blocks.is_empty() && para.space_before_auto {
-                    para.space_before = 0.0;
-                }
                 if num_id.is_some() && num_id == prev_list_num_id {
                     if para.space_before_auto {
                         para.space_before = 0.0;
@@ -950,6 +946,7 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
             "altChunk" => {
                 if let Some(id) = node.attribute((REL_NS, "id")) {
                     blocks.extend(alt_chunk::parse_alt_chunk(id, ctx.rels, ctx.zip));
+                    prev_list_num_id = None;
                 }
             }
             _ => {}
@@ -1007,6 +1004,13 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
         properties: final_props,
         blocks,
     });
+    // HTML auto spacing never opens the document, from a w:p or an altChunk
+    // alike: case42's first Normal (Web) paragraph sits at the top margin.
+    if let Some(Block::Paragraph(first)) = sections[0].blocks.first_mut()
+        && first.space_before_auto
+    {
+        first.space_before = 0.0;
+    }
     // A continuous break can't change the paper mid-page: Word starts a new
     // page when the size or orientation changes (transition_to_work's
     // landscape Annexure B1, whose page would otherwise take the portrait

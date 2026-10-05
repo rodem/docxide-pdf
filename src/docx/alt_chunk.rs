@@ -171,36 +171,34 @@ struct CssProperties {
     margin_left_pt: Option<f32>,
     line_height_pct: Option<f32>,
     color: Option<[u8; 3]>,
-    width_px: Option<f32>,
+    width_pt: Option<f32>,
     vertical_align: Option<String>,
     border_top: Option<CellBorder>,
     border_right: Option<CellBorder>,
     border_bottom: Option<CellBorder>,
     border_left: Option<CellBorder>,
+    /// top, right, bottom, left
+    padding: [Option<f32>; 4],
 }
 
-fn parse_css_numeric(val: &str) -> f32 {
-    let numeric: String = val
-        .trim()
-        .replace(',', ".")
-        .chars()
-        .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-')
-        .collect();
-    numeric.parse().unwrap_or(0.0)
+/// A CSS box shorthand ("0in", "0 6px", "0 0 0 0,30in") as top, right,
+/// bottom, left; a side left out copies its opposite (or the top).
+fn box_sides(val: &str) -> [Option<f32>; 4] {
+    let given: Vec<_> = val.split_whitespace().map(parse_css_length_pt).collect();
+    let side = |order: &[usize]| order.iter().find_map(|&i| given.get(i)).copied().flatten();
+    [side(&[0]), side(&[1, 0]), side(&[2, 0]), side(&[3, 1, 0])]
 }
 
-fn parse_css_length_pt(val: &str) -> f32 {
+/// A CSS length in points, or None where Word's HTML import ignores the
+/// declaration: a comma decimal ("14,4px", from comma-locale converters) is not
+/// a number, so the property keeps its HTML default (Word probe).
+fn parse_css_length_pt(val: &str) -> Option<f32> {
     let val = val.trim();
-    let n = parse_css_numeric(val);
-    if val.ends_with("pt") {
-        n
-    } else if val.ends_with("px") {
-        n * 0.75
-    } else if val.ends_with("in") {
-        n * 72.0
-    } else {
-        n
-    }
+    let (num, scale) = [("pt", 1.0), ("px", 0.75), ("in", 72.0)]
+        .into_iter()
+        .find_map(|(unit, scale)| val.strip_suffix(unit).map(|n| (n, scale)))
+        .unwrap_or((val, 1.0));
+    num.trim().parse::<f32>().ok().map(|n| n * scale)
 }
 
 fn parse_font_weight_bold(val: &str) -> bool {
@@ -214,8 +212,10 @@ fn parse_css_border(val: &str) -> Option<CellBorder> {
     }
     let mut width = 0.5f32;
     for p in &parts {
-        if p.ends_with("px") || p.ends_with("pt") {
-            width = parse_css_length_pt(p);
+        if (p.ends_with("px") || p.ends_with("pt"))
+            && let Some(w) = parse_css_length_pt(p)
+        {
+            width = w;
         }
     }
     Some(CellBorder::visible(
@@ -235,7 +235,7 @@ fn parse_css_properties(decl_block: &str) -> CssProperties {
         let key = key.trim().to_ascii_lowercase();
         let val = val.trim();
         match key.as_str() {
-            "font-size" => props.font_size_pt = Some(parse_css_length_pt(val)),
+            "font-size" => props.font_size_pt = parse_css_length_pt(val),
             "font-family" => {
                 let first = val.split(',').next().unwrap_or(val);
                 props.font_family = Some(
@@ -248,13 +248,25 @@ fn parse_css_properties(decl_block: &str) -> CssProperties {
             }
             "font-weight" => props.bold = Some(parse_font_weight_bold(val)),
             "text-align" => props.text_align = Some(val.to_string()),
-            "text-indent" => props.text_indent_pt = Some(parse_css_length_pt(val)),
-            "margin-top" => props.margin_top_pt = Some(parse_css_length_pt(val)),
-            "margin-bottom" => props.margin_bottom_pt = Some(parse_css_length_pt(val)),
-            "margin-left" => props.margin_left_pt = Some(parse_css_length_pt(val)),
+            "text-indent" => props.text_indent_pt = parse_css_length_pt(val),
+            "margin-top" => props.margin_top_pt = parse_css_length_pt(val),
+            "margin-bottom" => props.margin_bottom_pt = parse_css_length_pt(val),
+            "margin-left" => props.margin_left_pt = parse_css_length_pt(val),
+            "margin" => {
+                [
+                    props.margin_top_pt,
+                    _,
+                    props.margin_bottom_pt,
+                    props.margin_left_pt,
+                ] = box_sides(val);
+            }
+            "padding" => props.padding = box_sides(val),
+            "padding-top" => props.padding[0] = parse_css_length_pt(val),
+            "padding-right" => props.padding[1] = parse_css_length_pt(val),
+            "padding-bottom" => props.padding[2] = parse_css_length_pt(val),
+            "padding-left" => props.padding[3] = parse_css_length_pt(val),
             "line-height" => {
-                let n = val.replace(',', ".");
-                if let Some(pct) = n.strip_suffix('%') {
+                if let Some(pct) = val.strip_suffix('%') {
                     props.line_height_pct = pct.trim().parse().ok();
                 }
             }
@@ -262,7 +274,7 @@ fn parse_css_properties(decl_block: &str) -> CssProperties {
                 let c = val.trim_start_matches('#');
                 props.color = parse_hex_color(c);
             }
-            "width" => props.width_px = Some(parse_css_numeric(val)),
+            "width" => props.width_pt = parse_css_length_pt(val),
             "vertical-align" => props.vertical_align = Some(val.to_string()),
             "border-top" => props.border_top = parse_css_border(val),
             "border-right" => props.border_right = parse_css_border(val),
@@ -382,13 +394,16 @@ fn merge_css(base: &mut CssProperties, over: &CssProperties) {
         margin_left_pt,
         line_height_pct,
         color,
-        width_px,
+        width_pt,
         vertical_align,
         border_top,
         border_right,
         border_bottom,
         border_left,
     );
+    for (side, over) in base.padding.iter_mut().zip(over.padding) {
+        *side = over.or(*side);
+    }
 }
 
 struct RunContext<'a> {
@@ -411,12 +426,18 @@ fn convert_paragraph(node: roxmltree::Node, css: &HashMap<String, CssProperties>
         _ => Alignment::Left,
     };
 
-    let font_size = props.font_size_pt.unwrap_or(12.0);
+    // h1/h2 become Word's HTML heading styles (24/18pt bold).
+    let tag = node.tag_name().name();
+    let font_size = props.font_size_pt.unwrap_or(match tag {
+        "h1" => 24.0,
+        "h2" => 18.0,
+        _ => 12.0,
+    });
     let font_name = props
         .font_family
         .clone()
         .unwrap_or_else(|| "Times New Roman".to_string());
-    let bold = props.bold.unwrap_or(false);
+    let bold = props.bold.unwrap_or(tag.starts_with('h'));
 
     let mut runs = Vec::new();
     let ctx = RunContext {
@@ -429,28 +450,38 @@ fn convert_paragraph(node: roxmltree::Node, css: &HashMap<String, CssProperties>
         color: props.color,
     };
     collect_runs(node, &ctx, &mut runs);
-    trim_block_whitespace(&mut runs);
+    collapse_block_whitespace(&mut runs);
 
-    let max_run_fs = runs.iter().map(|r| r.font_size).fold(0.0f32, f32::max);
-
-    let line_spacing = if max_run_fs > 0.0 && font_size > max_run_fs + 0.1 {
-        // Paragraph CSS font-size exceeds tallest run (e.g. 30pt paragraph
-        // with 16pt spans) — use it as minimum line height.
-        Some(LineSpacing::AtLeast(font_size))
-    } else if let Some(pct) = props.line_height_pct {
-        Some(LineSpacing::Auto(pct / 100.0))
-    } else {
-        Some(LineSpacing::Auto(1.1))
+    // Word probes on its HTML import: a margin the paragraph's CSS leaves out
+    // (or writes invalidly) is HTML auto spacing; a span's margins become the
+    // paragraph's own spacing, which auto spacing still overrides
+    // (p{margin-bottom:13px} keeps 9.75pt after beside a plain span, none
+    // beside span{margin:0in}).
+    let (span_top, span_bottom) = node
+        .descendants()
+        .filter(|n| n.tag_name().name() == "span")
+        .map(|n| resolve_css(n, css))
+        .map(|c| (c.margin_top_pt, c.margin_bottom_pt))
+        .find(|(top, bottom)| top.is_some() || bottom.is_some())
+        .unwrap_or_default();
+    let spacing = |own: Option<f32>, span: Option<f32>| {
+        own.map_or(super::AUTO_SPACING, |own| span.unwrap_or(own))
     };
 
     Paragraph {
         runs,
-        space_before: props.margin_top_pt.unwrap_or(0.0),
-        space_after: props.margin_bottom_pt.unwrap_or(0.0),
+        space_before: spacing(props.margin_top_pt, span_top),
+        space_after: spacing(props.margin_bottom_pt, span_bottom),
+        space_before_auto: props.margin_top_pt.is_none(),
+        space_after_auto: props.margin_bottom_pt.is_none(),
         alignment,
         indent_left: props.margin_left_pt.unwrap_or(0.0),
         indent_first_line: props.text_indent_pt.unwrap_or(0.0),
-        line_spacing,
+        // Single unless a valid line-height says otherwise; the paragraph's
+        // own font-size sizes only its mark, which never raises a text line.
+        line_spacing: Some(LineSpacing::Auto(
+            props.line_height_pct.map_or(1.0, |pct| pct / 100.0),
+        )),
         widow_control: true,
         snap_to_grid: true,
         ..Paragraph::default()
@@ -521,19 +552,28 @@ fn collect_text(node: roxmltree::Node) -> String {
     out
 }
 
-/// Strip leading/trailing whitespace-only runs from a block element's run list.
-/// Matches HTML rendering: whitespace at the start/end of block elements is ignored.
-fn trim_block_whitespace(runs: &mut Vec<Run>) {
-    let start = runs
-        .iter()
-        .position(|r| !r.text.trim().is_empty())
-        .unwrap_or(runs.len());
-    if start > 0 {
-        runs.drain(..start);
+/// HTML whitespace collapsing over a block's runs: a space after a space (also
+/// across element boundaries: "…održavanja </span> <span>katastra" has one)
+/// or at the block's start or end goes. `&nbsp;` is not whitespace here, so an
+/// nbsp-only paragraph keeps its text line.
+fn collapse_block_whitespace(runs: &mut Vec<Run>) {
+    let mut after_space = true;
+    for run in runs.iter_mut() {
+        if after_space && run.text.starts_with(' ') {
+            run.text.remove(0);
+        }
+        if run.text == "\n" {
+            after_space = true;
+        } else if !run.text.is_empty() {
+            after_space = run.text.ends_with(' ');
+        }
     }
-    while runs.last().is_some_and(|r| r.text.trim().is_empty()) {
-        runs.pop();
+    if let Some(last) = runs.iter_mut().rev().find(|r| !r.text.is_empty())
+        && last.text.ends_with(' ')
+    {
+        last.text.pop();
     }
+    runs.retain(|r| !r.text.is_empty());
 }
 
 fn collapse_whitespace(s: &str) -> String {
@@ -579,6 +619,14 @@ fn convert_table(
     table_node: roxmltree::Node,
     css: &HashMap<String, CssProperties>,
 ) -> Option<Table> {
+    // HTML's default cellpadding (1px): Word's import writes it as the table's
+    // 15-twip cell margins, under each cell's own padding.
+    let cell_margins = CellMargins {
+        top: 0.75,
+        right: 0.75,
+        bottom: 0.75,
+        left: 0.75,
+    };
     let tbody = find_element(table_node, "tbody").unwrap_or(table_node);
 
     let tr_nodes: Vec<_> = tbody
@@ -614,7 +662,7 @@ fn convert_table(
             for td in tds {
                 let td_css = resolve_css(*td, css);
                 let colspan = cell_colspan(td);
-                let w_pt = td_css.width_px.unwrap_or(100.0) * 0.75;
+                let w_pt = td_css.width_pt.unwrap_or(75.0);
                 if colspan == 1 {
                     if col_idx < col_widths.len() {
                         col_widths[col_idx] = w_pt;
@@ -642,7 +690,7 @@ fn convert_table(
         for td in tds {
             let td_css = resolve_css(*td, css);
             let colspan = cell_colspan(td);
-            let w_pt = td_css.width_px.unwrap_or(100.0) * 0.75;
+            let w_pt = td_css.width_pt.unwrap_or(75.0);
 
             let borders = CellBorders {
                 top: td_css.border_top.unwrap_or_default(),
@@ -697,7 +745,15 @@ fn convert_table(
                 v_merge: VMerge::None,
                 v_align,
                 text_direction: TextDirection::default(),
-                cell_margins: None,
+                cell_margins: td_css.padding.iter().any(Option::is_some).then(|| {
+                    let [top, right, bottom, left] = td_css.padding;
+                    CellMargins {
+                        top: top.unwrap_or(cell_margins.top),
+                        right: right.unwrap_or(cell_margins.right),
+                        bottom: bottom.unwrap_or(cell_margins.bottom),
+                        left: left.unwrap_or(cell_margins.left),
+                    }
+                }),
                 hide_mark: false,
             });
         }
@@ -712,12 +768,14 @@ fn convert_table(
         });
     }
 
+    super::tables::settle_row_borders(&mut rows, cell_margins);
+
     Some(Table {
         col_widths,
         rows,
         table_indent: 0.0,
         table_indent_explicit: false,
-        cell_margins: CellMargins::default(),
+        cell_margins,
         position: None,
         alignment: TableAlignment::default(),
         fixed_layout: false,
