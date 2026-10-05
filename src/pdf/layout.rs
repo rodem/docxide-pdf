@@ -2190,8 +2190,10 @@ pub(super) fn build_tabbed_line(
     let mut is_first_line = true;
     // Set when tabs wrap onto a new line that has nothing drawn yet.
     let mut tab_wrapped_line = false;
-    // This line went past the margin at an explicit tab stop: it no longer wraps.
-    let mut past_margin = false;
+    // How far this line's words may run past its end: to a right, centre or
+    // decimal stop in the right indent (western_australia's "34(1), 48(3)"),
+    // or anywhere after an explicit stop past the margin before compat 15.
+    let mut line_reach = 0.0f32;
 
     for (seg_idx, (seg_runs, seg_indices, tab_before, tab_run_before)) in
         segments.iter().enumerate()
@@ -2299,7 +2301,7 @@ pub(super) fn build_tabbed_line(
             // massachusetts' signature line keeps its fifth tab there).
             let stop_past = effective_tab_target > wrap_limit;
             if explicit && stop_past && compat_mode < 15 {
-                past_margin = true;
+                line_reach = f32::INFINITY;
             } else if explicit && stop_past && stop.alignment != TabAlignment::Left {
                 effective_tab_target = wrap_limit;
                 seg_start =
@@ -2314,6 +2316,7 @@ pub(super) fn build_tabbed_line(
                     ..finish_line(&mut all_chunks)
                 });
                 tab_wrapped_line = true;
+                line_reach = 0.0;
                 current_x = 0.0;
                 is_first_line = false;
                 let (new_stop, _) =
@@ -2323,6 +2326,9 @@ pub(super) fn build_tabbed_line(
                     resolve_tab_aligned_start(&new_stop, new_target, seg_runs, seen_fonts, 0.0);
                 resolved_leader = new_stop.leader;
                 effective_tab_target = new_target;
+            }
+            if stop.alignment != TabAlignment::Left {
+                line_reach = line_reach.max(effective_tab_target);
             }
 
             // Draw leader fill between end of previous text and start of aligned text
@@ -2411,7 +2417,7 @@ pub(super) fn build_tabbed_line(
                     ..finish_line_with_break(&mut all_chunks)
                 });
                 tab_wrapped_line = false;
-                past_margin = false;
+                line_reach = 0.0;
                 current_x = 0.0;
                 is_first_line = false;
                 pending_space_w = 0.0;
@@ -2489,16 +2495,16 @@ pub(super) fn build_tabbed_line(
                     max_width
                 };
                 // Wrap word to new line if it exceeds max_width
-                if current_x + ww > cur_line_max
+                if current_x + ww > cur_line_max.max(line_reach)
                     && !all_chunks.is_empty()
                     && !is_continuation
-                    && !past_margin
                 {
                     result_lines.push(TextLine {
                         justify_from: std::mem::take(&mut justify_from),
                         ..finish_line(&mut all_chunks)
                     });
                     tab_wrapped_line = false;
+                    line_reach = 0.0;
                     current_x = 0.0;
                     is_first_line = false;
                 }
