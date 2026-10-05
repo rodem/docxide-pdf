@@ -442,7 +442,7 @@ pub(super) fn parse_wsp_shape<R: Read + std::io::Seek>(
         // No explicit line color: fall back to the shape style's lnRef stroke
         (
             Some(color),
-            explicit_ln_width.unwrap_or_else(|| parse_style_stroke_width(wsp)),
+            explicit_ln_width.unwrap_or_else(|| parse_style_stroke_width(wsp, ctx.theme)),
         )
     } else {
         (None, 0.0)
@@ -604,7 +604,7 @@ pub(super) fn parse_connector_shape_node(
         .unwrap_or([0, 0, 0]);
     let stroke_width = ln_node
         .and_then(|ln| emu_attr_opt(ln, "w"))
-        .unwrap_or_else(|| parse_style_stroke_width(wsp));
+        .unwrap_or_else(|| parse_style_stroke_width(wsp, theme));
 
     let (head_end, tail_end) = ln_node
         .map(|ln| {
@@ -646,11 +646,16 @@ fn parse_style_stroke(wsp: roxmltree::Node, theme: &ThemeFonts) -> Option<[u8; 3
     resolve_dml_color(ln_ref, theme)
 }
 
-fn parse_style_stroke_width(wsp: roxmltree::Node) -> f32 {
+/// The width of the theme line style a shape's lnRef picks (indonesian's
+/// "Format 12" box: idx 2 of 9525/25400/38100 EMU is Word's 2pt outline).
+fn parse_style_stroke_width(wsp: roxmltree::Node, theme: &ThemeFonts) -> f32 {
     let idx = find_wps_style_ref(wsp, "lnRef")
         .and_then(|lr| lr.attribute("idx"))
-        .and_then(|v| v.parse::<u32>().ok())
+        .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(0);
+    if let Some(&w) = idx.checked_sub(1).and_then(|i| theme.line_widths.get(i)) {
+        return w;
+    }
     match idx {
         0 => 0.0,
         1 => 0.75,

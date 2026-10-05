@@ -9,11 +9,11 @@ use crate::model::{
 pub(super) use super::color::{ColorTransforms, parse_color_transforms};
 use super::wordart::{parse_text_fill, parse_text_glow, parse_text_outline, parse_text_shadow};
 use super::{
-    DML_NS, WML_NS, angle_attr, dml, extract_indents, frac_attr, frame_attrs, highlight_color,
-    merge_tab_stops, parse_cell_border, parse_cell_border_left, parse_cell_border_right,
-    parse_hex_color, parse_on_off, parse_one_border, parse_paragraph_borders, parse_run_shd,
-    parse_tab_stops_with_clears, parse_text_color, read_zip_text, twips_attr, twips_to_pts, wml,
-    wml_attr, wml_bool,
+    DML_NS, WML_NS, angle_attr, dml, emu_attr, extract_indents, frac_attr, frame_attrs,
+    highlight_color, merge_tab_stops, parse_cell_border, parse_cell_border_left,
+    parse_cell_border_right, parse_hex_color, parse_on_off, parse_one_border,
+    parse_paragraph_borders, parse_run_shd, parse_tab_stops_with_clears, parse_text_color,
+    read_zip_text, twips_attr, twips_to_pts, wml, wml_attr, wml_bool,
 };
 
 fn dml_typeface<'a>(node: roxmltree::Node<'a, 'a>, element: &str) -> Option<&'a str> {
@@ -105,6 +105,8 @@ pub(super) struct ThemeFonts {
     pub(super) minor_cs: String,
     pub(super) colors: HashMap<String, [u8; 3]>,
     pub(super) fill_styles: Vec<ThemeFillStyle>,
+    /// `a:lnStyleLst` widths in points, which a shape's `lnRef idx` (1-3) picks.
+    pub(super) line_widths: Vec<f32>,
 }
 
 impl ThemeFonts {
@@ -459,6 +461,7 @@ pub(super) fn parse_theme<R: Read + Seek>(
     let mut minor_cs = String::new();
     let mut colors = HashMap::new();
     let mut fill_styles = Vec::new();
+    let mut line_widths = Vec::new();
 
     let script = east_asia_lang.and_then(lang_to_script).unwrap_or("Jpan");
     let bidi_script = bidi_lang.and_then(lang_to_script);
@@ -529,6 +532,13 @@ pub(super) fn parse_theme<R: Read + Seek>(
                         }
                     }
                 }
+                "lnStyleLst" => {
+                    line_widths = node
+                        .children()
+                        .filter(|n| n.has_tag_name((DML_NS, "ln")))
+                        .map(|ln| emu_attr(ln, "w"))
+                        .collect();
+                }
                 _ => {}
             }
         }
@@ -543,6 +553,7 @@ pub(super) fn parse_theme<R: Read + Seek>(
         minor_cs,
         colors,
         fill_styles,
+        line_widths,
     }
 }
 
@@ -1331,6 +1342,7 @@ mod tests {
             minor_cs: "Arial".into(),
             colors: HashMap::new(),
             fill_styles: Vec::new(),
+            line_widths: Vec::new(),
         };
         let font = |slot| resolve_font(None, Some(slot), &theme, "");
         assert_eq!(font("minorEastAsia"), "맑은 고딕");
