@@ -770,6 +770,11 @@ probes (`tools/word_export.py`), not fitted to the fixtures.
    - notes still use the hand-built "simple" parser rather than
      `build_paragraph` (borders, shading, contextual spacing missing).
 
+24. **Small caps** (`05b04d86`, Word probe at 8–20pt): small capitals are
+   80% of the size to the nearest half point, and a word space beside a
+   lowercase letter is small too. italian_project_proposal J 36.0 → 39.6.
+   Open: a space at a run boundary only sees its own run.
+
 Not applied — **East Asian line box from hhea, not win** (online export
 probe 2026-10-05, Yu Gothic / Yu Mincho / MS Mincho at 10.5 and 12pt, no
 grid): Word steps Yu Gothic 15.0/17.25 = 1.3 × (hhea ascent + descent),
