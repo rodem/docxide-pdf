@@ -1411,7 +1411,10 @@ pub(super) fn parse_runs<R: Read + Seek>(
             .iter()
             .any(|r| !r.text.trim().is_empty() || r.is_tab || r.inline_image.is_some());
         runs.extend(merge_compatible_runs(tail));
-        has_content.then_some(at)
+        // After a column break the paragraph mark still takes a line at the
+        // top of the next column (Word probe: "A<br column/>" lays out like A
+        // followed by a paragraph holding only the break).
+        (has_content || column_break_at).then_some(at)
     });
 
     ParsedRuns {

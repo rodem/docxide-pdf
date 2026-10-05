@@ -1572,6 +1572,43 @@ a text outline with no fill.
 `gutterAtTop`/`rtlGutter`), `w:pgBorders` and sectPr `w:vAlign` (`79b7f850`) are
 done.
 
+### Column regions (MOSTLY DONE — 2026-10-05, branch `columns`; case80 47.8 → 65.4, case81 71.0)
+
+Measured on case80/81/82 and ~30 Word probes, implemented in `pdf/mod.rs`:
+- Balancing: a region ending at a continuous section break, without a column
+  break in it, is balanced on its (last) page. Word starts at the content
+  height over the column count and adds a line until it fits, a line needing
+  all its leading (not the shortest fit: 14/14/12 where 14/13/13 fits). The
+  content counts a page-top heading's dropped space before.
+- The region ends at its deepest column; the last column's final space after
+  counts, clipped to the balancing height. What follows starts there.
+- A mid-page region's columns start below the pending space after; the first
+  paragraph still opens with max(space after, its space before).
+- `w:sep`: 0.75pt, region top to deepest column on each page (trailing space
+  after included), up to the last column holding text.
+- Overflow at an empty mid-page column goes to the next page. A paragraph
+  continues column by column and page by page, keeping widow control.
+- A paragraph ending in a column break puts its mark on a line at the top of
+  the next column.
+- An empty section-break paragraph has zero height; mid-page gap = prev after
+  + max(0, next before − break after). (Replaced the column-change line rule.)
+- An autofit table in a newspaper column is squeezed in proportion to each
+  grid column's room above its longest word.
+- Footnotes in a multi-column section sit at the foot of the citing column,
+  in its width; only that column shrinks. A note whose style is missing or
+  sets no spacing takes the document defaults.
+
+Open:
+- Footnote continuation across columns (case82 J 21.3): Word lays the note
+  area out in the columns and may continue a note under the next column so
+  more body text fits (p1: footnote 1 runs 3 lines under column 1, 2 under
+  column 2; in another probe the whole note stayed in column 1). Needs a rule
+  for how much of the note must stay with its reference.
+- case80's 4-column region: Word's separator runs one line (15pt) below the
+  space after of column 1's last paragraph; unexplained.
+- The table probe's region ends 1.6pt off.
+- Each balancing trial lays the whole region out again (a few times).
+
 ### `w:mirrorMargins` (TODO — MEDIUM IMPACT)
 
 Parsed in `settings.rs` into `Document::mirror_margins` (used only for odd/even

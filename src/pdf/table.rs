@@ -17,8 +17,8 @@ use super::table_layout::{
     CELL_START, CellContentItem, CellCursor, CellFloatingImageLayout, CellLayout,
     CellParagraphLayout, Chunk, HfSubstitution, RowLayout, RowPiece, apply_pct_width,
     auto_fit_columns, cell_span_width, cell_x_offset, chunk_space_before, compute_merge_spans,
-    compute_row_layouts, cursor_chunks, find_cell_split, item_chunk_height, para_block_height,
-    partial_row_height, row_pieces,
+    compute_row_layouts, cursor_chunks, find_cell_split, item_chunk_height, min_content_widths,
+    para_block_height, partial_row_height, row_pieces, squeeze_to_width,
 };
 use super::tagging::{CellTagger, TableTags, Tags};
 
@@ -1624,6 +1624,12 @@ pub(super) fn render_table(
     let fit_w = available_w.unwrap_or(sp.page_width - sp.margin_left - sp.margin_right);
     let mut col_widths = if table.fixed_layout {
         table.col_widths.clone()
+    } else if let Some(col_w) = available_w {
+        // A table in a newspaper column sizes like one on the page, then is
+        // squeezed into the column (the nested-table path shrank it to content).
+        let mut w = auto_fit_columns(table, ctx.fonts, None, Some(fit_w));
+        squeeze_to_width(&mut w, &min_content_widths(table, ctx.fonts), col_w);
+        w
     } else {
         auto_fit_columns(table, ctx.fonts, available_w, Some(fit_w))
     };
@@ -1732,7 +1738,12 @@ pub(super) fn render_table(
         .collect();
 
     // Text width for footnote height computation (same as paragraph layout uses).
-    let fn_text_width = sp.page_width - sp.margin_left - sp.margin_right;
+    // A table's notes go to the foot of its column (the page in one column).
+    let fn_col = column_bounds.unwrap_or((
+        sp.margin_left,
+        sp.page_width - sp.margin_left - sp.margin_right,
+    ));
+    let fn_text_width = fn_col.1;
 
     let flush_and_render_headers = |pb: &mut super::PageBuilder, ri: usize, emb: &mut f32| {
         pb.begin_next_page(sect_idx, sp, emb, ctx);
@@ -1861,7 +1872,7 @@ pub(super) fn render_table(
                     super::footnotes::footnote_height(fn_id, footnotes, ctx, fn_text_width);
             }
         }
-        if row_fn_extra > 0.0 && pb.footnote_ids.is_empty() {
+        if row_fn_extra > 0.0 && pb.col_fn_reserved == 0.0 {
             row_fn_extra += ctx.note_separator.height;
         }
 
@@ -2021,19 +2032,16 @@ pub(super) fn render_table(
 
         // Register footnotes from this row and reserve space for them.
         for &fn_id in &row_footnote_ids[ri] {
-            if pb.footnote_ids_set.insert(fn_id) {
-                pb.footnote_ids.push(fn_id);
-                if footnotes.contains_key(&fn_id) {
-                    let fn_h =
-                        super::footnotes::footnote_height(fn_id, footnotes, ctx, fn_text_width);
-                    let sep = if pb.footnote_ids.len() == 1 {
-                        ctx.note_separator.height
-                    } else {
-                        0.0
-                    };
-                    *effective_margin_bottom += sep + fn_h;
-                }
-            }
+            let fn_h = footnotes
+                .contains_key(&fn_id)
+                .then(|| super::footnotes::footnote_height(fn_id, footnotes, ctx, fn_text_width));
+            pb.book_footnote(
+                fn_id,
+                fn_col,
+                fn_h,
+                ctx.note_separator.height,
+                effective_margin_bottom,
+            );
         }
 
         // Register endnotes from this row; they render at end of document

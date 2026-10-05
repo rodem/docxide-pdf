@@ -213,24 +213,32 @@ fn distribute_autofit(minw: &[f32], maxw: &[f32], avail: f32) -> Vec<f32> {
     widths
 }
 
-/// `fill_width`, when `Some`, is the content width a top-level AutoFit-to-Window
-/// table should fill. It is kept separate from `available_width` (which drives
-/// the nested-table shrink path) so passing a fill target does not accidentally
-/// push a top-level table onto the shrink path.
-pub(super) fn auto_fit_columns(
-    table: &Table,
-    fonts: &HashMap<String, FontEntry>,
-    available_width: Option<f32>,
-    fill_width: Option<f32>,
-) -> Vec<f32> {
-    let ncols = table.col_widths.len();
-    if ncols == 0 {
-        return table.col_widths.clone();
+/// Word squeezes an autofit table wider than its newspaper column by taking
+/// from each grid column in proportion to its room above its longest word
+/// (case80: two 234pt cells in a 252pt column come out 130 and 121.5).
+pub(super) fn squeeze_to_width(widths: &mut [f32], min: &[f32], avail: f32) {
+    let total: f32 = widths.iter().sum();
+    if total <= avail {
+        return;
     }
+    let excess = total - avail;
+    let slack: f32 = widths.iter().zip(min).map(|(w, m)| (w - m).max(0.0)).sum();
+    if slack >= excess {
+        for (w, m) in widths.iter_mut().zip(min) {
+            *w -= (*w - m).max(0.0) * excess / slack;
+        }
+    } else {
+        for w in widths {
+            *w *= avail / total;
+        }
+    }
+}
 
+/// Each grid column's longest unbreakable word plus its cell padding.
+pub(super) fn min_content_widths(table: &Table, fonts: &HashMap<String, FontEntry>) -> Vec<f32> {
+    let ncols = table.col_widths.len();
     let cm = &table.cell_margins;
     let mut min_widths = vec![0.0f32; ncols];
-
     for row in &table.rows {
         for (grid_col, span, cell) in row.grid_cells() {
             if grid_col >= ncols || span > 1 {
@@ -268,6 +276,26 @@ pub(super) fn auto_fit_columns(
             }
         }
     }
+    min_widths
+}
+
+/// `fill_width`, when `Some`, is the content width a top-level AutoFit-to-Window
+/// table should fill. It is kept separate from `available_width` (which drives
+/// the nested-table shrink path) so passing a fill target does not accidentally
+/// push a top-level table onto the shrink path.
+pub(super) fn auto_fit_columns(
+    table: &Table,
+    fonts: &HashMap<String, FontEntry>,
+    available_width: Option<f32>,
+    fill_width: Option<f32>,
+) -> Vec<f32> {
+    let ncols = table.col_widths.len();
+    if ncols == 0 {
+        return table.col_widths.clone();
+    }
+
+    let cm = &table.cell_margins;
+    let min_widths = min_content_widths(table, fonts);
 
     // Word's AutoFit (tblLayout=autofit, the default) ignores the stored
     // gridCol widths for a `tblW type="auto"` table and re-derives column

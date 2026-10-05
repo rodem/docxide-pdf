@@ -185,7 +185,19 @@ fn parse_notes_simple<R: Read + Seek>(
                 para.snap_to_grid = true;
                 return para;
             }
-            let para_style = fn_ctx.styles.paragraph_styles.get(para_style_id);
+            // A style the document doesn't define falls back to its default
+            // paragraph style, as in Word (a python-docx file has no
+            // FootnoteText: its notes take Normal's 1.15 lines and space after).
+            let para_style = fn_ctx
+                .styles
+                .paragraph_styles
+                .get(para_style_id)
+                .or_else(|| {
+                    fn_ctx
+                        .styles
+                        .paragraph_styles
+                        .get(&fn_ctx.styles.default_paragraph_style_id)
+                });
 
             let alignment = resolve_alignment(ppr, para_style);
             let parsed = parse_runs(p, fn_ctx);
@@ -224,10 +236,10 @@ fn parse_notes_simple<R: Read + Seek>(
             Paragraph {
                 runs: parsed.runs,
                 space_before: sp_before.unwrap_or(0.0),
-                space_after: sp_after.unwrap_or(0.0),
+                space_after: sp_after.unwrap_or(styles.defaults.space_after),
                 tab_stops: super::resolve_tab_stops(ppr, para_style),
                 alignment,
-                line_spacing: ls.or(Some(LineSpacing::Auto(1.0))),
+                line_spacing: ls.or(Some(styles.defaults.line_spacing)),
                 snap_to_grid: true,
                 indent_left: left.unwrap_or(0.0),
                 indent_right: right.unwrap_or(0.0),
