@@ -816,6 +816,10 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                             para_style,
                         ),
                         tab_stops,
+                        frame_props: super::parse_frame_props(
+                            ppr,
+                            para_style.and_then(|s| s.frame_attrs.as_ref()),
+                        ),
                         ..Paragraph::default()
                     }));
                 } else if n.has_tag_name((WML_NS, "tbl")) {

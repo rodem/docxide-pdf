@@ -369,7 +369,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         snap_to_grid,
         auto_space_de,
         auto_space_dn,
-        frame_props: ppr.and_then(parse_frame_props),
+        frame_props: parse_frame_props(ppr, para_style.and_then(|s| s.frame_attrs.as_ref())),
     }
 }
 

@@ -166,7 +166,7 @@ fn blocking_frame_bands(hf: &HeaderFooter, sp: &SectionProperties) -> Vec<(f32, 
 
 /// A page- or margin-anchored frame's top, down from the page top; None for a
 /// paragraph-anchored frame, which stays in the flow.
-fn anchored_frame_top(fp: &FrameProperties, sp: &SectionProperties) -> Option<f32> {
+pub(super) fn anchored_frame_top(fp: &FrameProperties, sp: &SectionProperties) -> Option<f32> {
     match fp.v_relative_from {
         VRelativeFrom::Page => Some(fp.y_offset),
         VRelativeFrom::Margin | VRelativeFrom::TopMargin => Some(sp.margin_top + fp.y_offset),
@@ -184,12 +184,17 @@ fn bottom_border_band(para: &Paragraph) -> f32 {
 }
 
 /// Where a line of height `line_h` whose top sits `top` below the page top
-/// really starts: below the first blocking frame band it would overlap.
-fn below_blocking_frames(top: f32, line_h: f32, bands: &[(f32, f32)]) -> f32 {
-    bands
+/// really starts: below every blocking frame band it would overlap, including
+/// one it meets only below another (massachusetts' logo band ends where its
+/// governor table's begins).
+pub(super) fn below_blocking_frames(mut top: f32, line_h: f32, bands: &[(f32, f32)]) -> f32 {
+    while let Some(&(_, b_bot)) = bands
         .iter()
         .find(|&&(b_top, b_bot)| top < b_bot && top + line_h > b_top)
-        .map_or(top, |&(_, b_bot)| b_bot)
+    {
+        top = b_bot;
+    }
+    top
 }
 
 fn compute_header_height(

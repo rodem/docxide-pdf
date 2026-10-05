@@ -28,8 +28,8 @@ use pdf_writer::{Content, Name, Pdf, Ref};
 use crate::error::Error;
 use crate::fonts::FontEntry;
 use crate::model::{
-    Block, Document, FieldCode, HRelativeFrom, LineSpacing, PageVerticalAlign, Paragraph,
-    ParagraphBorder, Run, SectionBreakType, SectionProperties, ShapeFill, ShapeGeometry,
+    Block, Document, FieldCode, FrameProperties, HRelativeFrom, LineSpacing, PageVerticalAlign,
+    Paragraph, ParagraphBorder, Run, SectionBreakType, SectionProperties, ShapeFill, ShapeGeometry,
     VRelativeFrom, VerticalPosition, WrapText, WrapType,
 };
 
@@ -94,10 +94,153 @@ fn first_cell_paragraph(t: &crate::model::Table) -> Option<&Paragraph> {
 /// The paragraph contextual spacing compares a neighbour of `blocks[i]` with:
 /// the block itself, or a table's first cell paragraph.
 fn block_para(blocks: &[Block], i: usize) -> Option<&Paragraph> {
-    match blocks.get(i)? {
+    blocks.get(i).and_then(leading_para)
+}
+
+fn leading_para(block: &Block) -> Option<&Paragraph> {
+    match block {
         Block::Paragraph(p) => Some(p),
         Block::Table(t) => first_cell_paragraph(t),
     }
+}
+
+/// The frame Word lifts `block` out of the flow into, with its top down from
+/// the page top: a page- or margin-anchored framePr that keeps text off its
+/// sides (a table's is its first cell paragraph's). ponytail: text-anchored
+/// and wrap-around frames stay in the flow; lift them when a fixture needs it.
+fn lifted_frame<'a>(
+    block: &'a Block,
+    sp: &SectionProperties,
+) -> Option<(&'a FrameProperties, f32)> {
+    let fp = leading_para(block)?
+        .frame_props
+        .as_ref()
+        .filter(|fp| fp.text_below)?;
+    Some((fp, header_footer::anchored_frame_top(fp, sp)?))
+}
+
+/// Before a body block: its first line steps below any band it would overlap.
+/// ponytail: checked at the block start only, like the float zones; a
+/// paragraph that runs into a band part way down keeps its later lines there.
+fn step_below_bands(
+    state: &mut LayoutState,
+    block: &Block,
+    sp: &SectionProperties,
+    ctx: &RenderContext,
+) {
+    let top = sp.page_height - state.pb.slot_top;
+    let Some(p) = leading_para(block) else { return };
+    if state
+        .pb
+        .frame_bands
+        .iter()
+        .all(|&(_, bottom)| top >= bottom)
+    {
+        return;
+    }
+    let (fs, lhr, _) = tallest_run_metrics(&p.runs, ctx.fonts);
+    let line_h = resolve_line_h(p.line_spacing.unwrap_or(ctx.doc_line_spacing), fs, lhr);
+    state.pb.slot_top =
+        sp.page_height - header_footer::below_blocking_frames(top, line_h, &state.pb.frame_bands);
+}
+
+/// A lifted frame being laid out: its blocks render in the frame's own column
+/// from its top, and the flow then resumes where it left off, clear of the
+/// frame's band (Word probes: body lines step below it with no gap).
+struct OpenFrame<'a> {
+    props: &'a FrameProperties,
+    top: f32,
+    /// The frame's column: its left edge and width.
+    geometry: (f32, f32),
+    flow: SavedFlow,
+}
+
+struct SavedFlow {
+    slot_top: f32,
+    prev_space_after: f32,
+    current_col: usize,
+    float_zone: Option<FloatZone>,
+}
+
+impl<'a> OpenFrame<'a> {
+    fn open(
+        props: &'a FrameProperties,
+        top: f32,
+        blocks: &[Block],
+        state: &mut LayoutState,
+        ctx: &RenderContext,
+        sp: &SectionProperties,
+    ) -> Self {
+        let width = if props.width > 0.0 {
+            props.width
+        } else {
+            auto_frame_width(props, blocks, ctx, sp.text_width())
+        };
+        let (text_x, text_w) = (sp.margin_left, sp.text_width());
+        let x = resolve_h_position(
+            props.h_relative_from,
+            &props.h_position,
+            width,
+            sp,
+            text_x,
+            text_w,
+            text_w,
+        );
+        let flow = SavedFlow {
+            slot_top: std::mem::replace(&mut state.pb.slot_top, sp.page_height - top),
+            prev_space_after: std::mem::take(&mut state.prev_space_after),
+            current_col: std::mem::take(&mut state.current_col),
+            float_zone: state.pb.float_zone.take(),
+        };
+        OpenFrame {
+            props,
+            top,
+            geometry: (x, width),
+            flow,
+        }
+    }
+
+    fn close(self, state: &mut LayoutState, sp: &SectionProperties) {
+        let bottom = sp.page_height - state.pb.slot_top;
+        state.pb.frame_bands.push((self.top, bottom));
+        let flow = self.flow;
+        state.pb.slot_top = flow.slot_top;
+        state.prev_space_after = flow.prev_space_after;
+        state.current_col = flow.current_col;
+        state.pb.float_zone = flow.float_zone;
+    }
+}
+
+/// A frame without w:w is as wide as its widest block: a paragraph's picture
+/// or longest line, a table's grid.
+fn auto_frame_width(
+    props: &FrameProperties,
+    blocks: &[Block],
+    ctx: &RenderContext,
+    col_w: f32,
+) -> f32 {
+    blocks
+        .iter()
+        .take_while(|b| leading_para(b).and_then(|p| p.frame_props.as_ref()) == Some(props))
+        .map(|b| match b {
+            Block::Paragraph(p) => p.image.as_ref().map_or_else(
+                || {
+                    let opts = LineOpts {
+                        tab_stops: &p.tab_stops,
+                        ..Default::default()
+                    };
+                    build_lines(&p.runs, ctx, col_w, ctx.cjk(true, p.alignment), &opts)
+                        .iter()
+                        .map(|l| l.total_width)
+                        .fold(0.0, f32::max)
+                        + p.indent_left
+                        + p.indent_right
+                },
+                |img| img.display_width,
+            ),
+            Block::Table(t) => t.col_widths.iter().sum(),
+        })
+        .fold(0.0, f32::max)
 }
 
 pub(super) struct RenderContext<'a> {
@@ -762,6 +905,9 @@ pub(super) struct PageBuilder {
     /// Floating table exclusion zone on this page; paragraph layout
     /// uses horizontal bounds to decide wrap-beside vs push-below.
     pub(super) float_zone: Option<FloatZone>,
+    /// The (top, bottom) bands of this page's lifted frames, down from the
+    /// page top: body lines may not overlap them (see `OpenFrame`).
+    frame_bands: Vec<(f32, f32)>,
     /// One-shot anchor override for the paragraph that follows a floating table
     /// which was pushed whole onto a fresh page. That paragraph (the table's
     /// vertAnchor="text" anchor) must position its paragraph-relative shapes
@@ -823,6 +969,7 @@ impl PageBuilder {
             is_first_page_of_section: true,
             page_hf_section: 0,
             float_zone: None,
+            frame_bands: Vec::new(),
             pending_float_anchor: None,
             deferred_shapes: Vec::new(),
             all_contents: Vec::new(),
@@ -952,6 +1099,7 @@ impl PageBuilder {
         self.all_first_styleref
             .push(std::mem::take(&mut self.styleref_page_first));
         self.float_zone = None;
+        self.frame_bands.clear();
         // An anchor measured on the old page must not place a float on this one
         self.pending_float_anchor = None;
         // After flush, the new page starts with the current section
@@ -3383,7 +3531,26 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         // same y rather than at the top of the page.
         state.pb.column_top_y = state.pb.slot_top;
 
+        let mut frame: Option<OpenFrame> = None;
         for (block_idx, block) in section.blocks.iter().enumerate() {
+            let block_frame = lifted_frame(block, sp);
+            if let Some(f) = frame.take_if(|f| block_frame.is_none_or(|(fp, _)| fp != f.props)) {
+                f.close(&mut state, sp);
+            }
+            if frame.is_none() {
+                match block_frame {
+                    Some((fp, top)) => {
+                        let blocks = &section.blocks[block_idx..];
+                        frame = Some(OpenFrame::open(fp, top, blocks, &mut state, &ctx, sp));
+                    }
+                    None => step_below_bands(&mut state, block, sp, &ctx),
+                }
+            }
+            let (geometry, cols, width) = match &frame {
+                Some(f) => (std::slice::from_ref(&f.geometry), 1, f.geometry.1),
+                None => (&col_geometry[..], col_count, text_width),
+            };
+
             // If a float zone is active, decide whether to wrap text beside
             // the object or push it below.
             if let Some(ref fz) = state.pb.float_zone {
@@ -3451,9 +3618,9 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                         &mut state,
                         &ctx,
                         cur_sp,
-                        &col_geometry,
-                        col_count,
-                        text_width,
+                        geometry,
+                        cols,
+                        width,
                         sect_idx,
                         block_idx,
                         &section.blocks,
@@ -3489,11 +3656,8 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                             &ctx,
                         )
                     });
-                    let col_bounds = if col_count > 1 {
-                        Some(col_geometry[state.current_col])
-                    } else {
-                        None
-                    };
+                    let col_bounds =
+                        (cols > 1 || frame.is_some()).then(|| geometry[state.current_col]);
                     let table_tags =
                         tagging::TableTags::for_table(&mut state.pb.tags, tagging::ROOT, table);
                     state.pb.table_tags = Some(table_tags);
@@ -3554,6 +3718,9 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             }
 
             state.global_block_idx += 1;
+        }
+        if let Some(f) = frame {
+            f.close(&mut state, sp);
         }
     }
     state.pb.flush_page(doc.sections.len() - 1);

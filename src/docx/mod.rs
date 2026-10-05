@@ -438,9 +438,35 @@ pub(super) fn parse_cell_border_right(parent: roxmltree::Node) -> CellBorder {
     parse_cell_border_with_fallback(parent, "right", "end")
 }
 
-pub(super) fn parse_frame_props(ppr: roxmltree::Node) -> Option<FrameProperties> {
-    let fp = wml(ppr, "framePr")?;
-    let attr = |name| fp.attribute((WML_NS, name));
+/// A framePr's attributes, kept so a paragraph can lay its own over its style's.
+pub(super) type FrameAttrs = HashMap<String, String>;
+
+pub(super) fn frame_attrs(fp: roxmltree::Node) -> FrameAttrs {
+    fp.attributes()
+        .filter(|a| a.namespace() == Some(WML_NS))
+        .map(|a| (a.name().to_string(), a.value().to_string()))
+        .collect()
+}
+
+/// The frame a paragraph sits in: its own framePr over its style's, attribute
+/// by attribute (massachusetts' "Exec Office" lines leave hAnchor and hSpace to
+/// their style and so share the title line's frame).
+pub(super) fn parse_frame_props(
+    ppr: Option<roxmltree::Node>,
+    style_attrs: Option<&FrameAttrs>,
+) -> Option<FrameProperties> {
+    let direct = ppr.and_then(|p| wml(p, "framePr"));
+    if direct.is_none() && style_attrs.is_none() {
+        return None;
+    }
+    let mut attrs = style_attrs.cloned().unwrap_or_default();
+    attrs.extend(direct.map(frame_attrs).unwrap_or_default());
+    let attr = |name: &str| attrs.get(name).map(String::as_str);
+    let twips = |name| {
+        attr(name)
+            .and_then(|v| v.parse::<f32>().ok())
+            .map_or(0.0, twips_to_pts)
+    };
     let h_anchor = match attr("hAnchor").unwrap_or("text") {
         "margin" => HRelativeFrom::Margin,
         "page" => HRelativeFrom::Page,
@@ -453,24 +479,25 @@ pub(super) fn parse_frame_props(ppr: roxmltree::Node) -> Option<FrameProperties>
             _ => HorizontalPosition::AlignLeft,
         }
     } else {
-        HorizontalPosition::Offset(twips_attr(fp, "x").unwrap_or(0.0))
+        HorizontalPosition::Offset(twips("x"))
     };
-    let v_anchor = match attr("vAnchor").unwrap_or("text") {
-        "margin" => VRelativeFrom::Margin,
-        "page" => VRelativeFrom::Page,
-        _ => VRelativeFrom::Paragraph,
+    // Word probe: a frame without vAnchor sits w:y below the top margin, however
+    // many paragraphs come before it.
+    let v_anchor = match attr("vAnchor") {
+        Some("page") => VRelativeFrom::Page,
+        Some("text") => VRelativeFrom::Paragraph,
+        _ => VRelativeFrom::Margin,
     };
-    let y_pts = twips_attr(fp, "y").unwrap_or(0.0);
-    let width = twips_attr(fp, "w").unwrap_or(0.0);
-    let height = twips_attr(fp, "h").unwrap_or(0.0);
     Some(FrameProperties {
         h_relative_from: h_anchor,
         h_position,
         v_relative_from: v_anchor,
-        y_offset: y_pts,
-        width,
-        height,
+        y_offset: twips("y"),
+        width: twips("w"),
+        height: twips("h"),
         text_below: matches!(attr("wrap"), Some("none") | Some("notBeside")),
+        h_space: twips("hSpace"),
+        v_space: twips("vSpace"),
     })
 }
 

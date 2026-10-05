@@ -371,7 +371,9 @@ pub enum WrapText {
     Largest,
 }
 
-#[derive(Clone, Debug)]
+/// Consecutive paragraphs with equal properties share one frame; Word keeps
+/// two frames apart even when only their hSpace differs.
+#[derive(Clone, Debug, PartialEq)]
 pub struct FrameProperties {
     pub h_relative_from: HRelativeFrom,
     pub h_position: HorizontalPosition,
@@ -384,6 +386,9 @@ pub struct FrameProperties {
     /// `w:wrap` none/notBeside: body text may not flow beside the frame, so
     /// in-flow text starts below its bottom edge.
     pub text_below: bool,
+    /// `w:hSpace` / `w:vSpace` in points.
+    pub h_space: f32,
+    pub v_space: f32,
 }
 
 #[derive(Clone, Debug, PartialEq)]

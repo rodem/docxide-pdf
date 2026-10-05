@@ -9,9 +9,9 @@ use crate::model::{
 pub(super) use super::color::{ColorTransforms, parse_color_transforms};
 use super::wordart::{parse_text_fill, parse_text_glow, parse_text_outline, parse_text_shadow};
 use super::{
-    DML_NS, WML_NS, angle_attr, dml, extract_indents, frac_attr, highlight_color, merge_tab_stops,
-    parse_cell_border, parse_cell_border_left, parse_cell_border_right, parse_hex_color,
-    parse_on_off, parse_one_border, parse_paragraph_borders, parse_run_shd,
+    DML_NS, WML_NS, angle_attr, dml, extract_indents, frac_attr, frame_attrs, highlight_color,
+    merge_tab_stops, parse_cell_border, parse_cell_border_left, parse_cell_border_right,
+    parse_hex_color, parse_on_off, parse_one_border, parse_paragraph_borders, parse_run_shd,
     parse_tab_stops_with_clears, parse_text_color, read_zip_text, twips_attr, twips_to_pts, wml,
     wml_attr, wml_bool,
 };
@@ -206,6 +206,9 @@ pub(super) struct ParagraphStyle {
     pub(super) text_fill: Option<TextFill>,
     pub(super) text_shadow: Option<TextShadow>,
     pub(super) text_glow: Option<TextGlow>,
+    /// The style's framePr attributes; ponytail: basedOn passes the closest
+    /// one on whole, merge per attribute if a chain ever splits them.
+    pub(super) frame_attrs: Option<super::FrameAttrs>,
 }
 
 /// Run properties read from one `w:rPr`; every field is `None` when the
@@ -938,6 +941,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
                 let snap_to_grid = ppr.and_then(|ppr| wml_bool(ppr, "snapToGrid"));
                 let auto_space_de = ppr.and_then(|ppr| wml_bool(ppr, "autoSpaceDE"));
                 let auto_space_dn = ppr.and_then(|ppr| wml_bool(ppr, "autoSpaceDN"));
+                let frame_attrs = ppr.and_then(|ppr| wml(ppr, "framePr")).map(frame_attrs);
 
                 let based_on = wml_attr(style_node, "basedOn").map(|s| s.to_string());
 
@@ -993,6 +997,7 @@ pub(super) fn parse_styles<R: Read + Seek>(
                         text_fill,
                         text_shadow,
                         text_glow,
+                        frame_attrs,
                     },
                 );
             }
@@ -1229,6 +1234,7 @@ fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
                     text_fill,
                     text_shadow,
                     text_glow,
+                    frame_attrs,
                 )
             };
         }
