@@ -725,6 +725,36 @@ probes (`tools/word_export.py`), not fitted to the fixtures.
    - Open: header/footer image paragraphs (`header_footer.rs`, ascent-based
      placement) and table-cell image paragraphs don't follow the short-picture
      rule yet.
+19. **altChunk HTML as Word imports it** (`1f2d2605`): rules read from a Word
+   resave of the fixture (Word converts the HTML to paragraphs and styles)
+   and two probe documents (`word_saveas.py`-style resave plus PDF export).
+   Comma-decimal CSS lengths are invalid; a missing or invalid margin is HTML
+   auto spacing; a span's margins become the paragraph's spacing (auto still
+   wins); single lines unless a valid line-height; a bigger paragraph
+   font-size sizes only the mark; h1/h2 24/18pt bold; whitespace collapses
+   across elements; td padding becomes cell margins over 0.75pt; HTML tables
+   share `tables::settle_row_borders`. croatian_regulations_altchunk J 7.2 →
+   45.9 (pages 1–6 line for line). The opening-auto-spacing rule now runs
+   once after the body loop. Open: `ul`/`ol`/`li` are still dropped by the
+   HTML converter (none in the fixture).
+20. **Pre-2013 table outdent** (`90bef579`): before compat 15 a table edge
+   sits the first cell's own left margin (tcMar) left of the indent, not
+   the table default's. croatian → 51.4, candidate_reference 63.6 → 69.2.
+   Open: nested tables use neither compat rule (`render_nested_table`);
+   needs a compat 14/15 probe.
+
+Tried and reverted — **NBSP stretch before compat 15**: a probe (Arial/TNR
+justified lines, compat 12/14/15, print and online presets) shows Word
+widening NBSPs with the word spaces before compat 15 and keeping them at
+their width in 15; croatian's "- \xa0preslika" agrees. Stretching every NBSP
+like a space (diff kept in the session scratchpad; render side = TJ
+adjustments after each NBSP, gaps counted in `spaces_before_each`) moved
+croatian +1.2 J but russian_construction −7.4, czech_expert −5.2,
+slovak_fuel −2.0, turkish_journal −1.4. In the online references an NBSP
+after a one-letter word stays at its width ("k dopracování", "z celkového",
+"V hlasování" in czech_expert p1), and the stretched ones get uneven shares
+(1.0–2.0× a space's extra). Needs a probe of NBSPs after one-letter words
+and runs of NBSPs before it can be a rule.
 
 Open:
 - Bands are checked at block start (a paragraph running into one part way
