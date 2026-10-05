@@ -143,8 +143,8 @@
     "a11y_text": 1.0
   },
   "cases/case22": {
-    "jaccard": 0.6831,
-    "ssim": 0.9326,
+    "jaccard": 0.7153,
+    "ssim": 0.9344,
     "text_boundary": 1.0,
     "convert_ms": 9.5,
     "ua_fail": 2,
@@ -777,6 +777,33 @@
     "a11y_struct": 1.0,
     "a11y_text": 1.0
   },
+  "cases/case80": {
+    "jaccard": 0.6543,
+    "ssim": 0.8241,
+    "ua_fail": 2,
+    "a11y_missing": 0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.9885,
+    "a11y_text": 1.0
+  },
+  "cases/case81": {
+    "jaccard": 0.7104,
+    "ssim": 0.922,
+    "ua_fail": 2,
+    "a11y_missing": 0,
+    "ua_deficit": 0,
+    "a11y_struct": 1.0,
+    "a11y_text": 1.0
+  },
+  "cases/case82": {
+    "jaccard": 0.2127,
+    "ssim": 0.3529,
+    "ua_fail": 2,
+    "a11y_missing": 0,
+    "ua_deficit": 0,
+    "a11y_struct": 0.8298,
+    "a11y_text": 0.902
+  },
   "cases/case9": {
     "jaccard": 0.7323,
     "ssim": 0.9115,
@@ -1216,18 +1243,18 @@
     "a11y_text": 0.9978
   },
   "scraped/covid_insomnia_m..": {
-    "jaccard": 0.415,
-    "ssim": 0.6792,
+    "jaccard": 0.4618,
+    "ssim": 0.7197,
     "text_boundary": 0.1331,
     "ua_fail": 2,
     "a11y_missing": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.9784,
+    "a11y_struct": 0.9802,
     "a11y_text": 0.9895
   },
   "scraped/croatian_grant_g..": {
-    "jaccard": 0.2992,
-    "ssim": 0.4577,
+    "jaccard": 0.3078,
+    "ssim": 0.4673,
     "text_boundary": 0.0129,
     "convert_ms": 270.5,
     "ua_fail": 2,
@@ -2289,14 +2316,14 @@
     "a11y_text": 1.0
   },
   "scraped/transition_to_wo..": {
-    "jaccard": 0.4232,
-    "ssim": 0.5831,
+    "jaccard": 0.6292,
+    "ssim": 0.82,
     "text_boundary": 0.3971,
     "convert_ms": 493.0,
     "ua_fail": 2,
     "a11y_missing": 0,
     "ua_deficit": 0,
-    "a11y_struct": 0.8889,
+    "a11y_struct": 0.8894,
     "a11y_text": 0.8991
   },
   "scraped/turkish_ancient_..": {
