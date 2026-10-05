@@ -671,6 +671,15 @@ probes (`tools/word_export.py`), not fitted to the fixtures.
      (massachusetts' secretary box: wrapText right at the right edge) blocks
      a band too. Together: J 8.3 → 77.2, SSIM 20.2 → 93.7, all 15 page
      starts matching; nothing else moved.
+12. **indonesian_school "Format 12" box** (`9b02ea49`, `be2b6d84`): an anchor
+   paragraph's shading no longer covers the room it reserves below its lines
+   for a top-and-bottom float, and `lnRef` outlines take the theme's
+   `lnStyleLst` width (2pt there, not a fixed 1.5pt). J 26.2 → 27.3,
+   japanese_land +0.2. The rest of indonesian's gap is a font file: Word
+   online's Arial Narrow is 2.42 (hhea ascent 1888 = winAscent), ours and
+   macOS's 2.38 (hhea 1916), so our 1.5-spaced 11pt lines step 19.0 where
+   Word's step 18.75. Needs Arial Narrow 2.42 in `fonts/` and the assets
+   repo (the user's call); `external_leading` then gives 18.75 unchanged.
 
 Open:
 - Bands are checked at block start (a paragraph running into one part way
