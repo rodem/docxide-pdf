@@ -450,25 +450,25 @@ fn is_east_asian_font(face: &Face) -> bool {
         .any(|&c| face.glyph_index(c).is_some())
 }
 
-/// Word lays out an East Asian font 1.3× taller than its Windows metrics
-/// (10.5pt SimSun → the classic 15.6pt line), no hhea lineGap, the extra leading
-/// split evenly above and below the glyphs.
+/// Word lays out an East Asian font 1.3× taller than its glyph box, the hhea
+/// ascent + descent (no lineGap), the extra leading split evenly above and
+/// below the glyphs. Yu Gothic, whose hhea box is smaller than its win box,
+/// steps 15.0/17.25 at 10.5/12pt in Word, not 17.6/20.1 (online export probe
+/// 2026-10-05; Word's Yu Mincho and MS Mincho have hhea = win).
 /// Whitespace-only runs keep the plain values. Measurements: roadmap, "CJK
 /// Rendering Polish" item 3.
 fn compute_line_metrics(face: &Face, units: f32) -> LineMetrics {
     let (plain_line_h_ratio, plain_ascender_ratio, typo_ratio) = plain_line_metrics(face, units);
-    let east_asian = match face.tables().os2 {
-        Some(os2) if is_east_asian_font(face) => {
-            let win_desc = -(os2.windows_descender() as f32) / units;
-            let win_h = (os2.windows_ascender() - os2.windows_descender()) as f32 / units;
-            let line_h = win_h * 1.3;
-            // The extra leading is split evenly above and below the glyphs:
-            // online exports put SimSun/YaHei baselines (10.5-36pt) 0.15/0.19
-            // em above where all-leading-above would (local Mac Word's way).
-            Some((line_h, line_h - win_desc - (line_h - win_h) / 2.0))
-        }
-        _ => None,
-    };
+    let hhea = face.tables().hhea;
+    let east_asian = (face.tables().os2.is_some() && is_east_asian_font(face)).then(|| {
+        let desc = -(hhea.descender as f32) / units;
+        let box_h = (hhea.ascender - hhea.descender) as f32 / units;
+        let line_h = box_h * 1.3;
+        // The extra leading is split evenly above and below the glyphs:
+        // online exports put SimSun/YaHei baselines (10.5-36pt) 0.15/0.19
+        // em above where all-leading-above would (local Mac Word's way).
+        (line_h, line_h - desc - (line_h - box_h) / 2.0)
+    });
     // Word centres a grid-snapped line's glyph box (ascent + descent) in its
     // cell. A Latin font keeps its line gap above the ascent, as in its normal
     // lines; an East Asian font has none (its 1.3× leading is dropped too).
@@ -477,6 +477,8 @@ fn compute_line_metrics(face: &Face, units: f32) -> LineMetrics {
             let typo = os2.use_typographic_metrics() && east_asian.is_none();
             let (asc, desc) = if typo {
                 (os2.typographic_ascender(), os2.typographic_descender())
+            } else if east_asian.is_some() {
+                (hhea.ascender, hhea.descender)
             } else {
                 (os2.windows_ascender(), os2.windows_descender())
             };
