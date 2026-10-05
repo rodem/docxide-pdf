@@ -680,6 +680,21 @@ probes (`tools/word_export.py`), not fitted to the fixtures.
    macOS's 2.38 (hhea 1916), so our 1.5-spaced 11pt lines step 19.0 where
    Word's step 18.75. Needs Arial Narrow 2.42 in `fonts/` and the assets
    repo (the user's call); `external_leading` then gives 18.75 unchanged.
+13. **Tab stops past the margin** (`4b7c7646`), Word probes in compat 14/15:
+   before compat 15 an explicit stop past the right margin keeps the tab and
+   everything after it on the line (off the page if need be); from 15 a
+   right/centre/decimal one clamps to the margin. A tab never parts from
+   the word after it. polish_building J 25.2 → 47.5, usep_handbook +2.2.
+   Open: compat-15 left stops past the margin — Word puts the tab on a line
+   of its own and the text at the margin below (probe P1, P6, P7); we wrap
+   to the far stop.
+14. **Exact and at-least line baselines**: a Latin exact line's baseline
+   sits 0.8 × its height down, whatever the font (probes: Calibri, TNR,
+   Arial, Cambria, 8–24pt); a winning at-least minimum stays bottom-aligned
+   at the descent (matched to 0.00pt). Table-cell paragraphs now use the
+   same rule as the body (`layout::boxed_line_ascent`), as does a split
+   paragraph's continuation. Open: footnote paragraphs still place exact
+   and at-least lines at the plain ascent (`footnotes.rs`).
 
 Open:
 - Bands are checked at block start (a paragraph running into one part way

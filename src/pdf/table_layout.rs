@@ -955,8 +955,24 @@ pub(super) fn compute_row_layouts(
                                     font_size,
                                     // Places the first baseline only, which rises
                                     // with a box shrunk below single spacing.
-                                    ascender_ratio: ascender_ratio
-                                        * super::helpers::auto_ascent_scale(effective_ls),
+                                    // Exact and winning at-least lines place it as
+                                    // in the body: carbon_farming's 8pt footer cells
+                                    // sit on their descent under Normal's 13pt
+                                    // minimum, arizona's exact 13.2pt lines 80% down.
+                                    ascender_ratio: super::layout::boxed_line_ascent(
+                                        effective_ls,
+                                        line_h,
+                                        font_size,
+                                        tallest_lhr,
+                                        tallest_ar,
+                                        runs,
+                                        ctx.fonts,
+                                    )
+                                    .map_or(
+                                        ascender_ratio
+                                            * super::helpers::auto_ascent_scale(effective_ls),
+                                        |a| a / font_size,
+                                    ),
                                     descender_ratio,
                                     font_substituted,
                                     alignment: para.alignment,

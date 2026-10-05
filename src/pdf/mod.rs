@@ -1815,7 +1815,7 @@ fn render_paragraph_block(
     // Placing the baseline at font_size * ascender_ratio instead pushes a
     // large-lineGap CJK substitute's descenders out of the fixed box and
     // into whatever follows (annotation #219: heading into table border).
-    let exact_baseline_base = layout::bottom_aligned_ascent(
+    let exact_baseline_base = layout::boxed_line_ascent(
         effective_ls,
         line_h,
         font_size,
@@ -2692,7 +2692,6 @@ fn render_paragraph_block(
         if lines_that_fit >= min_split_lines && lines_that_fit < lines.len() {
             let first_part = &lines[..lines_that_fit];
             state.pb.slot_top -= inter_gap;
-            let ascender_ratio = tallest_ar.unwrap_or(0.75);
             let baseline_offset = if grid_snapped {
                 grid_baseline
             } else {
@@ -2770,7 +2769,7 @@ fn render_paragraph_block(
             let baseline_offset2 = if grid_snapped {
                 grid_baseline
             } else {
-                font_size * ascender_ratio * auto_ascent_scale(effective_ls)
+                para_ascent * auto_ascent_scale(effective_ls)
             };
             let baseline_y2 = state.pb.slot_top - baseline_offset2;
 

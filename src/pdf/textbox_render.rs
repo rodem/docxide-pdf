@@ -481,7 +481,7 @@ pub(super) fn render_textbox_paragraphs(
         }
         let (tb_fs, tb_lhr, tb_ar) = tallest_run_metrics(&tp.runs, ctx.fonts);
         let tb_line_h = resolve_line_h(tp_ls, tb_fs, tb_lhr);
-        let tb_ascent = super::layout::bottom_aligned_ascent(
+        let tb_ascent = super::layout::boxed_line_ascent(
             tp_ls, tb_line_h, tb_fs, tb_lhr, tb_ar, &tp.runs, ctx.fonts,
         )
         .unwrap_or(tb_fs * tb_ar.unwrap_or(0.75));

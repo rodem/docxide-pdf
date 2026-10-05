@@ -506,7 +506,7 @@ pub(super) fn render_header_footer(
                     tallest_run_metrics(&substituted_runs, ctx.fonts);
                 let ascender_ratio = tallest_ar.unwrap_or(0.75);
                 let frame_ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
-                let frame_ascent = super::layout::bottom_aligned_ascent(
+                let frame_ascent = super::layout::boxed_line_ascent(
                     frame_ls,
                     resolve_line_h(frame_ls, font_size, tallest_lhr),
                     font_size,
@@ -609,7 +609,7 @@ pub(super) fn render_header_footer(
                     - below_blocking_frames(sp.page_height - cursor_y, line_h, &bands);
 
                 let baseline_y = cursor_y
-                    - super::layout::bottom_aligned_ascent(
+                    - super::layout::boxed_line_ascent(
                         effective_ls,
                         line_h,
                         font_size,

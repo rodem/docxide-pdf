@@ -3538,12 +3538,14 @@ pub(super) fn tallest_glyph_run_metrics(
     ))
 }
 
-/// Distance from the top of a bottom-aligned line box to its baseline, or None
-/// for an ordinary line. Word bottom-aligns an exact-height box, and an at-least
+/// Distance from the top of an exact or at-least line box to its baseline, or
+/// None for an ordinary line. Word bottom-aligns an exact-height box, and an at-least
 /// one whose minimum wins (online export: czech_census's 10pt lines under
 /// atLeast 12.05 start 0.55pt lower), at the glyphs' descent: line_h_ratio −
 /// ascender_ratio, less the East Asian leading Word puts below normal lines.
-pub(super) fn bottom_aligned_ascent(
+/// A Latin exact line instead puts its baseline 80% down the box whatever the
+/// font (Word probes: Calibri, Times New Roman, Arial and Cambria at 8-24pt).
+pub(super) fn boxed_line_ascent(
     ls: LineSpacing,
     line_h: f32,
     font_size: f32,
@@ -3552,8 +3554,14 @@ pub(super) fn bottom_aligned_ascent(
     runs: &[Run],
     seen_fonts: &HashMap<String, FontEntry>,
 ) -> Option<f32> {
+    if matches!(ls, LineSpacing::Exact(_))
+        && tallest_glyph_run_half_leading(runs, seen_fonts) == 0.0
+    {
+        return Some(line_h * 0.8);
+    }
     let (lhr, ar) = (lhr?, ar?);
     let bottom_aligned = match ls {
+        // East Asian: a Latin exact line returned above.
         LineSpacing::Exact(_) => true,
         LineSpacing::AtLeast(min) => min > font_size * lhr,
         LineSpacing::Auto(_) => false,
