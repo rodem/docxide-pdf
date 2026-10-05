@@ -775,6 +775,15 @@ probes (`tools/word_export.py`), not fitted to the fixtures.
    lowercase letter is small too. italian_project_proposal J 36.0 → 39.6.
    Open: a space at a run boundary only sees its own run.
 
+Seen, not started (2026-10-05 x-drift survey of page 1, `word_x_diff`):
+- case45: an autofit table with tblW 4000 and tcW 4680 per cell keeps Word's
+  saved grid (2091/1909), we split it 100/100; its tblpXSpec="right" copy
+  sits one cell margin (5.4pt) past the right margin in Word, at it in ours.
+- case61: Word's autofit widens the 200-twip "narrow" grid column to fit
+  its text (cols 122.5/77.6/77.8…), ours keeps closer to the grid.
+- case6 and case52/53: whole columns shifted 7–11pt (autofit again).
+- air_pollution: dot lines in a narrow cell fit 42 dots in Word, 41 in ours.
+
 Not applied — **East Asian line box from hhea, not win** (online export
 probe 2026-10-05, Yu Gothic / Yu Mincho / MS Mincho at 10.5 and 12pt, no
 grid): Word steps Yu Gothic 15.0/17.25 = 1.3 × (hhea ascent + descent),
