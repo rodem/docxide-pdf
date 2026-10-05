@@ -612,8 +612,8 @@ closes part of §6's "cells built by hand" item (auto spacing).
   the tool recycles Word. It now rejects broken zips up front.
 
 **Open:**
-- massachusetts: page-anchored body frames (`framePr vAnchor=page`); only
-  fixture using them.
+- ~~massachusetts: page-anchored body frames~~ done 2026-10-05 (roadmap,
+  Annotation Fixes 2026-10-05 item 11): J 8.3 → 77.2.
 - dutch_government: a page-anchored floating table moves the next body table
   2.4pt down in Word (not to the float's bottom); two 1pt paragraphs 0.7pt
   short.

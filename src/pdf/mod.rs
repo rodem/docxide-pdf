@@ -119,15 +119,70 @@ fn lifted_frame<'a>(
     Some((fp, header_footer::anchored_frame_top(fp, sp)?))
 }
 
-/// Before a body block: its first line steps below any band it would overlap.
+/// The room beside a float on the side(s) its wrapText lets text use.
+fn side_room(wrap_text: WrapText, left: f32, right: f32) -> f32 {
+    match wrap_text {
+        WrapText::Left => left,
+        WrapText::Right => right,
+        WrapText::BothSides | WrapText::Largest => left.max(right),
+    }
+}
+
+/// The band (down from the page top) of a page- or margin-anchored textbox
+/// that leaves text no room on its wrap side, which keeps body lines out like
+/// a lifted frame: massachusetts' secretary box at the right edge wraps text on
+/// its right only, so its anchor's line and the date start below it. Wider
+/// boxes already reserve their height in the anchor paragraph.
+fn blocking_textbox_band(
+    tb: &crate::model::Textbox,
+    sp: &SectionProperties,
+    (col_x, col_w): (f32, f32),
+    text_width: f32,
+    ctx: &RenderContext,
+) -> Option<(f32, f32)> {
+    if tb.v_relative_from == VRelativeFrom::Paragraph
+        || !matches!(tb.wrap_type, WrapType::Square | WrapType::Tight)
+        || tb.width_pt >= text_width * 0.5
+    {
+        return None;
+    }
+    let x = resolve_h_position(
+        tb.h_relative_from,
+        &tb.h_position,
+        tb.width_pt,
+        sp,
+        col_x,
+        col_w,
+        text_width,
+    );
+    if side_room(tb.wrap_text, x - col_x, col_x + col_w - (x + tb.width_pt)) >= MIN_EMPTY_STRIP {
+        return None;
+    }
+    let h = textbox_render::textbox_height(tb, ctx);
+    let top = sp.page_height
+        - header_footer::resolve_tb_y_top(tb.v_relative_from, &tb.v_position, h, sp, 0.0);
+    Some((top, top + h + tb.dist_bottom))
+}
+
+/// Before a body block: its paragraph's blocking textboxes join the page's
+/// bands, and its first line steps below any band it would overlap.
 /// ponytail: checked at the block start only, like the float zones; a
 /// paragraph that runs into a band part way down keeps its later lines there.
 fn step_below_bands(
     state: &mut LayoutState,
     block: &Block,
     sp: &SectionProperties,
+    col: (f32, f32),
+    text_width: f32,
     ctx: &RenderContext,
 ) {
+    if let Block::Paragraph(p) = block {
+        state.pb.frame_bands.extend(
+            p.textboxes
+                .iter()
+                .filter_map(|tb| blocking_textbox_band(tb, sp, col, text_width, ctx)),
+        );
+    }
     let top = sp.page_height - state.pb.slot_top;
     let Some(p) = leading_para(block) else { return };
     if state
@@ -3543,7 +3598,10 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                         let blocks = &section.blocks[block_idx..];
                         frame = Some(OpenFrame::open(fp, top, blocks, &mut state, &ctx, sp));
                     }
-                    None => step_below_bands(&mut state, block, sp, &ctx),
+                    None => {
+                        let col = col_geometry[state.current_col];
+                        step_below_bands(&mut state, block, sp, col, text_width, &ctx);
+                    }
                 }
             }
             let (geometry, cols, width) = match &frame {
@@ -3574,12 +3632,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                         // For bothSides, check combined width of both regions
                         (space_left + space_right) >= min_wrap_w
                     } else {
-                        let best_side = match fz.wrap_text {
-                            WrapText::Left => space_left,
-                            WrapText::Right => space_right,
-                            _ => space_right.max(space_left),
-                        };
-                        best_side >= min_wrap_w
+                        side_room(fz.wrap_text, space_left, space_right) >= min_wrap_w
                     };
                     if !enough_space {
                         // Empty paragraphs can be absorbed within a wide

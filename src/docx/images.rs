@@ -583,7 +583,7 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
         if is_anchor {
             if let Some(wsp) = parse_textbox_from_wsp(container, ctx) {
                 let (h_position, h_relative, v_pos, v_relative) = parse_anchor_position(container);
-                let (wrap_type, _, _) = parse_wrap_type(container);
+                let (wrap_type, wrap_text, _) = parse_wrap_type(container);
                 let (behind_doc, z_index) = anchor_z_order(container);
                 return Some(RunDrawingResult::TextBox(Textbox {
                     width_pt: display_w,
@@ -594,6 +594,7 @@ pub(super) fn parse_run_drawing<R: Read + Seek>(
                     v_position: v_pos,
                     v_relative_from: v_relative,
                     wrap_type,
+                    wrap_text,
                     dist_bottom: wrap_dist_top_bottom(container).1,
                     behind_doc,
                     z_index,

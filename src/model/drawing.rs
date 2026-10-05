@@ -389,6 +389,7 @@ pub struct Textbox {
     pub margin_top: f32,
     pub margin_bottom: f32,
     pub wrap_type: WrapType,
+    pub wrap_text: WrapText,
     pub dist_bottom: f32,
     pub behind_doc: bool,
     pub no_text_wrap: bool,

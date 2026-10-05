@@ -887,7 +887,8 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
                         if let Some(wsp) = parse_textbox_from_wsp(container, ctx) {
                             let (h_position, h_relative, v_pos, v_relative) =
                                 parse_anchor_position(container);
-                            let (wrap_type, _, _) = super::images::parse_wrap_type(container);
+                            let (wrap_type, wrap_text, _) =
+                                super::images::parse_wrap_type(container);
                             let (behind_doc, z_index) = super::images::anchor_z_order(container);
                             let (_, dist_bottom) = super::images::wrap_dist_top_bottom(container);
                             textboxes.push(Textbox {
@@ -899,6 +900,7 @@ pub(super) fn collect_textboxes_from_paragraph<R: Read + std::io::Seek>(
                                 v_position: v_pos,
                                 v_relative_from: v_relative,
                                 wrap_type,
+                                wrap_text,
                                 dist_bottom,
                                 behind_doc,
                                 z_index,

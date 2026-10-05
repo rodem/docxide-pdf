@@ -277,7 +277,8 @@ probe documents; each fix is one commit on the branch.
 - PAGEREF prints its cached result; text boxes drop auto space-before on top (air_pollution +25 J)
 
 **Parked:**
-- massachusetts: page-anchored body frames (`framePr vAnchor=page`) not implemented — only fixture using them
+- ~~massachusetts: page-anchored body frames (`framePr vAnchor=page`) not implemented~~ done 2026-10-05
+  (Annotation Fixes 2026-10-05, item 11)
 - dutch_government: a page-anchored floating table moves the following body table
   down 2.4pt in Word (not to the float's bottom; cause unknown), and two 1pt
   `in-table` paragraphs come out 0.7pt short. Word reports "unreadable content" in
@@ -658,8 +659,27 @@ probes (`tools/word_export.py`), not fitted to the fixtures.
      margins still fits (`RowLayout.split_min`); cantSplit and exact rows
      never split. croatian_grant J 30.2 → 43.1, pages 69 → 65 matching;
      education_consultant 44.6 → 53.9.
+11. **Body frames** (massachusetts letterhead), rules from 8 Word probes:
+   - Page/margin-anchored `framePr` with wrap notBeside/none lift out of the
+     flow (`OpenFrame` in pdf/mod.rs): consecutive blocks with equal frame
+     properties (hSpace included; a table joins via its cell paragraphs)
+     render through the normal dispatch in the frame's own column, auto width
+     = widest block; body lines then step below the frame's band. A style's
+     framePr fills the attributes a paragraph's own leaves out; a missing
+     vAnchor means the margin.
+   - A page/margin-anchored square textbox with no room on its wrap side
+     (massachusetts' secretary box: wrapText right at the right edge) blocks
+     a band too. Together: J 8.3 → 77.2, SSIM 20.2 → 93.7, all 15 page
+     starts matching; nothing else moved.
 
 Open:
+- Bands are checked at block start (a paragraph running into one part way
+  keeps its lines), and live beside `FloatZone`; one mechanism with a
+  full-width flag would be cleaner. Textbox `reserve` still uses "width ≥
+  half the column" where images and the new band use the side-strip test;
+  unify them with a suite run (other fixtures may move).
+- Text-anchored and wrap-around body frames (croatian_grant's two) still flow
+  inline.
 - The must-split path (row taller than a page) still tests only
   `!cant_split`, so an exact row taller than a page splits; Word likely clips
   it. Unprobed, no fixture.
