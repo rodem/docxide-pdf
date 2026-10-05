@@ -1864,7 +1864,7 @@ pub(super) fn render_table(
             }
         }
         if row_fn_extra > 0.0 && pb.footnote_ids.is_empty() {
-            row_fn_extra += 12.0; // separator gap for first footnote on page
+            row_fn_extra += ctx.note_separator.height;
         }
 
         let row_h = layout.height;
@@ -2029,7 +2029,7 @@ pub(super) fn render_table(
                     let fn_h =
                         super::footnotes::compute_footnote_height(footnote, ctx, fn_text_width);
                     let sep = if pb.footnote_ids.len() == 1 {
-                        12.0
+                        ctx.note_separator.height
                     } else {
                         0.0
                     };

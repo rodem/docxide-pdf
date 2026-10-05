@@ -2572,6 +2572,15 @@ pub(super) fn build_tabbed_line(
     result_lines
 }
 
+/// A font's OS/2 strikeout as Word draws it: its top edge above the baseline
+/// and its thickness, each on a 0.25pt grid (online export probe, the
+/// underline's 12 cases). The footnote separator's rule is one too.
+pub(super) fn os2_strike(entry: &FontEntry, font_size: f32) -> Option<(f32, f32)> {
+    let (pos, th) = entry.strikeout?;
+    let q = |v: f32| (v * 4.0).round() / 4.0;
+    Some((q(pos * font_size), q(th * font_size).max(0.25)))
+}
+
 /// Draws `text` with the font's pair kerning as TJ adjustments, the same pairs
 /// the word's width was measured with: Word kerns inside words too (Aptos
 /// Display "Te" 1.6pt tighter at 20pt, case3), so plain Tj left every glyph
@@ -3326,17 +3335,11 @@ pub(super) fn render_paragraph_lines(
                     }
                 }
                 if chunk.strikethrough {
-                    // The font's OS/2 strikeout, top edge and thickness each on a
-                    // 0.25pt grid (online export probe, the underline's 12 cases).
-                    let os2_strike = pdf_name_to_entry
+                    let strike = pdf_name_to_entry
                         .get(chunk.pdf_font.as_str())
-                        .and_then(|e| e.strikeout)
-                        .map(|(pos, th)| {
-                            let q = |v: f32| (v * 4.0).round() / 4.0;
-                            let th = q(th * chunk.font_size).max(0.25);
-                            (y + q(pos * chunk.font_size) - th, th)
-                        });
-                    let (st_y, st_thick) = os2_strike.unwrap_or((y + chunk.font_size * 0.3, thick));
+                        .and_then(|e| os2_strike(e, chunk.font_size))
+                        .map(|(top, th)| (y + top - th, th));
+                    let (st_y, st_thick) = strike.unwrap_or((y + chunk.font_size * 0.3, thick));
                     // One line across the spaces of a struck run, like Word's.
                     push_decoration(&mut decorations, x, st_y, chunk.width, st_thick, chunk.color);
                 }

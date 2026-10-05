@@ -303,6 +303,7 @@ pub(super) struct RenderContext<'a> {
     /// `w:evenAndOddHeaders`: even pages lay out around the even header.
     pub(super) even_and_odd_headers: bool,
     pub(super) doc_line_spacing: LineSpacing,
+    pub(super) note_separator: footnotes::NoteSeparator,
     pub(super) default_tab_stop: f32,
     /// Image names for inline images in table cells, keyed by Arc data pointer address.
     pub(super) table_cell_image_names: &'a HashMap<usize, String>,
@@ -1283,7 +1284,7 @@ fn track_page_footnote(
     if let Some(footnote) = doc.footnotes.get(&id) {
         let fn_height = compute_footnote_height(footnote, ctx, text_width);
         let separator_h = if state.pb.footnote_ids.len() == 1 {
-            12.0
+            ctx.note_separator.height
         } else {
             0.0
         };
@@ -2652,7 +2653,7 @@ fn render_paragraph_block(
         &run_refs,
         &state.pb.footnote_ids_set,
         if state.pb.footnote_ids.is_empty() {
-            12.0
+            ctx.note_separator.height
         } else {
             0.0
         },
@@ -3500,6 +3501,11 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         endnote_marks: &endnote_display_order,
         compat_mode: doc.compat_mode,
         do_not_expand_shift_return: doc.do_not_expand_shift_return,
+        note_separator: footnotes::NoteSeparator::new(
+            doc.footnote_separator.as_ref(),
+            &seen_fonts,
+            doc.line_spacing,
+        ),
         cell_grid_pitch: std::cell::Cell::new(
             doc.sections
                 .first()

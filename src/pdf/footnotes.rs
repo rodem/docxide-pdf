@@ -8,8 +8,8 @@ use super::RenderContext;
 use super::color::stroke_segment;
 use super::helpers::{effective_space_after, effective_space_before};
 use super::layout::{
-    EMPTY_EFFECTS, EMPTY_INLINE_IMAGES, LinkTagger, TextLine, build_paragraph_lines, is_text_empty,
-    render_paragraph_lines, tallest_run_metrics,
+    EMPTY_EFFECTS, EMPTY_INLINE_IMAGES, LinkTagger, TextLine, boxed_line_ascent,
+    build_paragraph_lines, is_text_empty, os2_strike, render_paragraph_lines, tallest_run_metrics,
 };
 use super::list_label::render_list_label;
 use super::resolve_line_h;
@@ -125,6 +125,47 @@ pub(super) fn compute_footnote_height(
     total + prev_space_after
 }
 
+/// The separator above a page's footnotes, laid out as Word lays out
+/// footnotes.xml's separator paragraph (Word probes: Calibri 6-20pt; single,
+/// double and exact lines; space before and after): one line of its font and
+/// spacing with its space after below, right on the first note, and the rule
+/// that line's strikethrough, 144pt long. Space before goes nowhere.
+pub(crate) struct NoteSeparator {
+    pub(super) height: f32,
+    /// The rule's centre below the separator's top, and its thickness.
+    rule: (f32, f32),
+}
+
+impl NoteSeparator {
+    pub(super) fn new(
+        separator: Option<&Paragraph>,
+        fonts: &HashMap<String, crate::fonts::FontEntry>,
+        doc_line_spacing: LineSpacing,
+    ) -> Self {
+        let Some(p) = separator else {
+            return Self {
+                height: 12.0,
+                rule: (3.0, 0.5),
+            };
+        };
+        let ls = p.line_spacing.unwrap_or(doc_line_spacing);
+        let (fs, lhr, ar) = tallest_run_metrics(&p.runs, fonts);
+        let line_h = resolve_line_h(ls, fs, lhr);
+        let baseline = boxed_line_ascent(ls, line_h, fs, lhr, ar, &p.runs, fonts)
+            .unwrap_or(fs * ar.unwrap_or(0.8));
+        let (top, thickness) = p
+            .runs
+            .first()
+            .and_then(|r| fonts.get(&crate::fonts::font_key(r)))
+            .and_then(|e| os2_strike(e, fs))
+            .unwrap_or((fs * 0.25, 0.5));
+        Self {
+            height: line_h + p.space_after,
+            rule: (baseline - top + thickness / 2.0, thickness),
+        }
+    }
+}
+
 pub(super) fn render_page_footnotes(
     content: &mut Content,
     fn_ids: &[u32],
@@ -147,14 +188,12 @@ pub(super) fn render_page_footnotes(
         .map(|fn_note| compute_footnote_height(fn_note, ctx, text_width))
         .sum();
 
-    let separator_gap = 12.0f32;
-    let block_top = margin_bottom + total_fn_height + separator_gap;
+    let fn_y = margin_bottom + total_fn_height;
+    let separator = &ctx.note_separator;
+    let (rule_centre, thickness) = separator.rule;
+    let sep_y = fn_y + separator.height - rule_centre;
+    draw_note_separator(content, margin_left, sep_y, text_width, thickness);
 
-    // Draw separator line: 0.5pt black, ~1/3 page width
-    let sep_y = block_top - 3.0;
-    draw_note_separator(content, margin_left, sep_y, text_width);
-
-    let fn_y = sep_y - 9.0;
     render_notes_downward(
         content,
         fn_y,
@@ -169,14 +208,20 @@ pub(super) fn render_page_footnotes(
     )
 }
 
-fn draw_note_separator(content: &mut Content, margin_left: f32, sep_y: f32, text_width: f32) {
-    // 0.5pt black rule, ~1/3 page width — matches Word's footnote/endnote separator
+fn draw_note_separator(
+    content: &mut Content,
+    margin_left: f32,
+    sep_y: f32,
+    text_width: f32,
+    thickness: f32,
+) {
+    // Black rule, ~1/3 page width — matches Word's footnote/endnote separator
     let sep_width = 144.0f32.min(text_width);
     stroke_segment(
         content,
         (margin_left, sep_y),
         (margin_left + sep_width, sep_y),
-        0.5,
+        thickness,
         None,
     );
 }
@@ -202,7 +247,7 @@ pub(super) fn render_endnotes_inline(
         return Vec::new();
     }
     let sep_y = top_y;
-    draw_note_separator(content, margin_left, sep_y, text_width);
+    draw_note_separator(content, margin_left, sep_y, text_width, 0.5);
     let fn_y = sep_y - 9.0;
     render_notes_downward(
         content,

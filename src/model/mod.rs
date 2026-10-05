@@ -240,6 +240,9 @@ pub struct Document {
     /// Key: (lowercase_font_name, bold, italic)
     pub embedded_fonts: HashMap<(String, bool, bool), Vec<u8>>,
     pub footnotes: HashMap<u32, Footnote>,
+    /// footnotes.xml's separator paragraph: Word lays it out above a page's
+    /// notes like any paragraph and draws the rule as its strikethrough.
+    pub footnote_separator: Option<Paragraph>,
     pub endnotes: HashMap<u32, Footnote>,
     pub comments: HashMap<u32, Comment>,
     pub font_table: FontTable,
