@@ -936,7 +936,7 @@ fn effective_font_size(run: &Run, entry: &FontEntry) -> f32 {
         VertAlign::Baseline => return run.font_size,
     };
     // ponytail: 0.65 is the common OS/2 value, for faces without one (Type1 fallback).
-    (run.font_size * ratio.unwrap_or(0.65) * 2.0).round() / 2.0
+    round_half_point(run.font_size * ratio.unwrap_or(0.65))
     // Note: smallCaps sizing is handled per-segment via smallcaps_segments()
 }
 
@@ -959,17 +959,55 @@ fn caps_word<'a>(run: &Run, word: &'a str) -> Cow<'a, str> {
     }
 }
 
+fn round_half_point(pt: f32) -> f32 {
+    (pt * 2.0).round() / 2.0
+}
+
+/// Word sets small capitals at 80% of the size, to the nearest half point
+/// (probe 2026-10-05: 8→6.5, 11→9, 12→9.5, 13→10.5, 20→16).
+fn small_caps_size(base_fs: f32) -> f32 {
+    round_half_point(base_fs * 0.8)
+}
+
+/// In small caps a space beside a lowercase letter is small too (probe:
+/// "def X", "X ghi", "12 jk" small; ". 12" full).
+fn small_caps_space(prev: Option<char>, next: Option<char>) -> bool {
+    prev.is_some_and(char::is_lowercase) || next.is_some_and(char::is_lowercase)
+}
+
+/// The width of the word spaces before `word` in `run`, per space; `prev`
+/// carries the run's previous word along for the small-caps rule.
+fn word_space_width(
+    run: &Run,
+    entry: &FontEntry,
+    eff_fs: f32,
+    word: &str,
+    prev: &mut Option<char>,
+) -> f32 {
+    let small = run.small_caps && small_caps_space(*prev, word.chars().next());
+    *prev = word.chars().next_back();
+    let fs = if small {
+        small_caps_size(eff_fs)
+    } else {
+        eff_fs
+    };
+    entry.space_width(fs) * run.text_scale / 100.0 + run.char_spacing
+}
+
 /// Split a word into (text, font_size, source) segments for smallCaps rendering.
-/// Lowercase chars are uppercased and rendered at base_fs - 2pt;
+/// Lowercase chars are uppercased and rendered at `small_caps_size`;
 /// uppercase chars and non-letters stay at base_fs. `source` is the
 /// segment's letters as written.
 pub(super) fn smallcaps_segments(word: &str, base_fs: f32) -> Vec<(String, f32, &str)> {
-    // Word draws small caps at 80% (12pt text: 9.6pt capitals).
-    let reduced = base_fs * 0.8;
+    let reduced = small_caps_size(base_fs);
     let mut segments: Vec<(String, f32, &str)> = Vec::new();
     let mut start = 0;
-    for (i, ch) in word.char_indices() {
-        let is_lower = ch.is_lowercase();
+    let mut prev = None;
+    let mut chars = word.char_indices().peekable();
+    while let Some((i, ch)) = chars.next() {
+        let next = chars.peek().map(|&(_, c)| c);
+        let is_lower = ch.is_lowercase() || (ch == ' ' && small_caps_space(prev, next));
+        prev = Some(ch);
         let fs = if is_lower { reduced } else { base_fs };
         let display: String = if is_lower {
             ch.to_uppercase().collect()
@@ -1584,19 +1622,19 @@ pub(super) fn build_paragraph_lines(
         let key = font_key_buf(run, &mut key_buf);
         let entry = seen_fonts.get(key).expect("font registered");
         let eff_fs = effective_font_size(run, entry);
-        let space_w = entry.space_width(eff_fs);
         let text = &run.text;
         let y_off = vert_y_offset(run);
 
         let cs = run.char_spacing;
         let ts = run.text_scale / 100.0;
-        let space_w_cs = space_w * ts + cs;
 
         let mut is_first_word_in_run = true;
+        let mut prev_char = None;
         let mut words: std::collections::VecDeque<_> = split_preserving_spaces(text).into();
         while let Some((space_count, mut source)) = words.pop_front() {
             let mut shown = caps_word(run, source);
-            pending_space_w += space_count as f32 * space_w_cs;
+            pending_space_w +=
+                space_count as f32 * word_space_width(run, entry, eff_fs, source, &mut prev_char);
             if space_count > 0 {
                 pending_real_space = true;
                 pending_space_underline = run.underline;
@@ -1967,7 +2005,8 @@ pub(super) fn build_paragraph_lines(
             .take_while(|c| is_break_space(*c))
             .count();
         if trailing_spaces > 0 {
-            pending_space_w += trailing_spaces as f32 * space_w_cs;
+            pending_space_w +=
+                trailing_spaces as f32 * word_space_width(run, entry, eff_fs, "", &mut prev_char);
             pending_real_space = true;
             pending_space_underline = run.underline;
             pending_space_double = run.double_underline;
@@ -2049,9 +2088,10 @@ fn segment_width(runs: &[&Run], seen_fonts: &HashMap<String, FontEntry>) -> f32 
         let eff_fs = effective_font_size(run, entry);
         let ts = run.text_scale / 100.0;
         let cs = run.char_spacing;
-        let space_w = entry.space_width(eff_fs) * ts + cs;
         let text = effective_text(run);
+        let mut prev_char = None;
         for (i, word) in text.split_whitespace().enumerate() {
+            let space_w = word_space_width(run, entry, eff_fs, word, &mut prev_char);
             if !first || i > 0 {
                 w += space_w;
             }
@@ -2442,21 +2482,21 @@ pub(super) fn build_tabbed_line(
             let key = font_key_buf(run, &mut key_buf);
             let entry = seen_fonts.get(key).expect("font registered");
             let eff_fs = effective_font_size(run, entry);
-            let space_w = entry.space_width(eff_fs);
             let y_off = vert_y_offset(run);
             let text = &run.text;
 
             let cs = run.char_spacing;
             let ts = run.text_scale / 100.0;
-            let space_w_cs = space_w * ts + cs;
             let segments = split_preserving_spaces(text);
+            let mut prev_char = None;
             for (seg_idx, &(space_count, source)) in segments.iter().enumerate() {
                 let shown = caps_word(run, source);
                 let word: &str = &shown;
                 let original = run.caps.then_some(source);
                 let kern = run.kerns_at(eff_fs);
                 let ww = word_width_for_run(entry, run, word, eff_fs, kern, cs, ts);
-                pending_space_w += space_count as f32 * space_w_cs;
+                pending_space_w += space_count as f32
+                    * word_space_width(run, entry, eff_fs, source, &mut prev_char);
                 if space_count > 0 {
                     pending_space_underline = run.underline;
                     pending_space_double = run.double_underline;
@@ -2529,7 +2569,8 @@ pub(super) fn build_tabbed_line(
                 .take_while(|c| is_break_space(*c))
                 .count();
             if trailing_spaces > 0 {
-                pending_space_w += trailing_spaces as f32 * space_w_cs;
+                pending_space_w += trailing_spaces as f32
+                    * word_space_width(run, entry, eff_fs, "", &mut prev_char);
                 pending_space_underline = run.underline;
                 pending_space_double = run.double_underline;
                 pending_space_color = run.color;
@@ -4168,7 +4209,7 @@ mod tests {
         let segs = smallcaps_segments("Hello", 12.0);
         assert_eq!(segs.len(), 2);
         assert_eq!(segs[0], ("H".to_string(), 12.0, "H")); // uppercase stays at 12pt
-        assert_eq!(segs[1], ("ELLO".to_string(), 9.6, "ello")); // lowercase → uppercase at 9.6pt
+        assert_eq!(segs[1], ("ELLO".to_string(), 9.5, "ello")); // lowercase → uppercase at 9.5pt
     }
 
     #[test]
@@ -4182,7 +4223,15 @@ mod tests {
     fn test_smallcaps_segments_all_lower() {
         let segs = smallcaps_segments("abc", 12.0);
         assert_eq!(segs.len(), 1);
-        assert_eq!(segs[0], ("ABC".to_string(), 9.6, "abc"));
+        assert_eq!(segs[0], ("ABC".to_string(), 9.5, "abc"));
+    }
+
+    #[test]
+    fn small_caps_spaces_follow_their_neighbours() {
+        // Word probe: a space beside a lowercase letter is small, ". 1" is not.
+        let segs = smallcaps_segments("def X. 12", 12.0);
+        assert_eq!(segs[0], ("DEF ".to_string(), 9.5, "def "));
+        assert_eq!(segs[1], ("X. 12".to_string(), 12.0, "X. 12"));
     }
 
     #[test]
@@ -4191,7 +4240,7 @@ mod tests {
         let segs = smallcaps_segments("A1b", 12.0);
         assert_eq!(segs.len(), 2);
         assert_eq!(segs[0], ("A1".to_string(), 12.0, "A1")); // uppercase + digit both at base size
-        assert_eq!(segs[1], ("B".to_string(), 9.6, "b")); // lowercase → uppercase at reduced size
+        assert_eq!(segs[1], ("B".to_string(), 9.5, "b")); // lowercase → uppercase at reduced size
     }
 
     #[test]
