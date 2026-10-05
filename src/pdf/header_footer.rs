@@ -177,10 +177,13 @@ pub(super) fn anchored_frame_top(fp: &FrameProperties, sp: &SectionProperties) -
 /// The band a bottom border adds below a paragraph: its `space` and its stroke
 /// (the body path's `bdr_bottom_extent`). The next paragraph starts below it.
 fn bottom_border_band(para: &Paragraph) -> f32 {
-    para.borders
-        .bottom
-        .as_ref()
-        .map_or(0.0, |b| b.space_pt + b.width_pt)
+    super::helpers::border_band(para.borders.bottom.as_ref())
+}
+
+/// The band a top border adds above a paragraph's lines, as in the body
+/// (`bdr_top_pad`): carbon_farming's footer rule sits 1.75pt above its text.
+fn top_border_band(para: &Paragraph) -> f32 {
+    super::helpers::border_band(para.borders.top.as_ref())
 }
 
 /// Where a line of height `line_h` whose top sits `top` below the page top
@@ -292,7 +295,7 @@ fn compute_header_height(
                 let br_count = para.runs.iter().filter(|r| r.is_line_break).count();
                 content_h += br_count as f32 * line_h;
 
-                height += content_h + bottom_border_band(para);
+                height += top_border_band(para) + content_h + bottom_border_band(para);
                 prev_space_after = para.space_after;
             }
             // A floating table takes no room in the header's flow
@@ -607,6 +610,35 @@ pub(super) fn render_header_footer(
                 // text may not sit beside moves below it.
                 cursor_y = sp.page_height
                     - below_blocking_frames(sp.page_height - cursor_y, line_h, &bands);
+                let slot_top = cursor_y;
+                cursor_y -= top_border_band(para);
+
+                // Paragraph borders span the laid-out height, so each exit below
+                // draws them once it knows it (ut_koer: a header staff image
+                // with a bottom border); empty bordered paragraphs render too.
+                let bdr = &para.borders;
+                let (box_left, box_right, box_top) =
+                    (sp.margin_left, sp.margin_left + text_width, slot_top);
+                let draw_para_borders = |content: &mut Content, box_bottom: f32| {
+                    let draw_h_border =
+                        |content: &mut Content, b: &crate::model::ParagraphBorder, y: f32| {
+                            stroke_segment(
+                                content,
+                                (box_left, y),
+                                (box_right, y),
+                                b.width_pt,
+                                Some(b.color),
+                            );
+                        };
+                    if let Some(b) = &bdr.top {
+                        draw_h_border(content, b, box_top - b.width_pt / 2.0);
+                    }
+                    if let Some(b) = &bdr.bottom {
+                        // The stroke sits `space` below the box, outside it,
+                        // as the body path's bottom pad places it.
+                        draw_h_border(content, b, box_bottom - b.space_pt - b.width_pt / 2.0);
+                    }
+                };
 
                 let baseline_y = cursor_y
                     - super::layout::boxed_line_ascent(
@@ -619,7 +651,6 @@ pub(super) fn render_header_footer(
                         ctx.fonts,
                     )
                     .unwrap_or(font_size * ascender_ratio);
-                let slot_top = cursor_y;
 
                 // Render textboxes
                 for tb in &para.textboxes {
@@ -945,7 +976,8 @@ pub(super) fn render_header_footer(
                             );
                         }
                     }
-                    cursor_y -= line_h;
+                    draw_para_borders(content, cursor_y - line_h);
+                    cursor_y -= line_h + bottom_border_band(para);
                     prev_space_after = para.space_after;
                     pi += 1;
                     continue;
@@ -957,33 +989,6 @@ pub(super) fn render_header_footer(
                     picture_line_bottom(&substituted_runs, ctx.fonts, effective_ls)
                 } else {
                     0.0
-                };
-
-                // Paragraph borders span the laid-out height, so each exit below
-                // draws them once it knows it (ut_koer: a header staff image
-                // with a bottom border); empty bordered paragraphs render too.
-                let bdr = &para.borders;
-                let (box_left, box_right, box_top) =
-                    (sp.margin_left, sp.margin_left + text_width, cursor_y);
-                let draw_para_borders = |content: &mut Content, box_bottom: f32| {
-                    let draw_h_border =
-                        |content: &mut Content, b: &crate::model::ParagraphBorder, y: f32| {
-                            stroke_segment(
-                                content,
-                                (box_left, y),
-                                (box_right, y),
-                                b.width_pt,
-                                Some(b.color),
-                            );
-                        };
-                    if let Some(b) = &bdr.top {
-                        draw_h_border(content, b, box_top);
-                    }
-                    if let Some(b) = &bdr.bottom {
-                        // The stroke sits `space` below the box, outside it,
-                        // as the body path's bottom pad places it.
-                        draw_h_border(content, b, box_bottom - b.space_pt - b.width_pt / 2.0);
-                    }
                 };
 
                 // VML horizontal rules (o:hr) are carried on otherwise-empty
@@ -1115,7 +1120,7 @@ pub(super) fn render_header_footer(
                         (tx, (tr - tx).max(1.0))
                     };
 
-                    if let Some((lb, rb)) = bounds_at(slot_top, baseline_y) {
+                    if let Some((lb, rb)) = bounds_at(cursor_y, baseline_y) {
                         (para_text_x, para_text_width) = indented(lb, rb);
 
                         // Build per-line geometry for multi-line paragraphs that may
@@ -1124,11 +1129,11 @@ pub(super) fn render_header_footer(
                         let full_w = (text_width - para.indent_left - para.indent_right).max(1.0);
                         let deepest_bottom =
                             zones.iter().map(|z| z.bottom).fold(f32::INFINITY, f32::min);
-                        let max_lines = ((slot_top - deepest_bottom) / line_h).ceil() as usize + 10;
+                        let max_lines = ((cursor_y - deepest_bottom) / line_h).ceil() as usize + 10;
                         let max_lines = max_lines.max(20);
                         let mut geom = Vec::with_capacity(max_lines);
                         for i in 0..max_lines {
-                            let y = slot_top - font_size * ascender_ratio_e - i as f32 * line_h;
+                            let y = cursor_y - font_size * ascender_ratio_e - i as f32 * line_h;
                             match bounds_at(y, y) {
                                 Some((lb, rb)) => geom.push(indented(lb, rb)),
                                 None => geom.push((col_x + para.indent_left, full_w)),

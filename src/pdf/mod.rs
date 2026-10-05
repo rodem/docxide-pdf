@@ -44,7 +44,7 @@ use header_footer::{
 };
 pub(super) use helpers::resolve_line_h;
 use helpers::{
-    align_offset, auto_ascent_scale, collect_paras, draw_horizontal_rule, drops_contextual_spacing,
+    align_offset, auto_ascent_scale, border_band, collect_paras, draw_horizontal_rule, drops_contextual_spacing,
     joins_border_group, para_runs_with_textboxes,
 };
 use images::{EffectXObjs, EmbeddedImages, embed_all_images};
@@ -2493,11 +2493,7 @@ fn render_paragraph_block(
     let bdr_top_pad = if prev_borders_match {
         0.0
     } else {
-        para.borders
-            .top
-            .as_ref()
-            .map(|b| b.space_pt + b.width_pt)
-            .unwrap_or(0.0)
+        border_band(para.borders.top.as_ref())
     };
     let bdr_top_half_band = if prev_borders_match {
         0.0
@@ -2517,11 +2513,7 @@ fn render_paragraph_block(
     let bdr_bottom_extent = if bottom_collapses {
         0.0
     } else {
-        para.borders
-            .bottom
-            .as_ref()
-            .map(|b| b.space_pt + b.width_pt)
-            .unwrap_or(0.0)
+        border_band(para.borders.bottom.as_ref())
     };
 
     // Word measures the bottom border `space` attribute from

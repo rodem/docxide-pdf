@@ -78,6 +78,11 @@ pub(crate) fn auto_ascent_scale(ls: LineSpacing) -> f32 {
     }
 }
 
+/// The band a paragraph border adds to its box: its `space` and its stroke.
+pub(super) fn border_band(border: Option<&ParagraphBorder>) -> f32 {
+    border.map_or(0.0, |b| b.space_pt + b.width_pt)
+}
+
 fn border_eq(a: &Option<ParagraphBorder>, b: &Option<ParagraphBorder>) -> bool {
     match (a, b) {
         (None, None) => true,
