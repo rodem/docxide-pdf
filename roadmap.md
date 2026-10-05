@@ -743,6 +743,13 @@ probes (`tools/word_export.py`), not fitted to the fixtures.
    Open: nested tables use neither compat rule (`render_nested_table`);
    needs a compat 14/15 probe.
 
+21. **Footnote separator** (`3dd1452e`), Word probes with paragraph borders
+   on the separator and the note: the separator is footnotes.xml's separator
+   paragraph laid out like a body paragraph (Normal without a pStyle), right
+   on the first note, its space after and line-spacing extra below the text;
+   the rule is that line's strikethrough (OS/2 strikeout on the 0.25pt grid,
+   144pt). 23 fixtures up (case76 +5.8 J), none down.
+
 Tried and reverted — **NBSP stretch before compat 15**: a probe (Arial/TNR
 justified lines, compat 12/14/15, print and online presets) shows Word
 widening NBSPs with the word spaces before compat 15 and keeping them at
@@ -764,14 +771,12 @@ Open:
   unify them with a suite run (other fixtures may move).
 - Text-anchored and wrap-around body frames (croatian_grant's two) still flow
   inline.
-- Footnote separator: `render_page_footnotes` / `track_page_footnote` use a
-  fixed 12pt block (rule 3pt down, text 9pt below the rule) where Word lays
-  out footnotes.xml's separator paragraph (one line of its font, e.g. 13.43pt
-  for Calibri 11) and draws the rule inside it (zimbabwe_gold: rule 8.1pt
-  below the block top, 0.75pt thick; we draw 0.5pt). zimbabwe then fits one
-  more two-line paragraph + footnote on page 3 than Word. Fixture survey
-  (rule → first marker baseline 10.75–14.25pt; thickness 0.5/0.75/1.0)
-  needs separating by footnote font before a rule is derived.
+- Footnote separator: done (item 21). Left: endnotes.xml's separator (inline
+  endnotes still draw the fixed 0.5pt rule 12pt below the body; needs a
+  probe of how its space before meets the last paragraph's space after), and
+  a separator run's own rPr. zimbabwe_gold still fits one more two-line
+  double-spaced paragraph + footnote on page 3 than Word: its last line's box
+  (double-spacing extra below the text) ends 0.6pt inside the note area.
 - `content_h` in `render_paragraph_block` includes the room reserved for a
   topAndBottom float below the lines; shading now uses the lines only
   (indonesian's "Format 12" box), but the paragraph's borders still use the
