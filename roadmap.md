@@ -680,6 +680,11 @@ Open:
   unify them with a suite run (other fixtures may move).
 - Text-anchored and wrap-around body frames (croatian_grant's two) still flow
   inline.
+- `content_h` in `render_paragraph_block` includes the room reserved for a
+  topAndBottom float below the lines; shading now uses the lines only
+  (indonesian's "Format 12" box), but the paragraph's borders still use the
+  reserved height. Unverified against Word; split it into a lines height plus
+  a reserved-below gap once a probe shows where Word draws that border.
 - The must-split path (row taller than a page) still tests only
   `!cant_split`, so an exact row taller than a page splits; Word likely clips
   it. Unprobed, no fixture.

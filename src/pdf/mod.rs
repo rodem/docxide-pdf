@@ -2411,6 +2411,11 @@ fn render_paragraph_block(
         .first()
         .map_or(0.0, |l| inline_image_line_extra(l, para_ascent));
 
+    // The shading covers the lines, not the room reserved below them for a
+    // float: indonesian_school's "Format 12" box shows between its anchor's
+    // white shading and the next paragraph's.
+    let lines_h = content_h;
+
     // Extra height from floating images that extends beyond
     // the text content — used only for page-break decisions,
     // not for cursor advancement (text wraps beside the image).
@@ -2963,7 +2968,8 @@ fn render_paragraph_block(
             } else {
                 0.0
             };
-        let shd_bottom = state.pb.slot_top - bdr_top_pad - content_h - bdr_bottom_pad;
+        // min: a vanished paragraph mark zeroes content_h after `lines_h`.
+        let shd_bottom = state.pb.slot_top - bdr_top_pad - content_h.min(lines_h) - bdr_bottom_pad;
         state.pb.content.save_state();
         fill_rgb(&mut state.pb.content, shd_color);
         state.pb.content.rect(
