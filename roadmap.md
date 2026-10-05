@@ -770,6 +770,19 @@ probes (`tools/word_export.py`), not fitted to the fixtures.
    - notes still use the hand-built "simple" parser rather than
      `build_paragraph` (borders, shading, contextual spacing missing).
 
+Not applied — **East Asian line box from hhea, not win** (online export
+probe 2026-10-05, Yu Gothic / Yu Mincho / MS Mincho at 10.5 and 12pt, no
+grid): Word steps Yu Gothic 15.0/17.25 = 1.3 × (hhea ascent + descent),
+first baseline 11.03 = the evenly split leading over the hhea box; 1.3 × win
+(our rule) gives 17.6/20.1. Yu Mincho (17.5/20.0) and MS Mincho (13.6/15.6)
+fit both rules because Word's copies have hhea = win. Our vendored
+`fonts/yumin.ttf` (Yu Mincho) does not: its hhea is Yu Gothic's (0.8799 /
+−0.2222 / gap 0.5) while Word's embedded Yu Mincho has hhea 0.9951 / −0.292.
+Switching `compute_line_metrics` to hhea (diff kept in the session
+scratchpad) fixes Yu Gothic and breaks Yu Mincho until Word's (Windows)
+Yu Mincho is vendored in `fonts/` and the assets repo — the user's call.
+japanese_land_development (Yu Gothic heading, 21 J) waits on it.
+
 Tried and reverted — **NBSP stretch before compat 15**: a probe (Arial/TNR
 justified lines, compat 12/14/15, print and online presets) shows Word
 widening NBSPs with the word spaces before compat 15 and keeping them at
