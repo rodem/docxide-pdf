@@ -1713,10 +1713,14 @@ fn render_paragraph_block(
     // unless a continuous break changes the column layout: then the mark keeps
     // its line (covid_insomnia's break into two columns: 11.9pt; romanian's
     // and strategi's single-column continuous breaks stay at zero).
-    let keeps_line = doc.sections.get(sect_idx + 1).is_some_and(|next| {
-        next.properties.break_type == SectionBreakType::Continuous
-            && column_count(&next.properties) != column_count(sp)
-    });
+    // A break paragraph that is the only block of a section opening a new page
+    // keeps its line too: transition_to_work's contents start a line and 8pt
+    // below the top of the page that empty section opens.
+    let keeps_line = (block_idx == 0 && sp.break_type != SectionBreakType::Continuous)
+        || doc.sections.get(sect_idx + 1).is_some_and(|next| {
+            next.properties.break_type == SectionBreakType::Continuous
+                && column_count(&next.properties) != column_count(sp)
+        });
     if para.is_section_break
         && !keeps_line
         && is_text_empty(&para.runs)
