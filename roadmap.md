@@ -695,6 +695,11 @@ probes (`tools/word_export.py`), not fitted to the fixtures.
    same rule as the body (`layout::boxed_line_ascent`), as does a split
    paragraph's continuation. Open: footnote paragraphs still place exact
    and at-least lines at the plain ascent (`footnotes.rs`).
+15. **Header/footer top borders** (`250a4b7c`): a top border's band (space +
+   stroke) sits above the lines and counts in the header/footer height, as
+   in the body. carbon_farming's footer was 1.15pt short and the body fitted
+   an extra contents line per page: J 29.7 → 57.2 with 110 pages matching;
+   western_australia 60.8 → 72.0, clean_energy 40.3 → 45.7.
 
 Open:
 - Bands are checked at block start (a paragraph running into one part way
