@@ -820,6 +820,7 @@ pub(super) fn compute_row_layouts(
                                             &EMPTY_EFFECT_MAP,
                                             ctx.default_tab_stop,
                                             &[],
+                                            ctx.compat_mode,
                                         )
                                     } else {
                                         build_paragraph_lines(

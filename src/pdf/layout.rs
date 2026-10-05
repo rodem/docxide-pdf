@@ -1358,6 +1358,7 @@ pub(super) fn build_lines(
             effects,
             ctx.default_tab_stop,
             opts.tab_exclusions,
+            ctx.compat_mode,
         )
     } else {
         build_paragraph_lines(
@@ -2019,25 +2020,23 @@ fn find_next_tab_stop(
     tab_stops: &[TabStop],
     indent_left: f32,
     default_tab_interval: f32,
-) -> TabStop {
+) -> (TabStop, bool) {
     let abs_x = current_x + indent_left;
-    tab_stops
-        .iter()
-        .find(|s| s.position > abs_x + 0.5)
-        .cloned()
-        .unwrap_or_else(|| {
-            let interval = if default_tab_interval > 0.0 {
-                default_tab_interval
-            } else {
-                DEFAULT_TAB_INTERVAL
-            };
-            let next = ((abs_x / interval).floor() + 1.0) * interval;
-            TabStop {
-                position: next,
-                alignment: TabAlignment::Left,
-                leader: None,
-            }
-        })
+    if let Some(s) = tab_stops.iter().find(|s| s.position > abs_x + 0.5) {
+        return (s.clone(), true);
+    }
+    let interval = if default_tab_interval > 0.0 {
+        default_tab_interval
+    } else {
+        DEFAULT_TAB_INTERVAL
+    };
+    let next = ((abs_x / interval).floor() + 1.0) * interval;
+    let default = TabStop {
+        position: next,
+        alignment: TabAlignment::Left,
+        leader: None,
+    };
+    (default, false)
 }
 
 fn segment_width(runs: &[&Run], seen_fonts: &HashMap<String, FontEntry>) -> f32 {
@@ -2058,6 +2057,29 @@ fn segment_width(runs: &[&Run], seen_fonts: &HashMap<String, FontEntry>) -> f32 
             }
             w += word_width_for_run(entry, run, word, eff_fs, run.kerns_at(eff_fs), cs, ts);
             first = false;
+        }
+    }
+    w
+}
+
+/// The text a tab takes along when it wraps: the segment's words up to its
+/// first space. Word never breaks between a tab and the word after it.
+fn first_word_width(runs: &[&Run], seen_fonts: &HashMap<String, FontEntry>) -> f32 {
+    let mut w = 0.0;
+    let mut key_buf = String::new();
+    for run in runs {
+        if run.is_line_break || run.inline_image.is_some() {
+            break;
+        }
+        let text = effective_text(run);
+        let word = text.split(is_break_space).next().unwrap_or("");
+        let key = font_key_buf(run, &mut key_buf);
+        let entry = seen_fonts.get(key).expect("font registered");
+        let eff_fs = effective_font_size(run, entry);
+        let (cs, ts) = (run.char_spacing, run.text_scale / 100.0);
+        w += word_width_for_run(entry, run, word, eff_fs, run.kerns_at(eff_fs), cs, ts);
+        if word.len() < text.len() {
+            break;
         }
     }
     w
@@ -2112,6 +2134,7 @@ pub(super) fn build_tabbed_line(
     effect_inline_names: &HashMap<usize, super::images::EffectXObjs>,
     default_tab_stop: f32,
     tab_exclusions: &[(f32, f32)],
+    compat_mode: u32,
 ) -> Vec<TextLine> {
     // Split runs into segments at tab markers, tracking original run indices.
     // The fourth tuple element is the `<w:tab/>` run itself (when present) so the
@@ -2167,6 +2190,8 @@ pub(super) fn build_tabbed_line(
     let mut is_first_line = true;
     // Set when tabs wrap onto a new line that has nothing drawn yet.
     let mut tab_wrapped_line = false;
+    // This line went past the margin at an explicit tab stop: it no longer wraps.
+    let mut past_margin = false;
 
     for (seg_idx, (seg_runs, seg_indices, tab_before, tab_run_before)) in
         segments.iter().enumerate()
@@ -2208,7 +2233,7 @@ pub(super) fn build_tabbed_line(
             // center, Right→box right edge. This is what produces Word's left/center/right
             // footer layout that ordinary tab stops can't express here.
             let ptab_align = tab_run_before.and_then(|r| r.ptab_alignment);
-            let (stop, mut effective_tab_target) = if let Some(palign) = ptab_align {
+            let (stop, mut effective_tab_target, explicit) = if let Some(palign) = ptab_align {
                 let target = match palign {
                     TabAlignment::Center => max_width / 2.0,
                     TabAlignment::Right => max_width,
@@ -2221,9 +2246,11 @@ pub(super) fn build_tabbed_line(
                         leader: None,
                     },
                     target,
+                    false,
                 )
             } else {
-                let mut s = find_next_tab_stop(current_x, tab_stops, line_indent, default_tab_stop);
+                let (mut s, mut explicit) =
+                    find_next_tab_stop(current_x, tab_stops, line_indent, default_tab_stop);
                 // Word advances a left tab past any floating image whose body
                 // occludes the stop, snapping to the first stop clear of the
                 // image's right edge. `tab_exclusions` are (left, right) spans
@@ -2234,7 +2261,7 @@ pub(super) fn build_tabbed_line(
                         .find(|&&(ex_l, ex_r)| s.position > ex_l + 0.5 && s.position < ex_r - 0.5);
                     match bumped {
                         Some(&(_, ex_r)) => {
-                            s = find_next_tab_stop(
+                            (s, explicit) = find_next_tab_stop(
                                 ex_r - line_indent,
                                 tab_stops,
                                 line_indent,
@@ -2245,7 +2272,7 @@ pub(super) fn build_tabbed_line(
                     }
                 }
                 let t = s.position - line_indent;
-                (s, t)
+                (s, t, explicit)
             };
             let mut seg_start = resolve_tab_aligned_start(
                 &stop,
@@ -2262,7 +2289,26 @@ pub(super) fn build_tabbed_line(
             // segments to extend up to the physical content edge (indent_right
             // beyond max_width) before forcing a wrap.
             let wrap_limit = line_max + indent_right;
-            if seg_start > wrap_limit && !all_chunks.is_empty() {
+            // Word probes on an explicit stop past the margin: before Word
+            // 2013 layout it keeps the tab and all that follows on this line,
+            // off the page if need be (polish_building's 1216pt stop); from
+            // 2013 on a right, centre or decimal stop clamps to the margin
+            // (carbon_farming's TOC page numbers) and a left one wraps.
+            // Otherwise a tab wraps when it lands past the margin or the word
+            // after it doesn't fit (a default stop on the margin stays:
+            // massachusetts' signature line keeps its fifth tab there).
+            let stop_past = effective_tab_target > wrap_limit;
+            if explicit && stop_past && compat_mode < 15 {
+                past_margin = true;
+            } else if explicit && stop_past && stop.alignment != TabAlignment::Left {
+                effective_tab_target = wrap_limit;
+                seg_start =
+                    resolve_tab_aligned_start(&stop, wrap_limit, seg_runs, seen_fonts, current_x);
+            } else if (seg_start > wrap_limit
+                || (stop.alignment == TabAlignment::Left
+                    && seg_start + first_word_width(seg_runs, seen_fonts) > line_max))
+                && !all_chunks.is_empty()
+            {
                 result_lines.push(TextLine {
                     justify_from: std::mem::take(&mut justify_from),
                     ..finish_line(&mut all_chunks)
@@ -2270,7 +2316,8 @@ pub(super) fn build_tabbed_line(
                 tab_wrapped_line = true;
                 current_x = 0.0;
                 is_first_line = false;
-                let new_stop = find_next_tab_stop(0.0, tab_stops, indent_left, default_tab_stop);
+                let (new_stop, _) =
+                    find_next_tab_stop(0.0, tab_stops, indent_left, default_tab_stop);
                 let new_target = new_stop.position - indent_left;
                 seg_start =
                     resolve_tab_aligned_start(&new_stop, new_target, seg_runs, seen_fonts, 0.0);
@@ -2364,6 +2411,7 @@ pub(super) fn build_tabbed_line(
                     ..finish_line_with_break(&mut all_chunks)
                 });
                 tab_wrapped_line = false;
+                past_margin = false;
                 current_x = 0.0;
                 is_first_line = false;
                 pending_space_w = 0.0;
@@ -2441,7 +2489,11 @@ pub(super) fn build_tabbed_line(
                     max_width
                 };
                 // Wrap word to new line if it exceeds max_width
-                if current_x + ww > cur_line_max && !all_chunks.is_empty() && !is_continuation {
+                if current_x + ww > cur_line_max
+                    && !all_chunks.is_empty()
+                    && !is_continuation
+                    && !past_margin
+                {
                     result_lines.push(TextLine {
                         justify_from: std::mem::take(&mut justify_from),
                         ..finish_line(&mut all_chunks)
@@ -4045,6 +4097,7 @@ mod tests {
             &HashMap::new(),
             36.0,
             &[],
+            15,
         );
         assert_eq!(lines.len(), 1);
         let word = lines[0]
