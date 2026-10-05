@@ -713,6 +713,18 @@ probes (`tools/word_export.py`), not fitted to the fixtures.
    break's own after only absorbs the next space before
    (`section_break_spacing`, shared with the bookmark estimator).
    transition_to_work J 42.3 → 65.1 with 153 pages matching, covid +3.7.
+18. **Picture lines and clearing breaks** (`cf0339f5`, `eac9b0e4`):
+   - An image-only paragraph whose picture is no taller than the line takes
+     the full line and sits the picture (effect extents included) on a
+     baseline one natural line of the mark's font down (Word probe: 2.25–12pt
+     pictures under Arial 12, single and 1.5 spacing, all within 0.01pt).
+   - A paragraph opening with an empty clear="all" break right after a
+     text-anchored floating table keeps that line beside the table.
+     indigenous_innovation J 35.1 → 68.0, SSIM 45.6 → 84.8; nothing else
+     moved.
+   - Open: header/footer image paragraphs (`header_footer.rs`, ascent-based
+     placement) and table-cell image paragraphs don't follow the short-picture
+     rule yet.
 
 Open:
 - Bands are checked at block start (a paragraph running into one part way
