@@ -2282,6 +2282,20 @@ fn render_paragraph_block(
             },
         )
     };
+    // A clearing break that opens the anchor paragraph of the floating table
+    // above it sits beside that table's top; only what follows the break comes
+    // below the table (indigenous_innovation's defined terms: one line, not two).
+    if para.clears_floats
+        && block_idx
+            .checked_sub(1)
+            .and_then(|i| section_blocks.get(i))
+            .is_some_and(|b| matches!(b, Block::Table(t) if t.position.is_some()))
+        && lines.len() > 1
+        && lines[0].ends_with_break
+        && lines[0].chunks.is_empty()
+    {
+        lines.remove(0);
+    }
     // The look-ahead zone reached up through this paragraph's space-after only
     // for its own geometry; following paragraphs see the float's real edge.
     if let (Some((_, top)), Some(fz)) = (lookahead, state.pb.float_zone.as_mut()) {
