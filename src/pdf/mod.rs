@@ -2328,6 +2328,9 @@ fn render_paragraph_block(
         },
     );
 
+    // One line of the mark's font at single spacing: a picture-only line's
+    // baseline below its top (and the base its leading is measured from).
+    let natural_line_h = font_size * tallest_lhr.unwrap_or(1.2);
     let mut content_h = if para.inline_chart.is_some() {
         para.content_height
     } else if let Some(img) = &para.image {
@@ -2335,11 +2338,13 @@ fn render_paragraph_block(
         // line-spacing leading below it, sized by the paragraph mark
         // (dental_amalgam: a 68.25pt logo under Normal's 1.15 lines is
         // 70.1pt tall in Word although the next paragraph is single-spaced).
-        let leading = (line_h - font_size * tallest_lhr.unwrap_or(1.2)).max(0.0);
+        let leading = (line_h - natural_line_h).max(0.0);
+        // A shorter one sits on the baseline of a full line of the mark's
+        // font (indigenous_innovation's 2.25pt rule under the title).
         let picture_h = if para.content_height > line_h {
             para.content_height + leading
         } else {
-            para.content_height
+            line_h
         };
         // A picture wider than the column leaves its line no room for the
         // paragraph mark, which wraps onto a line of its own (alfies_arc: an
@@ -3116,7 +3121,17 @@ fn render_paragraph_block(
             } else {
                 state.pb.begin_figure(para, doc, img.alt.as_deref());
             }
-            let y_bottom = state.pb.slot_top - img.layout_extra_top - img.display_height;
+            // A picture shorter than the line sits, effect extents included, on
+            // a baseline one natural line of the mark's font down, whatever the
+            // spacing (Word probe: 2.25-12pt pictures under Arial 12 at single
+            // and 1.5 lines).
+            let bottom_depth = if para.content_height > line_h {
+                img.layout_extra_top + img.display_height
+            } else {
+                let baseline = para.content_height.max(natural_line_h);
+                baseline - (img.layout_extra_height - img.layout_extra_top)
+            };
+            let y_bottom = state.pb.slot_top - bottom_depth;
             let x = col_x + align_offset(para.alignment, (col_w - img.display_width).max(0.0));
             let img_fx = effect_names.get(&state.global_block_idx);
             if let Some(ref shadow) = img.shadow {
