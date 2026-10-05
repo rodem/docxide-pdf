@@ -9,9 +9,8 @@ use super::styles::{
 };
 use super::textbox::collect_textboxes_from_paragraph;
 use super::{
-    ParseContext, WML_NS, extract_indents, merge_tab_stops, parse_frame_props,
-    parse_paragraph_borders, parse_paragraph_spacing, parse_tab_stops_with_clears, wml, wml_attr,
-    wml_bool,
+    ParseContext, WML_NS, extract_indents, parse_frame_props, parse_paragraph_borders,
+    parse_paragraph_spacing, wml, wml_attr, wml_bool,
 };
 
 /// Options controlling which paragraph features to resolve.
@@ -194,16 +193,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         }
     }
 
-    let mut tab_stops = if let Some(s) = para_style {
-        s.tab_stops.clone()
-    } else {
-        vec![]
-    };
-    let (para_tabs, para_clears) = ppr.map(parse_tab_stops_with_clears).unwrap_or_default();
-    if !para_tabs.is_empty() || !para_clears.is_empty() {
-        merge_tab_stops(&mut tab_stops, &para_clears, para_tabs);
-        tab_stops.sort_by(|a, b| a.position.total_cmp(&b.position));
-    }
+    let mut tab_stops = super::resolve_tab_stops(ppr, para_style);
     // Add the numbering level's explicit tab stop so the label-text
     // gap matches Word (which uses this instead of the implicit
     // hanging-indent tab when it is closer).

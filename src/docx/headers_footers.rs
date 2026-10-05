@@ -225,6 +225,7 @@ fn parse_notes_simple<R: Read + Seek>(
                 runs: parsed.runs,
                 space_before: sp_before.unwrap_or(0.0),
                 space_after: sp_after.unwrap_or(0.0),
+                tab_stops: super::resolve_tab_stops(ppr, para_style),
                 alignment,
                 line_spacing: ls.or(Some(LineSpacing::Auto(1.0))),
                 snap_to_grid: true,

@@ -8,8 +8,8 @@ use super::RenderContext;
 use super::color::stroke_segment;
 use super::helpers::{effective_space_after, effective_space_before};
 use super::layout::{
-    EMPTY_EFFECTS, EMPTY_INLINE_IMAGES, LinkTagger, TextLine, boxed_line_ascent,
-    build_paragraph_lines, is_text_empty, os2_strike, render_paragraph_lines, tallest_run_metrics,
+    LineOpts, LinkTagger, TextLine, boxed_line_ascent, build_lines, is_text_empty, lines_height,
+    os2_strike, render_paragraph_lines, size_lines_by_own_runs, tallest_run_metrics,
 };
 use super::list_label::render_list_label;
 use super::resolve_line_h;
@@ -42,38 +42,59 @@ struct ParagraphLayout {
     lines: Vec<TextLine>,
 }
 
+impl ParagraphLayout {
+    fn height(&self) -> f32 {
+        lines_height(
+            &self.lines,
+            self.line_height,
+            (self.font_size * self.ascender_ratio, 0.0),
+        )
+    }
+}
+
+/// `runs` are `para`'s with the reference mark filled in; a tab goes to
+/// the paragraph's stops as in the body (uk_commercial_lease's notes tab to
+/// their 567-twip stop on the mark's line).
 fn layout_paragraph(
     runs: &[Run],
+    para: &Paragraph,
     line_spacing: LineSpacing,
     ctx: &RenderContext,
     text_width: f32,
     first_line_hanging: f32,
-    alignment: crate::model::Alignment,
 ) -> Option<ParagraphLayout> {
     if is_text_empty(runs) {
         return None;
     }
     let (fs, tallest_lhr, tallest_ar) = tallest_run_metrics(runs, ctx.fonts);
     let lh = resolve_line_h(line_spacing, fs, tallest_lhr);
-    let lines = build_paragraph_lines(
+    let mut lines = build_lines(
         runs,
-        ctx.fonts,
+        ctx,
         text_width,
-        first_line_hanging,
-        &EMPTY_INLINE_IMAGES,
-        &EMPTY_EFFECTS,
-        None,
-        None,
-        None,
-        ctx.cjk(true, alignment),
+        ctx.cjk(true, para.alignment),
+        &LineOpts {
+            tab_stops: &para.tab_stops,
+            indent_left: para.indent_left,
+            indent_right: para.indent_right,
+            hanging: first_line_hanging,
+            ..Default::default()
+        },
     );
+    // Each line as tall as its own runs, as in the body: a note's larger
+    // reference mark raises only its own line (uk_commercial_lease: 10pt
+    // marks over 8pt text, the following lines step 9.5 in Word).
+    let ascender_ratio = tallest_ar.unwrap_or(0.75);
+    if !matches!(line_spacing, LineSpacing::Exact(_)) {
+        size_lines_by_own_runs(&mut lines, ctx.fonts, line_spacing, lh, fs * ascender_ratio);
+    }
     if lines.is_empty() {
         return None;
     }
     Some(ParagraphLayout {
         font_size: fs,
         line_height: lh,
-        ascender_ratio: tallest_ar.unwrap_or(0.75),
+        ascender_ratio,
         lines,
     })
 }
@@ -85,11 +106,18 @@ fn empty_paragraph_line_h(para: &Paragraph, ls: LineSpacing, ctx: &RenderContext
     resolve_line_h(ls, fs, lhr)
 }
 
-pub(super) fn compute_footnote_height(
-    footnote: &Footnote,
+/// Footnote `id` laid out as `render_page_footnotes` draws it, the note's
+/// mark included (a mark larger than the text raises its line); 0 if missing.
+pub(super) fn footnote_height(
+    id: u32,
+    footnotes: &HashMap<u32, Footnote>,
     ctx: &RenderContext,
     text_width: f32,
 ) -> f32 {
+    let Some(footnote) = footnotes.get(&id) else {
+        return 0.0;
+    };
+    let mark = ctx.footnote_marks.get(&id).map_or("1", String::as_str);
     let mut total = 0.0f32;
     let mut prev_space_after = 0.0f32;
     let mut prev_para = None;
@@ -97,14 +125,8 @@ pub(super) fn compute_footnote_height(
         let ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
         let para_text_width = (text_width - para.indent_left - para.indent_right).max(1.0);
         let hanging = super::compute_text_hanging(para, 0.0);
-        let layout = layout_paragraph(
-            &para.runs,
-            ls,
-            ctx,
-            para_text_width,
-            hanging,
-            para.alignment,
-        );
+        let runs = substitute_ref_marks(&para.runs, mark);
+        let layout = layout_paragraph(&runs, para, ls, ctx, para_text_width, hanging);
         if layout.is_none() && para.paragraph_mark_vanish {
             continue;
         }
@@ -113,7 +135,7 @@ pub(super) fn compute_footnote_height(
         }
         total += layout.as_ref().map_or_else(
             || empty_paragraph_line_h(para, ls, ctx),
-            |l| l.lines.len().max(1) as f32 * l.line_height,
+            ParagraphLayout::height,
         );
         prev_space_after = effective_space_after(para, footnote.paragraphs.get(i + 1));
         prev_para = Some(para);
@@ -184,8 +206,7 @@ pub(super) fn render_page_footnotes(
 
     let total_fn_height: f32 = fn_ids
         .iter()
-        .filter_map(|id| footnotes.get(id))
-        .map(|fn_note| compute_footnote_height(fn_note, ctx, text_width))
+        .map(|&id| footnote_height(id, footnotes, ctx, text_width))
         .sum();
 
     let fn_y = margin_bottom + total_fn_height;
@@ -299,7 +320,7 @@ fn render_notes_downward(
             let para_text_width = (text_width - para.indent_left - para.indent_right).max(1.0);
 
             let hanging = super::compute_text_hanging(para, 0.0);
-            let layout = layout_paragraph(&runs, ls, ctx, para_text_width, hanging, para.alignment);
+            let layout = layout_paragraph(&runs, para, ls, ctx, para_text_width, hanging);
             if layout.is_none() && para.paragraph_mark_vanish {
                 continue;
             }
@@ -347,14 +368,14 @@ fn render_notes_downward(
                 );
                 super::tagging::Tags::end(content);
 
-                fn_y -= line_count as f32 * layout.line_height;
+                fn_y -= layout.height();
             } else {
                 fn_y -= empty_paragraph_line_h(para, ls, ctx);
             }
             prev_space_after = effective_space_after(para, footnote.paragraphs.get(pi + 1));
             prev_para = Some(para);
         }
-        // The note's trailing space, as `compute_footnote_height` charges it.
+        // The note's trailing space, as `footnote_height` charges it.
         fn_y -= prev_space_after;
     }
     tops

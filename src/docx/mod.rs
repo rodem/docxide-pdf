@@ -501,6 +501,21 @@ pub(super) fn parse_frame_props(
     })
 }
 
+/// A paragraph's tab stops: its style's, which its own `w:tabs` clear and
+/// override, in order.
+pub(in crate::docx) fn resolve_tab_stops(
+    ppr: Option<roxmltree::Node>,
+    para_style: Option<&ParagraphStyle>,
+) -> Vec<TabStop> {
+    let mut tab_stops = para_style.map(|s| s.tab_stops.clone()).unwrap_or_default();
+    let (para_tabs, para_clears) = ppr.map(parse_tab_stops_with_clears).unwrap_or_default();
+    if !para_tabs.is_empty() || !para_clears.is_empty() {
+        merge_tab_stops(&mut tab_stops, &para_clears, para_tabs);
+        tab_stops.sort_by(|a, b| a.position.total_cmp(&b.position));
+    }
+    tab_stops
+}
+
 /// Merge `incoming` tab stops into `dst`: clear positions remove matching stops
 /// (0.5pt tolerance), then each incoming stop overrides one at the same position
 /// or is appended. Caller is responsible for sorting.

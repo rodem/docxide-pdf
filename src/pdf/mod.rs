@@ -37,7 +37,7 @@ use crate::fonts::font_key;
 use assembly::{HeadingEntry, assemble_pdf_pages};
 use color::{fill_rgb, stroke_segment};
 use fonts::collect_and_register_fonts;
-use footnotes::{compute_footnote_height, render_endnotes_inline, render_page_footnotes};
+use footnotes::{footnote_height, render_endnotes_inline, render_page_footnotes};
 use header_footer::{
     HfPageContext, compute_effective_margin_bottom, effective_slot_top, render_header_footer,
     resolve_footer_for_page, resolve_header_for_page,
@@ -79,13 +79,10 @@ fn sorted_by_z<'a>(
 /// paragraph before the table against: bulgarian_road_safety's empty Normal
 /// paragraph keeps no space after above a table whose first cell is Normal.
 fn first_cell_paragraph(t: &crate::model::Table) -> Option<&Paragraph> {
-    t.first_cell()?
-        .content
-        .iter()
-        .find_map(|b| match b {
-            Block::Paragraph(p) => Some(p),
-            Block::Table(_) => None,
-        })
+    t.first_cell()?.content.iter().find_map(|b| match b {
+        Block::Paragraph(p) => Some(p),
+        Block::Table(_) => None,
+    })
 }
 
 /// The paragraph contextual spacing compares a neighbour of `blocks[i]` with:
@@ -1281,8 +1278,8 @@ fn track_page_footnote(
         return;
     }
     state.pb.footnote_ids.push(id);
-    if let Some(footnote) = doc.footnotes.get(&id) {
-        let fn_height = compute_footnote_height(footnote, ctx, text_width);
+    if doc.footnotes.contains_key(&id) {
+        let fn_height = footnote_height(id, &doc.footnotes, ctx, text_width);
         let separator_h = if state.pb.footnote_ids.len() == 1 {
             ctx.note_separator.height
         } else {
@@ -2558,6 +2555,27 @@ fn render_paragraph_block(
     let needed_with_floats = needed.max(inter_gap + float_overflow_h);
     let at_page_top = state.pb.is_at_page_top(sp);
 
+    // Pre-compute footnote space for this paragraph so the
+    // page-break check accounts for footnotes the paragraph
+    // introduces (otherwise they're only tracked after
+    // rendering, which can cause body/footnote overlap).
+    let line_refs: Vec<Vec<u32>> = lines
+        .iter()
+        .map(|l| l.chunks.iter().filter_map(|c| c.footnote_id).collect())
+        .collect();
+    let run_refs: Vec<u32> = para.runs.iter().filter_map(|r| r.footnote_id).collect();
+    let (line_fn_extra, para_fn_extra) = per_line_footnote_extra(
+        &line_refs,
+        &run_refs,
+        &state.pb.footnote_ids_set,
+        if state.pb.footnote_ids.is_empty() {
+            ctx.note_separator.height
+        } else {
+            0.0
+        },
+        |id| footnote_height(id, &doc.footnotes, ctx, text_width),
+    );
+
     // Word allows the last line's trailing inter-line
     // spacing to extend past the bottom margin — only the
     // text (ascent + descent) must fit inside the content
@@ -2638,31 +2656,6 @@ fn render_paragraph_block(
     } else {
         0.0
     };
-
-    // Pre-compute footnote space for this paragraph so the
-    // page-break check accounts for footnotes the paragraph
-    // introduces (otherwise they're only tracked after
-    // rendering, which can cause body/footnote overlap).
-    let line_refs: Vec<Vec<u32>> = lines
-        .iter()
-        .map(|l| l.chunks.iter().filter_map(|c| c.footnote_id).collect())
-        .collect();
-    let run_refs: Vec<u32> = para.runs.iter().filter_map(|r| r.footnote_id).collect();
-    let (line_fn_extra, para_fn_extra) = per_line_footnote_extra(
-        &line_refs,
-        &run_refs,
-        &state.pb.footnote_ids_set,
-        if state.pb.footnote_ids.is_empty() {
-            ctx.note_separator.height
-        } else {
-            0.0
-        },
-        |id| {
-            doc.footnotes
-                .get(&id)
-                .map_or(0.0, |f| compute_footnote_height(f, ctx, text_width))
-        },
-    );
 
     if !at_page_top
         && state.pb.slot_top - needed_with_floats - keep_next_extra + last_line_lead

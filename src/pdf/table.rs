@@ -1856,11 +1856,9 @@ pub(super) fn render_table(
         // page-break check below accounts for it before rendering.
         let mut row_fn_extra = 0.0f32;
         for &fn_id in &row_footnote_ids[ri] {
-            if !pb.footnote_ids_set.contains(&fn_id)
-                && let Some(footnote) = footnotes.get(&fn_id)
-            {
+            if !pb.footnote_ids_set.contains(&fn_id) {
                 row_fn_extra +=
-                    super::footnotes::compute_footnote_height(footnote, ctx, fn_text_width);
+                    super::footnotes::footnote_height(fn_id, footnotes, ctx, fn_text_width);
             }
         }
         if row_fn_extra > 0.0 && pb.footnote_ids.is_empty() {
@@ -2025,9 +2023,9 @@ pub(super) fn render_table(
         for &fn_id in &row_footnote_ids[ri] {
             if pb.footnote_ids_set.insert(fn_id) {
                 pb.footnote_ids.push(fn_id);
-                if let Some(footnote) = footnotes.get(&fn_id) {
+                if footnotes.contains_key(&fn_id) {
                     let fn_h =
-                        super::footnotes::compute_footnote_height(footnote, ctx, fn_text_width);
+                        super::footnotes::footnote_height(fn_id, footnotes, ctx, fn_text_width);
                     let sep = if pb.footnote_ids.len() == 1 {
                         ctx.note_separator.height
                     } else {
