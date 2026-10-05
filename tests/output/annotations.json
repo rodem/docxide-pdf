@@ -1,5 +1,5 @@
 {
-  "next_id": 259,
+  "next_id": 265,
   "annotations": [
     {
       "id": 208,
@@ -52,8 +52,8 @@
       "source": "Generated",
       "x_pt": 81.04862,
       "y_pt": 744.497,
-      "note": "Too much space below \"header\" with image and text and above numbered list.\n\nSYSTEMIC (triage 2026-07-03): page-1 line/row heights accumulate ~28pt short, so the 2-line intro paragraph Word pushes to page 2 (it carries lastRenderedPageBreak) fits on our page 1 — page-2 content then sits ~26pt high. No page-2 spacing knob; boundary-sensitive pagination flip from line-height fidelity.\n\nUPDATE (2026-10-03): two causes. (1) The header's narrow wrapSquare logo (posV -2pt, 48.7pt tall) extends our header to its bottom, so page 1's body starts 5.5pt low; Word starts the body at the header text. Dropping that extent (compute_header_height's float_bottom_h) puts french_sexual_health within 0.25pt (+18.6 J), but here Word pushes page 2's first line below the logo (body wraps around the header float), which we don't model, so the change regressed this case and was not kept. (2) Normal has w:position=-1 (text lowered 0.5pt) and each spacer paragraph/row here comes out ~0.5pt taller in Word, which is the per-row shortfall that lets the intro paragraph fit on our page 1.",
-      "fixed": false,
+      "note": "Too much space below \"header\" with image and text and above numbered list.\n\nSYSTEMIC (triage 2026-07-03): page-1 line/row heights accumulate ~28pt short, so the 2-line intro paragraph Word pushes to page 2 (it carries lastRenderedPageBreak) fits on our page 1 — page-2 content then sits ~26pt high. No page-2 spacing knob; boundary-sensitive pagination flip from line-height fidelity.\n\nUPDATE (2026-10-03): two causes. (1) The header's narrow wrapSquare logo (posV -2pt, 48.7pt tall) extends our header to its bottom, so page 1's body starts 5.5pt low; Word starts the body at the header text. Dropping that extent (compute_header_height's float_bottom_h) puts french_sexual_health within 0.25pt (+18.6 J), but here Word pushes page 2's first line below the logo (body wraps around the header float), which we don't model, so the change regressed this case and was not kept. (2) Normal has w:position=-1 (text lowered 0.5pt) and each spacer paragraph/row here comes out ~0.5pt taller in Word, which is the per-row shortfall that lets the intro paragraph fit on our page 1.\n\nFIXED (2026-10-05, branch annot/french-logo): three causes, all fixed. Empty paragraphs now stretch by their mark's w:position like text lines (de28189b); header lines too, and the narrow wrapSquare header logo no longer extends the header (1956b952, 0f33757e); and even pages lay out around the even header, which here has one more empty paragraph (eae1ae1d; that was the 'page-2 regression' of the 2026-10-03 try, not body wrapping). Both pages now within 1.5pt of Word; czech_municipal J 13.6 -> 34.6, SSIM 48.8 -> 89.7.",
+      "fixed": true,
       "cleared": false
     },
     {
@@ -63,8 +63,8 @@
       "source": "Generated",
       "x_pt": 539.4887,
       "y_pt": 410.5048,
-      "note": "is this a line break we are adding, or just word wrapping?  Splitting in the middle of a phone number is unfortunate, but it migjt just be a result of  word with difference.\n\nTRIAGE (2026-09-18, not fixed): plain word wrapping, and not a width problem: the column is 322.1pt in both and the line above measures within 0.02%. Word keeps \"2251,\" on the line by COMPRESSING the 10 breakable spaces to 2.00pt (natural 2.75pt at 11pt Times New Roman, so ~73%); the nbsp inside \"59 740\" stays natural in both. We only ever expand justified lines (layout.rs: the overflow test has no shrink allowance and extra_per_gap is clamped at 0). No wpJustification compat flag is set, so this is Word's ordinary justification. Implementing it touches every justified paragraph in the corpus and the shrink limit needs calibration first.",
-      "fixed": false,
+      "note": "is this a line break we are adding, or just word wrapping?  Splitting in the middle of a phone number is unfortunate, but it migjt just be a result of  word with difference.\n\nTRIAGE (2026-09-18, not fixed): plain word wrapping, and not a width problem: the column is 322.1pt in both and the line above measures within 0.02%. Word keeps \"2251,\" on the line by COMPRESSING the 10 breakable spaces to 2.00pt (natural 2.75pt at 11pt Times New Roman, so ~73%); the nbsp inside \"59 740\" stays natural in both. We only ever expand justified lines (layout.rs: the overflow test has no shrink allowance and extra_per_gap is clamped at 0). No wpJustification compat flag is set, so this is Word's ordinary justification. Implementing it touches every justified paragraph in the corpus and the shrink limit needs calibration first.\n\nFIXED (2026-10-05, verified): \"2251,\" now stays on the line as in Word; the compat-15 justified squeeze (a66bb28b: spaces shrink to >=75%) covers it.",
+      "fixed": true,
       "cleared": false
     },
     {
@@ -626,7 +626,7 @@
       "y_pt": 245.04272,
       "note": "shaded box/bar should extend further right.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 243,
@@ -659,7 +659,7 @@
       "y_pt": 749.3187,
       "note": "This line should proably fit on one line, not two? Font issue? Line break logic? Kerning? Figure out why.\n\nTRIAGE (2026-10-02): no longer reproduces at 48a4eba0 — the paragraph is one line (42.55→552.8pt) in both renders.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 246,
@@ -681,7 +681,7 @@
       "y_pt": 796.3466,
       "note": "Dark thick lines is placed wrong relative to the music notes here. See reference.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 248,
@@ -714,7 +714,7 @@
       "y_pt": 64.5119,
       "note": "Some double rendering going on here on the logo/mark on the bottom\n\nTRIAGE (2026-10-02): no longer reproduces at 48a4eba0 — the page-1 footer mark renders once, identical to the reference.",
       "fixed": true,
-      "cleared": false
+      "cleared": true
     },
     {
       "id": 251,
@@ -800,8 +800,74 @@
       "source": "Generated",
       "x_pt": 441.63513,
       "y_pt": 549.62573,
-      "note": "missing checkboxes",
+      "note": "missing checkboxes\n\nFIXED (2026-10-05, branch annot/french-logo dbabec2f): legacy FORMCHECKBOX fields are drawn: a square sized from w:size and the run font's line height (Word probes); all 14 boxes within 0.2pt of the reference.",
+      "fixed": true,
+      "cleared": false
+    },
+    {
+      "id": 259,
+      "case": "scraped/door_air_cooling_unit_spec",
+      "page": 0,
+      "source": "Generated",
+      "x_pt": 487.20084,
+      "y_pt": 649.15076,
+      "note": "Missing logo in comment column\n\nTRIAGE (2026-10-05, not fixed): these are tracked-change balloons, not comments. Word shows each w:del as a \"Deleted: <text>\" balloon (the logo, <object>, and the footer's 14 / 2017 / DRAFT r / 1), with change bars and insertion markup. Needs a revision-markup feature: w:del text as anchors (headers/footers too), balloons alongside the comments, change bars. door_air is the only fixture whose reference shows markup.",
       "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 260,
+      "case": "scraped/door_air_cooling_unit_spec",
+      "page": 0,
+      "source": "Generated",
+      "x_pt": 493.2558,
+      "y_pt": 144.35486,
+      "note": "Missing comments that point to footnote?\n\nTRIAGE (2026-10-05, not fixed): these are tracked-change balloons, not comments. Word shows each w:del as a \"Deleted: <text>\" balloon (the logo, <object>, and the footer's 14 / 2017 / DRAFT r / 1), with change bars and insertion markup. Needs a revision-markup feature: w:del text as anchors (headers/footers too), balloons alongside the comments, change bars. door_air is the only fixture whose reference shows markup.",
+      "fixed": false,
+      "cleared": false
+    },
+    {
+      "id": 261,
+      "case": "scraped/door_air_cooling_unit_spec",
+      "page": 6,
+      "source": "Generated",
+      "x_pt": 407.2783,
+      "y_pt": 514.91284,
+      "note": "Margin between gray comment box and page content is a little bit too small.\n\nFIXED (2026-10-05, branch annot/french-logo 66f1025d): the pane and balloons follow the page zoom (pane 410.9-603.0 here, Word 411.0-603.1).",
+      "fixed": true,
+      "cleared": false
+    },
+    {
+      "id": 262,
+      "case": "scraped/english_town_council_report",
+      "page": 1,
+      "source": "Generated",
+      "x_pt": 71.87059,
+      "y_pt": 680.44305,
+      "note": "Spurious white lines at the left and right inside the blue \"Section N\" - bars\n\nFIXED (2026-10-05, branch annot/french-logo d46ae4d3): paragraph shading reaches the side borders' inner edges (the 1.47/1.73pt border shift had left a white seam).",
+      "fixed": true,
+      "cleared": false
+    },
+    {
+      "id": 263,
+      "case": "scraped/erasmus_plus_staff_mobility_agreement",
+      "page": 0,
+      "source": "Generated",
+      "x_pt": 325.13672,
+      "y_pt": 392.99667,
+      "note": "(if applicable) should come directly below Faculty/Department, not atth bottom of the cell\n\nFIXED (2026-10-05, branch annot/french-logo 7addc6f8): table-cell paragraphs parse and apply contextualSpacing; Normal's 12pt after was kept between same-style cell paragraphs.",
+      "fixed": true,
+      "cleared": false
+    },
+    {
+      "id": 264,
+      "case": "scraped/french_sexual_health_youth_strategy",
+      "page": 1,
+      "source": "Generated",
+      "x_pt": 104.0836,
+      "y_pt": 86.37262,
+      "note": "Image is suddenly wrong place.\n\nFIXED (2026-10-05, branch annot/french-logo 8ff40fad): broken by fa4db3fa, whose shorter header let the look-ahead fire on page 1; the keep-with-next chain then moved the logo paragraph to page 2 with its page-1 anchor. The one-shot float anchor now resets on page flush and column advance.",
+      "fixed": true,
       "cleared": false
     }
   ]
