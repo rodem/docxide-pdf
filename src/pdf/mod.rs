@@ -2586,7 +2586,12 @@ fn render_paragraph_block(
     // (sao_paulo_procurement_contract p2) and an empty 1.5-spaced Arial one
     // (czech_wastewater_discharge_permit p1).
     let mark_only = text_empty && !para.paragraph_mark_vanish && para.content_height <= 0.0;
+    // Not into a footnote area, though, as in the per-line check below
+    // (zimbabwe_gold p3: Word moves a double-spaced paragraph whose last line
+    // would end 0.6pt into it; probes: no tolerance).
     let last_line_lead = if (!lines.is_empty() || mark_only)
+        && state.pb.footnote_ids.is_empty()
+        && para_fn_extra == 0.0
         && para.image.is_none()
         && para.inline_chart.is_none()
         && para.smartart.is_empty()
@@ -2602,6 +2607,9 @@ fn render_paragraph_block(
 
     let keep_next_extra = if para.keep_next && !at_page_top {
         let mut extra = 0.0;
+        // Footnotes the kept paragraphs bring come along too
+        // (uk_commercial_lease's "Break Date" moves with its definition's note 8).
+        let mut chain_notes: Vec<u32> = Vec::new();
         let mut prev_sa = effective_space_after;
         let mut i = block_idx + 1;
         loop {
@@ -2625,6 +2633,7 @@ fn render_paragraph_block(
                 }
                 break;
             }
+            chain_notes.extend(next.runs.iter().filter_map(|r| r.footnote_id));
             let (nfs, nlhr, _) = tallest_run_metrics(&next.runs, ctx.fonts);
             let next_inter = f32::max(prev_sa, next.space_before);
             let next_first_line_h = nlhr.map(|ratio| nfs * ratio).unwrap_or(nfs * 1.2);
@@ -2652,7 +2661,19 @@ fn render_paragraph_block(
             prev_sa = next.space_after;
             i += 1;
         }
-        extra
+        let opens_note_area = state.pb.footnote_ids.is_empty() && para_fn_extra == 0.0;
+        let (_, notes_h) = per_line_footnote_extra(
+            &[],
+            &chain_notes,
+            &state.pb.footnote_ids_set,
+            if opens_note_area {
+                ctx.note_separator.height
+            } else {
+                0.0
+            },
+            |id| footnote_height(id, &doc.footnotes, ctx, text_width),
+        );
+        extra + notes_h
     } else {
         0.0
     };
