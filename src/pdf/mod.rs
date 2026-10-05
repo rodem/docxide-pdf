@@ -44,8 +44,8 @@ use header_footer::{
 };
 pub(super) use helpers::resolve_line_h;
 use helpers::{
-    align_offset, auto_ascent_scale, border_band, collect_paras, draw_horizontal_rule, drops_contextual_spacing,
-    joins_border_group, para_runs_with_textboxes,
+    align_offset, auto_ascent_scale, border_band, collect_paras, draw_horizontal_rule,
+    drops_contextual_spacing, joins_border_group, para_runs_with_textboxes,
 };
 use images::{EffectXObjs, EmbeddedImages, embed_all_images};
 use layout::{
@@ -1549,7 +1549,16 @@ fn compute_bookmark_positions(
                         bookmark_positions.insert(bm.clone(), (page_idx, slot_top));
                     }
                     if para.is_section_break && is_text_empty(&para.runs) {
-                        prev_space_after = para.space_after;
+                        let next_continuous = doc.sections.get(si + 1).is_some_and(|next| {
+                            next.properties.break_type == SectionBreakType::Continuous
+                        });
+                        let drop;
+                        (drop, prev_space_after) = section_break_spacing(
+                            prev_space_after,
+                            para.space_after,
+                            next_continuous,
+                        );
+                        slot_top -= drop;
                         continue;
                     }
                     let (mut font_size, mut tallest_lhr, _) =
@@ -1709,18 +1718,13 @@ fn render_paragraph_block(
     });
     let adjacent_para = |idx: usize| block_para(section_blocks, idx);
 
-    // Skip empty section-break paragraphs — Word gives these zero height —
-    // unless a continuous break changes the column layout: then the mark keeps
-    // its line (covid_insomnia's break into two columns: 11.9pt; romanian's
-    // and strategi's single-column continuous breaks stay at zero).
-    // A break paragraph that is the only block of a section opening a new page
-    // keeps its line too: transition_to_work's contents start a line and 8pt
-    // below the top of the page that empty section opens.
-    let keeps_line = (block_idx == 0 && sp.break_type != SectionBreakType::Continuous)
-        || doc.sections.get(sect_idx + 1).is_some_and(|next| {
-            next.properties.break_type == SectionBreakType::Continuous
-                && column_count(&next.properties) != column_count(sp)
-        });
+    // Skip empty section-break paragraphs — Word gives these zero height, also
+    // before a continuous section that changes the columns (Word probes in
+    // compat 14 and 15; covid_insomnia's two columns start 12pt higher) —
+    // unless the paragraph is the only block of a section opening a new page:
+    // transition_to_work's contents start a line and 8pt below the top of the
+    // page that empty section opens.
+    let keeps_line = block_idx == 0 && sp.break_type != SectionBreakType::Continuous;
     if para.is_section_break
         && !keeps_line
         && is_text_empty(&para.runs)
@@ -1733,7 +1737,14 @@ fn render_paragraph_block(
         // Its space after still meets the next section's first space before:
         // case25's sections (break paragraph after=10pt) start their 24pt
         // heading 14pt down, victorian's (after=0) its 26pt heading 26pt down.
-        state.prev_space_after = para.space_after;
+        let next_continuous = doc
+            .sections
+            .get(sect_idx + 1)
+            .is_some_and(|next| next.properties.break_type == SectionBreakType::Continuous);
+        let drop;
+        (drop, state.prev_space_after) =
+            section_break_spacing(state.prev_space_after, para.space_after, next_continuous);
+        state.pb.slot_top -= drop;
         state.global_block_idx += 1;
         return true;
     }
@@ -4296,12 +4307,23 @@ fn page_numbers(doc: &Document, page_section_indices: &[(usize, bool, usize)]) -
     numbers
 }
 
-fn column_count(sp: &SectionProperties) -> usize {
-    sp.columns.as_ref().map_or(1, |c| c.columns.len().max(1))
-}
-
 /// The docGrid pitch table-cell lines snap to in a section: only under
 /// `w:compat/w:adjustLineHeightInTable`, else 0.
+/// How an empty, zero-height section-break paragraph passes spacing on: the
+/// drop below the cursor and the space after left pending. Before a
+/// continuous section the paragraph before it keeps its whole space after,
+/// and the break's own space after only absorbs that much of the next
+/// paragraph's space before (Word probes: 12pt after, 8pt on the break, 10pt
+/// before give 14pt; covid_insomnia's two columns start 12pt below its
+/// keywords). Before a new page the break's own space after counts.
+fn section_break_spacing(prev_after: f32, break_after: f32, next_continuous: bool) -> (f32, f32) {
+    if next_continuous {
+        (prev_after - break_after, break_after)
+    } else {
+        (0.0, break_after)
+    }
+}
+
 fn cell_grid_pitch(doc: &Document, sp: &crate::model::SectionProperties) -> f32 {
     sp.line_grid_pitch()
         .filter(|_| doc.adjust_line_height_in_table)
