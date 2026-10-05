@@ -749,6 +749,26 @@ probes (`tools/word_export.py`), not fitted to the fixtures.
    on the first note, its space after and line-spacing extra below the text;
    the rule is that line's strikethrough (OS/2 strikeout on the 0.25pt grid,
    144pt). 23 fixtures up (case76 +5.8 J), none down.
+22. **Footnote paragraphs** (`591cb5c4`): note paragraphs take their tab
+   stops (`docx::resolve_tab_stops`, shared with body and cell paragraphs),
+   lay out through `layout::build_lines`, size each line by its own runs (a
+   larger mark raises only its line) and are measured with the mark filled
+   in. uk_commercial's notes now sit within 0.4pt of Word's.
+23. **Fit checks above footnotes** (`0280f618`; Word probes: a double-spaced paragraph
+   with widow control off, the top margin stepping its 22nd line's lead from
+   1.5pt short of the separator to 3pt into it, TNR and Calibri separators):
+   a line's lead may hang past the margin but not into a footnote area
+   (kept at +0.12pt, moved at +0.17/+0.62pt), now also in the
+   whole-paragraph check; and a keep-with-next chain counts the footnotes
+   its kept paragraphs bring. zimbabwe_gold J 29.5 → 59.5, environmental_law
+   44.0 → 52.6 (page count matching), uk_commercial (with item 22) 39.1 →
+   37.9. Open:
+   - zimbabwe_gold p5 keeps a line whose lead reaches 1.12pt into the area
+     (unexplained);
+   - uk_commercial p17/18: Word continues a long note onto the next page
+     (continuation separator); we never split notes;
+   - notes still use the hand-built "simple" parser rather than
+     `build_paragraph` (borders, shading, contextual spacing missing).
 
 Tried and reverted — **NBSP stretch before compat 15**: a probe (Arial/TNR
 justified lines, compat 12/14/15, print and online presets) shows Word
