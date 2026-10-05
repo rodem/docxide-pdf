@@ -722,6 +722,14 @@ Open:
   unify them with a suite run (other fixtures may move).
 - Text-anchored and wrap-around body frames (croatian_grant's two) still flow
   inline.
+- Footnote separator: `render_page_footnotes` / `track_page_footnote` use a
+  fixed 12pt block (rule 3pt down, text 9pt below the rule) where Word lays
+  out footnotes.xml's separator paragraph (one line of its font, e.g. 13.43pt
+  for Calibri 11) and draws the rule inside it (zimbabwe_gold: rule 8.1pt
+  below the block top, 0.75pt thick; we draw 0.5pt). zimbabwe then fits one
+  more two-line paragraph + footnote on page 3 than Word. Fixture survey
+  (rule → first marker baseline 10.75–14.25pt; thickness 0.5/0.75/1.0)
+  needs separating by footnote font before a rule is derived.
 - `content_h` in `render_paragraph_block` includes the room reserved for a
   topAndBottom float below the lines; shading now uses the lines only
   (indonesian's "Format 12" box), but the paragraph's borders still use the
