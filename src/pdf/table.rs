@@ -1577,10 +1577,30 @@ fn render_header_rows(
 /// 72.0–74.25 from a 72pt margin and text starts 5.4 + 1.125 in.
 fn word2013_border_shift(table: &Table) -> f32 {
     table
-        .rows
-        .first()
-        .and_then(|r| r.cells.first())
+        .first_cell()
         .map_or(0.0, |c| c.borders.left.band() / 2.0)
+}
+
+/// A non-floating table's left edge in the area it is aligned in.
+fn aligned_table_left(
+    table: &Table,
+    (area_left, area_width): (f32, f32),
+    total_width: f32,
+    compat_mode: u32,
+) -> f32 {
+    use crate::model::TableAlignment;
+    match table.alignment {
+        TableAlignment::Center => area_left + (area_width - total_width) / 2.0,
+        TableAlignment::Right => area_left + area_width - total_width,
+        // Before Word 2013 layout, tblInd positions the first cell's text, so
+        // the edge sits one cell margin further out, even for an explicit
+        // tblInd of 0 (chinese_costume). Word 2013+ (compat 15) never outdents:
+        // the border sits at the margin and the text inside it.
+        TableAlignment::Left if compat_mode >= 15 => {
+            area_left + table.table_indent + word2013_border_shift(table)
+        }
+        TableAlignment::Left => area_left + table.table_indent - table.first_cell_left_margin(),
+    }
 }
 
 /// `override_pos`: positioning info for floating tables.
@@ -1614,7 +1634,6 @@ pub(super) fn render_table(
     );
     let row_layouts = compute_row_layouts(table, &col_widths, ctx, None);
     let merge_spans = compute_merge_spans(table, &row_layouts);
-    let cm = &table.cell_margins;
 
     let is_floating = override_pos.is_some();
     // A text-anchored floating table sitting at or below its anchor paginates like
@@ -1633,28 +1652,12 @@ pub(super) fn render_table(
         pb.slot_top = fp.y;
         (fp.x, saved, (fp.top_from_text, fp.bottom_from_text))
     } else {
-        use crate::model::TableAlignment;
-        let (area_left, area_width) = column_bounds.unwrap_or((
+        let area = column_bounds.unwrap_or((
             sp.margin_left,
             sp.page_width - sp.margin_left - sp.margin_right,
         ));
-        let table_total_w: f32 = col_widths.iter().sum();
-        let left = match table.alignment {
-            TableAlignment::Center => area_left + (area_width - table_total_w) / 2.0,
-            TableAlignment::Right => area_left + area_width - table_total_w,
-            // Before Word 2013 layout, tblInd positions the first cell's text, so
-            // the edge sits one cell margin further out, even for an explicit
-            // tblInd of 0 (chinese_costume). Word 2013+ (compat 15) never outdents:
-            // the border sits at the margin and the text inside it.
-            TableAlignment::Left => {
-                let ind = table.table_indent;
-                if ctx.compat_mode >= 15 {
-                    area_left + ind + word2013_border_shift(table)
-                } else {
-                    area_left + ind - cm.left
-                }
-            }
-        };
+        let total_w: f32 = col_widths.iter().sum();
+        let left = aligned_table_left(table, area, total_w, ctx.compat_mode);
         (left, None, (0.0, 0.0))
     };
 
@@ -2163,19 +2166,12 @@ pub(super) fn render_header_footer_table(
         float_y = fp.y;
         (fp.x, &mut float_y)
     } else {
-        use crate::model::TableAlignment;
-        let cm = &table.cell_margins;
-        let text_width = sp.text_width();
-        let table_total_w: f32 = col_widths.iter().sum();
-        let left = match table.alignment {
-            TableAlignment::Center => sp.margin_left + (text_width - table_total_w) / 2.0,
-            TableAlignment::Right => sp.margin_left + text_width - table_total_w,
-            TableAlignment::Left if ctx.compat_mode >= 15 => {
-                sp.margin_left + table.table_indent + word2013_border_shift(table)
-            }
-            TableAlignment::Left => sp.margin_left + table.table_indent - cm.left,
-        };
-        (left, cursor_y)
+        let total_w: f32 = col_widths.iter().sum();
+        let area = (sp.margin_left, sp.text_width());
+        (
+            aligned_table_left(table, area, total_w, ctx.compat_mode),
+            cursor_y,
+        )
     };
 
     let merge_spans = compute_merge_spans(table, &row_layouts);

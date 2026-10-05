@@ -150,6 +150,22 @@ pub struct Table {
     pub header_first_col: bool,
 }
 
+impl Table {
+    pub fn first_cell(&self) -> Option<&TableCell> {
+        self.rows.first()?.cells.first()
+    }
+
+    /// The left margin of the first row's first cell, its own or the table's:
+    /// before compat 15 it puts that cell's text at the indent (Word's import
+    /// of croatian_regulations' HTML table: 4.5pt cell margins over a 0.75pt
+    /// table default, text at the margin).
+    pub fn first_cell_left_margin(&self) -> f32 {
+        self.first_cell()
+            .and_then(|c| c.cell_margins)
+            .map_or(self.cell_margins.left, |m| m.left)
+    }
+}
+
 pub struct TableRow {
     pub cells: Vec<TableCell>,
     /// Grid columns left empty before the first cell (`w:gridBefore`).

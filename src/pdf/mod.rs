@@ -79,10 +79,7 @@ fn sorted_by_z<'a>(
 /// paragraph before the table against: bulgarian_road_safety's empty Normal
 /// paragraph keeps no space after above a table whose first cell is Normal.
 fn first_cell_paragraph(t: &crate::model::Table) -> Option<&Paragraph> {
-    t.rows
-        .first()?
-        .cells
-        .first()?
+    t.first_cell()?
         .content
         .iter()
         .find_map(|b| match b {
@@ -898,7 +895,7 @@ impl FloatingTablePos {
         let x = if ctx.compat_mode < 15
             && matches!(pos.h_position, crate::model::HorizontalPosition::Offset(_))
         {
-            x - table.cell_margins.left
+            x - table.first_cell_left_margin()
         } else {
             x
         };
