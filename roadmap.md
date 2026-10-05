@@ -700,6 +700,19 @@ probes (`tools/word_export.py`), not fitted to the fixtures.
    in the body. carbon_farming's footer was 1.15pt short and the body fitted
    an extra contents line per page: J 29.7 → 57.2 with 110 pages matching;
    western_australia 60.8 → 72.0, clean_energy 40.3 → 45.7.
+16. **Right tab stops in the right indent** (`dbe127af`): words after a
+   right/centre/decimal stop may run to that stop (the line's "reach"), so
+   western_australia's index entries stop splitting: 58 → 57 pages matching.
+   A 0.05pt wrap tolerance was tried and rejected (clean_energy wraps "of"
+   exactly where Word does without it).
+17. **Section-break paragraphs** (`4cc2bb5d`, `7ddff4b2`), 16 Word probes:
+   an empty sectPr paragraph has no height, also before a continuous column
+   change (the old covid 11.9pt exception was compensating a lost space
+   after); a lone one opening a new-page section keeps its line; before a
+   continuous section the paragraph before keeps its space after and the
+   break's own after only absorbs the next space before
+   (`section_break_spacing`, shared with the bookmark estimator).
+   transition_to_work J 42.3 → 65.1 with 153 pages matching, covid +3.7.
 
 Open:
 - Bands are checked at block start (a paragraph running into one part way
