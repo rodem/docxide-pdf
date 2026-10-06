@@ -2528,7 +2528,10 @@ fn render_paragraph_block(
         // 11pt line follows a 1014pt-wide OLE logo strip, annotation #186).
         // The paragraph's own indents do not count: learning_cultures keeps
         // the mark beside a column-wide picture in a right-indented paragraph.
-        if img.layout_size().0 > col_w {
+        // Compared in whole twips: a picture sized to the column (8616.99
+        // twips from its EMU extent against an 8617 twip column) fits.
+        let twips = |pt: f32| (pt * 20.0).round();
+        if twips(img.layout_size().0) > twips(col_w) {
             picture_h + line_h
         } else {
             picture_h
