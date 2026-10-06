@@ -1248,7 +1248,13 @@ pub(super) fn parse_runs<R: Read + Seek>(
                 }
                 "br" if field_stack.is_empty() => match child.attribute((WML_NS, "type")) {
                     Some("page") => {
-                        if runs.is_empty() && pending_text.is_empty() {
+                        // Floats anchored before the break belong to the page it
+                        // ends (flyer templates put every text box in front of it).
+                        let floats_before = !floating_images.is_empty()
+                            || !textboxes.is_empty()
+                            || !connectors.is_empty()
+                            || !smartart.is_empty();
+                        if runs.is_empty() && pending_text.is_empty() && !floats_before {
                             page_break_before_content = true;
                         } else {
                             flush_pending(&mut pending_text, &mut runs);

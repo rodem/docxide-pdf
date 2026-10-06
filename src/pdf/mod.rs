@@ -1918,7 +1918,11 @@ fn render_paragraph_block(
             state.current_col = 0;
         }
         state.prev_space_after = 0.0;
-        if is_text_empty(&para.runs) {
+        let has_floats = !para.floating_images.is_empty()
+            || !para.textboxes.is_empty()
+            || !para.connectors.is_empty()
+            || !para.smartart.is_empty();
+        if is_text_empty(&para.runs) && !has_floats {
             state.global_block_idx += 1;
             return true;
         }
