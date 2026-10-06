@@ -764,7 +764,48 @@ pub(super) fn parse_object_inline_image<R: Read + Seek>(
         .find(|n| n.has_tag_name((VML_NS, "imagedata")))?;
     let embed_id = imagedata.attribute((REL_NS, "id"))?;
     let (w, h) = object_dimensions(obj)?;
-    read_image_from_zip(embed_id, ctx.rels, ctx.zip, w, h).map(|img| with_object_alt(obj, img))
+    let mut img = read_image_from_zip(embed_id, ctx.rels, ctx.zip, w, h)?;
+    (img.src_rect, img.lum) = vml_imagedata_props(imagedata);
+    Some(with_object_alt(obj, img))
+}
+
+/// A legacy VML picture: a `w:pict` whose shape shows only an image (no text
+/// box). Laid out like an OLE object's preview picture.
+pub(super) fn is_vml_picture(pict: roxmltree::Node) -> bool {
+    pict.children().any(|n| {
+        n.tag_name().namespace() == Some(VML_NS)
+            && matches!(n.tag_name().name(), "shape" | "rect")
+            && n.children().any(|c| c.has_tag_name((VML_NS, "imagedata")))
+            && !n.children().any(|c| c.has_tag_name((VML_NS, "textbox")))
+    })
+}
+
+/// VML fractions are plain decimals or 16.16 fixed point with an `f` suffix
+/// ("19661f" = 0.3).
+fn vml_fraction(v: &str) -> Option<f32> {
+    match v.strip_suffix('f') {
+        Some(fixed) => fixed.parse::<f32>().ok().map(|f| f / 65536.0),
+        None => v.parse().ok(),
+    }
+}
+
+/// `v:imagedata` crop and colour adjustments in DrawingML terms. Word writes its
+/// Washout preset (`a:lum bright=70% contrast=-70%`) as gain 0.3 / blacklevel
+/// 0.35, so contrast = gain − 1 and brightness = 2 × blacklevel.
+fn vml_imagedata_props(imagedata: roxmltree::Node) -> (Option<[f32; 4]>, Option<(f32, f32)>) {
+    let frac = |name| imagedata.attribute(name).and_then(vml_fraction);
+    let crop = [
+        frac("cropleft").unwrap_or(0.0),
+        frac("croptop").unwrap_or(0.0),
+        frac("cropright").unwrap_or(0.0),
+        frac("cropbottom").unwrap_or(0.0),
+    ];
+    let src_rect =
+        (crop != [0.0; 4] && crop[0] + crop[2] < 1.0 && crop[1] + crop[3] < 1.0).then_some(crop);
+    let contrast = frac("gain").map_or(0.0, |g| g - 1.0);
+    let bright = frac("blacklevel").map_or(0.0, |b| 2.0 * b);
+    let lum = (bright != 0.0 || contrast != 0.0).then_some((bright, contrast));
+    (src_rect, lum)
 }
 
 /// Word tags an OLE object as a Sect in its paragraph, with the VML shape's alt
@@ -802,6 +843,9 @@ pub(super) fn parse_object_floating_image<R: Read + Seek>(
     }
     let mut margin_left = 0.0_f32;
     let mut margin_top = 0.0_f32;
+    let mut h_align = None;
+    let mut v_align = None;
+    let mut z_index: i64 = 0;
     let mut h_relative = HRelativeFrom::Column;
     let mut v_relative = VRelativeFrom::Paragraph;
     for part in style.split(';') {
@@ -810,6 +854,24 @@ pub(super) fn parse_object_floating_image<R: Read + Seek>(
             match key.trim() {
                 "margin-left" => margin_left = parse_pt(val).unwrap_or(0.0),
                 "margin-top" => margin_top = parse_pt(val).unwrap_or(0.0),
+                "z-index" => z_index = val.parse().unwrap_or(0),
+                // "absolute" (or no value) means the margin offsets place it.
+                "mso-position-horizontal" => {
+                    h_align = match val {
+                        "left" | "inside" => Some(HorizontalPosition::AlignLeft),
+                        "center" => Some(HorizontalPosition::AlignCenter),
+                        "right" | "outside" => Some(HorizontalPosition::AlignRight),
+                        _ => None,
+                    };
+                }
+                "mso-position-vertical" => {
+                    v_align = match val {
+                        "top" | "inside" => Some(VerticalPosition::AlignTop),
+                        "center" => Some(VerticalPosition::AlignCenter),
+                        "bottom" | "outside" => Some(VerticalPosition::AlignBottom),
+                        _ => None,
+                    };
+                }
                 "mso-position-horizontal-relative" => {
                     h_relative = match val {
                         "page" => HRelativeFrom::Page,
@@ -821,6 +883,7 @@ pub(super) fn parse_object_floating_image<R: Read + Seek>(
                     v_relative = match val {
                         "page" => VRelativeFrom::Page,
                         "margin" => VRelativeFrom::Margin,
+                        "top-margin-area" => VRelativeFrom::TopMargin,
                         _ => VRelativeFrom::Paragraph,
                     };
                 }
@@ -846,19 +909,21 @@ pub(super) fn parse_object_floating_image<R: Read + Seek>(
         .unwrap_or(WrapType::None);
     Some(FloatingImage {
         image,
-        h_position: HorizontalPosition::Offset(margin_left),
+        h_position: h_align.unwrap_or(HorizontalPosition::Offset(margin_left)),
         h_relative_from: h_relative,
-        v_position: VerticalPosition::Offset(margin_top),
+        v_position: v_align.unwrap_or(VerticalPosition::Offset(margin_top)),
         v_relative_from: v_relative,
         wrap_type,
         wrap_text: WrapText::BothSides,
         wrap_polygon: None,
-        behind_doc: false,
+        // VML stacks by z-index; a negative one is behind the text.
+        behind_doc: z_index < 0,
         dist_top: 0.0,
         dist_bottom: 0.0,
         dist_left: 0.0,
         dist_right: 0.0,
-        z_index: 0,
+        // Word writes the DrawingML relativeHeight here, negated when behind.
+        z_index: z_index.unsigned_abs().min(u32::MAX as u64) as u32,
         anchor_seq: 0,
     })
 }
@@ -932,6 +997,19 @@ fn object_dimensions(obj: roxmltree::Node) -> Option<(f32, f32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vml_washout_maps_to_word_lum_preset() {
+        let xml = format!(
+            r#"<v:imagedata xmlns:v="{VML_NS}" gain="19661f" blacklevel="22938f" cropleft="0.25" cropbottom="6554f"/>"#
+        );
+        let doc = roxmltree::Document::parse(&xml).unwrap();
+        let (src_rect, lum) = vml_imagedata_props(doc.root_element());
+        let (bright, contrast) = lum.unwrap();
+        assert!((bright - 0.70).abs() < 0.001 && (contrast + 0.70).abs() < 0.001);
+        let r = src_rect.unwrap();
+        assert!((r[0] - 0.25).abs() < 1e-6 && (r[3] - 0.1).abs() < 1e-4 && r[1] == 0.0);
+    }
 
     fn src_rect_of(elem: &str) -> Option<[f32; 4]> {
         let xml = format!(

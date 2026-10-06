@@ -8,7 +8,8 @@ use crate::model::{
 };
 
 use super::images::{
-    RunDrawingResult, parse_object_floating_image, parse_object_inline_image, parse_run_drawing,
+    RunDrawingResult, is_vml_picture, parse_object_floating_image, parse_object_inline_image,
+    parse_run_drawing,
 };
 use super::is_east_asian_char;
 use super::styles::{
@@ -1304,6 +1305,16 @@ pub(super) fn parse_runs<R: Read + Seek>(
                 "pict" if field_stack.is_empty() => {
                     if let Some(hr) = parse_vml_horizontal_rule(child) {
                         horizontal_rule = Some(hr);
+                    } else if is_vml_picture(child) {
+                        flush_pending(&mut pending_text, &mut runs);
+                        if let Some(fi) = parse_object_floating_image(child, ctx) {
+                            push_floating(&mut floating_images, &textboxes, fi);
+                        } else if let Some(img) = parse_object_inline_image(child, ctx) {
+                            runs.push(Run {
+                                inline_image: Some(img),
+                                ..fmt.minimal_run()
+                            });
+                        }
                     } else if let Some(tb) = parse_textbox_from_vml(child, ctx) {
                         push_textbox(&floating_images, &mut textboxes, tb);
                     }
