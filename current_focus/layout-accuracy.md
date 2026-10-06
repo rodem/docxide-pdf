@@ -746,23 +746,74 @@ Measurement gotchas found on the way:
 - Font names must be compared by visible glyphs per family: Word embeds
   faces that draw only spaces or bullets.
 
-**Findings so far:**
-- **Legacy VML pictures are never drawn.** `w:pict/v:shape/v:imagedata`
-  (no text box) appears in 55 clean documents (278 shapes: 217 body, 59
-  header, 2 footer; 221 inline, 57 absolutely positioned, mostly centred on
-  the margin behind the text = header watermarks). It is in ~40 of the 135
-  documents that lose pictures and in 2 of the 602 that keep them. Only
-  `w:object` previews took the VML image path; `w:pict` went to the text box
-  parser only.
-- **Missing-font substitution by PANOSE (hypothesis).** A document in
-  "TimesLT" (not installed; fontTable panose1 `02020603050405020304` =
-  Times New Roman's, family roman, charset BA) is drawn in Times New Roman
-  by Word, in Cambria by us (rule from `font-family-auto-substitution`:
-  roman without a usable altName → Cambria). Needs a Word probe before
-  changing the rule.
-- Most-missed families where >20% of a document's glyphs are affected:
-  Verdana, Helvetica, Hiragino Mincho ProN, MS Mincho, Roboto, Ubuntu,
-  SimSun, Poppins (under diagnosis).
-- Missing text: 7 of the 19 documents lose DrawingML text box content
-  (`wps:txbx` inside `mc:AlternateContent`); one document renders 1 page
-  where Word has 3 (under diagnosis).
+**Rules implemented** (one commit each; corpus = before → after on the
+clean documents the rule touches; fixtures unchanged unless noted):
+
+| Commit | Rule | Evidence |
+|---|---|---|
+| 9daaa4d0 | Legacy VML pictures (`w:pict` shape with `v:imagedata`, no text box) render: inline, or floating with VML alignment and z-index (negative = behind text); `v:imagedata` crop and gain/blacklevel map onto DrawingML crop and lum | 86 docs 45.8 → 54.3 |
+| 6c3b32b5 | A page break after anchored floats is a break after them; a text-empty page-break paragraph with floats still places them | 13 docs 42.7 → 55.8 (a flyer 0 → 85) |
+| 901fa852 | Strict OOXML: `purl.oclc.org/ooxml/<area>/` namespaces and relationship types read as Transitional | 5 docs (all tracked changes) now convert, 0 → ~11 |
+| 41cd9024 | A CSS font list in `w:rFonts` ("Verdana, Geneva, sans-serif") uses the name before the first comma, quotes kept (`"Calibri", Arial` stays missing → Cambria, as in Word) | 105 docs 68.9 → 75.5, none down |
+| b90e7b57 | docDefaults `spacing@before`, `beforeAutospacing`, `afterAutospacing` apply (were never read) | 12 docs 34.8 → 65.7 |
+| e33d9bf1 | A styles part without docDefaults, or no styles part, takes Normal.dotm's (12pt theme minor, 8pt after, 278) | 21 docs 13.5 → 26.7; polish_building 47.5 → 55.6 |
+| 1b70e5cc | A picture is wider than the column only in whole twips (EMU → pt rounding made a column-wide picture overflow and push the mark to its own line) | 370 inline-picture docs 57.06 → 57.17: 4 up (+28, +13), none down |
+
+**Findings:**
+- **Legacy VML pictures were never drawn** (fixed above): 55 clean
+  documents, 278 shapes (217 body, 59 header, 2 footer; 221 inline, 57
+  positioned, mostly margin-centred behind the text = watermarks).
+- **Missing-font substitution:** the Cambria/Calibri rule
+  (`font-family-auto-substitution`) holds for ~95% of 103 truly missing
+  fonts. PANOSE is *not* Word's rule ("Times New Roman CYR", with Times New
+  Roman's PANOSE, still becomes Cambria); a few names map specially
+  (TimesLT → Times New Roman, Myriad Pro → Segoe UI). Word probes are
+  prepared (14 documents varying name, PANOSE, charset, altName), not run.
+- **Most "missing fonts" are environment, not rules:** the references come
+  from a Mac whose Office cloud-font set grew while the corpus was made
+  (Segoe UI absent on one day, present three days later). ~43 documents
+  use cloud fonts we don't vendor (Poppins, Ubuntu, Segoe UI Light/Semibold,
+  Roboto Light/Medium, Barlow, Kalinga, Leelawadee UI, Open Sans Light,
+  Noto Sans, …). Local Mac Word draws Apple's Helvetica, Helvetica Neue and
+  Futura where online references don't (a target decision, ~45 documents).
+- **Fonts in `~/Library/Fonts` outrank the reference's choices** (DejaVu
+  Sans Mono beat the altName Verdana): score corpora without the user font
+  folder.
+- **Metafiles:** EMF text (`EMR_EXTTEXTOUTW`), lines and rectangles are not
+  drawn, and vector WMFs come out as a solid box (a brush-sized DIB
+  stretched over the frame). 54 documents carry text in metafiles. Using a
+  WMF's embedded EMF and skipping pattern blits is correct but scores lower
+  until EMF text and lines render (the black box overlaps Word's ink), so it
+  waits for that work.
+- **Tracked/commented states** score 29.2 (3,410 tracked), 15.2 (420
+  tracked + comments), 29.6 (117 clean + comments): redline markup is
+  missing, and the comment pane is far from Word's on this corpus.
+
+**Open, diagnosed (expected gain order):**
+1. Complex-script runs: `rFonts@cs`, `w:rtl`, `szCs`/`bCs` are never read,
+   so Arabic/Persian/Thaana draw as missing glyphs (12 documents, mean J
+   15); Word uses the cs font (Arial, MV Boli for Thaana). Font only first;
+   shaping and bidi are the larger roadmap item.
+3. Floating full-width tables don't push the next paragraph below them
+   (89 documents have body floating tables).
+4. Tabs past the right margin wrap to a new line in Word.
+5. Header anchors: wrapSquare/topAndBottom push header text, behindDoc
+   doesn't, page-relative positions measure from the page edge. A narrow
+   topAndBottom VML picture in a header did *not* push the header text in
+   one document: probe before changing.
+6. contextualSpacing in headers and footers (4 documents at +18pt).
+7. `framePr yAlign="inline"` frames are ordinary in-flow paragraphs.
+8. hideMark on a cell holding only an empty mark keeps one line.
+9. Tables and content controls inside text boxes are dropped
+   (`parse_txbx_content_paragraphs` reads only `w:p`; 9 documents).
+10. Endnotes never continue onto a new page; a paragraph taller than a
+    page at the page top never splits.
+11. docDefaults without `rFonts` → Times New Roman (not the theme font);
+    the bidi theme slot defaults to "Arab".
+12. Picture-only paragraph under multiple spacing takes no leading from
+    the mark font; inline picture distT/distB are ignored by Word; a
+    trailing `w:br` after an inline picture keeps its line.
+13. ~18 documents drift per line by 1–3.5% (Book Antiqua 17.40 vs 16.80
+    per line, Helvetica, Verdana): line-height metrics for those faces.
+- The corpus references are Word's **print** export (one header case
+  reproduces only with `--preset print`).
