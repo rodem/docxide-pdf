@@ -715,7 +715,25 @@ pub(super) fn read_zip_text<R: Read + std::io::Seek>(
 ) -> Option<String> {
     let mut content = String::new();
     zip.by_name(name).ok()?.read_to_string(&mut content).ok()?;
-    Some(content)
+    Some(strict_to_transitional(content))
+}
+
+/// Strict OOXML (ISO/IEC 29500 Strict) names its namespaces and relationship
+/// types `http://purl.oclc.org/ooxml/<area>/<name>` where Transitional uses
+/// `http://schemas.openxmlformats.org/<area>/2006/<name>`. Rewriting them on
+/// load lets one parser read both; the package namespaces are shared.
+fn strict_to_transitional(xml: String) -> String {
+    if !xml.contains("http://purl.oclc.org/ooxml/") {
+        return xml;
+    }
+    ["wordprocessingml", "drawingml", "officeDocument"]
+        .iter()
+        .fold(xml, |acc, area| {
+            acc.replace(
+                &format!("http://purl.oclc.org/ooxml/{area}/"),
+                &format!("http://schemas.openxmlformats.org/{area}/2006/"),
+            )
+        })
 }
 
 pub(super) fn read_zip_bytes<R: Read + std::io::Seek>(
@@ -862,6 +880,7 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
     zip.by_name("word/document.xml")
         .map_err(|_| Error::InvalidDocx("missing word/document.xml (is this a DOCX file?)".into()))?
         .read_to_string(&mut xml_content)?;
+    let xml_content = strict_to_transitional(xml_content);
 
     let xml = roxmltree::Document::parse(&xml_content)?;
     let root = xml.root_element();
@@ -1074,6 +1093,17 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strict_namespaces_read_as_transitional() {
+        let strict = r#"<w:document xmlns:w="http://purl.oclc.org/ooxml/wordprocessingml/main" xmlns:r="http://purl.oclc.org/ooxml/officeDocument/relationships"><w:body/></w:document>"#;
+        let xml = strict_to_transitional(strict.to_string());
+        let doc = roxmltree::Document::parse(&xml).unwrap();
+        assert!(wml(doc.root_element(), "body").is_some());
+        assert!(
+            xml.contains("http://schemas.openxmlformats.org/officeDocument/2006/relationships")
+        );
+    }
 
     // --- Pure math / conversion ---
 
