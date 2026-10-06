@@ -209,6 +209,7 @@ fn compute_header_height(
     let text_width = sp.text_width();
     let mut height = 0.0f32;
     let mut prev_space_after = 0.0f32;
+    let mut prev_para: Option<&Paragraph> = None;
     let bands = if is_header {
         blocking_frame_bands(hf, sp)
     } else {
@@ -220,7 +221,8 @@ fn compute_header_height(
                 // Frame paragraphs are out-of-flow; skip height contribution
             }
             Block::Paragraph(para) => {
-                height += prev_space_after.max(para.space_before);
+                height += hf_paragraph_gap(prev_para, prev_space_after, para);
+                prev_para = Some(para);
                 let (font_size, tallest_lhr, _) = tallest_run_metrics(&para.runs, ctx.fonts);
                 let effective_ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
                 let line_h = resolve_line_h(effective_ls, font_size, tallest_lhr);
@@ -304,6 +306,7 @@ fn compute_header_height(
                 let content_w = sp.text_width();
                 height += table::compute_hf_table_height(table, ctx, content_w);
                 prev_space_after = 0.0;
+                prev_para = None;
             }
         }
     }
@@ -470,6 +473,7 @@ pub(super) fn render_header_footer(
 
     let mut pi = 0usize;
     let mut prev_space_after = 0.0f32;
+    let mut prev_para: Option<&Paragraph> = None;
     // A header can hold several wrapping floats (e.g. a logo on each side of a
     // centered letterhead) — all of them constrain the text bounds together.
     let mut hdr_fz: Vec<HfFloatZone> = Vec::new();
@@ -495,6 +499,7 @@ pub(super) fn render_header_footer(
                     links,
                 );
                 prev_space_after = 0.0;
+                prev_para = None;
             }
             Block::Paragraph(para) if para.frame_props.is_some() => {
                 let fp = para.frame_props.as_ref().unwrap();
@@ -591,7 +596,8 @@ pub(super) fn render_header_footer(
                 let has_field_code = para.runs.iter().any(|r| r.field_code.is_some());
                 let text_empty = !has_field_code && is_text_empty(&para.runs);
 
-                cursor_y -= prev_space_after.max(para.space_before);
+                cursor_y -= hf_paragraph_gap(prev_para, prev_space_after, para);
+                prev_para = Some(para);
 
                 let substituted_runs = substitute_hf_runs(
                     &para.runs,
@@ -1290,6 +1296,18 @@ pub(super) fn resolve_footer_for_page(
         Some((hf, idx)) => (Some(hf), t, idx),
         None => (None, t, section_idx),
     }
+}
+
+/// The gap above a header/footer paragraph: contextual spacing drops both
+/// sides between same-style paragraphs, as in the body (two 18pt-before
+/// motion header lines step 15.5 in Word, not 33.6).
+fn hf_paragraph_gap(prev: Option<&Paragraph>, prev_space_after: f32, para: &Paragraph) -> f32 {
+    let after = if prev.is_some_and(|p| super::helpers::drops_contextual_spacing(p, Some(para))) {
+        0.0
+    } else {
+        prev_space_after
+    };
+    after.max(super::helpers::effective_space_before(para, prev))
 }
 
 #[cfg(test)]
