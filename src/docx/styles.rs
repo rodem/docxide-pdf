@@ -682,20 +682,11 @@ fn with_normal_template(xml: &str) -> String {
         return xml.to_string();
     };
     let root = doc.root_element();
-    let prefix = match root.lookup_prefix(WML_NS) {
-        Some("") | None => String::new(),
-        Some(p) => format!("{p}:"),
-    };
-    let defaults = NORMAL_TEMPLATE_DEFAULTS.replace("w:", &prefix);
+    let defaults = template_defaults_for(root);
     let mut edits: Vec<(std::ops::Range<usize>, String)> = Vec::new();
     match wml(root, "docDefaults") {
         Some(n) => edits.push((n.range(), defaults)),
-        None => {
-            let at = root
-                .first_child()
-                .map_or(root.range().end, |c| c.range().start);
-            edits.push((at..at, defaults));
-        }
+        None => edits.push((doc_defaults_insertion_point(root), defaults)),
     }
     if let Some(normal) = root.children().find(|n| {
         n.tag_name().name() == "style"
@@ -715,6 +706,45 @@ fn with_normal_template(xml: &str) -> String {
     for (range, text) in edits {
         out.replace_range(range, &text);
     }
+    out
+}
+
+/// NORMAL_TEMPLATE_DEFAULTS written with the styles part's own WML prefix.
+fn template_defaults_for(root: roxmltree::Node) -> String {
+    let prefix = match root.lookup_prefix(WML_NS) {
+        Some("") | None => String::new(),
+        Some(p) => format!("{p}:"),
+    };
+    NORMAL_TEMPLATE_DEFAULTS.replace("w:", &prefix)
+}
+
+fn doc_defaults_insertion_point(root: roxmltree::Node) -> std::ops::Range<usize> {
+    let at = root
+        .first_child()
+        .map_or(root.range().end, |c| c.range().start);
+    at..at
+}
+
+/// Without docDefaults (or without a styles part at all) Word lays the
+/// document out with Normal.dotm's: 12pt theme minor font, 8pt after, 278
+/// auto lines (a bare 16pt Calibri Light paragraph steps 30.48 = 19.5 ×
+/// 1.158 + 8, not 19.5).
+fn with_template_doc_defaults(xml: Option<String>) -> String {
+    let Some(xml) = xml else {
+        return format!(r#"<w:styles xmlns:w="{WML_NS}">{NORMAL_TEMPLATE_DEFAULTS}</w:styles>"#);
+    };
+    let Ok(doc) = roxmltree::Document::parse(&xml) else {
+        return xml;
+    };
+    let root = doc.root_element();
+    if wml(root, "docDefaults").is_some() {
+        return xml;
+    }
+    let mut out = xml.clone();
+    out.replace_range(
+        doc_defaults_insertion_point(root),
+        &template_defaults_for(root),
+    );
     out
 }
 
@@ -767,10 +797,8 @@ pub(super) fn parse_styles<R: Read + Seek>(
             xml
         }
     });
-    let Some(xml) = xml_content
-        .as_deref()
-        .and_then(|xml| roxmltree::Document::parse(xml).ok())
-    else {
+    let xml_content = with_template_doc_defaults(xml_content);
+    let Some(xml) = roxmltree::Document::parse(&xml_content).ok() else {
         return StylesInfo {
             defaults,
             paragraph_styles,
@@ -1302,6 +1330,26 @@ fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_doc_defaults_take_the_template_ones() {
+        let has_template_defaults = |xml: &str| {
+            let doc = roxmltree::Document::parse(xml).unwrap();
+            let spacing = wml(doc.root_element(), "docDefaults")
+                .and_then(|d| wml(d, "pPrDefault"))
+                .and_then(|p| wml(p, "pPr"))
+                .and_then(|p| wml(p, "spacing"));
+            spacing.and_then(|s| s.attribute((WML_NS, "after"))) == Some("160")
+        };
+        assert!(has_template_defaults(&with_template_doc_defaults(None)));
+        let bare =
+            format!(r#"<x:styles xmlns:x="{WML_NS}"><x:style x:styleId="Normal"/></x:styles>"#);
+        assert!(has_template_defaults(&with_template_doc_defaults(Some(
+            bare
+        ))));
+        let own = format!(r#"<w:styles xmlns:w="{WML_NS}"><w:docDefaults/></w:styles>"#);
+        assert_eq!(with_template_doc_defaults(Some(own.clone())), own);
+    }
 
     #[test]
     fn normal_template_replaces_defaults_and_empties_normal() {
