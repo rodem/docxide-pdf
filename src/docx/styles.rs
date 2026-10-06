@@ -130,7 +130,10 @@ pub(super) struct StyleDefaults {
     pub(super) font_size: f32,
     pub(super) font_name: String,
     pub(super) east_asia_font: Option<String>,
+    pub(super) space_before: f32,
     pub(super) space_after: f32,
+    pub(super) before_autospacing: bool,
+    pub(super) after_autospacing: bool,
     pub(super) line_spacing: LineSpacing,
     pub(super) kern_threshold: Option<f32>,
     pub(super) position: Option<f32>,
@@ -724,7 +727,10 @@ pub(super) fn parse_styles<R: Read + Seek>(
         font_size: 10.0,
         font_name: theme.minor.clone(),
         east_asia_font: None,
+        space_before: 0.0,
         space_after: 0.0,
+        before_autospacing: false,
+        after_autospacing: false,
         line_spacing: LineSpacing::Auto(1.0),
         kern_threshold: None,
         position: None,
@@ -813,9 +819,15 @@ pub(super) fn parse_styles<R: Read + Seek>(
         }
         let default_spacing = default_ppr.and_then(|n| wml(n, "spacing"));
         if let Some(spacing) = default_spacing {
+            if let Some(before_val) = twips_attr(spacing, "before") {
+                defaults.space_before = before_val;
+            }
             if let Some(after_val) = twips_attr(spacing, "after") {
                 defaults.space_after = after_val;
             }
+            let auto = |attr| spacing.attribute((WML_NS, attr)).is_some_and(parse_on_off);
+            defaults.before_autospacing = auto("beforeAutospacing");
+            defaults.after_autospacing = auto("afterAutospacing");
             if let Some(ls) = parse_line_spacing(spacing) {
                 defaults.line_spacing = ls;
             }

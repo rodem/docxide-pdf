@@ -201,7 +201,8 @@ fn parse_notes_simple<R: Read + Seek>(
 
             let alignment = resolve_alignment(ppr, para_style);
             let parsed = parse_runs(p, fn_ctx);
-            let (sp_before, sp_after, ls) = parse_paragraph_spacing(ppr, para_style);
+            let (sp_before, sp_after, ls) =
+                parse_paragraph_spacing(ppr, para_style, &fn_ctx.styles.defaults);
 
             // Indents: inline w:ind overrides the style, missing attributes
             // fall back to the (basedOn-resolved) style — same merge as body
@@ -235,7 +236,7 @@ fn parse_notes_simple<R: Read + Seek>(
 
             Paragraph {
                 runs: parsed.runs,
-                space_before: sp_before.unwrap_or(0.0),
+                space_before: sp_before.unwrap_or(styles.defaults.space_before),
                 space_after: sp_after.unwrap_or(styles.defaults.space_after),
                 tab_stops: super::resolve_tab_stops(ppr, para_style),
                 alignment,

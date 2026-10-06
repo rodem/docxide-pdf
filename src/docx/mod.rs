@@ -30,7 +30,7 @@ use crate::model::{
     SectionProperties, TabAlignment, TabStop, VRelativeFrom,
 };
 
-use styles::{ParagraphStyle, parse_line_spacing, parse_styles, parse_theme};
+use styles::{ParagraphStyle, StyleDefaults, parse_line_spacing, parse_styles, parse_theme};
 
 use embedded_fonts::parse_font_table;
 use headers_footers::{parse_endnotes, parse_footnotes};
@@ -588,22 +588,25 @@ pub(super) fn resolve_theme_color_key(scheme_name: &str) -> &str {
 pub(in crate::docx) fn autospacing(
     ppr: Option<roxmltree::Node>,
     para_style: Option<&ParagraphStyle>,
+    defaults: &StyleDefaults,
 ) -> (bool, bool) {
     let inline_spacing = ppr.and_then(|ppr| wml(ppr, "spacing"));
-    let side = |attr: &str, style_val: Option<bool>| {
+    let side = |attr: &str, style_val: Option<bool>, default: bool| {
         inline_spacing
             .and_then(|n| n.attribute((WML_NS, attr)).map(parse_on_off))
             .or(style_val)
-            .unwrap_or(false)
+            .unwrap_or(default)
     };
     (
         side(
             "beforeAutospacing",
             para_style.and_then(|s| s.space_before_autospacing),
+            defaults.before_autospacing,
         ),
         side(
             "afterAutospacing",
             para_style.and_then(|s| s.space_after_autospacing),
+            defaults.after_autospacing,
         ),
     )
 }
@@ -615,9 +618,10 @@ const AUTO_SPACING: f32 = 14.0;
 pub(in crate::docx) fn parse_paragraph_spacing(
     ppr: Option<roxmltree::Node>,
     para_style: Option<&ParagraphStyle>,
+    defaults: &StyleDefaults,
 ) -> (Option<f32>, Option<f32>, Option<LineSpacing>) {
     let inline_spacing = ppr.and_then(|ppr| wml(ppr, "spacing"));
-    let (before_auto, after_auto) = autospacing(ppr, para_style);
+    let (before_auto, after_auto) = autospacing(ppr, para_style, defaults);
     let space_before = if before_auto {
         Some(AUTO_SPACING)
     } else {

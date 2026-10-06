@@ -732,8 +732,10 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         .or_else(|| super::runs::display_math_alignment(p))
                         .or_else(|| para_style.and_then(|s| s.alignment))
                         .unwrap_or(Alignment::Left);
-                    let (sp_before, sp_after, ls) = parse_paragraph_spacing(ppr, para_style);
-                    let (space_before_auto, space_after_auto) = super::autospacing(ppr, para_style);
+                    let (sp_before, sp_after, ls) =
+                        parse_paragraph_spacing(ppr, para_style, &ctx.styles.defaults);
+                    let (space_before_auto, space_after_auto) =
+                        super::autospacing(ppr, para_style, &ctx.styles.defaults);
                     let line_spacing = ls
                         .or(style_line_spacing)
                         .or_else(|| has_tbl_style.then_some(LineSpacing::Auto(1.0)));
@@ -768,7 +770,14 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         suff: _,
                         item: list_item,
                     } = numbering;
-                    let space_before = sp_before.or(style_space_before).unwrap_or(0.0);
+                    let space_before =
+                        sp_before
+                            .or(style_space_before)
+                            .unwrap_or(if has_tbl_style {
+                                0.0
+                            } else {
+                                ctx.styles.defaults.space_before
+                            });
                     let space_after = sp_after.or(style_space_after).unwrap_or(if has_tbl_style {
                         0.0
                     } else {
