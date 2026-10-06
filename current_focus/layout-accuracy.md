@@ -697,3 +697,72 @@ scraped 58.58 → 59.54; radiographer 24.1 → 75.8; nothing down):
 - `cargo fmt` reformats two spots in `src/pdf/layout.rs` (`push_decoration`
   and its call) that were committed unformatted; every commit of this round
   reverted them. Format them in a commit of their own.
+
+## 13. Large-corpus triage (2026-10-06, branch `corpus-triage`)
+
+A second external corpus: ~6,400 Word for Mac exports in four states (clean,
+tracked changes, comments, both), kept outside the repo like the first. The
+2,480 **clean** documents were scored with `tools/corpus_score.py` and
+v0.18.3 (`a8986732`): **mean Jaccard 68.1** (median 79.4), SSIM 81.7,
+0 conversion failures, page count wrong on 170 (6.9%). The three
+tracked/commented states are dominated by missing redline markup (§5,
+roadmap "Tracked-Changes (Redline) Rendering") and are scored separately.
+
+**Where the clean score goes** (mean J of docs with / without):
+
+| split | docs | J |
+|---|---|---|
+| page count right / wrong | 2,310 / 170 | 71.2 / 21–32 |
+| 1 page / 2–3 / 4–10 / >10 (Word's count) | 1,298 / 631 / 421 / 130 | 77.4 / 61.2 / 55.5 / 49.5 |
+| compat 12 / 14 / 15 | 528 / 390 / 1,149 | 83.7 / 60.8 / 62.0 |
+| tables | 829 / 1,651 | 56.6 / 73.9 |
+| VML shapes (`v:shape`) | 234 / 2,246 | 46.2 / 70.4 |
+| text boxes | 177 / 2,303 | 48.6 / 69.6 |
+| right-to-left text | 59 / 2,421 | 44.1 / 68.7 |
+| East Asian text | 62 / 2,418 | 28.4 / 69.1 |
+
+Feature splits overlap (documents with tables are also longer and carry
+headers, pictures and lists); they rank, they don't add up.
+
+**Triage of every clean document** (reference PDF vs ours, first matching
+signal; script and data local):
+
+| bucket | docs | mean J | corpus points lost |
+|---|---|---|---|
+| page-1 lines >3pt off vertically (median over lines matched by text) | 160 | 22–58 | 4.7 |
+| page count drift (page 1 in place) | 106 | 17–52 | 3.1 |
+| missing pictures (fewer images than Word) | 135 | 18–81 | 3.1 |
+| a font Word drew is absent from ours (>20% of glyphs) | 91 | 16–79 | 2.9 |
+| genuinely missing text (<70% of Word's words) | 19 | 0–73 | — |
+| no single signal (inner layout / reflow) | 1,885 | 28–89 | 15.7 |
+
+Measurement gotchas found on the way:
+- Word's PDFs carry a whitespace-only text line for every empty paragraph
+  mark; a "first line" taken from stext lands on those. Match lines by text.
+- Text recall from extracted words under-reports for Arabic (Word emits
+  presentation-form glyphs), CJK (different word splits) and ligatures
+  ("ti" in Calibri splits "informa|tion"). Compare word *counts* to find
+  real loss.
+- Font names must be compared by visible glyphs per family: Word embeds
+  faces that draw only spaces or bullets.
+
+**Findings so far:**
+- **Legacy VML pictures are never drawn.** `w:pict/v:shape/v:imagedata`
+  (no text box) appears in 55 clean documents (278 shapes: 217 body, 59
+  header, 2 footer; 221 inline, 57 absolutely positioned, mostly centred on
+  the margin behind the text = header watermarks). It is in ~40 of the 135
+  documents that lose pictures and in 2 of the 602 that keep them. Only
+  `w:object` previews took the VML image path; `w:pict` went to the text box
+  parser only.
+- **Missing-font substitution by PANOSE (hypothesis).** A document in
+  "TimesLT" (not installed; fontTable panose1 `02020603050405020304` =
+  Times New Roman's, family roman, charset BA) is drawn in Times New Roman
+  by Word, in Cambria by us (rule from `font-family-auto-substitution`:
+  roman without a usable altName → Cambria). Needs a Word probe before
+  changing the rule.
+- Most-missed families where >20% of a document's glyphs are affected:
+  Verdana, Helvetica, Hiragino Mincho ProN, MS Mincho, Roboto, Ubuntu,
+  SimSun, Poppins (under diagnosis).
+- Missing text: 7 of the 19 documents lose DrawingML text box content
+  (`wps:txbx` inside `mc:AlternateContent`); one document renders 1 page
+  where Word has 3 (under diagnosis).
