@@ -158,7 +158,14 @@ impl FontEntry {
 }
 
 pub(crate) fn primary_font_name(name: &str) -> &str {
-    name.split(';').next().unwrap_or(name).trim()
+    first_css_name(name.split(';').next().unwrap_or(name))
+}
+
+/// Web editors write CSS font lists into `w:rFonts` ("Verdana, Geneva,
+/// sans-serif"); Word draws the name before the first comma, quotes and all,
+/// so `"Calibri", Arial` is a missing font to it.
+fn first_css_name(name: &str) -> &str {
+    name.split(',').next().unwrap_or(name).trim()
 }
 
 /// Write the font key for a run into the provided buffer, returning it as a `&str`.
@@ -674,7 +681,8 @@ pub(crate) fn register_font(
     let has_alt = table_entry.is_some_and(|e| e.alt_name.is_some());
     let result = font_name
         .split(';')
-        .map(|s| word_substitute(s.trim()).unwrap_or(s.trim()))
+        .map(first_css_name)
+        .map(|s| word_substitute(s).unwrap_or(s))
         .filter(|c| !(has_alt && discovery::is_mac_only_family(c)))
         .find_map(&mut try_candidate)
         .or_else(|| {
@@ -992,6 +1000,8 @@ mod tests {
     #[test]
     fn test_primary_font_name_with_whitespace() {
         assert_eq!(primary_font_name("  Arial  ; Helvetica"), "Arial");
+        assert_eq!(primary_font_name("Verdana, Geneva, sans-serif"), "Verdana");
+        assert_eq!(primary_font_name("\"Calibri\", Arial"), "\"Calibri\"");
     }
 
     #[test]
