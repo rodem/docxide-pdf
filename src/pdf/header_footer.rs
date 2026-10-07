@@ -186,6 +186,31 @@ fn top_border_band(para: &Paragraph) -> f32 {
     super::helpers::border_band(para.borders.top.as_ref())
 }
 
+/// How far a header (footer) paragraph's text drops below its own floats:
+/// one it may not sit beside, starting at or above the paragraph top, pushes
+/// the text under it. Word probes on renewable_dispatch's 568pt header
+/// shape: topAndBottom pushes at any width, a square wrap only when no room
+/// is left beside it. A float starting lower leaves the first line above it,
+/// and one behind the text never pushes (corpus header logos).
+/// ponytail: "no room" = as wide as the text; measure the side gaps if a
+/// partly covering float turns up.
+fn float_text_push(para: &Paragraph, text_width: f32) -> f32 {
+    para.floating_images
+        .iter()
+        .filter(|fi| matches!(fi.v_relative_from, VRelativeFrom::Paragraph) && !fi.behind_doc)
+        .filter(|fi| match fi.wrap_type {
+            WrapType::TopAndBottom => true,
+            w => w.wraps_beside() && fi.image.display_width >= text_width,
+        })
+        .filter_map(|fi| match fi.v_position {
+            VerticalPosition::Offset(o) if o <= 0.0 => {
+                Some(o + fi.image.display_height + fi.dist_bottom)
+            }
+            _ => None,
+        })
+        .fold(0.0, f32::max)
+}
+
 /// Where a line of height `line_h` whose top sits `top` below the page top
 /// really starts: below every blocking frame band it would overlap, including
 /// one it meets only below another (massachusetts' logo band ends where its
@@ -245,7 +270,7 @@ fn compute_header_height(
                     line_h.max(picture_h + picture_line_bottom(&para.runs, para, ctx.fonts, effective_ls))
                 } else {
                     line_h
-                };
+                } + float_text_push(para, text_width);
 
                 for fi in &para.floating_images {
                     // Text flows beside a narrow wrapping image, and Word does
@@ -634,7 +659,7 @@ pub(super) fn render_header_footer(
                 cursor_y = sp.page_height
                     - below_blocking_frames(sp.page_height - cursor_y, line_h, &bands);
                 let slot_top = cursor_y;
-                cursor_y -= top_border_band(para);
+                cursor_y -= top_border_band(para) + float_text_push(para, text_width);
 
                 // Paragraph borders span the laid-out height, so each exit below
                 // draws them once it knows it (ut_koer: a header staff image
