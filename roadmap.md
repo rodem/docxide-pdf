@@ -322,6 +322,30 @@ the marks get their Link to the note. Visual output changed in the 6
 fixtures with marks in cells (baselines accepted in `7879bc7f`).
 Column auto-fit still measures cells without the marks (a mark's width).
 
+## Large-corpus round (2026-10-06)
+
+A second external corpus (~6,400 Word for Mac exports; 2,480 clean
+documents scored) triaged by signal (page offsets, page drift, lost
+pictures, fonts, lost text) and diagnosed per cause. Clean-corpus Jaccard
+68.1 → 69.4, wrong page counts 170 → 149; fixtures unchanged except
+polish_building +8.1. Details, evidence and the open queue:
+`current_focus/layout-accuracy.md` §13.
+
+1. Legacy VML pictures (`w:pict` + `v:imagedata`) render, incl. watermarks.
+2. Floats anchored in front of a page break are kept.
+3. Strict OOXML namespaces are read.
+4. CSS-style font lists in `w:rFonts` use the first name.
+5. docDefaults space before / autospacing apply; missing docDefaults take
+   Normal.dotm's.
+6. A column-wide picture keeps its paragraph mark beside it.
+7. contextualSpacing in headers and footers.
+8. A next-page section starts on the page a page break just opened.
+9. Keep-with-next chains end at pageBreakBefore; keep flags inherit via
+   basedOn.
+
+Next: eleven local focus fixtures in `tests/fixtures/excluded/` (gitignored),
+one per open cause (§13.1).
+
 ## Layout accuracy round (2026-10-01)
 
 Rules derived from Word reference PDFs (borders, text positions measured with

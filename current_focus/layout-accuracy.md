@@ -829,3 +829,32 @@ clean documents the rule touches; fixtures unchanged unless noted):
     splits.
 - The corpus references are Word's **print** export (one header case
   reproduces only with `--preset print`).
+
+### 13.1 Focus fixtures (`tests/fixtures/excluded/`, local only)
+
+Eleven corpus documents, one per open root cause, copied in under
+descriptive names. The folder is gitignored (`.gitignore`): the documents
+come from the external corpus and are never committed. References were
+re-exported with `tools/word_export.py --preset online`, like every other
+fixture. The suite picks the group up locally; without baselines they are
+reported as new and never fail.
+
+Clean-corpus score after this round: **69.37** J (68.08 at v0.18.3).
+
+| fixture | J (online ref) | open cause (§13 queue) |
+|---|---|---|
+| arabic_rice_benefits_article | 3.0 | complex script: `rFonts@cs`, `w:rtl`, `szCs` never read |
+| maine_criminal_history_record | 4.5 | hideMark cell holding only an empty mark keeps one line; nested layout tables |
+| bulgarian_farmland_allocation_order | 5.2 | `framePr yAlign="inline"` frames are in-flow paragraphs (header, −54pt) |
+| chiseldon_parish_planning_agenda | 5.7 | a tab past the right margin wraps to a new line |
+| czech_village_budget_commentary | 11.3 | picture-only paragraph under multiple spacing gets the mark's leading |
+| potamites_genetic_distance_table | 14.0 | EMF text, lines and fills not drawn (also unblocks the parked WMF patch) |
+| physical_education_curriculum_map | 27.9 | a floating table (`tblpPr`) displaces the paragraph after it |
+| italian_academic_cv_form | 28.1 | keepNext paragraphs inside table rows split across pages (3 pages, ours 2) |
+| cyprus_ucits_marketing_registry | 29.9 | page/margin-relative header/footer floats inflate the footer (85 pages vs 3) |
+| australian_higher_education_guidelines | 34.2 | keep chain counts one line per kept paragraph, ignores keepLines (34 vs 35 pages) |
+| renewable_dispatch_committee_agenda | 49.5 | a page-wide wrapSquare header picture pushes the header text below it |
+
+A Book Antiqua document whose "line pitch too large" showed only against
+the corpus's local print export scores 77.3 against the online one: check
+any corpus finding against an online export before acting on it.
