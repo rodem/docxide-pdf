@@ -94,11 +94,11 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
 
     let keep_next = ppr
         .and_then(|ppr| wml_bool(ppr, "keepNext"))
-        .unwrap_or_else(|| para_style.is_some_and(|s| s.keep_next));
+        .unwrap_or_else(|| para_style.and_then(|s| s.keep_next).unwrap_or(false));
 
     let keep_lines = ppr
         .and_then(|ppr| wml_bool(ppr, "keepLines"))
-        .unwrap_or_else(|| para_style.is_some_and(|s| s.keep_lines));
+        .unwrap_or_else(|| para_style.and_then(|s| s.keep_lines).unwrap_or(false));
 
     let widow_control = ppr
         .and_then(|ppr| wml_bool(ppr, "widowControl"))
@@ -336,7 +336,11 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         page_break_before: parsed.has_explicit_page_break_before
             || ppr
                 .and_then(|ppr| wml_bool(ppr, "pageBreakBefore"))
-                .unwrap_or_else(|| para_style.is_some_and(|s| s.page_break_before)),
+                .unwrap_or_else(|| {
+                    para_style
+                        .and_then(|s| s.page_break_before)
+                        .unwrap_or(false)
+                }),
         page_break_before_explicit: parsed.has_explicit_page_break_before,
         page_break_after: parsed.has_page_break_after,
         page_break_at: parsed.page_break_at,
@@ -420,7 +424,11 @@ pub(super) fn contextual_spacing(
     para_style: Option<&ParagraphStyle>,
 ) -> bool {
     ppr.and_then(|ppr| wml_bool(ppr, "contextualSpacing"))
-        .unwrap_or_else(|| para_style.is_some_and(|s| s.contextual_spacing))
+        .unwrap_or_else(|| {
+            para_style
+                .and_then(|s| s.contextual_spacing)
+                .unwrap_or(false)
+        })
 }
 
 /// A paragraph's indents (left, right, hanging, first line) from its direct

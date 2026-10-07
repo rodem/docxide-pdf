@@ -181,11 +181,11 @@ pub(super) struct ParagraphStyle {
     pub(super) space_before_autospacing: Option<bool>,
     pub(super) space_after_autospacing: Option<bool>,
     pub(super) alignment: Option<Alignment>,
-    pub(super) contextual_spacing: bool,
-    pub(super) keep_next: bool,
-    pub(super) keep_lines: bool,
+    pub(super) contextual_spacing: Option<bool>,
+    pub(super) keep_next: Option<bool>,
+    pub(super) keep_lines: Option<bool>,
     pub(super) widow_control: Option<bool>,
-    pub(super) page_break_before: bool,
+    pub(super) page_break_before: Option<bool>,
     pub(super) line_spacing: Option<LineSpacing>,
     pub(super) indent_left: Option<f32>,
     pub(super) indent_right: Option<f32>,
@@ -948,20 +948,13 @@ pub(super) fn parse_styles<R: Read + Seek>(
 
                 let alignment = ppr.and_then(|ppr| wml_attr(ppr, "jc")).map(parse_alignment);
 
-                let contextual_spacing = ppr
-                    .and_then(|ppr| wml_bool(ppr, "contextualSpacing"))
-                    .unwrap_or(false);
-
-                let keep_next = ppr
-                    .and_then(|ppr| wml_bool(ppr, "keepNext"))
-                    .unwrap_or(false);
-                let keep_lines = ppr
-                    .and_then(|ppr| wml_bool(ppr, "keepLines"))
-                    .unwrap_or(false);
+                // Kept as Option so a basedOn chain inherits them and an explicit
+                // w:val="0" still turns an ancestor's off.
+                let contextual_spacing = ppr.and_then(|ppr| wml_bool(ppr, "contextualSpacing"));
+                let keep_next = ppr.and_then(|ppr| wml_bool(ppr, "keepNext"));
+                let keep_lines = ppr.and_then(|ppr| wml_bool(ppr, "keepLines"));
                 let widow_control = ppr.and_then(|ppr| wml_bool(ppr, "widowControl"));
-                let page_break_before = ppr
-                    .and_then(|ppr| wml_bool(ppr, "pageBreakBefore"))
-                    .unwrap_or(false);
+                let page_break_before = ppr.and_then(|ppr| wml_bool(ppr, "pageBreakBefore"));
 
                 let line_spacing = spacing.and_then(parse_line_spacing);
 
@@ -1274,6 +1267,10 @@ fn resolve_based_on(styles: &mut HashMap<String, ParagraphStyle>) {
                     kern_threshold,
                     position,
                     widow_control,
+                    contextual_spacing,
+                    keep_next,
+                    keep_lines,
+                    page_break_before,
                     num_id,
                     num_ilvl,
                     outline_level,
