@@ -210,6 +210,9 @@ fn compute_header_height(
     let mut height = 0.0f32;
     let mut prev_space_after = 0.0f32;
     let mut prev_para: Option<&Paragraph> = None;
+    // How far page- or margin-placed floats reach from the header (footer)
+    // margin, whatever the flow above them.
+    let mut placed_extent = 0.0f32;
     let bands = if is_header {
         blocking_frame_bands(hf, sp)
     } else {
@@ -265,7 +268,21 @@ fn compute_header_height(
                         {
                             (o + fi.image.display_height).max(0.0)
                         }
-                        VerticalPosition::Offset(o) => o.max(0.0) + fi.image.display_height,
+                        // A page- or margin-placed float covers its own band of
+                        // the page: cyprus_ucits' footer logo 675.8pt below the
+                        // top margin made an 85-page document of 3.
+                        VerticalPosition::Offset(o) => {
+                            let top = match fi.v_relative_from {
+                                VRelativeFrom::Page => o,
+                                _ => sp.margin_top + o,
+                            };
+                            placed_extent = placed_extent.max(if is_header {
+                                top + fi.image.display_height - sp.header_margin
+                            } else {
+                                sp.page_height - sp.footer_margin - top
+                            });
+                            continue;
+                        }
                         _ => fi.image.display_height,
                     };
                     // TopAndBottom or wide wrapping image
@@ -310,7 +327,7 @@ fn compute_header_height(
             }
         }
     }
-    height + prev_space_after
+    (height + prev_space_after).max(placed_extent)
 }
 
 /// The body top of a section's page; `page_idx` (0-based) picks the even
