@@ -2349,7 +2349,9 @@ pub(super) fn build_tabbed_line(
             } else if (seg_start > wrap_limit
                 || (stop.alignment == TabAlignment::Left
                     && seg_start + first_word_width(seg_runs, seen_fonts) > line_max))
-                && !all_chunks.is_empty()
+                // A line of nothing but tabs wraps too (chiseldon's 27 default
+                // tabs take two lines in Word); one tab on an empty line stays.
+                && (!all_chunks.is_empty() || current_x > 0.0)
             {
                 result_lines.push(TextLine {
                     justify_from: std::mem::take(&mut justify_from),
