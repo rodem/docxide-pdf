@@ -2804,12 +2804,11 @@ fn render_paragraph_block(
                 _ => break,
             };
             if next.page_break_before {
-                // A `<w:br w:type="page"/>` opening the next paragraph ends the
-                // chain where it is: Word keeps the heading on this page (online
-                // export probes, 2026-10-03; usep's cover).
-                if !next.page_break_before_explicit {
-                    extra = f32::MAX;
-                }
+                // A page break opening the next paragraph, a `<w:br>` or
+                // pageBreakBefore, ends the chain where it is: Word keeps the
+                // kept paragraphs on this page (online export probes,
+                // 2026-10-03; run-borders' items before a pageBreakBefore
+                // Heading 3).
                 break;
             }
             chain_notes.extend(next.runs.iter().filter_map(|r| r.footnote_id));
