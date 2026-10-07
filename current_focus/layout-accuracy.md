@@ -758,6 +758,10 @@ clean documents the rule touches; fixtures unchanged unless noted):
 | b90e7b57 | docDefaults `spacing@before`, `beforeAutospacing`, `afterAutospacing` apply (were never read) | 12 docs 34.8 → 65.7 |
 | e33d9bf1 | A styles part without docDefaults, or no styles part, takes Normal.dotm's (12pt theme minor, 8pt after, 278) | 21 docs 13.5 → 26.7; polish_building 47.5 → 55.6 |
 | 1b70e5cc | A picture is wider than the column only in whole twips (EMU → pt rounding made a column-wide picture overflow and push the mark to its own line) | 370 inline-picture docs 57.06 → 57.17: 4 up (+28, +13), none down |
+| cbc7bee6 | contextualSpacing between header/footer paragraphs (height pass and render loop) | 489 docs 59.80 → 60.29: 5 up (+48 to +77), 1 down (−9.2, lines now at Word's positions, a wrap difference remains) |
+| d9c8fd3e | A next-page section starts on the page a page break just opened (no blank page; a continuous section keeps the break) | 196 multi-section docs 57.02 → 59.70, 17 up (+21 to +50); wrong page counts 51 → 35 |
+| 6d55cbd4 | A keep-with-next chain ends at a pageBreakBefore paragraph, as at a `w:br` page break (it used to move the kept paragraph) | +34 on one doc, −32 on a 343-page one (its one such pair matches Word; it loses a page elsewhere) |
+| c8e467b6 | keepNext, keepLines, pageBreakBefore, contextualSpacing inherit through basedOn (Option<bool>, `w:val="0"` still overrides) | 1,215 docs 62.11 → 62.23 with the previous rule, 9 up (+9 to +35); run-borders needs the previous rule (44.9 → 17.3 without it) |
 
 **Findings:**
 - **Legacy VML pictures were never drawn** (fixed above): 55 clean
@@ -801,7 +805,6 @@ clean documents the rule touches; fixtures unchanged unless noted):
    doesn't, page-relative positions measure from the page edge. A narrow
    topAndBottom VML picture in a header did *not* push the header text in
    one document: probe before changing.
-6. contextualSpacing in headers and footers (4 documents at +18pt).
 7. `framePr yAlign="inline"` frames are ordinary in-flow paragraphs.
 8. hideMark on a cell holding only an empty mark keeps one line.
 9. Tables and content controls inside text boxes are dropped
@@ -815,5 +818,14 @@ clean documents the rule touches; fixtures unchanged unless noted):
     trailing `w:br` after an inline picture keeps its line.
 13. ~18 documents drift per line by 1–3.5% (Book Antiqua 17.40 vs 16.80
     per line, Helvetica, Verdana): line-height metrics for those faces.
+14. Page-count drift (from a second diagnosis): a paragraph holding only a
+    page break on a full page lays out its line first, so a blank page
+    follows (one 107-page document, 4 copies: 11 → 76 by what-if); a
+    keep chain counts only each paragraph's first line and ignores
+    keepLines (31 documents, medium confidence); page-relative
+    topAndBottom floats reserve their absolute offset in the anchor
+    paragraph (5 documents); header/footer floats relative to the page
+    inflate the footer height; keepNext in table rows is ignored on row
+    splits.
 - The corpus references are Word's **print** export (one header case
   reproduces only with `--preset print`).
