@@ -859,6 +859,7 @@ pub(super) fn compute_row_layouts(
                                             ctx.default_tab_stop,
                                             &[],
                                             ctx.compat_mode,
+                                            ctx.cjk(false, para.alignment).squeeze_spaces,
                                         )
                                     } else {
                                         build_paragraph_lines(

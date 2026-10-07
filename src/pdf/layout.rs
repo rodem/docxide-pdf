@@ -1397,6 +1397,7 @@ pub(super) fn build_lines(
             ctx.default_tab_stop,
             opts.tab_exclusions,
             ctx.compat_mode,
+            cjk.squeeze_spaces,
         )
     } else {
         build_paragraph_lines(
@@ -2175,6 +2176,7 @@ pub(super) fn build_tabbed_line(
     default_tab_stop: f32,
     tab_exclusions: &[(f32, f32)],
     compat_mode: u32,
+    squeeze_spaces: bool,
 ) -> Vec<TextLine> {
     // Split runs into segments at tab markers, tracking original run indices.
     // The fourth tuple element is the `<w:tab/>` run itself (when present) so the
@@ -2216,6 +2218,7 @@ pub(super) fn build_tabbed_line(
     ));
 
     let mut result_lines: Vec<TextLine> = Vec::new();
+    let mut squeezed_lines: Vec<usize> = Vec::new();
     let mut justify_from = 0usize;
     let mut all_chunks: Vec<WordChunk> = Vec::new();
     let mut current_x: f32 = 0.0;
@@ -2536,11 +2539,27 @@ pub(super) fn build_tabbed_line(
                 } else {
                     max_width
                 };
-                // Wrap word to new line if it exceeds max_width
-                if current_x + ww > cur_line_max.max(line_reach)
+                let mut overflows = current_x + ww > cur_line_max.max(line_reach)
                     && !all_chunks.is_empty()
-                    && !is_continuation
-                {
+                    && !is_continuation;
+                // Justified compat-15 lines keep the word by narrowing the
+                // spaces after the last tab, as untabbed lines do
+                // (`SPACE_SQUEEZE`); ukrainian_municipal's "1.<tab>Надати …"
+                // line ends in "опалення" with its spaces at 93%.
+                if overflows && squeeze_spaces && cur_line_max >= line_reach {
+                    let after_tab = all_chunks.get(justify_from..).unwrap_or(&[]);
+                    let spaces = after_tab.last().map_or(0.0, |last| {
+                        line_space_width(after_tab)
+                            + (current_x - last.x_offset - last.width).max(0.0)
+                    });
+                    if current_x + ww / 2.0 <= cur_line_max
+                        && current_x + ww - cur_line_max <= SPACE_SQUEEZE * spaces
+                    {
+                        overflows = false;
+                        squeezed_lines.push(result_lines.len());
+                    }
+                }
+                if overflows {
                     result_lines.push(TextLine {
                         justify_from: std::mem::take(&mut justify_from),
                         ..finish_line(&mut all_chunks)
@@ -2597,6 +2616,11 @@ pub(super) fn build_tabbed_line(
         });
     } else if result_lines.is_empty() || tab_wrapped_line {
         result_lines.push(TextLine::default());
+    }
+    for i in squeezed_lines {
+        if let Some(line) = result_lines.get_mut(i) {
+            line.squeezed = true;
+        }
     }
 
     // Trailing break creates an empty line (same as build_paragraph_lines)
@@ -4173,6 +4197,7 @@ mod tests {
             36.0,
             &[],
             15,
+            false,
         );
         assert_eq!(lines.len(), 1);
         let word = lines[0]
@@ -4186,6 +4211,49 @@ mod tests {
             "x_offset {} != {expected}",
             word.x_offset
         );
+    }
+
+    #[test]
+    fn tabbed_justified_line_squeezes_spaces_after_the_tab() {
+        // Stub glyphs are 5pt at 10pt: after the stop at 10, "aa aa aa aa aa"
+        // ends at 80, 3pt past a 77pt measure; four 5pt spaces may give 5pt.
+        let tab = Run {
+            is_tab: true,
+            ..make_run(10.0, VertAlign::Baseline, false)
+        };
+        let text = Run {
+            text: "aa aa aa aa aa".to_string(),
+            ..make_run(10.0, VertAlign::Baseline, false)
+        };
+        let runs = [tab, text];
+        let mut fonts = HashMap::new();
+        fonts.insert("Arial".to_string(), stub_font_entry());
+        let stops = [TabStop {
+            position: 10.0,
+            alignment: TabAlignment::Left,
+            leader: None,
+        }];
+        let lines = |squeeze| {
+            build_tabbed_line(
+                &runs,
+                &fonts,
+                &stops,
+                0.0,
+                77.0,
+                0.0,
+                0.0,
+                &HashMap::new(),
+                &HashMap::new(),
+                36.0,
+                &[],
+                15,
+                squeeze,
+            )
+        };
+        let squeezed = lines(true);
+        assert_eq!(squeezed.len(), 1);
+        assert!(squeezed[0].squeezed);
+        assert_eq!(lines(false).len(), 2);
     }
 
     #[test]
