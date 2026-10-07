@@ -2834,7 +2834,9 @@ fn render_paragraph_block(
             // successor; one that may split ends it (australian_higher's
             // keepLines items move with heading 6.5.1).
             let mut n = None;
-            let mut count = || *n.get_or_insert_with(|| line_count(next, ctx, col_geometry[state.current_col].1));
+            let mut count = || {
+                *n.get_or_insert_with(|| line_count(next, ctx, col_geometry[state.current_col].1))
+            };
             let needed = if next.keep_lines {
                 count()
             } else {

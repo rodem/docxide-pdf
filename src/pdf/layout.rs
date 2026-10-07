@@ -7,8 +7,8 @@ use pdf_writer::{Content, Name, Rect, Str};
 
 use crate::fonts::{FontEntry, encode_as_gids, font_key_buf, to_winansi_bytes};
 use crate::model::{
-    Alignment, FormCheckbox, LineSpacing, Paragraph, ParagraphBorder, Run, TabAlignment, TabStop, TextFill,
-    TextOutline, TextShadow, VertAlign,
+    Alignment, FormCheckbox, LineSpacing, Paragraph, ParagraphBorder, Run, TabAlignment, TabStop,
+    TextFill, TextOutline, TextShadow, VertAlign,
 };
 
 use super::RenderContext;
@@ -3722,9 +3722,11 @@ pub(super) fn picture_line_bottom(
             (fs, lhr, None)
         })
     };
-    let leading = tallest_by_ascent(text_runs(), seen_fonts).or_else(mark).map_or(0.0, |(fs, lhr, _)| {
-        (super::helpers::resolve_line_h(ls, fs, lhr) - fs * lhr.unwrap_or(1.2)).max(0.0)
-    });
+    let leading = tallest_by_ascent(text_runs(), seen_fonts)
+        .or_else(mark)
+        .map_or(0.0, |(fs, lhr, _)| {
+            (super::helpers::resolve_line_h(ls, fs, lhr) - fs * lhr.unwrap_or(1.2)).max(0.0)
+        });
     let glyph_runs = text_runs().filter(|r| !r.text.trim().is_empty());
     let descent = tallest_by_ascent(glyph_runs, seen_fonts)
         .map_or(0.0, |(fs, lhr, ar)| fs * descender_ratio(lhr, ar));

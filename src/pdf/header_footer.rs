@@ -267,7 +267,9 @@ fn compute_header_height(
                 // picture plus the text descent (`inline_line_advance`).
                 let picture_h = runs_max_image_h(&para.runs);
                 let mut content_h = if picture_h > 0.0 {
-                    line_h.max(picture_h + picture_line_bottom(&para.runs, para, ctx.fonts, effective_ls))
+                    line_h.max(
+                        picture_h + picture_line_bottom(&para.runs, para, ctx.fonts, effective_ls),
+                    )
                 } else {
                     line_h
                 } + float_text_push(para, text_width);
