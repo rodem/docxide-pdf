@@ -690,7 +690,7 @@ pub(super) fn render_header_footer(
                     }
                 };
 
-                let baseline_y = cursor_y
+                let mut baseline_y = cursor_y
                     - super::layout::boxed_line_ascent(
                         effective_ls,
                         line_h,
@@ -975,7 +975,14 @@ pub(super) fn render_header_footer(
                 if (has_para_image || text_empty) && para.content_height > 0.0 {
                     if let Some(pdf_name) = para_image_names.get(&pi) {
                         let img = para.image.as_ref().unwrap();
-                        let y_bottom = baseline_y + font_size * ascender_ratio - img.display_height;
+                        let natural_line_h = font_size * tallest_lhr.unwrap_or(1.2);
+                        let bottom_depth = if para.content_height > line_h {
+                            img.layout_extra_top + img.display_height
+                        } else {
+                            para.content_height.max(natural_line_h)
+                                - (img.layout_extra_height - img.layout_extra_top)
+                        };
+                        let y_bottom = cursor_y - bottom_depth;
                         let x = sp.margin_left
                             + align_offset(
                                 para.alignment,
@@ -1213,6 +1220,23 @@ pub(super) fn render_header_footer(
                     },
                 );
 
+                // A single short picture sits on the paragraph mark's natural
+                // line baseline, like the body path, with its bottom effect
+                // extent below that baseline. An empty tab can keep the picture
+                // in runs instead of Paragraph.image, so handle that slot too.
+                if lines.len() == 1 && substituted_runs.iter().all(|r| r.text.trim().is_empty()) {
+                    let mut images = substituted_runs
+                        .iter()
+                        .filter_map(|r| r.inline_image.as_ref());
+                    if let Some(image) = images.next()
+                        && images.next().is_none()
+                        && image.display_height + image.layout_extra_height <= line_h
+                    {
+                        baseline_y = cursor_y - font_size * tallest_lhr.unwrap_or(1.2)
+                            + image.layout_extra_height
+                            - image.layout_extra_top;
+                    }
+                }
                 let wrapped_pictures = lines.len() > 1
                     && substituted_runs
                         .iter()

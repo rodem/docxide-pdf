@@ -386,6 +386,17 @@ Times New Roman and Arial, with 0/0.75/2pt extents, agree within 0.002pt; Calibr
 retains a 0.14–0.26pt font-metric difference. The rule is deliberately limited to
 wrapped image-only running heads; other picture paragraphs keep their existing
 behaviour. The independent header-height estimate still needs per-line layout.
+## Short running-head pictures (2026-10-08)
+
+A picture shorter than its natural text line now uses that line's baseline in
+headers and footers, including the bottom effect extent, as the body already
+does. Both Paragraph.image and the one-picture Run.inline_image slot are
+covered (an empty tab keeps the picture in runs). Synthetic case85 exercises
+both slots. Fifty-four Word for Windows probes cover three fonts, three sizes,
+three effect extents and both slots: Times New Roman/Arial agree within 0.002pt;
+Calibri retains a font-metric difference of up to 0.26pt. On an external
+letterhead, the stripe below its logo table is at 72.146pt vs Word's 72.150pt;
+the 82-document corpus has no conversion/page-count or page-score regressions.
 
 ## Layout accuracy round (2026-10-01)
 
