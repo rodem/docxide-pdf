@@ -858,3 +858,37 @@ Clean-corpus score after this round: **69.37** J (68.08 at v0.18.3).
 A Book Antiqua document whose "line pitch too large" showed only against
 the corpus's local print export scores 77.3 against the online one: check
 any corpus finding against an online export before acting on it.
+
+### 13.2 Focus-fixture round (2026-10-07)
+
+One commit per rule; "corpus" = the clean documents carrying the construct,
+A/B against the previous rule's build (local print references).
+
+| Commit | Rule | Fixture | Corpus |
+|---|---|---|---|
+| f912a033 | hideMark never hides the **document's first** paragraph mark (innermost first cell of nested layout tables). Word probes: the same row collapses after a page break, after a paragraph, or as a second copy; the diagnosis's "a lone empty hideMark cell keeps a line" is wrong in general | maine 4.5 → 5.8 (top line 56.80 vs 56.78) | 3 docs: one +1.2, one −9 (its header now at Word's height; nested floating tables stacked instead of side by side) |
+| 7dde55f4 | A hidden trailing mark drops its space before and after; the paragraph above keeps its after (probes: 13.5 / 13.26 / 25.25 / 19.5pt rows). A picture in a hideMark cell's last paragraph keeps its height | erasmus_plus +20.3, victorian +3.9 | 140 docs 53.88 → 54.24, 4 up, 1 down (same nested-float cause) |
+| fe7ba589 | A line of nothing but tabs wraps at the margin like any other (the wrap needed drawn content first) | chiseldon 5.7 → 69.0 | 33 docs 47.53 → 49.63 (one +66.9); one −0.6 (an existing 14pt page-top offset) |
+| cbd6d922 | `framePr yAlign="inline"` (no position or width in any corpus document) is an ordinary in-flow paragraph | bulgarian 5.2 → 66.0 | 11 docs 19.79 → 29.28, none down |
+| bcbbebac | With no text run, a picture line's leading comes from the mark font (header, textbox, inline lines) | czech 11.3 → 51.1 | 24 docs 46.57 → 49.42, none down |
+| a4133556 | A page- or margin-placed wrapping header/footer float covers its own band of the page instead of offset + height from the header/footer margin | cyprus 85 → 2 pages (Word 3), +2.4 | 19 docs 36.55 → 38.75, none down |
+| 46aaf1ac | A header float over the first line pushes the header text under it. Probes: topAndBottom pushes at any width, square only when no room is left beside it; a float starting below the paragraph top keeps the first line above it; behindDoc never pushes | renewable 49.5 → 71.0 | 90 docs 52.15 → 55.34, 11 up (+9 to +49), none down |
+| 4b2d9609 | Keep chains: each kept paragraph brings all lines of a keepLines one, else the widow-control count; the chain continues only through a paragraph that stays whole. A chain no page can hold (judged once at its start, against the body height under the header) starts a page; later members keep only their own link | australian 34 → 35 pages, 34.2 → 65.3; carbon_farming +3.4 | 264 docs 58.88 → 59.42, 8 up (+3 to +40), none down |
+| d8603f41 | Cell paragraphs read keepNext (tables.rs never did). A row whose **first cell** holds a keepNext paragraph stays with the next row's start, rows chaining; keepNext only in later cells splits as usual (a 199-page document's syllabus rows) | italian_academic 2 → 3 pages, 28.1 → 45.1 | 62 docs 57.01 → 58.57, 10 up, none down |
+| 40275abe | A floating table's zone pushes a paragraph whose first line reaches the table top (the zone used to start only once the cursor was inside it) | physical_education 27.9 → 68.5, east_asia +29.8 | 89 docs 38.06 → 40.95, 10 up, none down |
+
+Fixture regressions left in: **estonian −7.8** (its "4." heading moves from
+23pt high to 1.4pt from Word's, and the next widow-controlled paragraph
+then misses page 3 by about a point) and **ukrainian −3.7** (Word pushes the
+anchor too; our table there is 16pt taller than Word's, which hid the
+missing line before). A flat 30pt "entering" slack for table zones was
+tried first and dropped: it pushed paragraphs above page-anchored tables.
+
+Still open from the focus set:
+- arabic_rice (3.0): complex-script fonts need `rFonts@cs`/`szCs`, and the
+  text needs bidi reordering and Arabic shaping (roadmap RTL item).
+- potamites (14.0): EMF text (`EMR_EXTCREATEFONTINDIRECTW` +
+  `EMR_EXTTEXTOUTW`), standalone lines, rectangles, PatBlt fills; then the
+  parked WMF patch.
+- maine (5.0): nested layout tables with cell spacing, column widths.
+- cyprus (2 pages vs 3): the second cause the diagnosis predicted.

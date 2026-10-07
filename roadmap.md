@@ -346,6 +346,30 @@ polish_building +8.1. Details, evidence and the open queue:
 Next: eleven local focus fixtures in `tests/fixtures/excluded/` (gitignored),
 one per open cause (§13.1).
 
+## Focus-fixture round (2026-10-07)
+
+Ten rules from the local focus fixtures (§13.2), each A/B-tested on the
+corpus documents with its construct. Focus fixtures 19.4 → 44.6, scraped
+63.4 → 63.7 (erasmus_plus +20.3, east_asia +29.8; estonian −7.8 and
+ukrainian −3.7, explained in §13.2), other groups unchanged.
+
+1. hideMark: never hides the document's first mark; a hidden trailing mark
+   drops its spacing; a picture in it keeps its height.
+2. A line of nothing but tabs wraps at the margin.
+3. `framePr yAlign="inline"` frames are in-flow paragraphs.
+4. A picture-only line takes its leading from the paragraph mark.
+5. Page/margin-placed header/footer floats cover their own band (85 → 2
+   pages).
+6. A header float over the first line pushes the header text below it.
+7. Keep chains carry whole keepLines paragraphs; over-long chains start a
+   page and flow.
+8. A row whose first cell is keepNext stays with the next row.
+9. A floating table pushes a paragraph whose first line reaches it.
+
+Still open from the focus set: complex-script fonts (arabic, needs the
+RTL/shaping item below), EMF text and lines (potamites), nested layout
+tables (maine), cyprus one page short.
+
 ## Layout accuracy round (2026-10-01)
 
 Rules derived from Word reference PDFs (borders, text positions measured with
