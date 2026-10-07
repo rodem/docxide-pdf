@@ -7,7 +7,7 @@ use pdf_writer::{Content, Name, Rect, Str};
 
 use crate::fonts::{FontEntry, encode_as_gids, font_key_buf, to_winansi_bytes};
 use crate::model::{
-    Alignment, FormCheckbox, LineSpacing, ParagraphBorder, Run, TabAlignment, TabStop, TextFill,
+    Alignment, FormCheckbox, LineSpacing, Paragraph, ParagraphBorder, Run, TabAlignment, TabStop, TextFill,
     TextOutline, TextShadow, VertAlign,
 };
 
@@ -3702,6 +3702,7 @@ fn tallest_by_ascent<'a>(
 /// → +0 (old_blue_truck p1).
 pub(super) fn picture_line_bottom(
     runs: &[Run],
+    para: &Paragraph,
     seen_fonts: &HashMap<String, FontEntry>,
     ls: LineSpacing,
 ) -> f32 {
@@ -3709,7 +3710,19 @@ pub(super) fn picture_line_bottom(
         runs.iter()
             .filter(|r| r.inline_image.is_none() && !r.vanish)
     };
-    let leading = tallest_by_ascent(text_runs(), seen_fonts).map_or(0.0, |(fs, lhr, _)| {
+    // With no text run the mark's font sets the leading (czech_village's
+    // header logo under 1.5 lines of 12pt Times New Roman).
+    let mark = || {
+        para.paragraph_mark_font_size.map(|fs| {
+            let lhr = para
+                .paragraph_mark_font_name
+                .as_deref()
+                .and_then(|n| seen_fonts.get(n))
+                .and_then(|e| run_line_metrics(e, "").0);
+            (fs, lhr, None)
+        })
+    };
+    let leading = tallest_by_ascent(text_runs(), seen_fonts).or_else(mark).map_or(0.0, |(fs, lhr, _)| {
         (super::helpers::resolve_line_h(ls, fs, lhr) - fs * lhr.unwrap_or(1.2)).max(0.0)
     });
     let glyph_runs = text_runs().filter(|r| !r.text.trim().is_empty());

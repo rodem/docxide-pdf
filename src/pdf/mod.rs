@@ -2507,7 +2507,7 @@ fn render_paragraph_block(
     let para_metrics = (
         para_ascent,
         if max_inline_img_h > 0.0 {
-            picture_line_bottom(&effective_runs, ctx.fonts, effective_ls)
+            picture_line_bottom(&effective_runs, para, ctx.fonts, effective_ls)
         } else {
             0.0
         },

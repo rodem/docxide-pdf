@@ -491,7 +491,7 @@ pub(super) fn render_textbox_paragraphs(
             if inline_imgs.is_empty() {
                 0.0
             } else {
-                picture_line_bottom(&tp.runs, ctx.fonts, tp_ls)
+                picture_line_bottom(&tp.runs, tp, ctx.fonts, tp_ls)
             },
         );
         let tp_text_x = content_x + tp.indent_left + x_offset;

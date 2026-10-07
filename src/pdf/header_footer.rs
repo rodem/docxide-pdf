@@ -239,7 +239,7 @@ fn compute_header_height(
                 // picture plus the text descent (`inline_line_advance`).
                 let picture_h = runs_max_image_h(&para.runs);
                 let mut content_h = if picture_h > 0.0 {
-                    line_h.max(picture_h + picture_line_bottom(&para.runs, ctx.fonts, effective_ls))
+                    line_h.max(picture_h + picture_line_bottom(&para.runs, para, ctx.fonts, effective_ls))
                 } else {
                     line_h
                 };
@@ -862,7 +862,7 @@ pub(super) fn render_header_footer(
                             if inline_imgs.is_empty() {
                                 0.0
                             } else {
-                                picture_line_bottom(&tp.runs, ctx.fonts, tp_ls)
+                                picture_line_bottom(&tp.runs, tp, ctx.fonts, tp_ls)
                             },
                         );
                         super::render_list_label(
@@ -992,7 +992,7 @@ pub(super) fn render_header_footer(
                 // Inline pictures sit on the baseline and grow their line to the
                 // picture plus the text descent (`inline_line_advance`).
                 let picture_bottom = if runs_max_image_h(&para.runs) > 0.0 {
-                    picture_line_bottom(&substituted_runs, ctx.fonts, effective_ls)
+                    picture_line_bottom(&substituted_runs, para, ctx.fonts, effective_ls)
                 } else {
                     0.0
                 };
