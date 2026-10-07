@@ -233,12 +233,20 @@ fn parse_notes_simple<R: Read + Seek>(
                 } else {
                     (None, None, None, None)
                 };
+            // uk_commercial_lease's FootnoteText hangs 567 twips with no tab
+            // stops: Word's "1<tab>" text starts at that implicit stop.
+            let mut tab_stops = super::resolve_tab_stops(ppr, para_style);
+            super::paragraph::add_hanging_tab_stop(
+                &mut tab_stops,
+                left.unwrap_or(0.0),
+                hanging.unwrap_or(0.0),
+            );
 
             Paragraph {
                 runs: parsed.runs,
                 space_before: sp_before.unwrap_or(styles.defaults.space_before),
                 space_after: sp_after.unwrap_or(styles.defaults.space_after),
-                tab_stops: super::resolve_tab_stops(ppr, para_style),
+                tab_stops,
                 alignment,
                 line_spacing: ls.or(Some(styles.defaults.line_spacing)),
                 snap_to_grid: true,

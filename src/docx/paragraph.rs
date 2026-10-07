@@ -208,21 +208,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         });
         tab_stops.sort_by(|a, b| a.position.total_cmp(&b.position));
     }
-    // OOXML 17.3.1.38: hanging indent implicitly creates a tab stop
-    if indent_hanging > 0.0 {
-        let hang_pos = indent_left;
-        if !tab_stops
-            .iter()
-            .any(|t| (t.position - hang_pos).abs() < 0.5)
-        {
-            tab_stops.push(TabStop {
-                position: hang_pos,
-                alignment: TabAlignment::Left,
-                leader: None,
-            });
-            tab_stops.sort_by(|a, b| a.position.total_cmp(&b.position));
-        }
-    }
+    add_hanging_tab_stop(&mut tab_stops, indent_left, indent_hanging);
 
     let has_text = runs.iter().any(|r| !r.text.is_empty() || r.is_tab);
     let inline_image_count = runs.iter().filter(|r| r.inline_image.is_some()).count();
@@ -366,6 +352,22 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         auto_space_de,
         auto_space_dn,
         frame_props: parse_frame_props(ppr, para_style.and_then(|s| s.frame_attrs.as_ref())),
+    }
+}
+
+/// OOXML 17.3.1.38: a hanging indent implicitly sets a tab stop at the indent.
+pub(super) fn add_hanging_tab_stop(tab_stops: &mut Vec<TabStop>, indent_left: f32, hanging: f32) {
+    if hanging > 0.0
+        && !tab_stops
+            .iter()
+            .any(|t| (t.position - indent_left).abs() < 0.5)
+    {
+        tab_stops.push(TabStop {
+            position: indent_left,
+            alignment: TabAlignment::Left,
+            leader: None,
+        });
+        tab_stops.sort_by(|a, b| a.position.total_cmp(&b.position));
     }
 }
 
@@ -521,6 +523,17 @@ pub(super) fn resolve_indents(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hanging_indent_adds_one_stop_at_the_indent() {
+        let mut stops = Vec::new();
+        add_hanging_tab_stop(&mut stops, 28.35, 28.35);
+        add_hanging_tab_stop(&mut stops, 28.35, 28.35);
+        assert_eq!(stops.len(), 1);
+        assert_eq!(stops[0].position, 28.35);
+        add_hanging_tab_stop(&mut stops, 50.0, 0.0);
+        assert_eq!(stops.len(), 1);
+    }
 
     #[test]
     fn column_break_split_starts_the_continuation_in_the_next_column() {
