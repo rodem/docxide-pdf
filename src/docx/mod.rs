@@ -1049,6 +1049,20 @@ fn parse_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Do
     {
         first.space_before = 0.0;
     }
+    // hideMark never hides the document's first paragraph mark: a table
+    // opening the body keeps a line for an empty hideMark first cell, the
+    // same row collapses after a page break or a paragraph (Word probes).
+    // Nested layout tables put that mark in the innermost first cell.
+    let mut first = sections[0].blocks.first_mut();
+    while let Some(Block::Table(table)) = first {
+        let Some(cell) = table.rows.first_mut().and_then(|r| r.cells.first_mut()) else {
+            break;
+        };
+        if cell.content.len() == 1 {
+            cell.hide_mark = false;
+        }
+        first = cell.content.first_mut();
+    }
     // A continuous break can't change the paper mid-page: Word starts a new
     // page when the size or orientation changes (transition_to_work's
     // landscape Annexure B1, whose page would otherwise take the portrait
