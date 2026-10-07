@@ -1273,6 +1273,14 @@ impl PageBuilder {
         }
     }
 
+    /// A page opened (by a break) that nothing has been placed on yet.
+    fn is_empty_page(&self) -> bool {
+        self.page_count() > 0
+            && (self.slot_top - self.page_top_y).abs() < 0.01
+            && self.deferred_shapes.is_empty()
+            && self.footnote_ids.is_empty()
+    }
+
     fn is_at_page_top(&self, sp: &SectionProperties) -> bool {
         // nabl's 47.49pt header ends below its 36pt top margin: Word still
         // drops the space before the first paragraph under it.
@@ -3785,7 +3793,11 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                 SectionBreakType::NextPage
                 | SectionBreakType::OddPage
                 | SectionBreakType::EvenPage => {
-                    state.pb.flush_page(sect_idx - 1);
+                    // A page break just before the section break leaves an empty
+                    // page; Word starts the section there instead of after it.
+                    if !state.pb.is_empty_page() {
+                        state.pb.flush_page(sect_idx - 1);
+                    }
 
                     // Insert blank page for odd/even page alignment
                     let need_odd = match sp.break_type {
