@@ -462,6 +462,13 @@ pub(super) fn parse_frame_props(
     let mut attrs = style_attrs.cloned().unwrap_or_default();
     attrs.extend(direct.map(frame_attrs).unwrap_or_default());
     let attr = |name: &str| attrs.get(name).map(String::as_str);
+    // An inline frame sits at its place in the flow and takes its height
+    // there, like any paragraph (bulgarian_farmland's three header lines).
+    // ponytail: every corpus one has no width or position; give a sized
+    // inline frame its own path if one turns up.
+    if attr("yAlign") == Some("inline") {
+        return None;
+    }
     let twips = |name| {
         attr(name)
             .and_then(|v| v.parse::<f32>().ok())
