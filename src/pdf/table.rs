@@ -1889,6 +1889,33 @@ pub(super) fn render_table(
         let at_page_top = (pb.slot_top - eff_top).abs() < 1.0;
         let available_h = pb.slot_top - eff_bottom;
         let page_content_h = eff_top - eff_bottom;
+        // A row whose first cell holds a keepNext paragraph stays on the page
+        // where the next row starts, and such rows chain: italian_academic's
+        // Titolo2 rows move to page 2 together although the first would fit.
+        // Rows with keepNext only in later cells split as usual (a 199-page
+        // corpus document's syllabus tables). ponytail: first-cell rule fits
+        // the three measured documents; probe if one disagrees.
+        let keeps_next = |r: &TableRow| {
+            r.cells.first().is_some_and(|c| {
+                c.content
+                    .iter()
+                    .any(|b| matches!(b, Block::Paragraph(p) if p.keep_next))
+            })
+        };
+        let chain_moves = !at_page_top && keeps_next(row) && {
+            let mut k = ri;
+            let mut h = 0.0;
+            while k < table.rows.len() && keeps_next(&table.rows[k]) {
+                h += row_layouts[k].height;
+                k += 1;
+            }
+            // ponytail: a splittable next row's start = a 14pt line, as the
+            // split guard below; measure its first chunk if one misjudges.
+            if let Some(next) = row_layouts.get(k) {
+                h += next.split_min.map_or(next.height, |m| m.max(14.0));
+            }
+            h > available_h && h <= page_content_h
+        };
 
         // Word splits any non-cantSplit row that overflows the page remainder,
         // filling the current page before continuing on the next — there is no
@@ -1957,7 +1984,7 @@ pub(super) fn render_table(
         let must_split = (row_h > page_content_h || keep_with_anchor)
             && !row.cant_split
             && (at_page_top || first_chunks_fit);
-        if row_h > available_h && (must_split || can_meaningfully_split) {
+        if row_h > available_h && (must_split || can_meaningfully_split) && !chain_moves {
             split_row_across_pages(
                 row,
                 layout,
@@ -1966,7 +1993,7 @@ pub(super) fn render_table(
                 &mut did_flush_while_floating,
                 effective_margin_bottom,
             );
-        } else if !at_page_top && row_h > available_h {
+        } else if !at_page_top && (row_h > available_h || chain_moves) {
             if is_floating {
                 did_flush_while_floating = true;
             }
