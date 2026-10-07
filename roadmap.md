@@ -351,8 +351,8 @@ one per open cause (`current_focus/layout-accuracy.md` §4).
 Ten rules from the local focus fixtures (evidence in the commits), each
 A/B-tested on the corpus documents with its construct. Focus fixtures
 19.4 → 44.6, scraped 63.4 → 63.7 (erasmus_plus +20.3, east_asia +29.8),
-other groups unchanged. ukrainian's −3.7 is fixed by item 11; estonian −7.8
-and uk_commercial_lease −10.8 are the next step
+other groups unchanged. ukrainian −3.7 is fixed by item 11, estonian −7.8 by
+item 12; uk_commercial_lease −10.8 is the next step
 (`current_focus/layout-accuracy.md` §2.1); baselines not yet accepted.
 
 1. hideMark: never hides the document's first mark; a hidden trailing mark
@@ -372,6 +372,9 @@ and uk_commercial_lease −10.8 are the next step
     (ukrainian 53.0 → 78.0, scraped 63.69 → 63.83; corpus subset 55.9 →
     66.0); uk_commercial_lease 38.3 → 27.1 from short footnote line pitch
     it uncovered.
+12. Arial Narrow is Word's 2.42;O365 build (fonts/, assets, ~/Library/Fonts):
+    estonian 42.5 → 69.8, indonesian 27.3 → 54.5, renewable_dispatch
+    71.0 → 85.7.
 
 Still open from the focus set: complex-script fonts (arabic, needs the
 RTL/shaping item below), EMF text and lines (potamites), nested layout

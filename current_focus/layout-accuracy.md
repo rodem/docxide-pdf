@@ -6,25 +6,35 @@ matter. Finished rules are not listed here: `git log` has one commit per rule
 with its evidence, and `roadmap.md` summarises each round ("Layout accuracy
 round", "Large-corpus round", "Focus-fixture round").
 
-## 1. Status (2026-10-08, `main` at `943cd9c4`)
+## 1. Status (2026-10-08, `main` at `77cb4c35` + Arial Narrow 2.42)
 
 Everything is on `main`; no open branch. Fixture means (Jaccard, snapshot
-`tests/output/snapshots/tabsq.json`):
+`tests/output/snapshots/an242.json`):
 
 | group | n | J |
 |---|---|---|
 | cases | 79 | 75.36 |
-| scraped | 148 | 63.83 |
+| scraped | 148 | 64.20 |
 | fonts | 7 | 66.46 |
 | hyphenation | 8 | 63.71 |
 | samples | 5 | 55.03 |
-| excluded (local focus set, §4) | 11 | 44.57 |
+| excluded (local focus set, §4) | 11 | 45.91 |
 
 **Baselines are not yet accepted** for the focus-fixture round (10 rule
 commits `f912a033..40275abe`) nor for `12edca93` (footnote hanging tab stop)
-and `943cd9c4` (tab-line space squeeze). The suite reports estonian and
-uk_commercial_lease as regressions until the user approves new baselines or
-§2.1 fixes them.
+and `943cd9c4` (tab-line space squeeze), nor for the Arial Narrow swap. The
+suite reports uk_commercial_lease as a regression until the user approves new
+baselines or §2.1 fixes it.
+
+**Arial Narrow is now Word's 2.42;O365 build** (hhea = win metrics, no 28-unit
+external leading; widths unchanged) in `fonts/`, `../assets/fonts/` (assets
+commit `1b27417`, not pushed) and `~/Library/Fonts` (the macOS Supplemental
+2.38 copy outranks `fonts/`). Fixtures: estonian 42.5 → 69.8, indonesian
+27.3 → 54.5, renewable_dispatch 71.0 → 85.7, nabl +1.1, no drops. The corpus
+subset with Arial Narrow (47 docs) falls 52.83 → 47.10 because its print
+references embed Mac Word's local 2.38 (ascent 1916); fixtures' online
+references embed 2.42. Score the corpus with `HOME` pointing at a font folder
+without the 2.42 files to keep it comparable.
 
 External clean corpus (2,480 Word for Mac documents): 69.37 J before the
 focus-fixture round; not re-scored as a whole since (each rule was A/B-tested
@@ -32,23 +42,12 @@ on its own subset, §3).
 
 ## 2. Next steps, in order
 
-### 2.1 The two fixture regressions of the floating-table rule (`40275abe`)
+### 2.1 Open fixture regression
 
-That rule pushes a paragraph whose first line reaches a floating table's top
-below the table. It is right for both documents; each regression is a second,
-pre-existing error that the old (wrong) placement hid. Fix these first.
+estonian (the floating-table rule's other regression) was the Arial Narrow
+build: its 0.15–0.4pt per-line drift was the 2.38 font's external leading;
+with 2.42 page 3 lands within 0.25pt of Word and scores 69.8 (baseline 50.3).
 
-- **scraped/estonian_community_development_grant: 50.3 → 42.5.** Page 3: the
-  floating table's empty anchor now goes below the table, so the heading
-  "4. Näitajad" sits at 762.14 (Word 760.73; it was 737.41, 23pt high). The
-  next paragraph ("Lehel saate sisestada…") needs two lines at the page foot
-  (widow control); Word fits them at 776.73 and 789.23, ours land 1.4pt lower,
-  the second misses, and the whole paragraph moves to page 4, shifting the
-  rest of the document. The 1.4pt: the table above ends 0.65pt lower than
-  Word's (717.85 vs 717.20) and the gap to the heading is 0.76pt larger
-  (44.29 vs 43.53). §12 of the old doc also saw this document drift 0.15–0.4pt
-  per line through its opening paragraphs. Find which of those offsets is a
-  rule (cell/row heights, the anchor line's height or spacing), not a fudge.
 - **scraped/uk_commercial_lease_template: 37.9 → 27.1** (from `943cd9c4`;
   ukrainian, the other regression, went 53.0 → 78.0 with it). Its tabbed
   footnotes now break where Word's do, which removes an extra line that hid
