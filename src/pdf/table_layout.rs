@@ -351,6 +351,27 @@ pub(super) fn auto_fit_columns(
     // rather than preserving the gridCol total. Each column is sized based on
     // a blend of the minimum width (longest word) and the natural width
     // (longest single-line paragraph), capped by the gridCol preferred width.
+    // A single-row nested table with explicit cell preferences is already
+    // sized by the author. Word keeps that grid when it fits the parent,
+    // including empty cells reserved for later number/date filling.
+    // Do not collapse those slots to the current text's natural width.
+    if let Some(avail) = available_width
+        && table.auto_width
+        && !table.fixed_layout
+        && !table.grid_inferred
+        && table.rows.len() == 1
+        && table.col_widths.iter().sum::<f32>() <= avail
+        && table.rows[0]
+            .grid_cells()
+            .all(|(_, span, cell)| span == 1 && cell.width > 0.0)
+        && min_widths
+            .iter()
+            .zip(&table.col_widths)
+            .all(|(minimum, preferred)| minimum <= preferred)
+    {
+        return table.col_widths.clone();
+    }
+
     if available_width.is_some() && !table.fixed_layout {
         let natural_widths = natural_widths(table, fonts, cm);
         // Word's auto-fit for nested tables produces column widths slightly
@@ -1512,6 +1533,24 @@ pub(super) fn find_cell_split(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nested_empty_reserved_cells_keep_explicit_grid_when_it_fits() {
+        let bytes = include_bytes!("../../tests/fixtures/cases/case88/input.docx");
+        let doc = crate::docx::parse_bytes(bytes).unwrap();
+        let Block::Table(outer) = &doc.sections[0].blocks[0] else {
+            panic!("outer table")
+        };
+        let Block::Table(nested) = &outer.rows[0].cells[0].content[0] else {
+            panic!("nested table")
+        };
+        let fonts = HashMap::new();
+        let kept = auto_fit_columns(nested, &fonts, Some(260.0), None);
+        assert_eq!(kept, nested.col_widths);
+        assert!(kept.iter().sum::<f32>() > 230.0);
+        let squeezed = auto_fit_columns(nested, &fonts, Some(80.0), None);
+        assert!(squeezed.iter().sum::<f32>() <= 80.001);
+    }
 
     /// stem_partnerships p4 (annotation #237): a 10-line cell paragraph after a
     /// heading must break between lines, two lines minimum on either side.
