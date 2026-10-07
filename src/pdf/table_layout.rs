@@ -748,8 +748,18 @@ pub(super) fn compute_row_layouts(
                                     para,
                                     super::block_para(&cell.content, block_idx + 1),
                                 );
+                                // hideMark drops the cell's trailing empty mark with
+                                // its spacing; the paragraph above keeps its space
+                                // after (Word probes).
+                                let mark_hidden = cell.hide_mark
+                                    && block_idx == block_count - 1
+                                    && para.content_height == 0.0
+                                    && is_text_empty(runs)
+                                    && !para.paragraph_mark_vanish;
                                 // A cell drops HTML auto spacing at its edges.
-                                let space_before = if para_idx > 0 {
+                                let space_before = if mark_hidden {
+                                    prev_space_after
+                                } else if para_idx > 0 {
                                     let prev = super::block_para(&cell.content, block_idx - 1);
                                     f32::max(prev_space_after, effective_space_before(para, prev))
                                 } else if para.space_before_auto {
@@ -887,9 +897,7 @@ pub(super) fn compute_row_layouts(
                                 } else {
                                     if para.paragraph_mark_vanish {
                                         // vanished paragraph mark: zero height
-                                    } else if cell.hide_mark
-                                        && block_idx == block_count - 1
-                                    {
+                                    } else if mark_hidden {
                                         // hideMark: last empty paragraph in cell
                                         // contributes no height
                                     } else if prev_was_nested_table
@@ -1038,7 +1046,9 @@ pub(super) fn compute_row_layouts(
                                     has_connectors: !para.connectors.is_empty(),
                                 }));
 
-                                prev_space_after = if para.space_after_auto && block_idx == block_count - 1 {
+                                prev_space_after = if mark_hidden
+                                    || (para.space_after_auto && block_idx == block_count - 1)
+                                {
                                     0.0
                                 } else {
                                     space_after
