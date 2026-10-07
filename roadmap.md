@@ -221,7 +221,7 @@ paren.
 
 ## Biggest Scraped Gaps (2026-10-04, branch `gap-fixes`)
 
-Details in `current_focus/layout-accuracy.md` §12. Mean J 63.85 → 64.19.
+Rule evidence in the commits; open items in `current_focus/layout-accuracy.md` §5. Mean J 63.85 → 64.19.
 - DONE: running heads (IF over nested STYLEREF, `\n`, forward search),
   cell-paragraph indents from the style, floating header tables, column
   breaks in one-column sections. bosch +35.0, french_sexual +22.2,
@@ -239,7 +239,7 @@ Details in `current_focus/layout-accuracy.md` §12. Mean J 63.85 → 64.19.
 
 Six rules from the lowest-scoring handcrafted `cases/` fixtures, each one
 commit verified by a full suite run, no fixture regressed by more than 2.3 J.
-`cases` mean 74.08 → **75.81** J; details in `current_focus/layout-accuracy.md` §11.
+`cases` mean 74.08 → **75.81** J; evidence in the commits.
 
 - Character styles inherit along `basedOn` (case50 +24.8)
 - A list marker's extra ascent adds to an auto-spaced line once, unscaled (case3, case33, 4 scraped)
@@ -329,7 +329,7 @@ documents scored) triaged by signal (page offsets, page drift, lost
 pictures, fonts, lost text) and diagnosed per cause. Clean-corpus Jaccard
 68.1 → 69.4, wrong page counts 170 → 149; fixtures unchanged except
 polish_building +8.1. Details, evidence and the open queue:
-`current_focus/layout-accuracy.md` §13.
+`current_focus/layout-accuracy.md` §5 (open queue).
 
 1. Legacy VML pictures (`w:pict` + `v:imagedata`) render, incl. watermarks.
 2. Floats anchored in front of a page break are kept.
@@ -344,14 +344,15 @@ polish_building +8.1. Details, evidence and the open queue:
    basedOn.
 
 Next: eleven local focus fixtures in `tests/fixtures/excluded/` (gitignored),
-one per open cause (§13.1).
+one per open cause (`current_focus/layout-accuracy.md` §4).
 
 ## Focus-fixture round (2026-10-07)
 
-Ten rules from the local focus fixtures (§13.2), each A/B-tested on the
-corpus documents with its construct. Focus fixtures 19.4 → 44.6, scraped
-63.4 → 63.7 (erasmus_plus +20.3, east_asia +29.8; estonian −7.8 and
-ukrainian −3.7, explained in §13.2), other groups unchanged.
+Ten rules from the local focus fixtures (evidence in the commits), each
+A/B-tested on the corpus documents with its construct. Focus fixtures
+19.4 → 44.6, scraped 63.4 → 63.7 (erasmus_plus +20.3, east_asia +29.8),
+other groups unchanged. estonian −7.8 and ukrainian −3.7 are the next step
+(`current_focus/layout-accuracy.md` §2.1); baselines not yet accepted.
 
 1. hideMark: never hides the document's first mark; a hidden trailing mark
    drops its spacing; a picture in it keeps its height.

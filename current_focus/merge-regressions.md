@@ -4,7 +4,7 @@ Status as of 2026-10-02. The `layout-accuracy` round (43 layout rules, see
 `layout-accuracy.md`) is on `main`: first merged, then rebased linearly onto
 `origin/main` by another session, so its commits have new hashes on `main`
 (the old ones live on in branch `layout-accuracy`, which is now superseded;
-`layout-accuracy.md` still cites the old hashes and still says "not merged").
+`layout-accuracy.md` was pared down on 2026-10-08 and no longer lists old hashes).
 `main` is ~72 commits ahead of `origin/main` and **not pushed**.
 
 Every fixture that scored lower after the merge was traced to the commit that
@@ -254,7 +254,7 @@ Mean Jaccard went 51.2 → 63.4 and SSIM 70.9 → 80.5 over the merge.
   26.64… One content-driven row, trHeight 520, is 35.64 vs Word's 30.48, a
   separate error.) SSIM 46.7 → 26.8 came from the correct rows no longer
   cancelling the header offset.
-- Same item as pending fix 3 in `layout-accuracy.md` §7 (headers and cells
+- Same item as the old pending fix 3 in `layout-accuracy.md` (headers and cells
   don't use per-line heights).
 
 ### 7. Paginate inline endnotes
