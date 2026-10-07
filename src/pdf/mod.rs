@@ -3892,9 +3892,21 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                     state.pb.is_first_page_of_section = true;
                 }
                 SectionBreakType::Continuous => {
-                    // No forced break; geometry updates on next page.
-                    // Don't update page_hf_section — the current page keeps
-                    // the section that started it for header/footer purposes.
+                    if state.pb.is_at_page_top(cur_sp) {
+                        // No content on this page belongs to the preceding
+                        // section. The continuous section therefore owns this
+                        // sheet, including its first-page header/footer variant.
+                        state.pb.page_hf_section = sect_idx;
+                        state.pb.is_first_page_of_section = true;
+                        state.pb.slot_top =
+                            effective_slot_top(sp, true, state.pb.page_count(), &ctx);
+                        state.pb.column_top_y = state.pb.slot_top;
+                        state.pb.page_top_y = state.pb.slot_top;
+                        state.effective_margin_bottom =
+                            compute_effective_margin_bottom(sp, true, state.pb.page_count(), &ctx);
+                    }
+                    // Mid-page, the sheet keeps the section that started it;
+                    // geometry updates on the next page without a forced break.
                 }
             }
         }

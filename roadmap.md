@@ -407,6 +407,15 @@ Synthetic case86 compares two differently weighted horizontal lines in a scaled,
 vertically reflected group against Word for Windows; the bounds differ by 0.02pt.
 Two unit tests cover reflected zero-height lines and cancellation of nested flips.
 Standalone header group lines also need the running-head connector render fix.
+## Continuous section opening an empty sheet (2026-10-08)
+
+A continuous section beginning at an otherwise empty page top now owns that
+sheet's header/footer selection and uses its first-page variant. Mid-page
+continuous sections keep the preceding section's running head as before.
+Synthetic case87 agrees with Word for Windows on FIRST/DEFAULT/FIRST across
+three pages; a mid-page control retains FIRST/DEFAULT. One external document's
+last-page header is corrected without changing its three-page count; the
+82-document corpus has no page-count or page-score regressions against main.
 
 ## Layout accuracy round (2026-10-01)
 
