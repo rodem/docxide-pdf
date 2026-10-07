@@ -2144,6 +2144,7 @@ pub(super) fn render_table(
                     polygon_pts: None,
                     wrap_text,
                     para_relative: false,
+                    from_table: true,
                 });
             }
         }

@@ -618,6 +618,9 @@ pub(super) struct FloatZone {
     /// (positionV relativeFrom="paragraph").  Paragraphs whose cursor is
     /// slightly above the zone should still be pushed below wide images.
     pub para_relative: bool,
+    /// Set for a floating table: like a paragraph-relative float it sits
+    /// tblpY below its anchor paragraph, which comes next in the flow.
+    pub from_table: bool,
 }
 
 impl FloatZone {
@@ -638,6 +641,7 @@ impl FloatZone {
                 .map(|verts| convert_polygon_to_page_coords(verts, fi_x, fi_y_top, w, h)),
             wrap_text: fi.wrap_text,
             para_relative: fi.v_relative_from == VRelativeFrom::Paragraph,
+            from_table: false,
         }
     }
 
@@ -3967,6 +3971,16 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                         state.pb.float_zone = None;
                     } else if state.pb.slot_top <= fz.top_y
                         || (fz.para_relative && state.pb.slot_top <= fz.top_y + 30.0)
+                        // A floating table meets a paragraph whose first
+                        // line reaches its top: physical_education's empty
+                        // anchor 0.05pt above a full-width table goes below
+                        // it with its line and space after.
+                        || (fz.from_table
+                            && matches!(block, Block::Paragraph(p) if {
+                                let (fs, lhr, _) = tallest_run_metrics(&p.runs, ctx.fonts);
+                                let ls = p.line_spacing.unwrap_or(ctx.doc_line_spacing);
+                                state.pb.slot_top - resolve_line_h(ls, fs, lhr) < fz.top_y
+                            }))
                     {
                         // Cursor is within, entering, or (for paragraph-relative
                         // zones) slightly above the zone.  Paragraph-relative
