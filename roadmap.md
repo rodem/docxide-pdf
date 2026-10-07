@@ -2032,3 +2032,6 @@ lack one.
 ## Single-row nested AutoFit reserved fields
 
 Keep explicit grid/cell preferences for a single-row nested auto-width table when it fits its parent. Empty number/date slots must not collapse to the current text width. Restrict the change to explicit grids and unmerged preferred-width cells; inferred, overflowing and multi-row tables keep their existing AutoFit path. case88 (empty slots) and case89 (filled slots) reproduce the issue with synthetic documents and Word reference PDFs.
+## Explicit widths in single-row nested tables
+
+An explicitly sized single-row nested table should use the fixed-width base when its cell preferences and grid totals agree and fit the parent. Preserve min-content redistribution for narrow marker cells instead of collapsing all columns to text. Synthetic case90/case91 cover empty and populated fields. Global nested-table origin/float positioning is a separate issue.
