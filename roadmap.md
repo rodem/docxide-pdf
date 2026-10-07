@@ -351,7 +351,8 @@ one per open cause (`current_focus/layout-accuracy.md` §4).
 Ten rules from the local focus fixtures (evidence in the commits), each
 A/B-tested on the corpus documents with its construct. Focus fixtures
 19.4 → 44.6, scraped 63.4 → 63.7 (erasmus_plus +20.3, east_asia +29.8),
-other groups unchanged. estonian −7.8 and ukrainian −3.7 are the next step
+other groups unchanged. ukrainian's −3.7 is fixed by item 11; estonian −7.8
+and uk_commercial_lease −10.8 are the next step
 (`current_focus/layout-accuracy.md` §2.1); baselines not yet accepted.
 
 1. hideMark: never hides the document's first mark; a hidden trailing mark
@@ -366,6 +367,11 @@ other groups unchanged. estonian −7.8 and ukrainian −3.7 are the next step
    page and flow.
 8. A row whose first cell is keepNext stays with the next row.
 9. A floating table pushes a paragraph whose first line reaches it.
+10. Footnotes take the implicit tab stop at a hanging indent.
+11. Justified compat-15 tab lines squeeze their spaces like untabbed ones
+    (ukrainian 53.0 → 78.0, scraped 63.69 → 63.83; corpus subset 55.9 →
+    66.0); uk_commercial_lease 38.3 → 27.1 from short footnote line pitch
+    it uncovered.
 
 Still open from the focus set: complex-script fonts (arabic, needs the
 RTL/shaping item below), EMF text and lines (potamites), nested layout

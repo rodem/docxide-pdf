@@ -6,23 +6,25 @@ matter. Finished rules are not listed here: `git log` has one commit per rule
 with its evidence, and `roadmap.md` summarises each round ("Layout accuracy
 round", "Large-corpus round", "Focus-fixture round").
 
-## 1. Status (2026-10-08, `main` at `cc0c4c45` + this doc)
+## 1. Status (2026-10-08, `main` at `943cd9c4`)
 
 Everything is on `main`; no open branch. Fixture means (Jaccard, snapshot
-`tests/output/snapshots/ftable2.json`):
+`tests/output/snapshots/tabsq.json`):
 
 | group | n | J |
 |---|---|---|
 | cases | 79 | 75.36 |
-| scraped | 148 | 63.69 |
+| scraped | 148 | 63.83 |
 | fonts | 7 | 66.46 |
 | hyphenation | 8 | 63.71 |
 | samples | 5 | 55.03 |
 | excluded (local focus set, §4) | 11 | 44.57 |
 
 **Baselines are not yet accepted** for the focus-fixture round (10 rule
-commits `f912a033..40275abe`). The suite reports estonian and ukrainian as
-regressions until the user approves new baselines or §2.1 fixes them.
+commits `f912a033..40275abe`) nor for `12edca93` (footnote hanging tab stop)
+and `943cd9c4` (tab-line space squeeze). The suite reports estonian and
+uk_commercial_lease as regressions until the user approves new baselines or
+§2.1 fixes them.
 
 External clean corpus (2,480 Word for Mac documents): 69.37 J before the
 focus-fixture round; not re-scored as a whole since (each rule was A/B-tested
@@ -47,14 +49,15 @@ pre-existing error that the old (wrong) placement hid. Fix these first.
   (44.29 vs 43.53). §12 of the old doc also saw this document drift 0.15–0.4pt
   per line through its opening paragraphs. Find which of those offsets is a
   rule (cell/row heights, the anchor line's height or spacing), not a fudge.
-- **scraped/ukrainian_municipal_heating_resolution: 56.7 → 53.0.** Page 3
-  opens with a paragraph we wrap onto one more line than Word (Word: lines at
-  85.78, 102.03, 118.03; ours 85.87, 101.97, 118.07, 134.16), so everything
-  below is 16pt low. Word also pushes the floating table's empty anchor below
-  the table (text resumes 29.25pt under it); before the rule our missing
-  anchor line made up for the extra wrapped line. Fix the wrap (check its
-  justification and tabs: `build_tabbed_line` has no compat-15 space squeeze,
-  §5 item 3).
+- **scraped/uk_commercial_lease_template: 37.9 → 27.1** (from `943cd9c4`;
+  ukrainian, the other regression, went 53.0 → 78.0 with it). Its tabbed
+  footnotes now break where Word's do, which removes an extra line that hid
+  short footnote line pitch: bullet lines step 9.2 (Word 9.75: the
+  list-marker line rule, not applied to hand-built footnotes, §5 item 9),
+  reference-mark lines 9.62 (Word 9.5). Page 11's footnote block is 0.75pt
+  short, so the keepNext "Greenhouse Gas Emissions" definition fits there
+  instead of opening page 12. One footnote also squeezes "(MCL-", the piece
+  of "(MCL-LEASECLAUSE-06)" before its hyphen, which Word wraps (§5 item 3).
 
 Commands: `python3 tools/line_diff.py <ref> <gen>`, `python3 tools/pdf_lines.py
 <pdf> <page> [ymin ymax]`, `python3 tools/word_x_diff.py <ref> <gen> <page>`.
@@ -185,9 +188,9 @@ Ordered roughly by expected gain. Corpus counts are clean documents.
    first, so a blank page follows (one 107-page document; what-if 11 → 76).
 2. Page-relative topAndBottom floats reserve their absolute offset in the
    anchor paragraph (5 documents).
-3. No compat-15 space squeeze in tabbed justified lines (`build_tabbed_line`
-   wraps on plain overflow; count only the gaps after the last tab; 24
-   fixtures have justified tab paragraphs). Likely ukrainian's extra line.
+3. The space squeeze judges a hyphen piece ("(MCL-" of
+   "(MCL-LEASECLAUSE-06)", uk_commercial footnote 10) as a word; Word wraps
+   it, maybe judging the whole word's midpoint. Probe before changing.
 4. Endnotes never continue onto a new page; a paragraph taller than a page at
    the page top never splits.
 5. ~18 corpus documents drift 1–3.5% per line (Book Antiqua 17.40 vs 16.80,
@@ -205,7 +208,9 @@ Ordered roughly by expected gain. Corpus counts are clean documents.
    `headers_footers::parse_notes_simple`), not via `paragraph::build_paragraph`:
    cells miss keepLines, widowControl, the mark font, paragraph shading and
    borders, tab stops (incl. the implicit hanging stop); footnotes miss
-   `style_id`/contextualSpacing. keepNext was added by hand in `d8603f41`.
+   `style_id`/contextualSpacing and the list-marker line height (bullet lines
+   9.2 vs Word's 9.75, uk_commercial §2.1). keepNext was added by hand in
+   `d8603f41`, the footnotes' hanging tab stop in `12edca93`.
    Switching moves many fixtures: own commit, full snapshot.
 10. Table row keepNext uses a first-cell heuristic (`d8603f41`, three measured
     documents); probe a row with a mixed first cell.
