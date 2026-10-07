@@ -1398,6 +1398,9 @@ pub(super) struct LayoutState {
     /// ponytail: never reset — only `continuous` restart is exercised; newPage/
     /// newSection resets aren't implemented.
     pub(super) line_number_counter: u32,
+    /// The keep-with-next chain being laid out is too long for a page: its
+    /// paragraphs keep only their own link to the next.
+    pub(super) long_keep_chain: bool,
 }
 
 impl LayoutState {
@@ -1426,6 +1429,7 @@ impl LayoutState {
             heading_entries: Vec::new(),
             bookmark_positions: self.bookmark_positions.clone(),
             line_number_counter: self.line_number_counter,
+            long_keep_chain: self.long_keep_chain,
         }
     }
 }
@@ -2790,6 +2794,7 @@ fn render_paragraph_block(
         // (uk_commercial_lease's "Break Date" moves with its definition's note 8).
         let mut chain_notes: Vec<u32> = Vec::new();
         let mut prev_sa = effective_space_after;
+        let mut first_link: Option<f32> = None;
         let mut i = block_idx + 1;
         loop {
             let next = match section_blocks.get(i) {
@@ -2815,27 +2820,34 @@ fn render_paragraph_block(
             let (nfs, nlhr, _) = tallest_run_metrics(&next.runs, ctx.fonts);
             let next_inter = f32::max(prev_sa, next.space_before);
             let next_first_line_h = nlhr.map(|ratio| nfs * ratio).unwrap_or(nfs * 1.2);
-            if !next.keep_next {
-                // The chain needs as many of the next paragraph's lines as
-                // must stay together on this page: one without widow control;
-                // with it two, or all of a paragraph of three or fewer (it
-                // can't split without leaving a lone line). lithuanian's
-                // headings end on an empty paragraph and fit at the foot;
-                // western_australia's end on a three-line item and move.
-                let needed = lines_kept_together(next.widow_control, || {
-                    line_count(next, ctx, col_geometry[state.current_col].1)
-                });
-                let next_ls = next.line_spacing.unwrap_or(ctx.doc_line_spacing);
-                extra += next_inter
-                    + next_first_line_h
-                    + (needed - 1) as f32 * resolve_line_h(next_ls, nfs, nlhr);
+            // The chain needs as many of the next paragraph's lines as must
+            // stay together on this page: all of a keepLines paragraph; else
+            // one without widow control, with it two, or all of a paragraph
+            // of three or fewer (it can't split without leaving a lone line).
+            // lithuanian's headings end on an empty paragraph and fit at the
+            // foot; western_australia's end on a three-line item and move.
+            // A kept paragraph that stays whole passes the chain on to its
+            // successor; one that may split ends it (australian_higher's
+            // keepLines items move with heading 6.5.1).
+            let mut n = None;
+            let mut count = || *n.get_or_insert_with(|| line_count(next, ctx, col_geometry[state.current_col].1));
+            let needed = if next.keep_lines {
+                count()
+            } else {
+                lines_kept_together(next.widow_control, &mut count)
+            };
+            let next_ls = next.line_spacing.unwrap_or(ctx.doc_line_spacing);
+            extra += next_inter
+                + next_first_line_h
+                + needed.saturating_sub(1) as f32 * resolve_line_h(next_ls, nfs, nlhr);
+            first_link.get_or_insert(extra);
+            if !next.keep_next || needed < count() {
                 break;
             }
             if next.page_break_after {
                 extra = f32::MAX;
                 break;
             }
-            extra += next_inter + next_first_line_h;
             prev_sa = next.space_after;
             i += 1;
         }
@@ -2851,7 +2863,27 @@ fn render_paragraph_block(
             },
             |id| footnote_height(id, &doc.footnotes, ctx, col_geometry[state.current_col].1),
         );
-        extra + notes_h
+        // A chain no page can hold starts on a new page and flows from
+        // there: its later paragraphs keep only their own link to the next,
+        // or each would strand on a page of its own (a bibliography of
+        // Heading 3 entries opens page 3 in Word, the rest follows, each
+        // entry still with its successor's first lines).
+        let page_h = effective_slot_top(sp, false, state.pb.page_count(), ctx)
+            - state.effective_margin_bottom;
+        let inside_chain = block_idx
+            .checked_sub(1)
+            .and_then(|i| section_blocks.get(i))
+            .is_some_and(|b| matches!(b, Block::Paragraph(p) if p.keep_next));
+        // Judged once, where the chain starts: from a later member the rest
+        // may fit a page and would move again.
+        if !inside_chain {
+            state.long_keep_chain = needed_with_floats + extra + notes_h > page_h;
+        }
+        if inside_chain && state.long_keep_chain {
+            first_link.unwrap_or(extra)
+        } else {
+            extra + notes_h
+        }
     } else {
         0.0
     };
@@ -3779,6 +3811,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         heading_entries: Vec::new(),
         bookmark_positions,
         line_number_counter: 0,
+        long_keep_chain: false,
     };
     state.pb.tags.lang = document_lang(doc);
 
