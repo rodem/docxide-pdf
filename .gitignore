@@ -9,6 +9,8 @@
 /models
 tests/output/
 # Real-world docx corpora: kept locally, not tracked. Synthetic cases/ stays tracked.
+# excluded/: focus documents from an external corpus; never committed.
+/tests/fixtures/excluded/
 .claude/projects
 .claude/worktrees
 .worktrees/
