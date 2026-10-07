@@ -1213,7 +1213,40 @@ pub(super) fn render_header_footer(
                     },
                 );
 
-                let metrics = (font_size * ascender_ratio, picture_bottom);
+                let wrapped_pictures = lines.len() > 1
+                    && substituted_runs
+                        .iter()
+                        .filter(|r| r.inline_image.is_some())
+                        .count()
+                        > 1
+                    && substituted_runs.iter().all(|r| r.text.trim().is_empty());
+                // A wrapped image-only running head retains the paragraph
+                // mark's descent between its picture lines. effectExtent's
+                // bottom also sits below the baseline, rather than moving the
+                // visible picture down. Keep other picture-line paths intact.
+                if wrapped_pictures {
+                    let images = substituted_runs.iter().enumerate().filter_map(|(ri, r)| {
+                        block_inline_images
+                            .contains_key(&ri)
+                            .then_some(r.inline_image.as_ref())
+                            .flatten()
+                    });
+                    for (chunk, image) in lines
+                        .iter_mut()
+                        .flat_map(|l| &mut l.chunks)
+                        .filter(|c| c.inline_image_name.is_some())
+                        .zip(images)
+                    {
+                        chunk.inline_image_extra_height = image.layout_extra_height;
+                        chunk.y_offset = image.layout_extra_height - image.layout_extra_top;
+                    }
+                }
+                let wrapped_picture_bottom = if wrapped_pictures {
+                    font_size * super::layout::descender_ratio(tallest_lhr, tallest_ar)
+                } else {
+                    picture_bottom
+                };
+                let metrics = (font_size * ascender_ratio, wrapped_picture_bottom);
                 // Each line as tall as its own runs, as in the body.
                 if !matches!(effective_ls, LineSpacing::Exact(_)) {
                     size_lines_by_own_runs(&mut lines, ctx.fonts, effective_ls, line_h, metrics.0);

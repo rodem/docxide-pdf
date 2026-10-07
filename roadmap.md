@@ -376,6 +376,16 @@ and uk_commercial_lease −10.8 are the next step
 Still open from the focus set: complex-script fonts (arabic, needs the
 RTL/shaping item below), EMF text and lines (potamites), nested layout
 tables (maine), cyprus one page short.
+## Wrapped running-head pictures (2026-10-08)
+
+An image-only header/footer paragraph that wraps multiple inline pictures
+retains its paragraph font's descent between lines and positions the visible
+picture above its bottom effect extent. Case84 is a synthetic Word for Windows
+reference with two wrapped pictures and a 0.75pt bottom extent. Probes at 8/10/14pt
+Times New Roman and Arial, with 0/0.75/2pt extents, agree within 0.002pt; Calibri
+retains a 0.14–0.26pt font-metric difference. The rule is deliberately limited to
+wrapped image-only running heads; other picture paragraphs keep their existing
+behaviour. The independent header-height estimate still needs per-line layout.
 
 ## Layout accuracy round (2026-10-01)
 
