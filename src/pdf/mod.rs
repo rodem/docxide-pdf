@@ -1547,6 +1547,55 @@ fn line_count(para: &Paragraph, ctx: &RenderContext, col_w: f32) -> usize {
     .len()
 }
 
+/// Empty wrapping frames after a non-overlapping floating-table stack stay outside
+/// its body flow. Ordinary empty paragraphs retain their paragraph-mark lines.
+fn is_empty_wrapping_frame_after_nonoverlap_table(
+    para: &Paragraph,
+    blocks: &[Block],
+    idx: usize,
+) -> bool {
+    let mut preceding = blocks[..idx].iter().rev().filter(|block| !matches!(block,
+        Block::Paragraph(p) if p.runs.iter().all(|r| r.text.trim().is_empty() && r.field_code.is_none() && r.inline_image.is_none())
+            && p.image.is_none() && p.floating_images.is_empty() && p.textboxes.is_empty()));
+    let follows_nonoverlap_table = preceding.next().is_some_and(|block| {
+        matches!(block, Block::Table(t)
+        if t.position.as_ref().is_some_and(|pos| !pos.allow_overlap))
+    }) && preceding
+        .next()
+        .is_some_and(|block| matches!(block, Block::Table(t) if t.position.is_some()));
+    follows_nonoverlap_table
+        && para
+            .frame_props
+            .as_ref()
+            .is_some_and(|fp| !fp.text_below && fp.height == 0.0)
+        && is_text_empty(&para.runs)
+        && !para.runs.iter().any(|r| {
+            r.is_line_break
+                || r.is_tab
+                || r.field_code.is_some()
+                || r.inline_image.is_some()
+                || r.checkbox.is_some()
+        })
+        && para.image.is_none()
+        && para.inline_chart.is_none()
+        && para.smartart.is_empty()
+        && para.floating_images.is_empty()
+        && para.textboxes.is_empty()
+        && para.connectors.is_empty()
+        && para.list_label.is_empty()
+        && para.shading.is_none()
+        && para.borders.top.is_none()
+        && para.borders.bottom.is_none()
+        && para.borders.left.is_none()
+        && para.borders.right.is_none()
+        && para.borders.between.is_none()
+        && !para.page_break_before
+        && !para.page_break_after
+        && para.page_break_at.is_none()
+        && !para.column_break_before
+        && !para.column_break_after
+}
+
 /// Compute effective first-line hanging indent for a paragraph.
 fn compute_text_hanging(para: &Paragraph, default_tab_stop: f32) -> f32 {
     if !para.list_label.is_empty() {
@@ -1697,6 +1746,9 @@ fn compute_bookmark_positions(
                     }
                     for bm in &para.bookmarks {
                         bookmark_positions.insert(bm.clone(), (page_idx, slot_top));
+                    }
+                    if is_empty_wrapping_frame_after_nonoverlap_table(para, blocks, bi) {
+                        continue;
                     }
                     if para.is_section_break && is_text_empty(&para.runs) {
                         let next_continuous = doc.sections.get(si + 1).is_some_and(|next| {
@@ -1867,6 +1919,10 @@ fn render_paragraph_block(
         )
     });
     let adjacent_para = |idx: usize| block_para(section_blocks, idx);
+    if is_empty_wrapping_frame_after_nonoverlap_table(para, section_blocks, block_idx) {
+        state.global_block_idx += 1;
+        return true;
+    }
 
     // Skip empty section-break paragraphs — Word gives these zero height, also
     // before a continuous section that changes the columns (Word probes in

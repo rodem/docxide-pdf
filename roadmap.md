@@ -1933,3 +1933,5 @@ Fixes:
 case50–53 (deep style inheritance, nested tables, stacked bar charts, extreme
 chart data) have their reference PDFs. Only case58 (3D effects) and case65 still
 lack one.
+
+- Honor tblOverlap=never for colliding floating tables, retaining the preceding aligned float zone for following text (cases113–117). Empty wrapping frames after this table remain outside the body flow; ordinary empty paragraphs and line breaks remain in flow.
