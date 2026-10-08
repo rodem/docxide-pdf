@@ -322,6 +322,17 @@ the marks get their Link to the note. Visual output changed in the 6
 fixtures with marks in cells (baselines accepted in `7879bc7f`).
 Column auto-fit still measures cells without the marks (a mark's width).
 
+## Reflected group line connectors (2026-10-08)
+
+Group flipH/flipV now compose through nested group transforms for linear
+connectors, with positive bounding dimensions and reflected endpoint direction.
+Zero-height horizontal lines retain their zero height. Other shape types retain
+their existing transform: image/text/arc content mirroring is separate work.
+Synthetic case86 compares two differently weighted horizontal lines in a scaled,
+vertically reflected group against Word for Windows; the bounds differ by 0.02pt.
+Two unit tests cover reflected zero-height lines and cancellation of nested flips.
+Standalone header group lines also need the running-head connector render fix.
+
 ## Layout accuracy round (2026-10-01)
 
 Rules derived from Word reference PDFs (borders, text positions measured with
