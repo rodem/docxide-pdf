@@ -2699,8 +2699,31 @@ fn render_paragraph_block(
             _ => fi.dist_top + fi.image.display_height + fi.dist_bottom,
         };
         if reserve {
-            // Wide images block all text — add to content_h
-            content_h = content_h.max(fi_h);
+            // Wide images block all text — add to content_h. An empty anchor
+            // paragraph's own line moves below such a float when the float
+            // covers it: cyprus' page-wide letterhead (margin-relative, top
+            // 83.6pt above the margin) keeps the mark's 14.65pt line under its
+            // bottom, and Word probes with paragraph- and margin-relative
+            // offsets, square and topAndBottom wrapping all do the same.
+            let content_top = state.pb.slot_top - inter_gap;
+            let anchor = state.pb.pending_float_anchor.unwrap_or(state.pb.slot_top);
+            let zone = FloatZone::for_float(
+                fi,
+                resolve_fi_x(fi, sp, col_x, col_w, text_width),
+                resolve_fi_y_top(fi, sp, anchor),
+            );
+            // ponytail: only a float that starts at or below the paragraph top,
+            // or a paragraph opening the page (the probed cases); a float
+            // reaching over earlier lines on the page (sample500kB) keeps the
+            // plain reserve.
+            let covers_line = zone.top_y > content_top - content_h
+                && zone.bottom_y < content_top
+                && (zone.top_y <= state.pb.slot_top + 0.5 || state.pb.is_at_page_top(sp));
+            if text_empty && !para.paragraph_mark_vanish && covers_line {
+                content_h = content_h.max(content_top - zone.bottom_y + content_h);
+            } else {
+                content_h = content_h.max(fi_h);
+            }
         } else if fi.v_relative_from == VRelativeFrom::Paragraph && fi.wrap_type.wraps_beside() {
             // Paragraph-relative wrapping images: track overflow
             // for page-break check only (text wraps beside them).
