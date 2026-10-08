@@ -381,8 +381,12 @@ pub(super) fn read_image_from_zip_extra<R: Read + Seek>(
 ) -> Option<EmbeddedImage> {
     let mut data = read_zip_bytes(zip, &part_path(rels.get(embed_id)?))?;
     if super::wmf::is_wmf(&data) {
-        data = super::wmf::wmf_to_raster(&data)?;
-    } else if let Some(bmp) = super::emf::emf_to_raster(&data) {
+        data = match super::wmf::embedded_emf(&data) {
+            Some(emf) => emf,
+            None => super::wmf::wmf_to_raster(&data)?,
+        };
+    }
+    if let Some(bmp) = super::emf::emf_to_raster(&data) {
         data = bmp;
     } else if let Some(png) = gif_or_tiff_to_png(&data) {
         data = png;

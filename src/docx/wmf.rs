@@ -60,6 +60,12 @@ fn collect_dib_blits(data: &[u8]) -> Option<Vec<DibBlit<'_>>> {
             return None;
         }
 
+        // The record's no-bitmap form (size = (function >> 8) + 3 words) is a
+        // pattern fill, not a picture.
+        if size_words == (func >> 8) as usize + 3 {
+            i += size_bytes;
+            continue;
+        }
         let params_before_dib = match func {
             META_DIBBITBLT => 16,
             META_DIBSTRETCHBLT => 20,
@@ -87,16 +93,73 @@ fn collect_dib_blits(data: &[u8]) -> Option<Vec<DibBlit<'_>>> {
             // STRETCHDIB: RasterOp(4), Usage, SrcH, SrcW, YSrc, XSrc, DestH, DestW, YDest, XDest
             _ => (i16_at(14), i16_at(16), i16_at(18), i16_at(20)),
         };
-        blits.push(DibBlit {
-            dib: &data[dib_start..dib_end],
-            x,
-            y,
-            w,
-            h,
-        });
+        let dib = &data[dib_start..dib_end];
+        // A brush-sized DIB stretched over the frame paints a solid box where
+        // Word draws the metafile's vector content.
+        if dib_pixel_count(dib).is_some_and(|n| n <= 64) {
+            i += size_bytes;
+            continue;
+        }
+        blits.push(DibBlit { dib, x, y, w, h });
         i += size_bytes;
     }
     Some(blits)
+}
+
+fn dib_pixel_count(dib: &[u8]) -> Option<u64> {
+    let header = u32::from_le_bytes(dib.get(0..4)?.try_into().ok()?);
+    let (w, h) = if header == 12 {
+        let w = u16::from_le_bytes(dib.get(4..6)?.try_into().ok()?) as i64;
+        let h = u16::from_le_bytes(dib.get(6..8)?.try_into().ok()?) as i64;
+        (w, h)
+    } else {
+        let w = i32::from_le_bytes(dib.get(4..8)?.try_into().ok()?) as i64;
+        let h = i32::from_le_bytes(dib.get(8..12)?.try_into().ok()?) as i64;
+        (w, h)
+    };
+    Some(w.unsigned_abs() * h.unsigned_abs())
+}
+
+const META_ESCAPE: u16 = 0x0626;
+const MFCOMMENT: u16 = 0x000F;
+/// Fixed part of a META_ESCAPE_ENHANCED_METAFILE comment after EscapeFunction
+/// and ByteCount: identifier, type, version, checksum, flags, record count,
+/// this chunk's size, remaining bytes, total EMF size ([MS-WMF]).
+const WMFC_HEADER: usize = 34;
+
+/// The EMF that Word stores alongside a WMF's own records, split over
+/// "WMFC" comment escapes. When present it is the full-fidelity picture.
+pub(super) fn embedded_emf(data: &[u8]) -> Option<Vec<u8>> {
+    let mut i = if data.starts_with(&PLACEABLE_MAGIC) {
+        40
+    } else {
+        18
+    };
+    let mut emf = Vec::new();
+    let mut total = 0usize;
+    while i + 6 <= data.len() {
+        let size_bytes =
+            (u32::from_le_bytes(data[i..i + 4].try_into().ok()?) as usize).checked_mul(2)?;
+        let func = u16::from_le_bytes(data[i + 4..i + 6].try_into().ok()?);
+        if size_bytes < 6 || i + size_bytes > data.len() {
+            break;
+        }
+        let rec = &data[i + 6..i + size_bytes];
+        if func == META_ESCAPE
+            && rec.len() >= 4 + WMFC_HEADER
+            && u16::from_le_bytes([rec[0], rec[1]]) == MFCOMMENT
+            && &rec[4..8] == b"WMFC"
+        {
+            let u32_at =
+                |o: usize| u32::from_le_bytes(rec[4 + o..8 + o].try_into().unwrap()) as usize;
+            let chunk = u32_at(22);
+            total = u32_at(30);
+            let start = 4 + WMFC_HEADER;
+            emf.extend_from_slice(rec.get(start..start + chunk)?);
+        }
+        i += size_bytes;
+    }
+    (total > 0 && emf.len() == total && super::emf::is_emf(&emf)).then_some(emf)
 }
 
 /// Convert a WMF into a raster image (BMP for a single DIB, PNG for a composited
@@ -209,6 +272,31 @@ mod tests {
         assert!(!is_wmf(b"\x89PNG\r\n\x1a\n"));
         assert!(!is_wmf(b""));
         assert!(wmf_to_raster(b"\x89PNG\r\n\x1a\n").is_none());
+    }
+
+    #[test]
+    fn embedded_emf_joins_wmfc_chunks() {
+        let mut emf = vec![0u8; 92];
+        emf[0..4].copy_from_slice(&1u32.to_le_bytes());
+        emf[40..44].copy_from_slice(b" EMF");
+        let mut wmf = vec![0u8; 18];
+        for chunk in [&emf[..50], &emf[50..]] {
+            let mut rec = vec![0x0F, 0x00, 0, 0];
+            rec.extend_from_slice(b"WMFC");
+            rec.extend_from_slice(&[0u8; 18]);
+            rec.extend_from_slice(&(chunk.len() as u32).to_le_bytes());
+            rec.extend_from_slice(&0u32.to_le_bytes());
+            rec.extend_from_slice(&(emf.len() as u32).to_le_bytes());
+            rec.extend_from_slice(chunk);
+            wmf.extend_from_slice(&((6 + rec.len()) as u32 / 2).to_le_bytes());
+            wmf.extend_from_slice(&META_ESCAPE.to_le_bytes());
+            wmf.extend_from_slice(&rec);
+        }
+        wmf.extend_from_slice(&3u32.to_le_bytes());
+        wmf.extend_from_slice(&0u16.to_le_bytes());
+        assert_eq!(embedded_emf(&wmf), Some(emf.clone()));
+        // A missing chunk leaves the WMF on its own records.
+        assert_eq!(embedded_emf(&wmf[..18 + 94]), None);
     }
 
     #[test]
