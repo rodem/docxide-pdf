@@ -1937,3 +1937,5 @@ lack one.
 - Honor tblOverlap=never for colliding floating tables, retaining the preceding aligned float zone for following text (cases113–117). Empty wrapping frames after this table remain outside the body flow; ordinary empty paragraphs and line breaks remain in flow.
 
 - Preserve leftFromText when a non-overlapping body table is pushed below a float, both during pre-layout clearance and geometric collision. Compat 15 offset positions are clamped to the text-area edge plus that distance; larger explicit offsets, page anchors and compat 14 keep their prior positions (cases152–161). This builds on the non-overlap stacking change.
+
+- Fix line overlap with floating table zones: check line-box intersection at the top edge, preventing short anchor paragraphs from printing over a table (existing cases152–161).
