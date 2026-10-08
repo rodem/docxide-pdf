@@ -1,5 +1,9 @@
 # Roadmap
 
+## Floating table positioning
+
+- Do not reapply non-negative text-anchor offsets after a non-overlapping table has cleared a preceding float. Preserve topFromText; offsets after a separating paragraph remain (cases162–169).
+
 ## Accessibility (IN PROGRESS — started 2026-10-01)
 
 Goal: our PDFs are accessible on their own merits; Word's export is a floor,
@@ -2061,3 +2065,10 @@ Keep a saved non-uniform AutoFit grid containing directly nested tables rather t
 Rendering now consumes the paragraph-mark line height already counted by row layout when an otherwise empty paragraph contains floating content. This keeps following text in header cells aligned with cells containing plain empty paragraphs.
 - Preserve asymmetric saved AutoFit grids when uniform oversized cell preferences would erase them; signature-title wrapping covered by cases109–112 (including nearly equal saved columns).
 - Honor tblOverlap=never for colliding floating tables, retaining the preceding aligned float zone for following text (cases113–117). Empty wrapping frames after this table remain outside the body flow; ordinary empty paragraphs and line breaks remain in flow.
+- Reserve the actual wrapped-line height of image-only running heads with multiple inline pictures (cases121–123); fitting picture lines retain their existing height.
+- Keep non-wrapping body pictures anchored to the margins of the current sheet across a mid-page continuous section margin change; new-page and unchanged-margin controls retain their placement (cases124–126).
+- Honor preceding paragraph spacing and vertical placement of single-row text-anchored nested floating tables in top-aligned cells with no following visible paragraph content. Preserve floating extent in row height, field visibility and page continuation (cases131–138). Clamp negative offsets for the first table at the top of its cell. Horizontal positioning and nested float overlap/wrapping remain separate work.
+
+- Resolve automatically left-placed nested text floats against the occupied cell area. Empty anchor marks stay beside a float when the free right strip is at least 18.75 pt, or clear below it; following intersecting floats move below and preserve their text distance. Synthetic Word transition controls at 18.75/18.70 pt, different mark sizes, border/overlap controls and an inline predecessor (cases139–151). Reanchor dependent collisions after a page break in drawing, fragment height and break selection. Controls use fixed grids and plain markers to isolate placement from pending AutoFit/field/tab fixes. This builds on the nested vertical-flow change; explicit/page/column horizontal anchors remain separate.
+
+- Preserve leftFromText when a non-overlapping body table is pushed below a float, both during pre-layout clearance and geometric collision. Compat 15 offset positions are clamped to the text-area edge plus that distance; larger explicit offsets, page anchors and compat 14 keep their prior positions (cases152–161). This builds on the non-overlap stacking change.

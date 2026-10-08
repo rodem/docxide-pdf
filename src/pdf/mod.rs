@@ -866,6 +866,28 @@ pub(super) struct FloatingTablePos {
 }
 
 impl FloatingTablePos {
+    /// Preserve the text distance when a non-overlapping table moves below a float.
+    pub(super) fn constrain_nonoverlap_left(
+        &mut self,
+        pos: &crate::model::TablePosition,
+        sp: &SectionProperties,
+        col_x: f32,
+        compat_mode: u32,
+    ) {
+        if compat_mode >= 15
+            && !pos.allow_overlap
+            && matches!(pos.h_position, crate::model::HorizontalPosition::Offset(v) if v >= 0.0)
+            && matches!(pos.h_anchor, "margin" | "column")
+        {
+            let text_left = if pos.h_anchor == "margin" {
+                sp.margin_left
+            } else {
+                col_x
+            };
+            self.x = self.x.max(text_left + pos.left_from_text);
+        }
+    }
+
     /// Where a floating table goes: `tblpX`/`tblpXSpec` against its anchor
     /// column (`col_x`, `col_w`), `tblpY` below the page, the margin or the
     /// text (`text_y`: where its anchor paragraph's flow is).
@@ -3274,10 +3296,35 @@ fn render_paragraph_block(
     // actually carries it) only after this paragraph has taken its own.
     state.pb.pending_float_anchor = lookahead.map(|(anchor_top, _)| anchor_top);
 
+    // Margin anchors belong to the page that already started. A continuous
+    // section's new margins apply on its next sheet, not to this page's float.
+    let page_sp = &doc.sections[state.pb.page_hf_section].properties;
+    let render_images = if state.pb.page_hf_section != sect_idx
+        && (page_sp.margin_left != sp.margin_left || page_sp.margin_right != sp.margin_right)
+    {
+        let mut images = para.floating_images.clone();
+        for fi in &mut images {
+            if fi.h_relative_from == crate::model::HRelativeFrom::Margin
+                && fi.wrap_type == WrapType::None
+            {
+                let x = fi.h_position.place(
+                    page_sp.margin_left,
+                    page_sp.text_width(),
+                    fi.image.display_width,
+                );
+                fi.h_relative_from = crate::model::HRelativeFrom::Page;
+                fi.h_position = crate::model::HorizontalPosition::Offset(x);
+            }
+        }
+        std::borrow::Cow::Owned(images)
+    } else {
+        std::borrow::Cow::Borrowed(&para.floating_images)
+    };
+
     // Render behind-doc layer: floating images + textboxes
     let page = state.pb.all_contents.len();
     render_floating_images(
-        &para.floating_images,
+        &render_images,
         true,
         state.global_block_idx,
         floating_image_pdf_names,
@@ -3356,7 +3403,7 @@ fn render_paragraph_block(
     // flush_page) so they interleave with foreground shapes/textboxes by
     // z-order rather than always painting beneath them (annotation #191).
     render_foreground_floating_images_deferred(
-        &para.floating_images,
+        &render_images,
         state.global_block_idx,
         floating_image_pdf_names,
         effect_floating_names,
@@ -4034,6 +4081,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                     None => (&col_geometry[..], col_count, text_width),
                 };
 
+                let mut table_cleared_float = false;
                 // If a float zone is active, decide whether to wrap text beside
                 // the object or push it below.
                 if let Some(ref fz) = state.pb.float_zone {
@@ -4091,6 +4139,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                                     && p.smartart.is_empty()
                             );
                             if !is_empty_para || !has_side_strip {
+                                table_cleared_float = matches!(block, Block::Table(_));
                                 state.pb.slot_top = fz.bottom_y;
                                 state.pb.float_zone = None;
                             }
@@ -4134,7 +4183,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                         state.pb.toc = None;
                         let override_pos = table.position.as_ref().map(|pos| {
                             let (col_x, col_w) = col_geometry[state.current_col];
-                            FloatingTablePos::resolve(
+                            let mut resolved = FloatingTablePos::resolve(
                                 table,
                                 pos,
                                 sp,
@@ -4142,7 +4191,18 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                                 col_w,
                                 state.pb.slot_top,
                                 &ctx,
-                            )
+                            );
+                            if table_cleared_float {
+                                resolved.constrain_nonoverlap_left(pos, sp, col_x, ctx.compat_mode);
+                            }
+                            if table_cleared_float
+                                && !pos.allow_overlap
+                                && resolved.v_anchor_text
+                                && resolved.v_offset_pt >= 0.0
+                            {
+                                resolved.y = state.pb.slot_top - pos.top_from_text;
+                            }
+                            resolved
                         });
                         let col_bounds =
                             (cols > 1 || frame.is_some()).then(|| geometry[state.current_col]);

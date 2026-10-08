@@ -347,7 +347,7 @@ fn cell_content_h_for_valign(items: &[CellContentItem]) -> f32 {
 fn cell_has_visible_content(items: &[CellContentItem]) -> bool {
     items.iter().any(|item| match item {
         CellContentItem::Paragraph(p) => para_has_visible_content(p),
-        nested @ CellContentItem::NestedTable { .. } => nested.height() > 0.0,
+        CellContentItem::NestedTable { rows, .. } => rows.iter().any(|r| r.height > 0.0),
     })
 }
 
@@ -575,7 +575,11 @@ fn render_cell_content(
                 }
             }
             item @ CellContentItem::NestedTable {
-                col_widths, rows, ..
+                col_widths,
+                rows,
+                space_before,
+                floating_offset,
+                floating_x_offset,
             } => {
                 // Find the corresponding Block::Table
                 let table = loop {
@@ -589,10 +593,12 @@ fn render_cell_content(
                     block_idx += 1;
                 };
                 if let Some(table) = table {
+                    let saved_y = cursor_y;
+                    cursor_y -= space_before + floating_offset.unwrap_or(0.0);
                     render_nested_table(
                         table,
                         content,
-                        cell_x + cm.left,
+                        cell_x + cm.left + floating_x_offset.unwrap_or(0.0),
                         col_w - cm.left - cm.right,
                         &mut cursor_y,
                         ctx,
@@ -608,6 +614,9 @@ fn render_cell_content(
                             to: &[],
                         },
                     );
+                    if floating_offset.is_some() {
+                        cursor_y = saved_y;
+                    }
                 } else {
                     cursor_y -= item.height();
                 }
@@ -995,6 +1004,7 @@ fn render_partial_cell_content(
     mut tagger: Option<CellTagger<'_>>,
 ) {
     let mut cursor_y = cursor_y_start;
+    let mut reanchor_shift = 0.0;
     // Build a mapping from item index to block index
     let mut block_idx = 0usize;
     let mut item_to_block: Vec<usize> = Vec::new();
@@ -1122,14 +1132,47 @@ fn render_partial_cell_content(
                 };
             }
             CellContentItem::NestedTable {
-                col_widths, rows, ..
+                col_widths,
+                rows,
+                space_before,
+                floating_offset,
+                floating_x_offset,
             } => {
                 let bi = item_to_block.get(pi).copied().unwrap_or(0);
                 if let Some(Block::Table(table)) = blocks.get(bi) {
+                    let saved_y = cursor_y;
+                    if chunk.l0 == 0 && chunk.from.is_empty() {
+                        let drop_anchor = pi == start.item && start.item > 0 && start.line == 0;
+                        let gap = if let Some(offset) = floating_offset {
+                            super::table_layout::floating_anchor_gap(
+                                *space_before,
+                                *offset,
+                                floating_x_offset.is_some(),
+                                drop_anchor,
+                                &mut reanchor_shift,
+                            )
+                        } else if drop_anchor {
+                            0.0
+                        } else {
+                            *space_before
+                        };
+                        cursor_y -= gap;
+                    }
                     render_nested_table(
                         table,
                         content,
-                        cell_x + cm.left,
+                        cell_x
+                            + cm.left
+                            + if chunk.l0 == 0
+                                && chunk.from.is_empty()
+                                && pi == start.item
+                                && start.item > 0
+                                && start.line == 0
+                            {
+                                0.0
+                            } else {
+                                floating_x_offset.unwrap_or(0.0)
+                            },
                         col_w - cm.left - cm.right,
                         &mut cursor_y,
                         ctx,
@@ -1139,6 +1182,9 @@ fn render_partial_cell_content(
                         (col_widths, rows),
                         &chunk,
                     );
+                    if floating_offset.is_some() {
+                        cursor_y = saved_y;
+                    }
                 } else {
                     cursor_y -= item_chunk_height(&items[pi], &chunk);
                 }
@@ -1495,7 +1541,7 @@ fn render_partial_row(
             .items[c.item]
         {
             CellContentItem::Paragraph(p) => para_has_visible_content(p),
-            nested @ CellContentItem::NestedTable { .. } => nested.height() > 0.0,
+            CellContentItem::NestedTable { rows, .. } => rows.iter().any(|r| r.height > 0.0),
         });
 
         if has_content {
@@ -1662,6 +1708,14 @@ pub(super) fn render_table(
             && fp.y - height < zone.top_y
         {
             fp.y = zone.bottom_y - fp.top_from_text;
+            if let Some(pos) = table.position.as_ref() {
+                fp.constrain_nonoverlap_left(
+                    pos,
+                    sp,
+                    column_bounds.map_or(sp.margin_left, |(left, _)| left),
+                    ctx.compat_mode,
+                );
+            }
         }
     }
     let is_floating = override_pos.is_some();
@@ -2257,4 +2311,26 @@ pub(super) fn render_header_footer_table(
         None,
         0..usize::MAX,
     );
+}
+
+#[cfg(test)]
+mod floating_nested_visibility_tests {
+    use super::*;
+
+    #[test]
+    fn zero_flow_height_does_not_hide_nested_fields() {
+        let items = vec![CellContentItem::NestedTable {
+            col_widths: vec![80.0],
+            rows: vec![RowLayout {
+                height: 12.0,
+                cells: vec![],
+                split_min: None,
+            }],
+            space_before: 0.0,
+            floating_offset: Some(0.0),
+            floating_x_offset: None,
+        }];
+        assert_eq!(items[0].height(), 0.0);
+        assert!(cell_has_visible_content(&items));
+    }
 }
