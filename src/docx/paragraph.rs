@@ -516,6 +516,11 @@ pub(super) fn resolve_indents(
     }
     if let Some(v) = first {
         indent_first_line = v;
+    } else if numbering_ind && hanging.is_none() && numbering.indent_hanging != 0.0 {
+        // firstLine and hanging are one value (§17.3.1.12): the level's hanging
+        // replaces an inherited first-line indent (CV's docDefaults firstLine=360
+        // under a 284/284 bullet level puts its label at the margin in Word).
+        indent_first_line = 0.0;
     }
     (indent_left, indent_right, indent_hanging, indent_first_line)
 }
