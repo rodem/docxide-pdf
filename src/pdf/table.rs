@@ -347,7 +347,7 @@ fn cell_content_h_for_valign(items: &[CellContentItem]) -> f32 {
 fn cell_has_visible_content(items: &[CellContentItem]) -> bool {
     items.iter().any(|item| match item {
         CellContentItem::Paragraph(p) => para_has_visible_content(p),
-        nested @ CellContentItem::NestedTable { .. } => nested.height() > 0.0,
+        CellContentItem::NestedTable { rows, .. } => rows.iter().any(|r| r.height > 0.0),
     })
 }
 
@@ -575,7 +575,10 @@ fn render_cell_content(
                 }
             }
             item @ CellContentItem::NestedTable {
-                col_widths, rows, ..
+                col_widths,
+                rows,
+                space_before,
+                floating_offset,
             } => {
                 // Find the corresponding Block::Table
                 let table = loop {
@@ -589,6 +592,8 @@ fn render_cell_content(
                     block_idx += 1;
                 };
                 if let Some(table) = table {
+                    let saved_y = cursor_y;
+                    cursor_y -= space_before + floating_offset.unwrap_or(0.0);
                     render_nested_table(
                         table,
                         content,
@@ -608,6 +613,9 @@ fn render_cell_content(
                             to: &[],
                         },
                     );
+                    if floating_offset.is_some() {
+                        cursor_y = saved_y;
+                    }
                 } else {
                     cursor_y -= item.height();
                 }
@@ -1118,10 +1126,20 @@ fn render_partial_cell_content(
                 cursor_y -= super::table_layout::cell_lines_h(para, l0..l1);
             }
             CellContentItem::NestedTable {
-                col_widths, rows, ..
+                col_widths,
+                rows,
+                space_before,
+                floating_offset,
             } => {
                 let bi = item_to_block.get(pi).copied().unwrap_or(0);
                 if let Some(Block::Table(table)) = blocks.get(bi) {
+                    let saved_y = cursor_y;
+                    if chunk.l0 == 0
+                        && chunk.from.is_empty()
+                        && !(pi == start.item && start.item > 0 && start.line == 0)
+                    {
+                        cursor_y -= space_before + floating_offset.unwrap_or(0.0);
+                    }
                     render_nested_table(
                         table,
                         content,
@@ -1135,6 +1153,9 @@ fn render_partial_cell_content(
                         (col_widths, rows),
                         &chunk,
                     );
+                    if floating_offset.is_some() {
+                        cursor_y = saved_y;
+                    }
                 } else {
                     cursor_y -= item_chunk_height(&items[pi], &chunk);
                 }
@@ -1491,7 +1512,7 @@ fn render_partial_row(
             .items[c.item]
         {
             CellContentItem::Paragraph(p) => para_has_visible_content(p),
-            nested @ CellContentItem::NestedTable { .. } => nested.height() > 0.0,
+            CellContentItem::NestedTable { rows, .. } => rows.iter().any(|r| r.height > 0.0),
         });
 
         if has_content {
@@ -2196,4 +2217,25 @@ pub(super) fn render_header_footer_table(
         None,
         0..usize::MAX,
     );
+}
+
+#[cfg(test)]
+mod floating_nested_visibility_tests {
+    use super::*;
+
+    #[test]
+    fn zero_flow_height_does_not_hide_nested_fields() {
+        let items = vec![CellContentItem::NestedTable {
+            col_widths: vec![80.0],
+            rows: vec![RowLayout {
+                height: 12.0,
+                cells: vec![],
+                split_min: None,
+            }],
+            space_before: 0.0,
+            floating_offset: Some(0.0),
+        }];
+        assert_eq!(items[0].height(), 0.0);
+        assert!(cell_has_visible_content(&items));
+    }
 }

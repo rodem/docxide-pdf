@@ -1933,3 +1933,5 @@ Fixes:
 case50–53 (deep style inheritance, nested tables, stacked bar charts, extreme
 chart data) have their reference PDFs. Only case58 (3D effects) and case65 still
 lack one.
+
+- Honor preceding paragraph spacing and vertical placement of single-row text-anchored nested floating tables in top-aligned cells with no following visible paragraph content. Preserve floating extent in row height, field visibility and page continuation (cases131–138). Clamp negative offsets for the first table at the top of its cell. Horizontal positioning and nested float overlap/wrapping remain separate work.
