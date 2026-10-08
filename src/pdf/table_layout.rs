@@ -270,7 +270,11 @@ pub(super) fn min_content_widths(table: &Table, fonts: &HashMap<String, FontEntr
                     for word in words {
                         let ww =
                             word_width_for_run(entry, run, word, fs, run.kerns_at(fs), 0.0, 1.0);
-                        min_widths[grid_col] = min_widths[grid_col].max(ww + h_pad);
+                        // Negative paragraph indents expose space beyond the cell's
+                        // usual text box; line wrapping uses that same extra width.
+                        let inset = h_pad + para.indent_left.min(0.0) + para.indent_right.min(0.0);
+                        let required = (ww + inset).max(h_pad);
+                        min_widths[grid_col] = min_widths[grid_col].max(required);
                     }
                 }
             }
