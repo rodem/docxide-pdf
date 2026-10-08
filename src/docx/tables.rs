@@ -308,6 +308,10 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
         let left_from_text = twips_attr(tblp, "leftFromText").unwrap_or(0.0);
         let right_from_text = twips_attr(tblp, "rightFromText").unwrap_or(0.0);
         TablePosition {
+            allow_overlap: tbl_pr
+                .and_then(|pr| wml(pr, "tblOverlap"))
+                .and_then(|n| n.attribute((WML_NS, "val")))
+                != Some("never"),
             h_position,
             h_anchor,
             v_offset_pt,

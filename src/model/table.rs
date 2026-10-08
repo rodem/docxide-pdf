@@ -109,6 +109,7 @@ impl Default for CellMargins {
 }
 
 pub struct TablePosition {
+    pub allow_overlap: bool,
     pub h_position: HorizontalPosition,
     pub h_anchor: &'static str, // "page", "margin", or "column"
     pub v_offset_pt: f32,
