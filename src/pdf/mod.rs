@@ -1714,7 +1714,7 @@ fn compute_bookmark_positions(
                     for bm in &para.bookmarks {
                         bookmark_positions.insert(bm.clone(), (page_idx, slot_top));
                     }
-                    if para.is_section_break && is_text_empty(&para.runs) {
+                    if para.is_section_break && bi != 0 && is_text_empty(&para.runs) {
                         let next_continuous = doc.sections.get(si + 1).is_some_and(|next| {
                             next.properties.break_type == SectionBreakType::Continuous
                         });
@@ -1887,10 +1887,11 @@ fn render_paragraph_block(
     // Skip empty section-break paragraphs — Word gives these zero height, also
     // before a continuous section that changes the columns (Word probes in
     // compat 14 and 15; covid_insomnia's two columns start 12pt higher) —
-    // unless the paragraph is the only block of a section opening a new page:
+    // unless the paragraph is the first block of its section, including a
+    // continuous empty section:
     // transition_to_work's contents start a line and 8pt below the top of the
     // page that empty section opens.
-    let keeps_line = block_idx == 0 && sp.break_type != SectionBreakType::Continuous;
+    let keeps_line = block_idx == 0;
     if para.is_section_break
         && !keeps_line
         && is_text_empty(&para.runs)

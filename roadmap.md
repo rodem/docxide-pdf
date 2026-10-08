@@ -2035,3 +2035,6 @@ Keep explicit grid/cell preferences for a single-row nested auto-width table whe
 ## Explicit widths in single-row nested tables
 
 An explicitly sized single-row nested table should use the fixed-width base when its cell preferences and grid totals agree and fit the parent. Preserve min-content redistribution for narrow marker cells instead of collapsing all columns to text. Synthetic case90/case91 cover empty and populated fields. Global nested-table origin/float positioning is a separate issue.
+### Empty continuous sections
+
+Preserve the line and spacing of an empty section-break paragraph when it is the first block of its section. This also applies to continuous sections between adjacent section breaks. Keep zero-height handling for empty break paragraphs following content within the same section.
