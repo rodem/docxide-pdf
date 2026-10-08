@@ -1298,6 +1298,18 @@ The `render()` function in `pdf/mod.rs` mixes pagination with rendering. widowCo
 
 Architecture: a `Paginator` takes the document model and produces `Vec<Page>` where each `Page` contains positioned elements. The PDF renderer then simply draws them. This is a significant refactor but would simplify the render loop and enable features that require look-ahead/look-back.
 
+## Performance: Image Pipeline + Test Harness (TODO — LOW IMPACT, found 2026-10-08)
+
+GPU acceleration was considered and rejected for the converter: the work is branchy and serial (zip, XML, style resolution, line breaking, table fit, font subsetting, PDF writing), output is vector so nothing is rasterized, and typical documents convert in 10–450 ms (release) — less than GPU device start-up. It would also add heavy platform-specific deps. The real wins are on the CPU:
+
+1. **Image recompression is the only converter hotspot.** `cases/case59` (28 MB, four 2.5–9 MB JPEGs) takes ~5.1 s, almost all in `src/pdf/images.rs` `embed_image_xobject` (decode → Lanczos3 `resize_exact` → JPEG re-encode). Options, cheapest first:
+   - Decode/resize images in parallel (rayon or `std::thread::scope`) inside `embed_all_images`, then write the XObjects sequentially to keep object IDs deterministic.
+   - Faster resampling: `fast_image_resize` (SIMD), or a cheaper filter (Triangle/CatmullRom) for large downscale ratios where Lanczos3 is visually indistinguishable.
+   - Scaled JPEG decode (1/2, 1/4, 1/8 via zune-jpeg / jpeg-decoder) when the target is much smaller than the source.
+   - Pass original JPEG bytes through as DCTDecode when no downscale/crop/recolour is needed.
+   Verify with the visual suite and the deterministic-output check; case59 is the benchmark.
+2. **Test harness metrics.** The SSIM with ±8px spatial search in `tests/common/mod.rs` (`ssim_score`) is the one genuinely GPU-shaped workload (uniform per-pixel math; ~17 CPU-s for a 205-page fixture). A compute-shader (wgpu) port is possible, but try first: rayon over the window search within a page, integral images for the local means/variances, and SIMD. Only worth doing if test turnaround becomes a bottleneck.
+
 ## Vertical Drift Investigation (TODO — HIGH IMPACT)
 
 **Root cause identified: glyph advance width precision.** Thorough investigation (April 2025) proved the drift is NOT from line height errors — line heights match Word exactly. The drift comes from our character advance widths being ~0.003pt/char wider than Word's at 12pt, causing ~1 fewer character per line on borderline lines. Over 48+ pages, this compounds into 1 extra page.
