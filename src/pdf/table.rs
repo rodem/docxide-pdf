@@ -694,7 +694,13 @@ fn render_cell_floating_shapes(
 
     // Positioned relative to the cell column origin and paragraph top.
     for conn in &para.connectors {
-        render_connector(conn, content, cell_x, para_top);
+        let x = conn.h_position.place(cell_x, col_w, conn.width);
+        render_connector(
+            conn,
+            content,
+            x,
+            para_top - conn.v_position.offset_or_zero(),
+        );
     }
 
     for tb in &para.textboxes {

@@ -3469,7 +3469,15 @@ fn render_paragraph_block(
         // interleave with shapes by relativeHeight (e.g. letter strokes
         // drawn over gradient circles)
         let mut shape_content = tagging::artifact_content();
-        render_connector(conn, &mut shape_content, col_x, state.pb.slot_top);
+        let (x, y) = positioning::connector_top_left(
+            conn,
+            sp,
+            col_x,
+            col_w,
+            text_width,
+            state.pb.slot_top,
+        );
+        render_connector(conn, &mut shape_content, x, y);
         state.pb.deferred_shapes.push((conn.z_index, shape_content));
     }
 

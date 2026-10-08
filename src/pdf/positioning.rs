@@ -328,15 +328,36 @@ pub(super) fn push_center_rotation(
     ]);
 }
 
-pub(super) fn render_connector(
+/// Top-left corner (PDF coordinates) of a body or header/footer connector,
+/// resolved like a textbox against its anchor's frames.
+pub(super) fn connector_top_left(
     conn: &ConnectorShape,
-    content: &mut Content,
+    sp: &SectionProperties,
     col_x: f32,
+    col_w: f32,
+    text_width: f32,
     slot_top: f32,
-) {
-    let cx = col_x + conn.x;
-    let cy = slot_top - conn.y;
+) -> (f32, f32) {
+    let x = resolve_h_position(
+        conn.h_relative_from,
+        &conn.h_position,
+        conn.width,
+        sp,
+        col_x,
+        col_w,
+        text_width,
+    );
+    let y = super::header_footer::resolve_tb_y_top(
+        conn.v_relative_from,
+        &conn.v_position,
+        conn.height,
+        sp,
+        slot_top,
+    );
+    (x, y)
+}
 
+pub(super) fn render_connector(conn: &ConnectorShape, content: &mut Content, cx: f32, cy: f32) {
     content.save_state();
     stroke_rgb(content, conn.stroke_color);
     content.set_line_width(conn.stroke_width);
@@ -533,4 +554,36 @@ fn render_arc(
         angle = a1;
     }
     content.stroke();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::Block;
+
+    /// education_consultant_posting's header rule is page-anchored 60.6pt
+    /// down; Word draws it there, not 60.6pt below its paragraph.
+    #[test]
+    fn page_anchored_connector_ignores_its_paragraph() {
+        let bytes =
+            include_bytes!("../../tests/fixtures/scraped/education_consultant_posting/input.docx");
+        let doc = crate::docx::parse_bytes(bytes).unwrap();
+        let sp = &doc.sections[0].properties;
+        let conn = sp
+            .header_default
+            .as_ref()
+            .unwrap()
+            .blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Paragraph(p) => p.connectors.first(),
+                _ => None,
+            })
+            .next()
+            .unwrap();
+        assert_eq!(conn.v_relative_from, VRelativeFrom::Page);
+        let tw = sp.text_width();
+        let (_, y) = connector_top_left(conn, sp, sp.margin_left, tw, tw, 500.0);
+        assert!((sp.page_height - y - 60.6).abs() < 0.1);
+    }
 }

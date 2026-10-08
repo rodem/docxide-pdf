@@ -318,8 +318,12 @@ impl ArrowEnd {
 
 #[derive(Clone)]
 pub struct ConnectorShape {
-    pub x: f32,
-    pub y: f32,
+    /// The anchor's position and the frame it is measured from: a page- or
+    /// margin-anchored line must not follow its paragraph.
+    pub h_position: HorizontalPosition,
+    pub h_relative_from: HRelativeFrom,
+    pub v_position: VerticalPosition,
+    pub v_relative_from: VRelativeFrom,
     pub width: f32,
     pub height: f32,
     pub stroke_color: [u8; 3],

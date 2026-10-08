@@ -732,12 +732,15 @@ pub(super) fn render_header_footer(
                 // textboxes. Empty header/footer paragraphs still carry their
                 // paragraph-relative anchors.
                 for connector in &para.connectors {
-                    super::positioning::render_connector(
+                    let (x, y) = super::positioning::connector_top_left(
                         connector,
-                        content,
+                        sp,
                         sp.margin_left,
+                        text_width,
+                        text_width,
                         slot_top,
                     );
+                    super::positioning::render_connector(connector, content, x, y);
                 }
 
                 // Paragraph borders span the laid-out height, so each exit below

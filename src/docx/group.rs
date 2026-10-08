@@ -251,8 +251,7 @@ fn emit_wsp<R: Read + Seek>(
 
     if is_connector {
         if let Some(mut conn) = parse_connector_shape_node(wsp, ctx.theme) {
-            conn.x = base.x + x;
-            conn.y = base.y + y;
+            let (mut cx, mut cy) = (x, y);
             conn.width = w;
             conn.height = h;
             if let ConnectorType::Line { flip_h, flip_v } = &mut conn.connector_type {
@@ -260,13 +259,16 @@ fn emit_wsp<R: Read + Seek>(
                 let y0 = t.connector_ty + t.connector_sy * xfrm.off.1;
                 let x1 = x0 + t.connector_sx * xfrm.ext.0;
                 let y1 = y0 + t.connector_sy * xfrm.ext.1;
-                conn.x = base.x + x0.min(x1);
-                conn.y = base.y + y0.min(y1);
+                (cx, cy) = (x0.min(x1), y0.min(y1));
                 conn.width = (x1 - x0).abs();
                 conn.height = (y1 - y0).abs();
                 *flip_h ^= t.connector_sx < 0.0;
                 *flip_v ^= t.connector_sy < 0.0;
             }
+            conn.h_position = HorizontalPosition::Offset(base.x + cx);
+            conn.h_relative_from = base.h_rel;
+            conn.v_position = VerticalPosition::Offset(base.y + cy);
+            conn.v_relative_from = base.v_rel;
             conn.z_index = base.z_index;
             out.push(RunDrawingResult::Connector(conn));
         }

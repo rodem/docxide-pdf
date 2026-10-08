@@ -518,20 +518,14 @@ pub(super) fn parse_connector_from_wsp(
         .descendants()
         .find(|n| n.has_tag_name((WPS_NS, "wsp")))?;
 
-    let (h_position, _, v_pos, _) = parse_anchor_position(anchor);
+    let (h_position, h_relative_from, v_position, v_relative_from) = parse_anchor_position(anchor);
     let (display_w, display_h) = extent_dimensions(anchor);
-    let v_offset = match v_pos {
-        VerticalPosition::Offset(o) => o,
-        _ => 0.0,
-    };
-    let x = match h_position {
-        HorizontalPosition::Offset(v) => v,
-        _ => 0.0,
-    };
 
     let mut conn = parse_connector_shape_node(wsp, theme)?;
-    conn.x = x;
-    conn.y = v_offset;
+    conn.h_position = h_position;
+    conn.h_relative_from = h_relative_from;
+    conn.v_position = v_position;
+    conn.v_relative_from = v_relative_from;
     conn.width = display_w;
     conn.height = display_h;
     conn.z_index = anchor
@@ -621,8 +615,10 @@ pub(super) fn parse_connector_shape_node(
         .unwrap_or_default();
 
     Some(ConnectorShape {
-        x: 0.0,
-        y: 0.0,
+        h_position: HorizontalPosition::Offset(0.0),
+        h_relative_from: HRelativeFrom::Column,
+        v_position: VerticalPosition::Offset(0.0),
+        v_relative_from: VRelativeFrom::Paragraph,
         width: 0.0,
         height: 0.0,
         stroke_color,
