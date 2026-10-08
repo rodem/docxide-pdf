@@ -1933,3 +1933,7 @@ Fixes:
 case50–53 (deep style inheritance, nested tables, stacked bar charts, extreme
 chart data) have their reference PDFs. Only case58 (3D effects) and case65 still
 lack one.
+
+### Empty continuous sections
+
+Preserve the line and spacing of an empty section-break paragraph when it is the first block of its section. This also applies to continuous sections between adjacent section breaks. Keep zero-height handling for empty break paragraphs following content within the same section.
