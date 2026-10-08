@@ -1933,3 +1933,5 @@ Fixes:
 case50–53 (deep style inheritance, nested tables, stacked bar charts, extreme
 chart data) have their reference PDFs. Only case58 (3D effects) and case65 still
 lack one.
+
+- Keep empty auto-height wrapping frames outside body flow and preserve both lines of an empty clearing paragraph below a full-width floating table; narrow-table and no-frame controls included (cases127–130).

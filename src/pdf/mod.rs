@@ -1547,6 +1547,40 @@ fn line_count(para: &Paragraph, ctx: &RenderContext, col_w: f32) -> usize {
     .len()
 }
 
+/// Empty auto-height wrapping frames have no body-flow content. Ordinary
+/// empty paragraphs and explicit breaks retain their paragraph-mark lines.
+fn is_empty_wrapping_frame(para: &Paragraph) -> bool {
+    para.frame_props
+        .as_ref()
+        .is_some_and(|fp| !fp.text_below && fp.height == 0.0)
+        && is_text_empty(&para.runs)
+        && !para.runs.iter().any(|r| {
+            r.is_line_break
+                || r.is_tab
+                || r.field_code.is_some()
+                || r.inline_image.is_some()
+                || r.checkbox.is_some()
+        })
+        && para.image.is_none()
+        && para.inline_chart.is_none()
+        && para.smartart.is_empty()
+        && para.floating_images.is_empty()
+        && para.textboxes.is_empty()
+        && para.connectors.is_empty()
+        && para.list_label.is_empty()
+        && para.shading.is_none()
+        && para.borders.top.is_none()
+        && para.borders.bottom.is_none()
+        && para.borders.left.is_none()
+        && para.borders.right.is_none()
+        && para.borders.between.is_none()
+        && !para.page_break_before
+        && !para.page_break_after
+        && para.page_break_at.is_none()
+        && !para.column_break_before
+        && !para.column_break_after
+}
+
 /// Compute effective first-line hanging indent for a paragraph.
 fn compute_text_hanging(para: &Paragraph, default_tab_stop: f32) -> f32 {
     if !para.list_label.is_empty() {
@@ -1697,6 +1731,9 @@ fn compute_bookmark_positions(
                     }
                     for bm in &para.bookmarks {
                         bookmark_positions.insert(bm.clone(), (page_idx, slot_top));
+                    }
+                    if is_empty_wrapping_frame(para) {
+                        continue;
                     }
                     if para.is_section_break && is_text_empty(&para.runs) {
                         let next_continuous = doc.sections.get(si + 1).is_some_and(|next| {
@@ -1855,6 +1892,11 @@ fn render_paragraph_block(
     smartart_image_names: &HashMap<usize, String>,
     debug_wrap: bool,
 ) -> bool {
+    if is_empty_wrapping_frame(para) {
+        state.global_block_idx += 1;
+        return true;
+    }
+
     // §17.6.8: per-section line-number config (None if disabled). Holds no borrow
     // of `state`, so each render call can freshly borrow the shared counter.
     let ln_cfg: Option<(i32, u32, u32, f32)> = sp.line_numbering.as_ref().map(|ln| {
@@ -2445,6 +2487,11 @@ fn render_paragraph_block(
     // above it sits beside that table's top; only what follows the break comes
     // below the table (indigenous_innovation's defined terms: one line, not two).
     if para.clears_floats
+        && state.pb.float_zone.as_ref().is_some_and(|zone| {
+            (zone.obj_left - zone.left_from_text - col_x)
+                .max(col_x + col_w - zone.obj_right - zone.right_from_text)
+                >= MIN_EMPTY_STRIP
+        })
         && block_idx
             .checked_sub(1)
             .and_then(|i| section_blocks.get(i))
@@ -3907,6 +3954,24 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                     Some(f) => (std::slice::from_ref(&f.geometry), 1, f.geometry.1),
                     None => (&col_geometry[..], col_count, text_width),
                 };
+
+                // With no side strip, the whole empty clearing paragraph sits
+                // below the floating table, including the line ended by br.
+                if matches!(block, Block::Paragraph(p) if p.clears_floats && p.runs.iter().all(|r| r.is_line_break || (r.text.is_empty() && !r.is_tab && r.inline_image.is_none())))
+                    && block_idx
+                        .checked_sub(1)
+                        .and_then(|i| section.blocks.get(i))
+                        .is_some_and(|b| matches!(b, Block::Table(t) if t.position.is_some()))
+                    && let Some(ref zone) = state.pb.float_zone
+                {
+                    let (x, w) = col_geometry[state.current_col];
+                    let gap = (zone.obj_left - zone.left_from_text - x)
+                        .max(x + w - zone.obj_right - zone.right_from_text);
+                    if gap < MIN_EMPTY_STRIP && state.pb.slot_top > zone.bottom_y {
+                        state.pb.slot_top = zone.bottom_y;
+                        state.pb.float_zone = None;
+                    }
+                }
 
                 // If a float zone is active, decide whether to wrap text beside
                 // the object or push it below.
