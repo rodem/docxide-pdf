@@ -1933,3 +1933,7 @@ Fixes:
 case50–53 (deep style inheritance, nested tables, stacked bar charts, extreme
 chart data) have their reference PDFs. Only case58 (3D effects) and case65 still
 lack one.
+
+### List label and following tab geometry
+
+Use the same first-line text calculation for body paragraphs and table cells. First-line indents move the label as well; following text advances to the next available tab after the label instead of overlapping it.

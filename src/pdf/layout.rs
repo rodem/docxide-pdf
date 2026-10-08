@@ -4123,6 +4123,40 @@ mod tests {
     }
 
     #[test]
+    fn list_text_tabs_past_label_and_first_line_indent() {
+        let mut fonts = HashMap::new();
+        fonts.insert("Arial".into(), stub_font_entry());
+        let mut para = crate::model::Paragraph {
+            runs: vec![make_run(10.0, VertAlign::Baseline, false)],
+            list_label: "1.".into(),
+            indent_first_line: 28.35,
+            tab_stops: vec![TabStop { position: 21.3, alignment: TabAlignment::Left, leader: None },
+                TabStop { position: 42.55, alignment: TabAlignment::Left, leader: None }],
+            ..Default::default()
+        };
+        let hanging = |p: &crate::model::Paragraph| super::super::list_label::text_hanging(p, 36.0, &fonts);
+        assert!((hanging(&para) + 42.55).abs() < 0.01);
+        para.indent_first_line = 0.0;
+        para.indent_left = -5.0;
+        para.indent_hanging = 0.25;
+        para.tab_stops[0].position = 8.55;
+        assert!((hanging(&para) + 13.55).abs() < 0.01);
+        para.indent_left = 0.0;
+        para.indent_hanging = 0.0;
+        para.tab_stops.clear();
+        assert!((hanging(&para) + 36.0).abs() < 0.01);
+        para.indent_left = 36.0;
+        para.indent_hanging = 18.0;
+        para.tab_stops.push(TabStop { position: 20.1, alignment: TabAlignment::Left, leader: None });
+        assert!(hanging(&para).abs() < 0.01);
+        para.indent_left = 0.0;
+        para.indent_hanging = 0.0;
+        para.tab_stops.clear();
+        para.list_label = "12345678.".into();
+        assert!((hanging(&para) + 72.0).abs() < 0.01);
+    }
+
+    #[test]
     fn test_tabbed_line_applies_whitespace_only_run_after_tab() {
         // "<w:tab/>   " at 10pt followed by "x" at 9pt: the size difference keeps
         // the spaces in their own run, and Word still advances over them, so the

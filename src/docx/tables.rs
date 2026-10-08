@@ -759,7 +759,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                     let ListLabelInfo {
                         indent_left: _,
                         indent_hanging: _,
-                        tab_stop: _,
+                        tab_stop: mut num_tab_stop,
                         label: list_label,
                         font: list_label_font,
                         font_size: list_label_font_size,
@@ -774,6 +774,16 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                     } else {
                         ctx.styles.defaults.space_after
                     });
+                    if let Some(tabs) = ppr.and_then(|ppr| wml(ppr, "tabs")) {
+                        for t in tabs.children().filter(|n| n.has_tag_name((WML_NS, "tab"))) {
+                            if t.attribute((WML_NS, "val")) == Some("num")
+                                && let Some(pos) = super::twips_attr(t, "pos")
+                                && pos > 0.0
+                            {
+                                num_tab_stop = Some(pos);
+                            }
+                        }
+                    }
                     let tab_stops = super::resolve_tab_stops(ppr, para_style);
                     cell_blocks.push(Block::Paragraph(Paragraph {
                         runs,
@@ -785,6 +795,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         indent_hanging,
                         indent_first_line,
                         list_label,
+                        num_level_tab_stop: num_tab_stop,
                         list_label_font,
                         list_label_font_size,
                         list_label_bold,
