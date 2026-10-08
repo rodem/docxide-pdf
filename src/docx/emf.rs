@@ -16,6 +16,10 @@ const EMF_MAGIC: [u8; 4] = [0x20, 0x45, 0x4D, 0x46]; // " EMF"
 pub(crate) struct EmfHeader {
     /// Inclusive logical bounds of all drawing in device coordinates.
     pub bounds: (i32, i32, i32, i32),
+    /// The picture frame (rclFrame, 0.01mm) in device pixels: the rectangle
+    /// GDI maps onto the picture box. Ink outside it is clipped, and a frame
+    /// larger than the ink leaves margins.
+    pub frame: (f64, f64, f64, f64),
 }
 
 impl EmfHeader {
@@ -35,9 +39,23 @@ pub(crate) fn parse_header(data: &[u8]) -> Option<EmfHeader> {
         return None;
     }
     let i32_at = |off: usize| i32::from_le_bytes(data[off..off + 4].try_into().unwrap());
-    Some(EmfHeader {
-        bounds: (i32_at(8), i32_at(12), i32_at(16), i32_at(20)),
-    })
+    let bounds = (i32_at(8), i32_at(12), i32_at(16), i32_at(20));
+    // Device pixels per 0.01mm from szlDevice / szlMillimeters.
+    let (px_w, px_h, mm_w, mm_h) = (i32_at(72), i32_at(76), i32_at(80), i32_at(84));
+    let frame = if px_w > 0 && px_h > 0 && mm_w > 0 && mm_h > 0 && i32_at(32) > i32_at(24) {
+        let sx = px_w as f64 / (mm_w as f64 * 100.0);
+        let sy = px_h as f64 / (mm_h as f64 * 100.0);
+        (
+            i32_at(24) as f64 * sx,
+            i32_at(28) as f64 * sy,
+            i32_at(32) as f64 * sx,
+            i32_at(36) as f64 * sy,
+        )
+    } else {
+        let (l, t, r, b) = bounds;
+        (l as f64, t as f64, r as f64, b as f64)
+    };
+    Some(EmfHeader { bounds, frame })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -489,6 +507,8 @@ mod tests {
         let h = parse_header(&hdr).expect("parses");
         assert_eq!(h.bounds, (100, 200, 300, 400));
         assert_eq!(h.bounds_size(), (200, 200));
+        // 1024 px over 320 mm: 0.032 px per 0.01mm.
+        assert_eq!(h.frame, (32.0, 64.0, 96.0, 128.0));
     }
 
     #[test]

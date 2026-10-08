@@ -61,7 +61,8 @@ impl EmfState {
 
 /// Compose the EMF → form-XObject (1×1 unit box) mapping for a logical point.
 struct Mapper {
-    bounds: (i32, i32, i32, i32),
+    /// The header's frame in device pixels, mapped onto the unit box.
+    frame: (f64, f64, f64, f64),
 }
 
 impl Mapper {
@@ -78,18 +79,15 @@ impl Mapper {
             / state.window_ext.1 as f64
             + state.viewport_org.1 as f64;
         // device → form [0,1] with Y flip (PDF is Y-up, EMF is Y-down).
-        let (bl, bt, br, bb) = self.bounds;
-        let w = (br - bl).max(1) as f64;
-        let h = (bb - bt).max(1) as f64;
-        (
-            ((dx - bl as f64) / w) as f32,
-            (1.0 - (dy - bt as f64) / h) as f32,
-        )
+        let (fl, ft, fr, fb) = self.frame;
+        let w = (fr - fl).max(1.0);
+        let h = (fb - ft).max(1.0);
+        (((dx - fl) / w) as f32, (1.0 - (dy - ft) / h) as f32)
     }
 
     /// One device pixel in form units: GDI's width for a zero-width pen.
     fn pixel(&self) -> f32 {
-        1.0 / (self.bounds.2 - self.bounds.0).max(1) as f32
+        1.0 / (self.frame.2 - self.frame.0).max(1.0) as f32
     }
 }
 
@@ -138,7 +136,7 @@ pub(super) fn emf_to_form_xobject(
     }
     let mut t = Translator {
         mapper: Mapper {
-            bounds: header.bounds,
+            frame: header.frame,
         },
         state: EmfState::new(bounds_size),
         stack: Vec::new(),
