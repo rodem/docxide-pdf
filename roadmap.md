@@ -322,6 +322,16 @@ the marks get their Link to the note. Visual output changed in the 6
 fixtures with marks in cells (baselines accepted in `7879bc7f`).
 Column auto-fit still measures cells without the marks (a mark's width).
 
+## Running-head connectors (2026-10-08)
+
+Header/footer paragraphs now paint their DrawingML connectors, including
+zero-height horizontal lines, at the paragraph anchor. The parser already
+retained them, but the standalone running-head render path skipped them.
+Synthetic case83 checks a horizontal and a diagonal line on two pages against
+Word for Windows. On an external 82-document corpus, conversion and page counts
+are unchanged; restored letterhead rules match Word's bounds exactly. No
+external corpus documents are included in the repository.
+
 ## Layout accuracy round (2026-10-01)
 
 Rules derived from Word reference PDFs (borders, text positions measured with
