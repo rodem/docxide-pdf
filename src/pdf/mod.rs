@@ -1585,27 +1585,12 @@ fn line_count(para: &Paragraph, ctx: &RenderContext, col_w: f32) -> usize {
     .len()
 }
 
-/// Empty wrapping frames after a non-overlapping floating-table stack stay outside
-/// its body flow. Ordinary empty paragraphs retain their paragraph-mark lines.
-fn is_empty_wrapping_frame_after_nonoverlap_table(
-    para: &Paragraph,
-    blocks: &[Block],
-    idx: usize,
-) -> bool {
-    let mut preceding = blocks[..idx].iter().rev().filter(|block| !matches!(block,
-        Block::Paragraph(p) if p.runs.iter().all(|r| r.text.trim().is_empty() && r.field_code.is_none() && r.inline_image.is_none())
-            && p.image.is_none() && p.floating_images.is_empty() && p.textboxes.is_empty()));
-    let follows_nonoverlap_table = preceding.next().is_some_and(|block| {
-        matches!(block, Block::Table(t)
-        if t.position.as_ref().is_some_and(|pos| !pos.allow_overlap))
-    }) && preceding
-        .next()
-        .is_some_and(|block| matches!(block, Block::Table(t) if t.position.is_some()));
-    follows_nonoverlap_table
-        && para
-            .frame_props
-            .as_ref()
-            .is_some_and(|fp| !fp.text_below && fp.height == 0.0)
+/// Empty auto-height wrapping frames have no body-flow content. Ordinary
+/// empty paragraphs and explicit breaks retain their paragraph-mark lines.
+fn is_empty_wrapping_frame(para: &Paragraph) -> bool {
+    para.frame_props
+        .as_ref()
+        .is_some_and(|fp| !fp.text_below && fp.height == 0.0)
         && is_text_empty(&para.runs)
         && !para.runs.iter().any(|r| {
             r.is_line_break
@@ -1785,7 +1770,7 @@ fn compute_bookmark_positions(
                     for bm in &para.bookmarks {
                         bookmark_positions.insert(bm.clone(), (page_idx, slot_top));
                     }
-                    if is_empty_wrapping_frame_after_nonoverlap_table(para, blocks, bi) {
+                    if is_empty_wrapping_frame(para) {
                         continue;
                     }
                     if para.is_section_break && bi != 0 && is_text_empty(&para.runs) {
@@ -1945,6 +1930,11 @@ fn render_paragraph_block(
     smartart_image_names: &HashMap<usize, String>,
     debug_wrap: bool,
 ) -> bool {
+    if is_empty_wrapping_frame(para) {
+        state.global_block_idx += 1;
+        return true;
+    }
+
     // §17.6.8: per-section line-number config (None if disabled). Holds no borrow
     // of `state`, so each render call can freshly borrow the shared counter.
     let ln_cfg: Option<(i32, u32, u32, f32)> = sp.line_numbering.as_ref().map(|ln| {
@@ -1957,10 +1947,6 @@ fn render_paragraph_block(
         )
     });
     let adjacent_para = |idx: usize| block_para(section_blocks, idx);
-    if is_empty_wrapping_frame_after_nonoverlap_table(para, section_blocks, block_idx) {
-        state.global_block_idx += 1;
-        return true;
-    }
 
     // Skip empty section-break paragraphs — Word gives these zero height, also
     // before a continuous section that changes the columns (Word probes in
@@ -2535,6 +2521,11 @@ fn render_paragraph_block(
     // above it sits beside that table's top; only what follows the break comes
     // below the table (indigenous_innovation's defined terms: one line, not two).
     if para.clears_floats
+        && state.pb.float_zone.as_ref().is_some_and(|zone| {
+            (zone.obj_left - zone.left_from_text - col_x)
+                .max(col_x + col_w - zone.obj_right - zone.right_from_text)
+                >= MIN_EMPTY_STRIP
+        })
         && block_idx
             .checked_sub(1)
             .and_then(|i| section_blocks.get(i))
@@ -4079,6 +4070,24 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                     Some(f) => (std::slice::from_ref(&f.geometry), 1, f.geometry.1),
                     None => (&col_geometry[..], col_count, text_width),
                 };
+
+                // With no side strip, the whole empty clearing paragraph sits
+                // below the floating table, including the line ended by br.
+                if matches!(block, Block::Paragraph(p) if p.clears_floats && p.runs.iter().all(|r| r.is_line_break || (r.text.is_empty() && !r.is_tab && r.inline_image.is_none())))
+                    && block_idx
+                        .checked_sub(1)
+                        .and_then(|i| section.blocks.get(i))
+                        .is_some_and(|b| matches!(b, Block::Table(t) if t.position.is_some()))
+                    && let Some(ref zone) = state.pb.float_zone
+                {
+                    let (x, w) = col_geometry[state.current_col];
+                    let gap = (zone.obj_left - zone.left_from_text - x)
+                        .max(x + w - zone.obj_right - zone.right_from_text);
+                    if gap < MIN_EMPTY_STRIP && state.pb.slot_top > zone.bottom_y {
+                        state.pb.slot_top = zone.bottom_y;
+                        state.pb.float_zone = None;
+                    }
+                }
 
                 let mut table_cleared_float = false;
                 // If a float zone is active, decide whether to wrap text beside

@@ -2084,3 +2084,4 @@ Rendering now consumes the paragraph-mark line height already counted by row lay
 - Honor negative paragraph indents in cell minimum-content widths, preventing an AutoFit nested registration table from collapsing reserved fields (cases118–120). Positive-indent sizing and the separate zero-indent reserved-slot fallback are unchanged.
 
 - Fix line overlap with floating table zones: check line-box intersection at the top edge, preventing short anchor paragraphs from printing over a table (existing cases152–161).
+- Keep empty auto-height wrapping frames outside body flow and preserve both lines of an empty clearing paragraph below a full-width floating table; narrow-table and no-frame controls included (cases127–130).
