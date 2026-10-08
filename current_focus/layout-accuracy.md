@@ -70,7 +70,7 @@ Commands: `python3 tools/line_diff.py <ref> <gen>`, `python3 tools/pdf_lines.py
    - **Width (diagnosed, patch parked):** its tables are `tblW` 100% pct over
      stale 544.5pt grids in a 540pt column; Word wraps inside 540, we use the
      grid (lines run to 582pt past the 576pt margin). Word probes (online,
-     `scratchpad` generator `mk_pct_probe.py`): 100% and 80% tables over 575pt
+     generator `accuracy_push_local/probes/mk_pct_probe.py`): 100% and 80% tables over 575pt
      and 540pt grids, autofit and fixed, all take the pct share; compat 15's
      basis is the column, compat 14's the column plus the table's left and
      right cell margins (550.7 for 540 + 2 × 5.4). `apply_pct_width` skips real
@@ -86,7 +86,7 @@ Commands: `python3 tools/line_diff.py <ref> <gen>`, `python3 tools/pdf_lines.py
      deciding.
    - **Cell spacing:** `tblCellSpacing` is not parsed or laid out anywhere;
      maine's rows come out 1.7–4.5pt short. Probe generator
-     `mk_spacing_probe.py` (bordered 2×2 tables, 0 / 15 / 100 twips, compat
+     `accuracy_push_local/probes/mk_spacing_probe.py` (bordered 2×2 tables, 0 / 15 / 100 twips, compat
      15) is ready; its export failed the same way.
    - Two nested floating tables (`tblpPr` in a cell) are stacked instead of
      side by side (`render_nested_table` ignores `position`; 8 corpus
