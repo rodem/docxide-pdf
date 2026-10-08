@@ -514,7 +514,8 @@ fn render_cell_content(
                 let first_line_hanging = if para.list_label.is_empty() {
                     para.text_hanging
                 } else {
-                    let label_x = cell_x + cm.left + para.indent_left - para.indent_hanging + para.indent_first_line;
+                    let label_x = cell_x + cm.left + para.indent_left - para.indent_hanging
+                        + para.indent_first_line;
                     draw_tagged_cell_label(
                         content,
                         &mut tagger,
@@ -1086,7 +1087,8 @@ fn render_partial_cell_content(
                     para.text_hanging
                 } else {
                     if l0 == 0 {
-                        let label_x = cell_x + cm.left + para.indent_left - para.indent_hanging + para.indent_first_line;
+                        let label_x = cell_x + cm.left + para.indent_left - para.indent_hanging
+                            + para.indent_first_line;
                         draw_tagged_cell_label(
                             content,
                             &mut tagger,

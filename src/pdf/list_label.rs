@@ -130,24 +130,39 @@ pub(super) fn render_list_label(
 
 /// Text starts after the label at the next available tab position. The
 /// first-line indent also moves the label; tab gaps are not label width.
-pub(super) fn text_hanging(para: &Paragraph, default_tab_stop: f32,
-    fonts: &HashMap<String, FontEntry>) -> f32 {
+pub(super) fn text_hanging(
+    para: &Paragraph,
+    default_tab_stop: f32,
+    fonts: &HashMap<String, FontEntry>,
+) -> f32 {
     if para.list_label.is_empty() {
-        return if para.indent_hanging > 0.0 { para.indent_hanging }
-            else { -para.indent_first_line };
+        return if para.indent_hanging > 0.0 {
+            para.indent_hanging
+        } else {
+            -para.indent_first_line
+        };
     }
     let label_x = para.indent_left - para.indent_hanging + para.indent_first_line;
     let entry = label_font_key(para).and_then(|k| fonts.get(&k));
-    let size = para.list_label_font_size.unwrap_or_else(||
-        para.runs.first().map_or(11.0, |r| r.font_size));
+    let size = para
+        .list_label_font_size
+        .unwrap_or_else(|| para.runs.first().map_or(11.0, |r| r.font_size));
     let width = entry.map_or(0.0, |f| f.word_width(&para.list_label, size, false));
     let end = label_x + width;
-    let next = para.tab_stops.iter().map(|t| t.position)
+    let next = para
+        .tab_stops
+        .iter()
+        .map(|t| t.position)
         .chain(para.num_level_tab_stop)
         .chain((para.indent_hanging > 0.0).then_some(para.indent_left))
-        .filter(|p| *p > end + 0.01).min_by(f32::total_cmp)
-        .unwrap_or_else(|| if default_tab_stop > 0.0 {
-            ((end / default_tab_stop).floor() + 1.0) * default_tab_stop
-        } else { end });
+        .filter(|p| *p > end + 0.01)
+        .min_by(f32::total_cmp)
+        .unwrap_or_else(|| {
+            if default_tab_stop > 0.0 {
+                ((end / default_tab_stop).floor() + 1.0) * default_tab_stop
+            } else {
+                end
+            }
+        });
     para.indent_left - next
 }

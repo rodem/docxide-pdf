@@ -706,7 +706,8 @@ impl FloatZone {
                 let new_left = ex_right + self.right_from_text;
                 *text_w = rw.max(1.0);
                 *text_x = new_left + para.indent_left;
-                *label_x = new_left + para.indent_left - para.indent_hanging + para.indent_first_line;
+                *label_x =
+                    new_left + para.indent_left - para.indent_hanging + para.indent_first_line;
             } else if lw > 0.0 {
                 *text_w = lw.max(1.0);
             }
@@ -725,7 +726,8 @@ impl FloatZone {
                 let new_left = ex_right + self.right_from_text;
                 *text_w = (col_right - new_left - para.indent_right).max(1.0);
                 *text_x = new_left + para.indent_left;
-                *label_x = new_left + para.indent_left - para.indent_hanging + para.indent_first_line;
+                *label_x =
+                    new_left + para.indent_left - para.indent_hanging + para.indent_first_line;
             } else if use_left {
                 let avail_right = ex_left - self.left_from_text;
                 *text_w = (avail_right - col_x - para.indent_left - para.indent_right).max(1.0);
@@ -1620,7 +1622,11 @@ fn is_empty_wrapping_frame(para: &Paragraph) -> bool {
 }
 
 /// Compute effective first-line hanging indent for a paragraph.
-fn compute_text_hanging(para: &Paragraph, default_tab_stop: f32, fonts: &HashMap<String, FontEntry>) -> f32 {
+fn compute_text_hanging(
+    para: &Paragraph,
+    default_tab_stop: f32,
+    fonts: &HashMap<String, FontEntry>,
+) -> f32 {
     list_label::text_hanging(para, default_tab_stop, fonts)
 }
 
@@ -3421,14 +3427,8 @@ fn render_paragraph_block(
         // interleave with shapes by relativeHeight (e.g. letter strokes
         // drawn over gradient circles)
         let mut shape_content = tagging::artifact_content();
-        let (x, y) = positioning::connector_top_left(
-            conn,
-            sp,
-            col_x,
-            col_w,
-            text_width,
-            state.pb.slot_top,
-        );
+        let (x, y) =
+            positioning::connector_top_left(conn, sp, col_x, col_w, text_width, state.pb.slot_top);
         render_connector(conn, &mut shape_content, x, y);
         state.pb.deferred_shapes.push((conn.z_index, shape_content));
     }
