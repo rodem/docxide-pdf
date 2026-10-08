@@ -411,23 +411,35 @@ pub(super) fn auto_fit_columns(
     // exceeds the table width.
     let total: f32 = table.col_widths.iter().sum();
     let mut preferred = table.col_widths.clone();
-    for row in &table.rows {
-        for (grid_col, span, cell) in row.grid_cells() {
-            if grid_col >= ncols {
-                break;
-            }
-            if span == 1 {
-                preferred[grid_col] = preferred[grid_col].max(cell.width);
-            } else {
-                // Distribute multi-span cell width proportionally across
-                // the spanned grid columns.
-                let grid_sum: f32 = table.col_widths[grid_col..ncols.min(grid_col + span)]
-                    .iter()
-                    .sum();
-                if grid_sum > 0.0 && cell.width > grid_sum {
-                    for g in grid_col..ncols.min(grid_col + span) {
-                        let share = cell.width * (table.col_widths[g] / grid_sum);
-                        preferred[g] = preferred[g].max(share);
+    // Uniform tcW values can be stale after Word has fitted the saved grid
+    // to content. Reapplying and scaling them erases its asymmetric widths.
+    let uniform_cell_preferences = table.rows.iter().flat_map(|row| row.grid_cells())
+        .filter(|(_, span, _)| *span == 1)
+        .map(|(_, _, cell)| cell.width)
+        .collect::<Vec<_>>();
+    let saved_grid_asymmetric = table.col_widths.iter().any(|&w| (w - table.col_widths[0]).abs() > 0.01);
+    let stale_uniform_preferences = uniform_cell_preferences.len() >= ncols
+        && uniform_cell_preferences.iter().all(|&w| w > 0.0 && (w - uniform_cell_preferences[0]).abs() < 0.01)
+        && uniform_cell_preferences[0] * ncols as f32 > total;
+    if !(table.auto_width && !table.fixed_layout && saved_grid_asymmetric && stale_uniform_preferences) {
+        for row in &table.rows {
+            for (grid_col, span, cell) in row.grid_cells() {
+                if grid_col >= ncols {
+                    break;
+                }
+                if span == 1 {
+                    preferred[grid_col] = preferred[grid_col].max(cell.width);
+                } else {
+                    // Distribute multi-span cell width proportionally across
+                    // the spanned grid columns.
+                    let grid_sum: f32 = table.col_widths[grid_col..ncols.min(grid_col + span)]
+                        .iter()
+                        .sum();
+                    if grid_sum > 0.0 && cell.width > grid_sum {
+                        for g in grid_col..ncols.min(grid_col + span) {
+                            let share = cell.width * (table.col_widths[g] / grid_sum);
+                            preferred[g] = preferred[g].max(share);
+                        }
                     }
                 }
             }
@@ -1501,6 +1513,41 @@ pub(super) fn find_cell_split(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn asymmetric_autofit_keeps_grid_with_uniform_stale_cell_widths() {
+        use crate::model::{TableRow, TableCell, VMerge, CellVAlign};
+        let make = |grid: Vec<f32>, preferred: Vec<f32>| Table {
+            col_widths: grid,
+            rows: vec![TableRow { cells: preferred.into_iter().map(|width| TableCell {
+                width, content: vec![], borders: Default::default(), shading: None,
+                hatch: None, grid_span: 1, v_merge: VMerge::None,
+                v_align: CellVAlign::Top, text_direction: Default::default(),
+                cell_margins: None, hide_mark: false,
+            }).collect(), grid_before: 0, height: None, height_exact: false,
+                is_header: false, cant_split: false }],
+            table_indent: 0.0, table_indent_explicit: false,
+            cell_margins: Default::default(), position: None,
+            alignment: Default::default(), fixed_layout: false, auto_width: true,
+            width_pct: None, grid_inferred: false,
+            header_first_row: false, header_first_col: false,
+        };
+        let mut table = make(vec![250.0, 150.0], vec![300.0, 300.0]);
+        let fonts = HashMap::new();
+        assert_eq!(auto_fit_columns(&table, &fonts, None, None), vec![250.0, 150.0]);
+        table.col_widths = vec![235.6, 232.25];
+        assert_eq!(auto_fit_columns(&table, &fonts, None, None), vec![235.6, 232.25]);
+        table.col_widths = vec![250.0, 150.0];
+        table.fixed_layout = true;
+        assert_eq!(auto_fit_columns(&table, &fonts, None, None), vec![200.0, 200.0]);
+        table.fixed_layout = false;
+        table.auto_width = false;
+        assert_eq!(auto_fit_columns(&table, &fonts, None, None), vec![200.0, 200.0]);
+        table.auto_width = true;
+        table.rows[0].cells[0].width = 250.0;
+        table.rows[0].cells[1].width = 150.0;
+        assert_eq!(auto_fit_columns(&table, &fonts, None, None), vec![250.0, 150.0]);
+    }
 
     /// stem_partnerships p4 (annotation #237): a 10-line cell paragraph after a
     /// heading must break between lines, two lines minimum on either side.

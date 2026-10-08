@@ -1933,3 +1933,5 @@ Fixes:
 case50–53 (deep style inheritance, nested tables, stacked bar charts, extreme
 chart data) have their reference PDFs. Only case58 (3D effects) and case65 still
 lack one.
+
+- Preserve asymmetric saved AutoFit grids when uniform oversized cell preferences would erase them; signature-title wrapping covered by cases109–112 (including nearly equal saved columns).
