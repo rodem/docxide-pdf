@@ -552,6 +552,10 @@ pub(super) struct CellParagraphLayout {
     pub(super) has_connectors: bool,
 }
 
+// Synthetic Word controls switch between 18.75 pt and 18.70 pt of free
+// right strip; the transition is unchanged for 8–12 pt marks and no borders.
+const MIN_NESTED_FLOAT_STRIP: f32 = 18.75;
+
 pub(super) enum CellContentItem {
     Paragraph(CellParagraphLayout),
     /// A table inside the cell, laid out (and drawn) at `col_widths`. A row
@@ -562,6 +566,7 @@ pub(super) enum CellContentItem {
         rows: Vec<RowLayout>,
         space_before: f32,
         floating_offset: Option<f32>,
+        floating_x_offset: Option<f32>,
     },
 }
 
@@ -642,6 +647,8 @@ pub(super) fn compute_row_layouts(
                     };
                     let mut total_h: f32 = ecm.top + ecm.bottom;
                     let mut floating_extent: f32 = 0.0;
+                    let mut left_float_bottom: f32 = 0.0;
+                    let mut left_float_right_gap: f32 = f32::INFINITY;
                     let mut max_rotated_line_w: f32 = 0.0;
                     let mut items: Vec<CellContentItem> = Vec::new();
                     let mut prev_space_after = 0.0f32;
@@ -652,6 +659,9 @@ pub(super) fn compute_row_layouts(
                     for (block_idx, block) in cell.content.iter().enumerate() {
                         match block {
                             Block::Paragraph(para) => {
+                                let nested_float_clearance = if left_float_right_gap < MIN_NESTED_FLOAT_STRIP
+                                    && para.runs.iter().all(|r| r.text.trim().is_empty() && !r.is_tab && !r.is_line_break)
+                                { (left_float_bottom - total_h).max(0.0) } else { 0.0 };
                                 let substituted;
                                 let runs = if let Some(sub) = hf_sub {
                                     substituted = substitute_hf_runs(
@@ -760,6 +770,7 @@ pub(super) fn compute_row_layouts(
                                 } else {
                                     para.space_before
                                 } + label_extra;
+                                let space_before = space_before.max(nested_float_clearance);
                                 total_h += space_before;
 
                                 // The first baseline sits this far (per em) below the
@@ -1057,7 +1068,7 @@ pub(super) fn compute_row_layouts(
                                 let nested_layouts =
                                     compute_row_layouts(nested_table, &nested_cw, ctx, hf_sub);
                                 let nested_h = nested_layouts.iter().map(|rl| rl.height).sum::<f32>();
-                                let floating_offset = nested_table.position.as_ref()
+                                let mut floating_offset = nested_table.position.as_ref()
                                     .filter(|pos| pos.v_anchor == "text" && nested_table.rows.len() == 1 && matches!(cell.v_align, crate::model::CellVAlign::Top))
                                     .filter(|_| cell.content[block_idx + 1..].iter().all(|b| match b {
                                         Block::Paragraph(p) => p.runs.iter().all(|r| r.text.trim().is_empty()
@@ -1069,8 +1080,25 @@ pub(super) fn compute_row_layouts(
                                     // text anchor has a negative vertical offset.
                                     .map(|pos| if block_idx == 0 { pos.v_offset_pt.max(0.0) } else { pos.v_offset_pt });
                                 let space_before = prev_space_after;
+                                let mut floating_x_offset = None;
+                                let auto_left_float = nested_table.position.as_ref().is_some_and(|p|
+                                    p.h_anchor == "margin" && matches!(p.h_position, crate::model::HorizontalPosition::Offset(v) if v == 0.0))
+                                    && nested_table.alignment == crate::model::TableAlignment::Left
+                                    && nested_table.table_indent == 0.0;
+                                if auto_left_float && let Some(offset) = floating_offset {
+                                    let top = total_h + space_before + offset;
+                                    if left_float_bottom > top {
+                                        floating_offset = Some(offset + left_float_bottom - top);
+                                        floating_x_offset = Some(nested_table.position.as_ref().unwrap().left_from_text);
+                                    }
+                                }
                                 if let Some(offset) = floating_offset {
                                     floating_extent = floating_extent.max(total_h + space_before + offset + nested_h);
+                                    if auto_left_float {
+                                        left_float_bottom = total_h + space_before + offset + nested_h;
+                                        left_float_right_gap = cell_text_w - nested_cw.iter().sum::<f32>()
+                                            - nested_table.position.as_ref().unwrap().right_from_text;
+                                    }
                                 } else {
                                     total_h += space_before + nested_h;
                                 }
@@ -1079,6 +1107,7 @@ pub(super) fn compute_row_layouts(
                                     rows: nested_layouts,
                                     space_before,
                                     floating_offset,
+                                    floating_x_offset,
                                 });
                                 if floating_offset.is_none() { prev_space_after = 0.0; }
                                 prev_was_nested_table = floating_offset.is_none();
@@ -1391,6 +1420,22 @@ pub(super) fn item_chunk_height(item: &CellContentItem, c: &Chunk) -> f32 {
     }
 }
 
+/// Reanchor dependent floats after dropping the first anchor on a new page.
+pub(super) fn floating_anchor_gap(
+    space_before: f32,
+    offset: f32,
+    collided: bool,
+    drop_anchor: bool,
+    reanchor_shift: &mut f32,
+) -> f32 {
+    if drop_anchor {
+        *reanchor_shift = space_before + offset;
+        0.0
+    } else {
+        space_before + offset - if collided { *reanchor_shift } else { 0.0 }
+    }
+}
+
 /// Height of a row's piece from `starts` to `ends` (one cursor per cell; a
 /// missing start is the cell's beginning, a missing end its finish): its
 /// tallest cell's content.
@@ -1407,20 +1452,24 @@ pub(super) fn partial_row_height(
         let end = ends.get(ci).unwrap_or(&done);
         let mut h = cm.top + cm.bottom;
         let mut floating_extent: f32 = 0.0;
+        let mut reanchor_shift = 0.0;
         for c in cursor_chunks(&cell_layout.items, start, end) {
             let item = &cell_layout.items[c.item];
             if let CellContentItem::NestedTable {
                 rows,
                 space_before,
                 floating_offset: Some(offset),
+                floating_x_offset,
                 ..
             } = item
             {
-                let anchor_gap = if c.item == start.item && start.item > 0 && start.line == 0 {
-                    0.0
-                } else {
-                    space_before + offset
-                };
+                let anchor_gap = floating_anchor_gap(
+                    *space_before,
+                    *offset,
+                    floating_x_offset.is_some(),
+                    c.item == start.item && start.item > 0 && start.line == 0 && c.from.is_empty(),
+                    &mut reanchor_shift,
+                );
                 floating_extent = floating_extent
                     .max(h + anchor_gap + rows.iter().map(|r| r.height).sum::<f32>());
             }
@@ -1478,6 +1527,7 @@ pub(super) fn find_cell_split(
         return done;
     }
     let mut h = cm.top + cm.bottom;
+    let mut reanchor_shift = 0.0;
     for pi in start.item..cell.items.len() {
         let first = pi == start.item;
         let l0 = if first { start.line } else { 0 };
@@ -1508,14 +1558,17 @@ pub(super) fn find_cell_split(
             rows,
             space_before,
             floating_offset: Some(offset),
+            floating_x_offset,
             ..
         } = item
         {
-            let anchor_gap = if first && start.item > 0 && l0 == 0 {
-                0.0
-            } else {
-                space_before + offset
-            };
+            let anchor_gap = floating_anchor_gap(
+                *space_before,
+                *offset,
+                floating_x_offset.is_some(),
+                first && start.item > 0 && l0 == 0 && from.is_empty(),
+                &mut reanchor_shift,
+            );
             let required = (anchor_gap + rows.iter().map(|r| r.height).sum::<f32>()).max(0.0);
             if h + required <= available_h {
                 continue;
@@ -1704,6 +1757,7 @@ mod floating_nested_tests {
             }],
             space_before: gap,
             floating_offset,
+            floating_x_offset: None,
         }
     }
 
@@ -1728,5 +1782,36 @@ mod floating_nested_tests {
         assert!((partial_row_height(&row, &[split.clone()], &[]) - 48.0).abs() < 0.001);
         assert!((partial_row_height(&row, &[], &[]) - 66.35).abs() < 0.001);
         assert_eq!(find_cell_split(&row.cells[0], &split, 48.0).item, 2);
+    }
+
+    #[test]
+    fn continued_pair_reanchors_collision_extent_before_splitting() {
+        let mut second = item(40.0, 0.0, Some(16.85));
+        if let CellContentItem::NestedTable {
+            floating_x_offset, ..
+        } = &mut second
+        {
+            *floating_x_offset = Some(9.0);
+        }
+        let row = RowLayout {
+            height: 88.35,
+            cells: vec![CellLayout {
+                items: vec![
+                    item(12.0, 0.0, None),
+                    item(30.0, 8.0, Some(-1.65)),
+                    item(19.5, 0.0, None),
+                    second,
+                ],
+                cm: CellMargins::default(),
+                total_height: 88.35,
+                trailing_space_after: 0.0,
+                text_direction: TextDirection::LrTb,
+            }],
+            split_min: None,
+        };
+        let start = CellCursor::at(1, 0);
+        assert!((partial_row_height(&row, &[start.clone()], &[]) - 70.0).abs() < 0.001);
+        assert_eq!(find_cell_split(&row.cells[0], &start, 70.01).item, 4);
+        assert_eq!(find_cell_split(&row.cells[0], &start, 69.9).item, 3);
     }
 }
