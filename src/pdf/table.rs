@@ -553,7 +553,7 @@ fn render_cell_content(
                 );
                 end_cell_tag(content, &tagger);
 
-                cursor_y -= super::table_layout::cell_lines_h(para, 0..para.lines.len());
+                cursor_y -= super::table_layout::para_block_height(para);
 
                 if let Some(src) = source_para {
                     render_cell_floating_shapes(
@@ -1115,7 +1115,11 @@ fn render_partial_cell_content(
                 );
                 end_cell_tag(content, &tagger);
 
-                cursor_y -= super::table_layout::cell_lines_h(para, l0..l1);
+                cursor_y -= if para.lines.is_empty() {
+                    para_block_height(para)
+                } else {
+                    super::table_layout::cell_lines_h(para, l0..l1)
+                };
             }
             CellContentItem::NestedTable {
                 col_widths, rows, ..
