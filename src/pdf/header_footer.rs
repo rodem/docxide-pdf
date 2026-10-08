@@ -200,6 +200,66 @@ pub(super) fn below_blocking_frames(mut top: f32, line_h: f32, bands: &[(f32, f3
     top
 }
 
+fn wrapped_header_picture_height(para: &Paragraph, ctx: &RenderContext, width: f32) -> Option<f32> {
+    if para
+        .runs
+        .iter()
+        .filter(|r| r.inline_image.is_some())
+        .count()
+        < 2
+        || para
+            .runs
+            .iter()
+            .any(|r| !r.text.trim().is_empty() || r.field_code.is_some())
+    {
+        return None;
+    }
+    let images: HashMap<usize, String> = para
+        .runs
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.inline_image.is_some())
+        .map(|(i, _)| (i, format!("Im{i}")))
+        .collect();
+    let (font_size, lhr, ar) = tallest_run_metrics(&para.runs, ctx.fonts);
+    let spacing = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
+    let line_h = resolve_line_h(spacing, font_size, lhr);
+    let mut lines = build_lines(
+        &para.runs,
+        ctx,
+        (width - para.indent_left - para.indent_right).max(1.0),
+        ctx.cjk(true, para.alignment),
+        &LineOpts {
+            inline_images: Some(&images),
+            tab_stops: &para.tab_stops,
+            indent_left: para.indent_left,
+            indent_right: para.indent_right,
+            hanging: para.indent_hanging - para.indent_first_line,
+            ..Default::default()
+        },
+    );
+    if lines.len() < 2 {
+        return None;
+    }
+    for (chunk, image) in lines
+        .iter_mut()
+        .flat_map(|l| &mut l.chunks)
+        .filter(|c| c.inline_image_name.is_some())
+        .zip(para.runs.iter().filter_map(|r| r.inline_image.as_ref()))
+    {
+        chunk.inline_image_height += image.layout_extra_height;
+        chunk.y_offset = image.layout_extra_height - image.layout_extra_top;
+    }
+    let metrics = (
+        font_size * ar.unwrap_or(0.75),
+        font_size * super::layout::descender_ratio(lhr, ar),
+    );
+    if !matches!(spacing, LineSpacing::Exact(_)) {
+        size_lines_by_own_runs(&mut lines, ctx.fonts, spacing, line_h, metrics.0);
+    }
+    Some(lines_height(&lines, line_h, metrics))
+}
+
 fn compute_header_height(
     hf: &HeaderFooter,
     ctx: &RenderContext,
@@ -236,7 +296,10 @@ fn compute_header_height(
                 // Mirrors the render loop's advance: a picture line is the
                 // picture plus the text descent (`inline_line_advance`).
                 let picture_h = runs_max_image_h(&para.runs);
-                let mut content_h = if picture_h > 0.0 {
+                let wrapped_h = wrapped_header_picture_height(para, ctx, text_width);
+                let mut content_h = if let Some(h) = wrapped_h {
+                    h
+                } else if picture_h > 0.0 {
                     line_h.max(picture_h + picture_line_bottom(&para.runs, ctx.fonts, effective_ls))
                 } else {
                     line_h
@@ -293,7 +356,9 @@ fn compute_header_height(
 
                 // Each w:br (line break) in the paragraph creates an additional line.
                 let br_count = para.runs.iter().filter(|r| r.is_line_break).count();
-                content_h += br_count as f32 * line_h;
+                if wrapped_h.is_none() {
+                    content_h += br_count as f32 * line_h;
+                }
 
                 height += top_border_band(para) + content_h + bottom_border_band(para);
                 prev_space_after = para.space_after;

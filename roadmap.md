@@ -1933,3 +1933,5 @@ Fixes:
 case50–53 (deep style inheritance, nested tables, stacked bar charts, extreme
 chart data) have their reference PDFs. Only case58 (3D effects) and case65 still
 lack one.
+
+- Reserve the actual wrapped-line height of image-only running heads with multiple inline pictures (cases121–123); fitting picture lines retain their existing height.
