@@ -254,13 +254,16 @@ pub(super) struct WordChunk {
     pub(super) dstrike: bool,
     pub(super) char_spacing: f32,
     pub(super) text_scale: f32, // percentage, 100.0 = normal
-    pub(super) y_offset: f32,   // vertical offset for superscript/subscript
+    pub(super) y_offset: f32,   // superscript/subscript, or inline picture's bottom extent
     /// `w:position` share of `y_offset`: it stretches the line box, unlike
     /// super/subscript (see `size_lines_by_own_runs`).
     pub(super) raise: f32,
     pub(super) hyperlink_url: Option<String>,
     pub(super) inline_image_name: Option<String>,
     pub(super) inline_image_height: f32,
+    /// Running-head wrapped pictures can reserve their effect/wrap extent
+    /// separately from the rotated visible image box.
+    pub(super) inline_image_extra_height: f32,
     pub(super) inline_image_stroke_color: Option<[u8; 3]>,
     pub(super) inline_image_stroke_width: f32,
     pub(super) inline_image_shadow: Option<crate::model::ImageShadow>,
@@ -388,6 +391,7 @@ impl WordChunk {
             hyperlink_url: run.hyperlink_url.clone(),
             inline_image_name: None,
             inline_image_height: 0.0,
+            inline_image_extra_height: 0.0,
             inline_image_stroke_color: None,
             inline_image_stroke_width: 0.0,
             inline_image_shadow: None,
@@ -447,6 +451,7 @@ impl WordChunk {
             hyperlink_url: None,
             inline_image_name: Some(pdf_name.to_string()),
             inline_image_height: height,
+            inline_image_extra_height: 0.0,
             inline_image_stroke_color: img.stroke_color,
             inline_image_stroke_width: img.stroke_width,
             inline_image_shadow: img.shadow.clone(),
@@ -506,6 +511,7 @@ impl WordChunk {
             hyperlink_url: None,
             inline_image_name: None,
             inline_image_height: 0.0,
+            inline_image_extra_height: 0.0,
             inline_image_stroke_color: None,
             inline_image_stroke_width: 0.0,
             inline_image_shadow: None,
@@ -570,6 +576,7 @@ impl WordChunk {
             hyperlink_url: None,
             inline_image_name: None,
             inline_image_height: 0.0,
+            inline_image_extra_height: 0.0,
             inline_image_stroke_color: None,
             inline_image_stroke_width: 0.0,
             inline_image_shadow: None,
@@ -2676,7 +2683,7 @@ pub(super) struct LineNumberArg<'a> {
 pub(super) fn line_max_image_h(line: &TextLine) -> f32 {
     line.chunks
         .iter()
-        .map(|c| c.inline_image_height)
+        .map(|c| c.inline_image_height + c.inline_image_extra_height)
         .fold(0.0f32, f32::max)
 }
 
@@ -3469,7 +3476,7 @@ pub(super) fn render_paragraph_lines(
                     );
                 }
                 let box_x = chunk_abs_x(chunk_idx, chunk);
-                let box_bottom = y;
+                let box_bottom = y + chunk.y_offset;
 
                 // The chunk box is the rotated frame's bounding box; draw the picture at
                 // its natural size centred in it, turned about that centre like Word.
