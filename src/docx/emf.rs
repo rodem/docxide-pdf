@@ -78,15 +78,43 @@ pub(crate) enum EmfRecord {
     SelectClipPath,
     /// Discard the current path (EMR_ABORTPATH).
     AbortPath,
+    /// A brush; `color` is `None` for BS_NULL.
     CreateBrushIndirect {
         handle: u32,
-        color: [u8; 3],
+        color: Option<[u8; 3]>,
     },
-    ExtCreatePen {
+    /// EMR_CREATEPEN or EMR_EXTCREATEPEN; `color` is `None` for PS_NULL.
+    CreatePen {
         handle: u32,
         width: i32,
-        color: [u8; 3],
+        color: Option<[u8; 3]>,
     },
+    CreateFont {
+        handle: u32,
+        /// LOGFONT height: negative is the em size, positive the cell height.
+        height: i32,
+        bold: bool,
+        italic: bool,
+        face: String,
+    },
+    SetTextColor([u8; 3]),
+    SetTextAlign(u32),
+    /// EMR_EXTTEXTOUTW: reference point, text and per-character advances.
+    ExtTextOut {
+        x: i32,
+        y: i32,
+        text: String,
+        dx: Vec<i32>,
+    },
+    /// EMR_BITBLT without a source bitmap: fill the rectangle per `rop`.
+    PatBlt {
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        rop: u32,
+    },
+    Rectangle(i32, i32, i32, i32),
     SelectObject(u32),
     DeleteObject(u32),
     /// Any record we don't decode — `(record_type, payload_bytes)`.
@@ -121,6 +149,39 @@ pub(crate) fn emf_to_raster(data: &[u8]) -> Option<Vec<u8>> {
 /// path painting and text ([MS-EMF] §2.3.5).
 fn paints_vector(rec_type: u32) -> bool {
     matches!(rec_type, 2..=8 | 42..=47 | 54 | 62..=64 | 83..=92)
+}
+
+/// The text an EMF draws with the font selected for it: `(face, bold, italic, text)`.
+pub(crate) fn text_with_fonts(data: &[u8]) -> Vec<(String, bool, bool, String)> {
+    let mut fonts = std::collections::HashMap::new();
+    let mut current = None;
+    let mut out = Vec::new();
+    for_each_record(data, |rec| {
+        match rec {
+            EmfRecord::CreateFont {
+                handle,
+                bold,
+                italic,
+                face,
+                ..
+            } => {
+                fonts.insert(*handle, (face.clone(), *bold, *italic));
+            }
+            EmfRecord::SelectObject(h) => {
+                if let Some(f) = fonts.get(h) {
+                    current = Some(f.clone());
+                }
+            }
+            EmfRecord::ExtTextOut { text, .. } => {
+                if let Some((face, bold, italic)) = &current {
+                    out.push((face.clone(), *bold, *italic, text.clone()));
+                }
+            }
+            _ => {}
+        }
+        true
+    });
+    out
 }
 
 /// Walk all records after the header, calling `f` for each. Stops at EOF, on
@@ -209,7 +270,27 @@ fn decode(rec_type: u32, payload: &[u8]) -> EmfRecord {
         37 => SelectObject(u32_at(0).unwrap_or(0)),
         40 => DeleteObject(u32_at(0).unwrap_or(0)),
         39 => decode_brush(payload).unwrap_or(Skip),
+        38 => decode_createpen(payload).unwrap_or(Skip),
         95 => decode_extcreatepen(payload).unwrap_or(Skip),
+        82 => decode_font(payload).unwrap_or(Skip),
+        84 => decode_exttextoutw(payload).unwrap_or(Skip),
+        24 => u32_at(0).map_or(Skip, |c| SetTextColor(colorref(c))),
+        22 => u32_at(0).map_or(Skip, SetTextAlign),
+        43 => match (i32_at(0), i32_at(4), i32_at(8), i32_at(12)) {
+            (Some(l), Some(t), Some(r), Some(b)) => Rectangle(l, t, r, b),
+            _ => Skip,
+        },
+        // cbBitsSrc at 88: a BITBLT with a bitmap source is left out.
+        76 if u32_at(88) == Some(0) => match (i32_at(16), i32_at(20), i32_at(24), i32_at(28)) {
+            (Some(x), Some(y), Some(w), Some(h)) => PatBlt {
+                x,
+                y,
+                w,
+                h,
+                rop: u32_at(32).unwrap_or(0),
+            },
+            _ => Skip,
+        },
         _ => Skip,
     }
 }
@@ -271,8 +352,87 @@ fn decode_brush(payload: &[u8]) -> Option<EmfRecord> {
         return None;
     }
     let handle = u32::from_le_bytes(payload[0..4].try_into().unwrap());
+    let style = u32::from_le_bytes(payload[4..8].try_into().unwrap());
     let color = colorref(u32::from_le_bytes(payload[8..12].try_into().unwrap()));
-    Some(EmfRecord::CreateBrushIndirect { handle, color })
+    Some(EmfRecord::CreateBrushIndirect {
+        handle,
+        color: (style != 1).then_some(color), // BS_NULL
+    })
+}
+
+/// PS_NULL in the low bits of a pen style draws nothing.
+fn pen_color(style: u32, color: u32) -> Option<[u8; 3]> {
+    (style & 0xF != 5).then(|| colorref(color))
+}
+
+fn decode_createpen(payload: &[u8]) -> Option<EmfRecord> {
+    // EMR_CREATEPEN: ihPen u32, LogPen { PenStyle u32, Width PointL (x used), Color }
+    if payload.len() < 20 {
+        return None;
+    }
+    let u32_at = |o: usize| u32::from_le_bytes(payload[o..o + 4].try_into().unwrap());
+    Some(EmfRecord::CreatePen {
+        handle: u32_at(0),
+        width: u32_at(8) as i32,
+        color: pen_color(u32_at(4), u32_at(16)),
+    })
+}
+
+fn decode_font(payload: &[u8]) -> Option<EmfRecord> {
+    // EMR_EXTCREATEFONTINDIRECTW: ihFont u32, LogFont { Height, Width, Escapement,
+    // Orientation, Weight (i32 each), Italic u8, …, FaceName [u16; 32] at 28 }
+    if payload.len() < 96 {
+        return None;
+    }
+    let i32_at = |o: usize| i32::from_le_bytes(payload[o..o + 4].try_into().unwrap());
+    let face: Vec<u16> = payload[32..96]
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .take_while(|&c| c != 0)
+        .collect();
+    Some(EmfRecord::CreateFont {
+        handle: i32_at(0) as u32,
+        height: i32_at(4),
+        bold: i32_at(20) >= 600,
+        italic: payload[24] != 0,
+        face: String::from_utf16_lossy(&face),
+    })
+}
+
+fn decode_exttextoutw(payload: &[u8]) -> Option<EmfRecord> {
+    // Bounds RectL, iGraphicsMode, exScale, eyScale (28 bytes), then EmrText:
+    // Reference PointL, Chars u32, offString u32, Options u32, Rectangle RectL,
+    // offDx u32. Offsets count from the record start, 8 bytes before the payload.
+    let u32_at = |o: usize| -> Option<u32> {
+        payload
+            .get(o..o + 4)
+            .map(|s| u32::from_le_bytes(s.try_into().unwrap()))
+    };
+    let x = u32_at(28)? as i32;
+    let y = u32_at(32)? as i32;
+    let chars = u32_at(36)? as usize;
+    let off_string = (u32_at(40)? as usize).checked_sub(8)?;
+    let options = u32_at(44)?;
+    let units: Vec<u16> = payload
+        .get(off_string..off_string + chars * 2)?
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
+    // ETO_PDY: the array holds an (x, y) pair per character.
+    let stride = if options & 0x2000 != 0 { 2 } else { 1 };
+    let dx = match u32_at(64).filter(|&o| o >= 8) {
+        Some(off) => (0..chars)
+            .map(|k| u32_at(off as usize - 8 + k * stride * 4).map(|v| v as i32))
+            .collect::<Option<Vec<_>>>()
+            .unwrap_or_default(),
+        None => Vec::new(),
+    };
+    Some(EmfRecord::ExtTextOut {
+        x,
+        y,
+        text: String::from_utf16_lossy(&units),
+        dx,
+    })
 }
 
 fn decode_extcreatepen(payload: &[u8]) -> Option<EmfRecord> {
@@ -282,13 +442,11 @@ fn decode_extcreatepen(payload: &[u8]) -> Option<EmfRecord> {
     if payload.len() < 36 {
         return None;
     }
-    let handle = u32::from_le_bytes(payload[0..4].try_into().unwrap());
-    let width = u32::from_le_bytes(payload[24..28].try_into().unwrap()) as i32;
-    let color = colorref(u32::from_le_bytes(payload[32..36].try_into().unwrap()));
-    Some(EmfRecord::ExtCreatePen {
-        handle,
-        width,
-        color,
+    let u32_at = |o: usize| u32::from_le_bytes(payload[o..o + 4].try_into().unwrap());
+    Some(EmfRecord::CreatePen {
+        handle: u32_at(0),
+        width: u32_at(24) as i32,
+        color: pen_color(u32_at(20), u32_at(32)),
     })
 }
 
@@ -378,6 +536,26 @@ mod tests {
         mixed.extend_from_slice(&8u32.to_le_bytes());
         assert!(emf_to_raster(&mixed).is_none());
         assert!(emf_to_raster(&data[..108]).is_none());
+    }
+
+    #[test]
+    fn decodes_exttextoutw() {
+        // 28 bytes of bounds/mode/scales, EmrText (40 bytes), then "Ab" and its Dx.
+        let mut p = vec![0u8; 68];
+        p[28..32].copy_from_slice(&3i32.to_le_bytes()); // reference x
+        p[32..36].copy_from_slice(&24i32.to_le_bytes()); // reference y
+        p[36..40].copy_from_slice(&2u32.to_le_bytes()); // chars
+        p[40..44].copy_from_slice(&(8u32 + 68).to_le_bytes()); // offString
+        p[64..68].copy_from_slice(&(8u32 + 72).to_le_bytes()); // offDx
+        p.extend_from_slice(&[b'A', 0, b'b', 0]);
+        p.extend_from_slice(&7i32.to_le_bytes());
+        p.extend_from_slice(&8i32.to_le_bytes());
+        match decode(84, &p) {
+            EmfRecord::ExtTextOut { x, y, text, dx } => {
+                assert_eq!((x, y, text.as_str(), dx), (3, 24, "Ab", vec![7, 8]));
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]

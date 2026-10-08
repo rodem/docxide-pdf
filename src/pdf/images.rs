@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::fonts::FontEntry;
+
 use pdf_writer::{Content, Filter, Name, Pdf, Rect, Ref};
 
 use crate::model::{
@@ -274,10 +276,16 @@ fn embed_single_image(
     image_xobjects: &mut Vec<(String, Ref)>,
     pdf: &mut Pdf,
     alloc: &mut impl FnMut() -> Ref,
+    fonts: &HashMap<String, FontEntry>,
 ) -> String {
     let Some(src_rect) = img.src_rect else {
-        let xobj_ref =
-            embed_image_xobject(img, (img.display_width, img.display_height), pdf, alloc);
+        let xobj_ref = embed_image_xobject(
+            img,
+            (img.display_width, img.display_height),
+            pdf,
+            alloc,
+            fonts,
+        );
         return register_xobject(image_xobjects, xobj_ref);
     };
     // The frame shows only the crop window, so the whole source is drawn at
@@ -289,7 +297,7 @@ fn embed_single_image(
     );
     // ponytail: the reflection re-decodes the uncropped source and the soft-edge mask
     // rings the source's edges; crop those too if a fixture ever combines them.
-    let inner_ref = embed_image_xobject(img, source_extent, pdf, alloc);
+    let inner_ref = embed_image_xobject(img, source_extent, pdf, alloc, fonts);
     // The inner image is reachable only through this form, so it is not registered on
     // the pages.
     let mut content = Content::new();
@@ -311,6 +319,7 @@ fn embed_image_xobject(
     (display_width, display_height): (f32, f32),
     pdf: &mut Pdf,
     alloc: &mut impl FnMut() -> Ref,
+    fonts: &HashMap<String, FontEntry>,
 ) -> Ref {
     let xobj_ref = alloc();
     let target = downscale_target(
@@ -502,7 +511,7 @@ fn embed_image_xobject(
             // Translate EMF records into a PDF Form XObject. The xobj_ref we
             // already allocated is unused — emf_to_form_xobject allocates its
             // own — so map the slot to the Form XObject ref instead.
-            if let Some(form_ref) = super::emf::emf_to_form_xobject(&img.data, pdf, alloc) {
+            if let Some(form_ref) = super::emf::emf_to_form_xobject(&img.data, pdf, alloc, fonts) {
                 return form_ref;
             }
             // Conversion failed — register the wasted ref so it still maps to
@@ -725,6 +734,7 @@ pub(super) fn embed_all_images(
     doc: &Document,
     pdf: &mut Pdf,
     alloc: &mut impl FnMut() -> Ref,
+    fonts: &HashMap<String, FontEntry>,
 ) -> EmbeddedImages {
     let mut image_pdf_names: HashMap<usize, String> = HashMap::new();
     let mut inline_image_pdf_names: HashMap<(usize, usize), String> = HashMap::new();
@@ -741,7 +751,7 @@ pub(super) fn embed_all_images(
             for block in &section.blocks {
                 if let Block::Paragraph(para) = block {
                     if let Some(img) = &para.image {
-                        let name = embed_single_image(img, &mut image_xobjects, pdf, alloc);
+                        let name = embed_single_image(img, &mut image_xobjects, pdf, alloc, fonts);
                         image_pdf_names.insert(global_block_idx, name);
                         let fx = embed_image_effects(
                             img,
@@ -756,7 +766,8 @@ pub(super) fn embed_all_images(
                     }
                     for (run_idx, run) in para.runs.iter().enumerate() {
                         if let Some(img) = &run.inline_image {
-                            let name = embed_single_image(img, &mut image_xobjects, pdf, alloc);
+                            let name =
+                                embed_single_image(img, &mut image_xobjects, pdf, alloc, fonts);
                             inline_image_pdf_names.insert((global_block_idx, run_idx), name);
                             let fx = embed_image_effects(
                                 img,
@@ -771,7 +782,8 @@ pub(super) fn embed_all_images(
                         }
                     }
                     for (fi_idx, fi) in para.floating_images.iter().enumerate() {
-                        let name = embed_single_image(&fi.image, &mut image_xobjects, pdf, alloc);
+                        let name =
+                            embed_single_image(&fi.image, &mut image_xobjects, pdf, alloc, fonts);
                         floating_image_pdf_names.insert((global_block_idx, fi_idx), name);
                         let fx = embed_image_effects(
                             &fi.image,
@@ -812,7 +824,8 @@ pub(super) fn embed_all_images(
                     for block in &hf.blocks {
                         if let Block::Paragraph(para) = block {
                             if let Some(img) = &para.image {
-                                let name = embed_single_image(img, &mut image_xobjects, pdf, alloc);
+                                let name =
+                                    embed_single_image(img, &mut image_xobjects, pdf, alloc, fonts);
                                 hf_image_names.insert((si, hf_type, pi), name);
                                 let fx = embed_image_effects(
                                     img,
@@ -827,8 +840,13 @@ pub(super) fn embed_all_images(
                             }
                             for (ri, run) in para.runs.iter().enumerate() {
                                 if let Some(img) = &run.inline_image {
-                                    let name =
-                                        embed_single_image(img, &mut image_xobjects, pdf, alloc);
+                                    let name = embed_single_image(
+                                        img,
+                                        &mut image_xobjects,
+                                        pdf,
+                                        alloc,
+                                        fonts,
+                                    );
                                     hf_inline_image_names.insert((si, hf_type, pi, ri), name);
                                     embed_image_effects(
                                         img,
@@ -845,6 +863,7 @@ pub(super) fn embed_all_images(
                                     &mut image_xobjects,
                                     pdf,
                                     alloc,
+                                    fonts,
                                 );
                                 hf_floating_image_names.insert((si, hf_type, pi, fi), name);
                                 embed_image_effects(
@@ -906,6 +925,7 @@ pub(super) fn embed_all_images(
                                 &mut effect_counter,
                                 pdf,
                                 alloc,
+                                fonts,
                             );
                         }
                     }
@@ -945,6 +965,7 @@ pub(super) fn embed_all_images(
                 &mut image_xobjects,
                 pdf,
                 alloc,
+                fonts,
             );
         }
     }
@@ -962,6 +983,7 @@ pub(super) fn embed_all_images(
                                 &mut image_xobjects,
                                 pdf,
                                 alloc,
+                                fonts,
                             );
                         }
                     }
@@ -1017,10 +1039,11 @@ fn embed_keyed_image(
     image_xobjects: &mut Vec<(String, Ref)>,
     pdf: &mut Pdf,
     alloc: &mut impl FnMut() -> Ref,
+    fonts: &HashMap<String, FontEntry>,
 ) {
     image_names
         .entry(img.key())
-        .or_insert_with(|| embed_single_image(img, image_xobjects, pdf, alloc));
+        .or_insert_with(|| embed_single_image(img, image_xobjects, pdf, alloc, fonts));
 }
 
 /// `embed_keyed_image` for a table-cell picture, with its effects.
@@ -1032,9 +1055,10 @@ fn embed_table_image(
     effect_counter: &mut usize,
     pdf: &mut Pdf,
     alloc: &mut impl FnMut() -> Ref,
+    fonts: &HashMap<String, FontEntry>,
 ) {
     if let std::collections::hash_map::Entry::Vacant(e) = image_names.entry(img.key()) {
-        e.insert(embed_single_image(img, image_xobjects, pdf, alloc));
+        e.insert(embed_single_image(img, image_xobjects, pdf, alloc, fonts));
         let fx = embed_image_effects(img, image_xobjects, effect_counter, pdf, alloc);
         if fx.has_any() {
             effect_names.insert(img.key(), fx);
@@ -1048,20 +1072,21 @@ fn embed_textbox_images(
     image_xobjects: &mut Vec<(String, Ref)>,
     pdf: &mut Pdf,
     alloc: &mut impl FnMut() -> Ref,
+    fonts: &HashMap<String, FontEntry>,
 ) {
     let mut stack: Vec<&[Paragraph]> = vec![&tb.paragraphs];
     while let Some(paras) = stack.pop() {
         for para in paras {
             if let Some(img) = &para.image {
-                embed_keyed_image(img, image_names, image_xobjects, pdf, alloc);
+                embed_keyed_image(img, image_names, image_xobjects, pdf, alloc, fonts);
             }
             for run in &para.runs {
                 if let Some(img) = &run.inline_image {
-                    embed_keyed_image(img, image_names, image_xobjects, pdf, alloc);
+                    embed_keyed_image(img, image_names, image_xobjects, pdf, alloc, fonts);
                 }
             }
             for fi in &para.floating_images {
-                embed_keyed_image(&fi.image, image_names, image_xobjects, pdf, alloc);
+                embed_keyed_image(&fi.image, image_names, image_xobjects, pdf, alloc, fonts);
             }
             for nested in &para.textboxes {
                 stack.push(&nested.paragraphs);

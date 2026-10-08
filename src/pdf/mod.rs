@@ -3796,7 +3796,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
         effect_inline_names,
         effect_hf_names,
         effect_table_names,
-    } = embed_all_images(doc, &mut pdf, &mut alloc);
+    } = embed_all_images(doc, &mut pdf, &mut alloc, &seen_fonts);
 
     let t_images = t0.elapsed();
 

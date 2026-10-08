@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use pdf_writer::{Pdf, Ref};
 
 use crate::fonts::{FontContext, FontEntry, font_key_buf, register_font};
-use crate::model::{Block, Document, FieldCode, IfPart, Paragraph, Run};
+use crate::model::{Block, Document, FieldCode, IfPart, ImageFormat, Paragraph, Run};
 
 use super::header_footer::hf_paragraphs;
 use super::{collect_paras, label_font_key, para_runs_with_textboxes};
@@ -322,6 +322,40 @@ fn collect_used_chars(doc: &Document, all_runs: &[&Run]) -> HashMap<String, Hash
             used.entry(doc.theme_minor_font.clone())
                 .or_default()
                 .extend(chart_label_chars);
+        }
+    }
+
+    // Text inside EMF pictures draws with the fonts the metafile selects
+    // (`pdf::emf`), registered under the same keys as SmartArt fonts.
+    let hf_paras = doc
+        .sections
+        .iter()
+        .flat_map(|s| {
+            let p = &s.properties;
+            [
+                &p.header_default,
+                &p.header_first,
+                &p.header_even,
+                &p.footer_default,
+                &p.footer_first,
+                &p.footer_even,
+            ]
+        })
+        .filter_map(|hf| hf.as_ref())
+        .flat_map(hf_paragraphs)
+        .flat_map(collect_paras);
+    for para in all_paras.iter().copied().chain(hf_paras) {
+        let images = para
+            .image
+            .iter()
+            .chain(para.runs.iter().filter_map(|r| r.inline_image.as_ref()))
+            .chain(para.floating_images.iter().map(|fi| &fi.image));
+        for img in images.filter(|i| matches!(i.format, ImageFormat::Emf)) {
+            for (face, bold, italic, text) in crate::docx::emf::text_with_fonts(&img.data) {
+                used.entry(smartart_font_key_str(&face, bold, italic))
+                    .or_default()
+                    .extend(text.chars());
+            }
         }
     }
 
