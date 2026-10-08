@@ -124,7 +124,7 @@ pub(super) fn footnote_height(
     for (i, para) in footnote.paragraphs.iter().enumerate() {
         let ls = para.line_spacing.unwrap_or(ctx.doc_line_spacing);
         let para_text_width = (text_width - para.indent_left - para.indent_right).max(1.0);
-        let hanging = super::compute_text_hanging(para, 0.0);
+        let hanging = super::compute_text_hanging(para, 0.0, ctx.fonts);
         let runs = substitute_ref_marks(&para.runs, mark);
         let layout = layout_paragraph(&runs, para, ls, ctx, para_text_width, hanging);
         if layout.is_none() && para.paragraph_mark_vanish {
@@ -319,7 +319,7 @@ fn render_notes_downward(
             let para_text_x = margin_left + para.indent_left;
             let para_text_width = (text_width - para.indent_left - para.indent_right).max(1.0);
 
-            let hanging = super::compute_text_hanging(para, 0.0);
+            let hanging = super::compute_text_hanging(para, 0.0, ctx.fonts);
             let layout = layout_paragraph(&runs, para, ls, ctx, para_text_width, hanging);
             if layout.is_none() && para.paragraph_mark_vanish {
                 continue;

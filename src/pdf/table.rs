@@ -512,9 +512,9 @@ fn render_cell_content(
                 let baseline_y = cursor_y - para.font_size * para.ascender_ratio;
 
                 let first_line_hanging = if para.list_label.is_empty() {
-                    para.indent_hanging
+                    para.text_hanging
                 } else {
-                    let label_x = cell_x + cm.left + para.indent_left - para.indent_hanging;
+                    let label_x = cell_x + cm.left + para.indent_left - para.indent_hanging + para.indent_first_line;
                     draw_tagged_cell_label(
                         content,
                         &mut tagger,
@@ -524,11 +524,7 @@ fn render_cell_content(
                         baseline_y,
                         ctx.fonts,
                     );
-                    if para.indent_first_line > 0.0 && para.indent_hanging == 0.0 {
-                        -para.indent_first_line
-                    } else {
-                        0.0
-                    }
+                    para.text_hanging
                 };
 
                 render_paragraph_lines(
@@ -1087,10 +1083,10 @@ fn render_partial_cell_content(
                 let baseline_y = cursor_y - para.font_size * para.ascender_ratio;
 
                 let first_line_hanging = if para.list_label.is_empty() {
-                    para.indent_hanging
+                    para.text_hanging
                 } else {
                     if l0 == 0 {
-                        let label_x = cell_x + cm.left + para.indent_left - para.indent_hanging;
+                        let label_x = cell_x + cm.left + para.indent_left - para.indent_hanging + para.indent_first_line;
                         draw_tagged_cell_label(
                             content,
                             &mut tagger,
@@ -1101,11 +1097,7 @@ fn render_partial_cell_content(
                             ctx.fonts,
                         );
                     }
-                    if para.indent_first_line > 0.0 && para.indent_hanging == 0.0 {
-                        -para.indent_first_line
-                    } else {
-                        0.0
-                    }
+                    para.text_hanging
                 };
 
                 let l1 = l1.unwrap_or(para.lines.len());

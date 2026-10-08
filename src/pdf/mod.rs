@@ -706,7 +706,7 @@ impl FloatZone {
                 let new_left = ex_right + self.right_from_text;
                 *text_w = rw.max(1.0);
                 *text_x = new_left + para.indent_left;
-                *label_x = new_left + para.indent_left - para.indent_hanging;
+                *label_x = new_left + para.indent_left - para.indent_hanging + para.indent_first_line;
             } else if lw > 0.0 {
                 *text_w = lw.max(1.0);
             }
@@ -725,7 +725,7 @@ impl FloatZone {
                 let new_left = ex_right + self.right_from_text;
                 *text_w = (col_right - new_left - para.indent_right).max(1.0);
                 *text_x = new_left + para.indent_left;
-                *label_x = new_left + para.indent_left - para.indent_hanging;
+                *label_x = new_left + para.indent_left - para.indent_hanging + para.indent_first_line;
             } else if use_left {
                 let avail_right = ex_left - self.left_from_text;
                 *text_w = (avail_right - col_x - para.indent_left - para.indent_right).max(1.0);
@@ -1620,41 +1620,8 @@ fn is_empty_wrapping_frame(para: &Paragraph) -> bool {
 }
 
 /// Compute effective first-line hanging indent for a paragraph.
-fn compute_text_hanging(para: &Paragraph, default_tab_stop: f32) -> f32 {
-    if !para.list_label.is_empty() {
-        if let Some(nts) = para.num_level_tab_stop {
-            if nts < para.indent_left && (para.indent_left - para.indent_hanging).abs() < 0.5 {
-                (para.indent_left - nts).max(0.0)
-            } else if nts > para.indent_left
-                && para.indent_hanging == 0.0
-                && para.indent_first_line == 0.0
-            {
-                -(nts - para.indent_left)
-            } else if para.indent_first_line > 0.0 && para.indent_hanging == 0.0 {
-                -para.indent_first_line
-            } else {
-                0.0
-            }
-        } else if para.indent_hanging == 0.0
-            && para.indent_first_line == 0.0
-            && default_tab_stop > 0.0
-        {
-            // No num tab stop defined: Word renders label at indent_left, then a
-            // tab advances text to the next default tab stop *position* (not by
-            // that amount). Target the next multiple of default_tab_stop that
-            // is strictly greater than indent_left.
-            let next_tab = ((para.indent_left / default_tab_stop).floor() + 1.0) * default_tab_stop;
-            -(next_tab - para.indent_left)
-        } else if para.indent_first_line > 0.0 && para.indent_hanging == 0.0 {
-            -para.indent_first_line
-        } else {
-            0.0
-        }
-    } else if para.indent_hanging > 0.0 {
-        para.indent_hanging
-    } else {
-        -para.indent_first_line
-    }
+fn compute_text_hanging(para: &Paragraph, default_tab_stop: f32, fonts: &HashMap<String, FontEntry>) -> f32 {
+    list_label::text_hanging(para, default_tab_stop, fonts)
 }
 
 /// Every run of the body: its paragraphs and table cells.
@@ -1808,7 +1775,7 @@ fn compute_bookmark_positions(
                         line_h
                     };
                     let para_w = (text_width - para.indent_left - para.indent_right).max(1.0);
-                    let hanging = compute_text_hanging(para, ctx.default_tab_stop);
+                    let hanging = compute_text_hanging(para, ctx.default_tab_stop, ctx.fonts);
                     let lines = if is_text_empty(&para.runs) {
                         vec![]
                     } else {
@@ -2087,7 +2054,7 @@ fn render_paragraph_block(
     let (col_x, col_w) = col_geometry[state.current_col];
     let mut para_text_x = col_x + para.indent_left;
     let mut para_text_width = (col_w - para.indent_left - para.indent_right).max(1.0);
-    let mut label_x = col_x + para.indent_left - para.indent_hanging;
+    let mut label_x = col_x + para.indent_left - para.indent_hanging + para.indent_first_line;
 
     // When inside a floating object zone, narrow the paragraph to
     // fit beside the object rather than overlapping it.
@@ -2106,7 +2073,7 @@ fn render_paragraph_block(
         );
     }
 
-    let text_hanging = compute_text_hanging(para, ctx.default_tab_stop);
+    let text_hanging = compute_text_hanging(para, ctx.default_tab_stop, ctx.fonts);
 
     // Substitute footnote/endnote refs and resolve PAGEREF fields
     let has_footnote_refs = para.runs.iter().any(|r| r.footnote_id.is_some());
@@ -3253,7 +3220,7 @@ fn render_paragraph_block(
     let (col_x, col_w) = col_geometry[state.current_col];
     para_text_x = col_x + para.indent_left;
     para_text_width = (col_w - para.indent_left - para.indent_right).max(1.0);
-    label_x = col_x + para.indent_left - para.indent_hanging;
+    label_x = col_x + para.indent_left - para.indent_hanging + para.indent_first_line;
 
     // Re-apply float zone adjustment after potential column change
     let first_line_top = state.pb.slot_top - inter_gap;

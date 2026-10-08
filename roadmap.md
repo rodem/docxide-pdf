@@ -2085,3 +2085,6 @@ Rendering now consumes the paragraph-mark line height already counted by row lay
 
 - Fix line overlap with floating table zones: check line-box intersection at the top edge, preventing short anchor paragraphs from printing over a table (existing cases152–161).
 - Keep empty auto-height wrapping frames outside body flow and preserve both lines of an empty clearing paragraph below a full-width floating table; narrow-table and no-frame controls included (cases127–130).
+### List label and following tab geometry
+
+Use the same first-line text calculation for body paragraphs and table cells. First-line indents move the label as well; following text advances to the next available tab after the label instead of overlapping it.
