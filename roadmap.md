@@ -2061,3 +2061,4 @@ Keep a saved non-uniform AutoFit grid containing directly nested tables rather t
 Rendering now consumes the paragraph-mark line height already counted by row layout when an otherwise empty paragraph contains floating content. This keeps following text in header cells aligned with cells containing plain empty paragraphs.
 - Preserve asymmetric saved AutoFit grids when uniform oversized cell preferences would erase them; signature-title wrapping covered by cases109–112 (including nearly equal saved columns).
 - Honor tblOverlap=never for colliding floating tables, retaining the preceding aligned float zone for following text (cases113–117). Empty wrapping frames after this table remain outside the body flow; ordinary empty paragraphs and line breaks remain in flow.
+- Reserve the actual wrapped-line height of image-only running heads with multiple inline pictures (cases121–123); fitting picture lines retain their existing height.
