@@ -462,7 +462,29 @@ pub(super) fn auto_fit_columns(
     // A non-uniform saved AutoFit grid containing nested tables is already
     // content-derived. Enlarging it from stale tcW preferences and rescaling
     // the total can narrow the host column below its nested table's width.
-    if !(table.auto_width && !table.fixed_layout && !grid_uniform && has_nested_table) {
+    // Uniform tcW values can be stale after Word has fitted the saved grid
+    // to content. Reapplying and scaling them erases its asymmetric widths.
+    let uniform_cell_preferences = table
+        .rows
+        .iter()
+        .flat_map(|row| row.grid_cells())
+        .filter(|(_, span, _)| *span == 1)
+        .map(|(_, _, cell)| cell.width)
+        .collect::<Vec<_>>();
+    let saved_grid_asymmetric = table
+        .col_widths
+        .iter()
+        .any(|&w| (w - table.col_widths[0]).abs() > 0.01);
+    let stale_uniform_preferences = uniform_cell_preferences.len() >= ncols
+        && uniform_cell_preferences
+            .iter()
+            .all(|&w| w > 0.0 && (w - uniform_cell_preferences[0]).abs() < 0.01)
+        && uniform_cell_preferences[0] * ncols as f32 > total;
+    let keep_saved_grid = table.auto_width
+        && !table.fixed_layout
+        && ((!grid_uniform && has_nested_table)
+            || (saved_grid_asymmetric && stale_uniform_preferences));
+    if !keep_saved_grid {
         for row in &table.rows {
             for (grid_col, span, cell) in row.grid_cells() {
                 if grid_col >= ncols {
@@ -1656,6 +1678,78 @@ mod tests {
         parent.fixed_layout = false;
         parent.auto_width = false;
         assert!(auto_fit_columns(&parent, &fonts, None, None)[0] < 240.0);
+    }
+
+    #[test]
+    fn asymmetric_autofit_keeps_grid_with_uniform_stale_cell_widths() {
+        use crate::model::{CellVAlign, TableCell, TableRow, VMerge};
+        let make = |grid: Vec<f32>, preferred: Vec<f32>| Table {
+            col_widths: grid,
+            rows: vec![TableRow {
+                cells: preferred
+                    .into_iter()
+                    .map(|width| TableCell {
+                        width,
+                        content: vec![],
+                        borders: Default::default(),
+                        shading: None,
+                        hatch: None,
+                        grid_span: 1,
+                        v_merge: VMerge::None,
+                        v_align: CellVAlign::Top,
+                        text_direction: Default::default(),
+                        cell_margins: None,
+                        hide_mark: false,
+                    })
+                    .collect(),
+                grid_before: 0,
+                height: None,
+                height_exact: false,
+                is_header: false,
+                cant_split: false,
+            }],
+            table_indent: 0.0,
+            table_indent_explicit: false,
+            cell_margins: Default::default(),
+            position: None,
+            alignment: Default::default(),
+            fixed_layout: false,
+            auto_width: true,
+            width_pct: None,
+            grid_inferred: false,
+            header_first_row: false,
+            header_first_col: false,
+        };
+        let mut table = make(vec![250.0, 150.0], vec![300.0, 300.0]);
+        let fonts = HashMap::new();
+        assert_eq!(
+            auto_fit_columns(&table, &fonts, None, None),
+            vec![250.0, 150.0]
+        );
+        table.col_widths = vec![235.6, 232.25];
+        assert_eq!(
+            auto_fit_columns(&table, &fonts, None, None),
+            vec![235.6, 232.25]
+        );
+        table.col_widths = vec![250.0, 150.0];
+        table.fixed_layout = true;
+        assert_eq!(
+            auto_fit_columns(&table, &fonts, None, None),
+            vec![200.0, 200.0]
+        );
+        table.fixed_layout = false;
+        table.auto_width = false;
+        assert_eq!(
+            auto_fit_columns(&table, &fonts, None, None),
+            vec![200.0, 200.0]
+        );
+        table.auto_width = true;
+        table.rows[0].cells[0].width = 250.0;
+        table.rows[0].cells[1].width = 150.0;
+        assert_eq!(
+            auto_fit_columns(&table, &fonts, None, None),
+            vec![250.0, 150.0]
+        );
     }
 
     /// stem_partnerships p4 (annotation #237): a 10-line cell paragraph after a

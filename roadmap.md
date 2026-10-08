@@ -2044,3 +2044,4 @@ Keep a saved non-uniform AutoFit grid containing directly nested tables rather t
 ### Empty cell paragraphs with anchored drawings
 
 Rendering now consumes the paragraph-mark line height already counted by row layout when an otherwise empty paragraph contains floating content. This keeps following text in header cells aligned with cells containing plain empty paragraphs.
+- Preserve asymmetric saved AutoFit grids when uniform oversized cell preferences would erase them; signature-title wrapping covered by cases109–112 (including nearly equal saved columns).
