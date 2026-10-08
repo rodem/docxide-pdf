@@ -3,7 +3,7 @@ use std::io::{Read, Seek};
 
 use super::styles::{ParagraphStyle, parse_font_size, rfonts_ascii_name};
 use super::{WML_NS, parse_hex_color, twips_attr, wml, wml_attr, wml_bool};
-use crate::model::ListItem;
+use crate::model::{Alignment, ListItem};
 use pdf_writer::types::ListNumbering;
 
 #[derive(Clone)]
@@ -18,6 +18,7 @@ pub(super) struct LevelDef {
     pub(super) label_bold: bool,
     pub(super) label_color: Option<[u8; 3]>,
     pub(super) suff: String,
+    pub(super) jc: Alignment,
     pub(super) label_font: Option<String>,
     /// §17.9.4 isLgl: render every %N reference in this level's lvlText as
     /// decimal regardless of the referenced level's own numFmt.
@@ -42,6 +43,7 @@ pub(super) struct ListLabelInfo {
     pub(super) bold: bool,
     pub(super) color: Option<[u8; 3]>,
     pub(super) suff: String,
+    pub(super) jc: Alignment,
     /// None when the paragraph shows no label.
     pub(super) item: Option<ListItem>,
 }
@@ -138,6 +140,11 @@ fn parse_level_def(lvl: roxmltree::Node) -> Option<(u8, LevelDef)> {
         .and_then(|r| wml_attr(r, "color"))
         .and_then(parse_hex_color);
     let suff = wml_attr(lvl, "suff").unwrap_or("tab").to_string();
+    let jc = match wml_attr(lvl, "lvlJc") {
+        Some("center") => Alignment::Center,
+        Some("right" | "end") => Alignment::Right,
+        _ => Alignment::Left,
+    };
     let is_lgl = wml_bool(lvl, "isLgl").unwrap_or(false);
     let lvl_restart = wml_attr(lvl, "lvlRestart").and_then(|v| v.parse::<u32>().ok());
     let pstyle = wml_attr(lvl, "pStyle").map(|s| s.to_string());
@@ -154,6 +161,7 @@ fn parse_level_def(lvl: roxmltree::Node) -> Option<(u8, LevelDef)> {
             label_bold,
             label_color,
             suff,
+            jc,
             label_font: rpr_font,
             is_lgl,
             lvl_restart,
@@ -566,6 +574,7 @@ pub(super) fn parse_list_info(
         bold: def.label_bold,
         color: def.label_color,
         suff: def.suff.clone(),
+        jc: def.jc,
         item: Some(ListItem {
             level: ilvl,
             list_id: abs_key,
@@ -712,6 +721,7 @@ mod tests {
             label_bold: false,
             label_color: None,
             suff: "tab".into(),
+            jc: Alignment::Left,
             label_font: None,
             is_lgl: false,
             lvl_restart: None,

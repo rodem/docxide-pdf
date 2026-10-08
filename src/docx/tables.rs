@@ -772,6 +772,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         bold: list_label_bold,
                         color: list_label_color,
                         suff: _,
+                        jc: list_label_jc,
                         item: list_item,
                     } = numbering;
                     let space_before =
@@ -813,6 +814,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         list_label_font_size,
                         list_label_bold,
                         list_label_color,
+                        list_label_jc,
                         list_item,
                         line_spacing,
                         space_before,

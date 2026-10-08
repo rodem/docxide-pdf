@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use pdf_writer::{Content, Name, Str};
 
 use crate::fonts::{FontEntry, font_key};
-use crate::model::{Paragraph, Run};
+use crate::model::{Alignment, Paragraph, Run};
 
 use super::color::fill_rgb;
 
@@ -120,11 +120,30 @@ pub(super) fn render_list_label(
     content
         .begin_text()
         .set_font(Name(label_font_name.as_bytes()), label_fs)
-        .next_line(label_x, baseline_y)
+        .next_line(label_x + label_shift(para, fonts), baseline_y)
         .show(Str(&label_bytes))
         .end_text();
     if label_color.is_some() {
         content.set_fill_gray(0.0);
+    }
+}
+
+fn label_width(para: &Paragraph, fonts: &HashMap<String, FontEntry>) -> f32 {
+    let entry = label_font_key(para).and_then(|k| fonts.get(&k));
+    let size = para
+        .list_label_font_size
+        .unwrap_or_else(|| para.runs.first().map_or(11.0, |r| r.font_size));
+    entry.map_or(0.0, |f| f.word_width(&para.list_label, size, false))
+}
+
+/// Where the label starts relative to its position: `lvlJc` right ends it
+/// there (indigenous_innovation's "ii." ends at the hanging indent), centre
+/// straddles it.
+pub(super) fn label_shift(para: &Paragraph, fonts: &HashMap<String, FontEntry>) -> f32 {
+    match para.list_label_jc {
+        Alignment::Right => -label_width(para, fonts),
+        Alignment::Center => -label_width(para, fonts) / 2.0,
+        _ => 0.0,
     }
 }
 
@@ -143,12 +162,7 @@ pub(super) fn text_hanging(
         };
     }
     let label_x = para.indent_left - para.indent_hanging + para.indent_first_line;
-    let entry = label_font_key(para).and_then(|k| fonts.get(&k));
-    let size = para
-        .list_label_font_size
-        .unwrap_or_else(|| para.runs.first().map_or(11.0, |r| r.font_size));
-    let width = entry.map_or(0.0, |f| f.word_width(&para.list_label, size, false));
-    let end = label_x + width;
+    let end = label_x + label_shift(para, fonts) + label_width(para, fonts);
     let next = para
         .tab_stops
         .iter()

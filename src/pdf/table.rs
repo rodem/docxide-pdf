@@ -1216,7 +1216,7 @@ fn draw_cell_label(
     content
         .begin_text()
         .set_font(Name(entry.pdf_name.as_bytes()), para.font_size)
-        .next_line(label_x, baseline_y)
+        .next_line(label_x + para.label_shift, baseline_y)
         .show(Str(&bytes))
         .end_text();
     if para.label_color.is_some() {

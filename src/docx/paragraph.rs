@@ -144,6 +144,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         bold: mut list_label_bold,
         color: mut list_label_color,
         suff: list_label_suff,
+        jc: list_label_jc,
         item: list_item,
     } = numbering;
     // Paragraph-level `<w:tab val="num" pos="..."/>` overrides the numbering
@@ -303,6 +304,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         list_label_font_size,
         list_label_bold,
         list_label_color,
+        list_label_jc,
         list_item,
         starts_toc_field: node.descendants().any(|n| {
             n.has_tag_name((WML_NS, "instrText"))
