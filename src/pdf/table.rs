@@ -1737,7 +1737,9 @@ pub(super) fn render_table(
         .is_some_and(|fp| fp.v_anchor_text && fp.v_offset_pt >= 0.0);
     let keep_with_anchor = is_floating && !flows_inline;
     let (table_left, saved_slot_top, text_margins) = if let Some(ref fp) = override_pos {
-        let saved = Some((pb.slot_top - prev_space_after, fp.y));
+        // The float zone starts at the table's drawn top, which sits below fp.y
+        // by the space after the previous paragraph (see below).
+        let saved = Some((pb.slot_top - prev_space_after, fp.y - prev_space_after));
         pb.slot_top = fp.y;
         (fp.x, saved, (fp.top_from_text, fp.bottom_from_text))
     } else {
