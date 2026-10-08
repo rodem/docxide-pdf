@@ -1933,3 +1933,7 @@ Fixes:
 case50–53 (deep style inheritance, nested tables, stacked bar charts, extreme
 chart data) have their reference PDFs. Only case58 (3D effects) and case65 still
 lack one.
+
+## Single-row nested AutoFit reserved fields
+
+Keep explicit grid/cell preferences for a single-row nested auto-width table when it fits its parent. Empty number/date slots must not collapse to the current text width. Restrict the change to explicit grids and unmerged preferred-width cells; inferred, overflowing and multi-row tables keep their existing AutoFit path. case88 (empty slots) and case89 (filled slots) reproduce the issue with synthetic documents and Word reference PDFs.
