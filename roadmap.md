@@ -1933,3 +1933,7 @@ Fixes:
 case50–53 (deep style inheritance, nested tables, stacked bar charts, extreme
 chart data) have their reference PDFs. Only case58 (3D effects) and case65 still
 lack one.
+
+## Explicit widths in single-row nested tables
+
+An explicitly sized single-row nested table should use the fixed-width base when its cell preferences and grid totals agree and fit the parent. Preserve min-content redistribution for narrow marker cells instead of collapsing all columns to text. Synthetic case90/case91 cover empty and populated fields. Global nested-table origin/float positioning is a separate issue.

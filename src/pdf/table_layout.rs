@@ -351,6 +351,33 @@ pub(super) fn auto_fit_columns(
     // rather than preserving the gridCol total. Each column is sized based on
     // a blend of the minimum width (longest word) and the natural width
     // (longest single-line paragraph), capped by the gridCol preferred width.
+    // An explicitly sized, single-row nested table resolves its column
+    // preferences from tcW. A saved grid may describe the pre-edit split;
+    // when both totals agree, keep the requested cell widths instead of
+    // shrinking empty registration fields to their current text.
+    if let Some(avail) = available_width
+        && !table.auto_width
+        && table.width_pct.is_none()
+        && !table.fixed_layout
+        && !table.grid_inferred
+        && table.rows.len() == 1
+        && table.rows[0].cells.len() == ncols
+        && table.rows[0].grid_before == 0
+        && table.rows[0]
+            .cells
+            .iter()
+            .all(|cell| cell.grid_span == 1 && cell.width > 0.0)
+    {
+        let preferred: Vec<f32> = table.rows[0].cells.iter().map(|cell| cell.width).collect();
+        let total: f32 = preferred.iter().sum();
+        let grid_total: f32 = table.col_widths.iter().sum();
+        if total <= avail && (total - grid_total).abs() <= 0.5 {
+            // Reuse the fixed-width base, including min-content redistribution:
+            // a narrow marker cell (e.g. the number sign) may need to grow.
+            return auto_fit_columns(table, fonts, None, None);
+        }
+    }
+
     if available_width.is_some() && !table.fixed_layout {
         let natural_widths = natural_widths(table, fonts, cm);
         // Word's auto-fit for nested tables produces column widths slightly
@@ -1501,6 +1528,24 @@ pub(super) fn find_cell_split(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nested_explicit_width_uses_fixed_base_and_keeps_overflow_control() {
+        let bytes = include_bytes!("../../tests/fixtures/cases/case90/input.docx");
+        let doc = crate::docx::parse_bytes(bytes).unwrap();
+        let Block::Table(outer) = &doc.sections[0].blocks[0] else {
+            panic!("outer table")
+        };
+        let Block::Table(nested) = &outer.rows[0].cells[0].content[0] else {
+            panic!("nested table")
+        };
+        let fonts = HashMap::new();
+        let kept = auto_fit_columns(nested, &fonts, Some(260.0), None);
+        assert_eq!(kept, auto_fit_columns(nested, &fonts, None, None));
+        assert!(kept.iter().sum::<f32>() > 230.0);
+        let squeezed = auto_fit_columns(nested, &fonts, Some(80.0), None);
+        assert!(squeezed.iter().sum::<f32>() <= 80.001);
+    }
 
     /// stem_partnerships p4 (annotation #237): a 10-line cell paragraph after a
     /// heading must break between lines, two lines minimum on either side.
