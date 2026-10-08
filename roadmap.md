@@ -790,6 +790,12 @@ probes (`tools/word_export.py`), not fitted to the fixtures.
      (massachusetts' secretary box: wrapText right at the right edge) blocks
      a band too. Together: J 8.3 → 77.2, SSIM 20.2 → 93.7, all 15 page
      starts matching; nothing else moved.
+   - `framePr yAlign` (top/center/bottom, inside/outside) places the frame
+     in its vAnchor area by its content height, and a `wrap=around` frame
+     wholly beside the text area (left or right of it) lifts too, without a
+     band. Frames never break across pages. Corpus 3ec631ca50 (Evonik press
+     release, address block at the bottom of the right margin): 4 → 3 pages,
+     J 16.7 → 72.6, SSIM 24.9 → 92.7; fixture suite pixel-identical.
 12. **indonesian_school "Format 12" box** (`9b02ea49`, `be2b6d84`): an anchor
    paragraph's shading no longer covers the room it reserves below its lines
    for a top-and-bottom float, and `lnRef` outlines take the theme's
@@ -929,8 +935,8 @@ Open:
   full-width flag would be cleaner. Textbox `reserve` still uses "width ≥
   half the column" where images and the new band use the side-strip test;
   unify them with a suite run (other fixtures may move).
-- Text-anchored and wrap-around body frames (croatian_grant's two) still flow
-  inline.
+- Text-anchored body frames, and wrap-around ones reaching into the text
+  (croatian_grant's two), still flow inline.
 - Footnote separator: done (item 21). Left: endnotes.xml's separator (inline
   endnotes still draw the fixed 0.5pt rule 12pt below the body; needs a
   probe of how its space before meets the last paragraph's space after), and

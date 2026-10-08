@@ -160,18 +160,23 @@ fn blocking_frame_bands(hf: &HeaderFooter, sp: &SectionProperties) -> Vec<(f32, 
             _ => None,
         })
         .filter(|fp| fp.text_below && fp.height > 0.0)
-        .filter_map(|fp| anchored_frame_top(fp, sp).map(|top| (top, top + fp.height)))
+        .filter_map(|fp| anchored_frame_top(fp, fp.height, sp).map(|top| (top, top + fp.height)))
         .collect()
 }
 
 /// A page- or margin-anchored frame's top, down from the page top; None for a
-/// paragraph-anchored frame, which stays in the flow.
-pub(super) fn anchored_frame_top(fp: &FrameProperties, sp: &SectionProperties) -> Option<f32> {
-    match fp.v_relative_from {
-        VRelativeFrom::Page => Some(fp.y_offset),
-        VRelativeFrom::Margin | VRelativeFrom::TopMargin => Some(sp.margin_top + fp.y_offset),
-        VRelativeFrom::Paragraph => None,
+/// paragraph-anchored frame, which stays in the flow. `height` places a
+/// bottom- or center-aligned frame.
+pub(super) fn anchored_frame_top(
+    fp: &FrameProperties,
+    height: f32,
+    sp: &SectionProperties,
+) -> Option<f32> {
+    if fp.v_relative_from == VRelativeFrom::Paragraph {
+        return None;
     }
+    let top = resolve_tb_y_top(fp.v_relative_from, &fp.v_position, height, sp, 0.0);
+    Some(sp.page_height - top)
 }
 
 /// The band a bottom border adds below a paragraph: its `space` and its stroke
@@ -672,8 +677,13 @@ pub(super) fn render_header_footer(
                 // vAnchor + w:y pin the frame top to the page/margin, independent
                 // of the flowing header/footer cursor. Paragraph-anchored frames
                 // keep the in-flow position.
-                let frame_top =
-                    anchored_frame_top(fp, sp).map_or(cursor_y, |top| sp.page_height - top);
+                let frame_h = if fp.height > 0.0 {
+                    fp.height
+                } else {
+                    lines.len() as f32 * resolve_line_h(frame_ls, font_size, tallest_lhr)
+                };
+                let frame_top = anchored_frame_top(fp, frame_h, sp)
+                    .map_or(cursor_y, |top| sp.page_height - top);
                 let frame_baseline = frame_top - frame_ascent;
 
                 // Frame text carries no inline pictures, so no descent is needed.
@@ -1482,7 +1492,11 @@ pub(super) fn resolve_footer_for_page(
 /// The gap above a header/footer paragraph: contextual spacing drops both
 /// sides between same-style paragraphs, as in the body (two 18pt-before
 /// motion header lines step 15.5 in Word, not 33.6).
-fn hf_paragraph_gap(prev: Option<&Paragraph>, prev_space_after: f32, para: &Paragraph) -> f32 {
+pub(super) fn hf_paragraph_gap(
+    prev: Option<&Paragraph>,
+    prev_space_after: f32,
+    para: &Paragraph,
+) -> f32 {
     let after = if prev.is_some_and(|p| super::helpers::drops_contextual_spacing(p, Some(para))) {
         0.0
     } else {

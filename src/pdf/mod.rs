@@ -98,19 +98,39 @@ fn leading_para(block: &Block) -> Option<&Paragraph> {
     }
 }
 
-/// The frame Word lifts `block` out of the flow into, with its top down from
-/// the page top: a page- or margin-anchored framePr that keeps text off its
-/// sides (a table's is its first cell paragraph's). ponytail: text-anchored
-/// and wrap-around frames stay in the flow; lift them when a fixture needs it.
-fn lifted_frame<'a>(
-    block: &'a Block,
-    sp: &SectionProperties,
-) -> Option<(&'a FrameProperties, f32)> {
-    let fp = leading_para(block)?
-        .frame_props
-        .as_ref()
-        .filter(|fp| fp.text_below)?;
-    Some((fp, header_footer::anchored_frame_top(fp, sp)?))
+/// The frame Word lifts `block` out of the flow into: a page- or
+/// margin-anchored framePr (a table's is its first cell paragraph's) that
+/// keeps text off its sides, or one wholly beside the text area, which no
+/// text can wrap around (3ec631ca50's address block in the right margin).
+/// ponytail: text-anchored frames and wrap-around ones reaching into the
+/// text stay in the flow; lift them when a fixture needs it.
+fn lifted_frame<'a>(block: &'a Block, sp: &SectionProperties) -> Option<&'a FrameProperties> {
+    let fp = leading_para(block)?.frame_props.as_ref()?;
+    let beside_text = || {
+        let (text_x, text_w) = (sp.margin_left, sp.text_width());
+        let x = resolve_h_position(
+            fp.h_relative_from,
+            &fp.h_position,
+            fp.width,
+            sp,
+            text_x,
+            text_w,
+            text_w,
+        );
+        fp.width > 0.0 && (x >= text_x + text_w || x + fp.width <= text_x)
+    };
+    (fp.v_relative_from != VRelativeFrom::Paragraph && (fp.text_below || beside_text()))
+        .then_some(fp)
+}
+
+/// The blocks from the start of `blocks` that share the frame `props`.
+fn frame_blocks<'b>(
+    props: &FrameProperties,
+    blocks: &'b [Block],
+) -> impl Iterator<Item = &'b Block> {
+    blocks
+        .iter()
+        .take_while(move |b| leading_para(b).and_then(|p| p.frame_props.as_ref()) == Some(props))
 }
 
 /// The room beside a float on the side(s) its wrapText lets text use.
@@ -206,6 +226,7 @@ struct OpenFrame<'a> {
 
 struct SavedFlow {
     slot_top: f32,
+    effective_margin_bottom: f32,
     prev_space_after: f32,
     current_col: usize,
     float_zone: Option<FloatZone>,
@@ -214,7 +235,6 @@ struct SavedFlow {
 impl<'a> OpenFrame<'a> {
     fn open(
         props: &'a FrameProperties,
-        top: f32,
         blocks: &[Block],
         state: &mut LayoutState,
         ctx: &RenderContext,
@@ -235,8 +255,22 @@ impl<'a> OpenFrame<'a> {
             text_w,
             text_w,
         );
+        let height = match props.v_position {
+            VerticalPosition::AlignBottom | VerticalPosition::AlignCenter
+                if props.height == 0.0 =>
+            {
+                frame_content_height(props, blocks, ctx, width)
+            }
+            _ => props.height,
+        };
+        let top = header_footer::anchored_frame_top(props, height, sp)
+            .expect("lifted frames are page- or margin-anchored");
         let flow = SavedFlow {
             slot_top: std::mem::replace(&mut state.pb.slot_top, sp.page_height - top),
+            // A frame never breaks across pages: 3ec631ca50's bottom-aligned
+            // address block ends on the bottom margin, where float rounding
+            // would push its last line onto the next page.
+            effective_margin_bottom: std::mem::take(&mut state.effective_margin_bottom),
             prev_space_after: std::mem::take(&mut state.prev_space_after),
             current_col: std::mem::take(&mut state.current_col),
             float_zone: state.pb.float_zone.take(),
@@ -250,10 +284,13 @@ impl<'a> OpenFrame<'a> {
     }
 
     fn close(self, state: &mut LayoutState, sp: &SectionProperties) {
-        let bottom = sp.page_height - state.pb.slot_top;
-        state.pb.frame_bands.push((self.top, bottom));
+        if self.props.text_below {
+            let bottom = sp.page_height - state.pb.slot_top;
+            state.pb.frame_bands.push((self.top, bottom));
+        }
         let flow = self.flow;
         state.pb.slot_top = flow.slot_top;
+        state.effective_margin_bottom = flow.effective_margin_bottom;
         state.prev_space_after = flow.prev_space_after;
         state.current_col = flow.current_col;
         state.pb.float_zone = flow.float_zone;
@@ -268,9 +305,7 @@ fn auto_frame_width(
     ctx: &RenderContext,
     col_w: f32,
 ) -> f32 {
-    blocks
-        .iter()
-        .take_while(|b| leading_para(b).and_then(|p| p.frame_props.as_ref()) == Some(props))
+    frame_blocks(props, blocks)
         .map(|b| match b {
             Block::Paragraph(p) => p.image.as_ref().map_or_else(
                 || {
@@ -290,6 +325,42 @@ fn auto_frame_width(
             Block::Table(t) => t.col_widths.iter().sum(),
         })
         .fold(0.0, f32::max)
+}
+
+/// A frame without w:h is as tall as its blocks laid out at its width.
+fn frame_content_height(
+    props: &FrameProperties,
+    blocks: &[Block],
+    ctx: &RenderContext,
+    width: f32,
+) -> f32 {
+    let mut height = 0.0;
+    let mut prev: Option<&Paragraph> = None;
+    let mut prev_space_after = 0.0;
+    for block in frame_blocks(props, blocks) {
+        match block {
+            Block::Paragraph(p) => {
+                height += header_footer::hf_paragraph_gap(prev, prev_space_after, p);
+                let opts = LineOpts {
+                    tab_stops: &p.tab_stops,
+                    ..Default::default()
+                };
+                let line_w = (width - p.indent_left - p.indent_right).max(1.0);
+                let lines = build_lines(&p.runs, ctx, line_w, ctx.cjk(true, p.alignment), &opts);
+                let (fs, lhr, _) = tallest_run_metrics(&p.runs, ctx.fonts);
+                let ls = p.line_spacing.unwrap_or(ctx.doc_line_spacing);
+                height += lines.len().max(1) as f32 * resolve_line_h(ls, fs, lhr);
+                prev = Some(p);
+                prev_space_after = p.space_after;
+            }
+            Block::Table(t) => {
+                height += prev_space_after + table::compute_hf_table_height(t, ctx, width);
+                prev = None;
+                prev_space_after = 0.0;
+            }
+        }
+    }
+    height + prev_space_after
 }
 
 pub(super) struct RenderContext<'a> {
@@ -4043,15 +4114,14 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
             let mut frame: Option<OpenFrame> = None;
             for (block_idx, block) in section.blocks.iter().enumerate() {
                 let block_frame = lifted_frame(block, sp);
-                if let Some(f) = frame.take_if(|f| block_frame.is_none_or(|(fp, _)| fp != f.props))
-                {
+                if let Some(f) = frame.take_if(|f| block_frame.is_none_or(|fp| fp != f.props)) {
                     f.close(state, sp);
                 }
                 if frame.is_none() {
                     match block_frame {
-                        Some((fp, top)) => {
+                        Some(fp) => {
                             let blocks = &section.blocks[block_idx..];
-                            frame = Some(OpenFrame::open(fp, top, blocks, state, &ctx, sp));
+                            frame = Some(OpenFrame::open(fp, blocks, state, &ctx, sp));
                         }
                         None => {
                             let col = col_geometry[state.current_col];

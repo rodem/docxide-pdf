@@ -381,7 +381,8 @@ pub struct FrameProperties {
     pub h_relative_from: HRelativeFrom,
     pub h_position: HorizontalPosition,
     pub v_relative_from: VRelativeFrom,
-    pub y_offset: f32,
+    /// `w:y`, or `w:yAlign` within the vAnchor area.
+    pub v_position: VerticalPosition,
     /// Frame width `w:w` in points (0 = auto/unspecified).
     pub width: f32,
     /// Frame height `w:h` in points (0 = auto/unspecified).

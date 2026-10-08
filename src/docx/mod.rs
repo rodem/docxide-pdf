@@ -27,7 +27,7 @@ use crate::error::Error;
 use crate::model::{
     Block, BorderStyle, CellBorder, DocGridType, Document, FrameProperties, HRelativeFrom,
     HorizontalPosition, LineSpacing, ParagraphBorder, ParagraphBorders, Section, SectionBreakType,
-    SectionProperties, TabAlignment, TabStop, VRelativeFrom,
+    SectionProperties, TabAlignment, TabStop, VRelativeFrom, VerticalPosition,
 };
 
 use styles::{ParagraphStyle, StyleDefaults, parse_line_spacing, parse_styles, parse_theme};
@@ -499,7 +499,12 @@ pub(super) fn parse_frame_props(
         h_relative_from: h_anchor,
         h_position,
         v_relative_from: v_anchor,
-        y_offset: twips("y"),
+        v_position: match attr("yAlign") {
+            Some("top" | "inside") => VerticalPosition::AlignTop,
+            Some("center") => VerticalPosition::AlignCenter,
+            Some("bottom" | "outside") => VerticalPosition::AlignBottom,
+            _ => VerticalPosition::Offset(twips("y")),
+        },
         width: twips("w"),
         height: twips("h"),
         text_below: matches!(attr("wrap"), Some("none") | Some("notBeside")),
@@ -1128,6 +1133,23 @@ mod tests {
         assert!(
             xml.contains("http://schemas.openxmlformats.org/officeDocument/2006/relationships")
         );
+    }
+
+    #[test]
+    fn frame_y_align_overrides_y_and_inline_stays_in_flow() {
+        let parse = |fp: &str| {
+            let xml = format!(r#"<w:pPr xmlns:w="{WML_NS}">{fp}</w:pPr>"#);
+            let doc = roxmltree::Document::parse(&xml).unwrap();
+            parse_frame_props(Some(doc.root_element()), None)
+        };
+        let bottom =
+            parse(r#"<w:framePr w:w="2659" w:hAnchor="page" w:x="8971" w:yAlign="bottom"/>"#)
+                .unwrap();
+        assert_eq!(bottom.v_position, VerticalPosition::AlignBottom);
+        assert_eq!(bottom.v_relative_from, VRelativeFrom::Margin);
+        let y = parse(r#"<w:framePr w:vAnchor="page" w:y="3222"/>"#).unwrap();
+        assert_eq!(y.v_position, VerticalPosition::Offset(161.1));
+        assert!(parse(r#"<w:framePr w:yAlign="inline"/>"#).is_none());
     }
 
     // --- Pure math / conversion ---
