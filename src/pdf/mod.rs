@@ -3165,10 +3165,35 @@ fn render_paragraph_block(
     // actually carries it) only after this paragraph has taken its own.
     state.pb.pending_float_anchor = lookahead.map(|(anchor_top, _)| anchor_top);
 
+    // Margin anchors belong to the page that already started. A continuous
+    // section's new margins apply on its next sheet, not to this page's float.
+    let page_sp = &doc.sections[state.pb.page_hf_section].properties;
+    let render_images = if state.pb.page_hf_section != sect_idx
+        && (page_sp.margin_left != sp.margin_left || page_sp.margin_right != sp.margin_right)
+    {
+        let mut images = para.floating_images.clone();
+        for fi in &mut images {
+            if fi.h_relative_from == crate::model::HRelativeFrom::Margin
+                && fi.wrap_type == WrapType::None
+            {
+                let x = fi.h_position.place(
+                    page_sp.margin_left,
+                    page_sp.text_width(),
+                    fi.image.display_width,
+                );
+                fi.h_relative_from = crate::model::HRelativeFrom::Page;
+                fi.h_position = crate::model::HorizontalPosition::Offset(x);
+            }
+        }
+        std::borrow::Cow::Owned(images)
+    } else {
+        std::borrow::Cow::Borrowed(&para.floating_images)
+    };
+
     // Render behind-doc layer: floating images + textboxes
     let page = state.pb.all_contents.len();
     render_floating_images(
-        &para.floating_images,
+        &render_images,
         true,
         state.global_block_idx,
         floating_image_pdf_names,
@@ -3247,7 +3272,7 @@ fn render_paragraph_block(
     // flush_page) so they interleave with foreground shapes/textboxes by
     // z-order rather than always painting beneath them (annotation #191).
     render_foreground_floating_images_deferred(
-        &para.floating_images,
+        &render_images,
         state.global_block_idx,
         floating_image_pdf_names,
         effect_floating_names,

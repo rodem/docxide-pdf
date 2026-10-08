@@ -1933,3 +1933,5 @@ Fixes:
 case50–53 (deep style inheritance, nested tables, stacked bar charts, extreme
 chart data) have their reference PDFs. Only case58 (3D effects) and case65 still
 lack one.
+
+- Keep non-wrapping body pictures anchored to the margins of the current sheet across a mid-page continuous section margin change; new-page and unchanged-margin controls retain their placement (cases124–126).
