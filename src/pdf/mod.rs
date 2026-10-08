@@ -4090,6 +4090,13 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                             if table_cleared_float {
                                 resolved.constrain_nonoverlap_left(pos, sp, col_x, ctx.compat_mode);
                             }
+                            if table_cleared_float
+                                && !pos.allow_overlap
+                                && resolved.v_anchor_text
+                                && resolved.v_offset_pt >= 0.0
+                            {
+                                resolved.y = state.pb.slot_top - pos.top_from_text;
+                            }
                             resolved
                         });
                         let col_bounds =

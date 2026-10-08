@@ -1,5 +1,9 @@
 # Roadmap
 
+## Floating table positioning
+
+- Do not reapply non-negative text-anchor offsets after a non-overlapping table has cleared a preceding float. Preserve topFromText; offsets after a separating paragraph remain (cases162–169).
+
 ## Accessibility (IN PROGRESS — started 2026-10-01)
 
 Goal: our PDFs are accessible on their own merits; Word's export is a floor,
