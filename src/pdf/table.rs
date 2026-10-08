@@ -1708,6 +1708,14 @@ pub(super) fn render_table(
             && fp.y - height < zone.top_y
         {
             fp.y = zone.bottom_y - fp.top_from_text;
+            if let Some(pos) = table.position.as_ref() {
+                fp.constrain_nonoverlap_left(
+                    pos,
+                    sp,
+                    column_bounds.map_or(sp.margin_left, |(left, _)| left),
+                    ctx.compat_mode,
+                );
+            }
         }
     }
     let is_floating = override_pos.is_some();

@@ -866,6 +866,28 @@ pub(super) struct FloatingTablePos {
 }
 
 impl FloatingTablePos {
+    /// Preserve the text distance when a non-overlapping table moves below a float.
+    pub(super) fn constrain_nonoverlap_left(
+        &mut self,
+        pos: &crate::model::TablePosition,
+        sp: &SectionProperties,
+        col_x: f32,
+        compat_mode: u32,
+    ) {
+        if compat_mode >= 15
+            && !pos.allow_overlap
+            && matches!(pos.h_position, crate::model::HorizontalPosition::Offset(v) if v >= 0.0)
+            && matches!(pos.h_anchor, "margin" | "column")
+        {
+            let text_left = if pos.h_anchor == "margin" {
+                sp.margin_left
+            } else {
+                col_x
+            };
+            self.x = self.x.max(text_left + pos.left_from_text);
+        }
+    }
+
     /// Where a floating table goes: `tblpX`/`tblpXSpec` against its anchor
     /// column (`col_x`, `col_w`), `tblpY` below the page, the margin or the
     /// text (`text_y`: where its anchor paragraph's flow is).
@@ -4059,6 +4081,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                     None => (&col_geometry[..], col_count, text_width),
                 };
 
+                let mut table_cleared_float = false;
                 // If a float zone is active, decide whether to wrap text beside
                 // the object or push it below.
                 if let Some(ref fz) = state.pb.float_zone {
@@ -4116,6 +4139,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                                     && p.smartart.is_empty()
                             );
                             if !is_empty_para || !has_side_strip {
+                                table_cleared_float = matches!(block, Block::Table(_));
                                 state.pb.slot_top = fz.bottom_y;
                                 state.pb.float_zone = None;
                             }
@@ -4159,7 +4183,7 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                         state.pb.toc = None;
                         let override_pos = table.position.as_ref().map(|pos| {
                             let (col_x, col_w) = col_geometry[state.current_col];
-                            FloatingTablePos::resolve(
+                            let mut resolved = FloatingTablePos::resolve(
                                 table,
                                 pos,
                                 sp,
@@ -4167,7 +4191,11 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                                 col_w,
                                 state.pb.slot_top,
                                 &ctx,
-                            )
+                            );
+                            if table_cleared_float {
+                                resolved.constrain_nonoverlap_left(pos, sp, col_x, ctx.compat_mode);
+                            }
+                            resolved
                         });
                         let col_bounds =
                             (cols > 1 || frame.is_some()).then(|| geometry[state.current_col]);
