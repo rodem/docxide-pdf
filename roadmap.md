@@ -1933,3 +1933,7 @@ Fixes:
 case50–53 (deep style inheritance, nested tables, stacked bar charts, extreme
 chart data) have their reference PDFs. Only case58 (3D effects) and case65 still
 lack one.
+
+### Saved asymmetric AutoFit grids with nested tables
+
+Keep a saved non-uniform AutoFit grid containing directly nested tables rather than rebuilding it from stale tcW preferences and proportionally squeezing the host column. Uniform grids retain content-based sizing; content minimums and available-width limits still apply.
