@@ -8,6 +8,15 @@ pub use chart::*;
 pub use drawing::*;
 pub use table::*;
 
+/// `w:suff`: what follows a list label before the text.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum LabelSuffix {
+    #[default]
+    Tab,
+    Space,
+    Nothing,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Alignment {
     #[default]
@@ -445,8 +454,8 @@ pub struct Paragraph {
     pub list_label_color: Option<[u8; 3]>,
     /// `w:lvlJc`: the label is left-, centre- or right-aligned on its position.
     pub list_label_jc: Alignment,
-    /// For L/LI tagging. Also set for `suff="nothing"` items whose label was
-    /// folded into the runs.
+    pub list_label_suff: LabelSuffix,
+    /// For L/LI tagging.
     pub list_item: Option<ListItem>,
     /// A `TOC` field begins here. Word tags "toc N" paragraphs as TOC/TOCI
     /// only inside such a field; hand-styled ones stay paragraphs.

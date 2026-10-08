@@ -771,7 +771,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         font_size: list_label_font_size,
                         bold: list_label_bold,
                         color: list_label_color,
-                        suff: _,
+                        suff: list_label_suff,
                         jc: list_label_jc,
                         item: list_item,
                     } = numbering;
@@ -815,6 +815,7 @@ pub(in crate::docx) fn parse_table_node<R: Read + Seek>(
                         list_label_bold,
                         list_label_color,
                         list_label_jc,
+                        list_label_suff: super::numbering::label_suffix(&list_label_suff),
                         list_item,
                         line_spacing,
                         space_before,

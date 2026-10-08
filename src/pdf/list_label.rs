@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use pdf_writer::{Content, Name, Str};
 
 use crate::fonts::{FontEntry, font_key};
-use crate::model::{Alignment, Paragraph, Run};
+use crate::model::{Alignment, LabelSuffix, Paragraph, Run};
 
 use super::color::fill_rgb;
 
@@ -129,11 +129,19 @@ pub(super) fn render_list_label(
 }
 
 fn label_width(para: &Paragraph, fonts: &HashMap<String, FontEntry>) -> f32 {
+    label_text_width(para, fonts, &para.list_label)
+}
+
+fn label_space_width(para: &Paragraph, fonts: &HashMap<String, FontEntry>) -> f32 {
+    label_text_width(para, fonts, " ")
+}
+
+fn label_text_width(para: &Paragraph, fonts: &HashMap<String, FontEntry>, text: &str) -> f32 {
     let entry = label_font_key(para).and_then(|k| fonts.get(&k));
     let size = para
         .list_label_font_size
         .unwrap_or_else(|| para.runs.first().map_or(11.0, |r| r.font_size));
-    entry.map_or(0.0, |f| f.word_width(&para.list_label, size, false))
+    entry.map_or(0.0, |f| f.word_width(text, size, false))
 }
 
 /// Where the label starts relative to its position: `lvlJc` right ends it
@@ -163,6 +171,13 @@ pub(super) fn text_hanging(
     }
     let label_x = para.indent_left - para.indent_hanging + para.indent_first_line;
     let end = label_x + label_shift(para, fonts) + label_width(para, fonts);
+    // suff nothing/space: no tab, the text follows the label directly
+    // (chinese_costume's cell items "（1）演示…").
+    match para.list_label_suff {
+        LabelSuffix::Nothing => return para.indent_left - end,
+        LabelSuffix::Space => return para.indent_left - end - label_space_width(para, fonts),
+        LabelSuffix::Tab => {}
+    }
     let next = para
         .tab_stops
         .iter()

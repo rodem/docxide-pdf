@@ -1,4 +1,4 @@
-use crate::model::{Paragraph, Run, TabAlignment, TabStop};
+use crate::model::{Paragraph, TabAlignment, TabStop};
 
 use super::images::compute_drawing_info;
 use super::numbering::{ListCounters, ListLabelInfo, parse_list_info};
@@ -138,11 +138,11 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         indent_left: _,
         indent_hanging: _,
         tab_stop: mut num_tab_stop,
-        label: mut list_label,
-        font: mut list_label_font,
-        font_size: mut list_label_font_size,
-        bold: mut list_label_bold,
-        color: mut list_label_color,
+        label: list_label,
+        font: list_label_font,
+        font_size: list_label_font_size,
+        bold: list_label_bold,
+        color: list_label_color,
         suff: list_label_suff,
         jc: list_label_jc,
         item: list_item,
@@ -165,29 +165,6 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
 
     let parsed = parse_runs(node, ctx);
     let mut runs = parsed.runs;
-
-    // When w:suff="nothing", the label is inline with text -- prepend
-    // it as a run rather than rendering it separately in the margin.
-    if !list_label.is_empty() && list_label_suff == "nothing" {
-        let first_run = runs.first();
-        let label_run = Run {
-            text: list_label.clone(),
-            font_size: list_label_font_size
-                .unwrap_or_else(|| first_run.map(|r| r.font_size).unwrap_or(10.0)),
-            font_name: list_label_font
-                .clone()
-                .unwrap_or_else(|| first_run.map(|r| r.font_name.clone()).unwrap_or_default()),
-            bold: list_label_bold,
-            color: list_label_color,
-            ..Run::default()
-        };
-        runs.insert(0, label_run);
-        list_label = String::new();
-        list_label_font = None;
-        list_label_font_size = None;
-        list_label_bold = false;
-        list_label_color = None;
-    }
 
     if let Some(color) = style_color {
         for run in &mut runs {
@@ -305,6 +282,7 @@ pub(super) fn build_paragraph<R: std::io::Read + std::io::Seek>(
         list_label_bold,
         list_label_color,
         list_label_jc,
+        list_label_suff: super::numbering::label_suffix(&list_label_suff),
         list_item,
         starts_toc_field: node.descendants().any(|n| {
             n.has_tag_name((WML_NS, "instrText"))
@@ -530,6 +508,7 @@ pub(super) fn resolve_indents(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Run;
 
     #[test]
     fn hanging_indent_adds_one_stop_at_the_indent() {

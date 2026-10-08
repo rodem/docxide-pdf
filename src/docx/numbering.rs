@@ -3,7 +3,7 @@ use std::io::{Read, Seek};
 
 use super::styles::{ParagraphStyle, parse_font_size, rfonts_ascii_name};
 use super::{WML_NS, parse_hex_color, twips_attr, wml, wml_attr, wml_bool};
-use crate::model::{Alignment, ListItem};
+use crate::model::{Alignment, LabelSuffix, ListItem};
 use pdf_writer::types::ListNumbering;
 
 #[derive(Clone)]
@@ -581,6 +581,14 @@ pub(super) fn parse_list_info(
             numbering: list_numbering(&def.num_fmt, &label),
         }),
         label,
+    }
+}
+
+pub(super) fn label_suffix(suff: &str) -> LabelSuffix {
+    match suff {
+        "space" => LabelSuffix::Space,
+        "nothing" => LabelSuffix::Nothing,
+        _ => LabelSuffix::Tab,
     }
 }
 
