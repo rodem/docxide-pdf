@@ -2521,7 +2521,10 @@ fn render_paragraph_block(
     // above it sits beside that table's top; only what follows the break comes
     // below the table (indigenous_innovation's defined terms: one line, not two).
     if para.clears_floats
-        && state.pb.float_zone.as_ref().is_some_and(|zone| {
+        // A floating table that broke across pages leaves no zone; keep the
+        // one-line rule then. ponytail: assumes such a table left a side strip;
+        // carry its extent past the page break if a full-width one shows up.
+        && state.pb.float_zone.as_ref().is_none_or(|zone| {
             (zone.obj_left - zone.left_from_text - col_x)
                 .max(col_x + col_w - zone.obj_right - zone.right_from_text)
                 >= MIN_EMPTY_STRIP
