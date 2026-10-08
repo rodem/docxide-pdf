@@ -2038,3 +2038,6 @@ An explicitly sized single-row nested table should use the fixed-width base when
 ### Empty continuous sections
 
 Preserve the line and spacing of an empty section-break paragraph when it is the first block of its section. This also applies to continuous sections between adjacent section breaks. Keep zero-height handling for empty break paragraphs following content within the same section.
+### Saved asymmetric AutoFit grids with nested tables
+
+Keep a saved non-uniform AutoFit grid containing directly nested tables rather than rebuilding it from stale tcW preferences and proportionally squeezing the host column. Uniform grids retain content-based sizing; content minimums and available-width limits still apply.
