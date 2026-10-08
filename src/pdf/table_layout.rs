@@ -917,6 +917,7 @@ pub(super) fn compute_row_layouts(
                                 // tall header logo fails to push the body down.
                                 let image_only = para.content_height > 0.0
                                     && runs.iter().all(|r| r.text.is_empty() && !r.is_tab);
+                                let mut break_mark_hidden = false;
                                 let lines = if !is_text_empty(runs) && !image_only {
                                     let para_text_w = (cell_text_w
                                         - para.indent_left
@@ -976,6 +977,19 @@ pub(super) fn compute_row_layouts(
                                             line_h,
                                             font_size * ascender_ratio,
                                         );
+                                    }
+                                    // hideMark also hides the mark left alone on the
+                                    // line after the cell's closing break, with its
+                                    // spacing (maine's "…this Bureau.<w:br/>"; Word
+                                    // probes: one or two breaks, 0 or 12pt after).
+                                    if cell.hide_mark
+                                        && block_idx == block_count - 1
+                                        && lines.len() > 1
+                                        && lines.last().is_some_and(|l| l.chunks.is_empty())
+                                        && lines[lines.len() - 2].ends_with_break
+                                    {
+                                        lines.pop();
+                                        break_mark_hidden = true;
                                     }
                                     total_h += lines.iter().map(|l| l.pitch.unwrap_or(line_h)).sum::<f32>();
                                     lines
@@ -1133,6 +1147,7 @@ pub(super) fn compute_row_layouts(
                                 }));
 
                                 prev_space_after = if mark_hidden
+                                    || break_mark_hidden
                                     || (para.space_after_auto && block_idx == block_count - 1)
                                 {
                                     0.0
