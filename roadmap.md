@@ -441,6 +441,37 @@ Word for Windows. On an external 82-document corpus, conversion and page counts
 are unchanged; restored letterhead rules match Word's bounds exactly. No
 external corpus documents are included in the repository.
 
+## Bugs exposed by the external PRs (TODO — found 2026-10-09)
+
+PRs #21, #29 and #33 were first declined for fixture regressions. A second
+pass showed that each rule matches Word's PDF, and that main had passed those
+fixtures through compensating errors. Fixed alongside them: float-zone top
+(`55ed4910`), page-split floating tables (`b8ae47e5`), inherited first-line
+indent under a numbering hanging indent (`20da20e3`), `lvlJc` (`43d4fc80`)
+and `w:suff` (`a3681d62`). Still open; main hid each of these:
+
+- **brazilian_logistics p10 (+1 page, J 62.5 → 46.3).** "Fonte: ALARCOM,
+  (2019)." is laid out one letter per line from y≈108 (Word: one line at
+  y≈346), so the paragraph is squeezed to almost no width. It was already
+  wrong in main; until #21 put the lists exactly at Word's indents, main's
+  35.6pt-too-narrow list indents absorbed the lost room.
+- **chinese_costume (+1 page, 2 → 3).** Word widens Latin–CJK boundaries
+  ("5-10 分钟", "3 分钟", "MP4 封装"); we don't, so CJK lines in table cells
+  carry more text than Word's and break differently. Main stayed at 2 pages
+  only because its cell list text was drawn over the "（1）" labels.
+- **covid_insomnia p5 right column (J −0.3).** The reference list sits one
+  line low ("[10]" at 146.3pt, Word 135.3pt). #21 now wraps "[10] Kaplan…"
+  exactly as Word does, which the offset turns into a score dip.
+- **Page-split floating tables lose their wrap zone.** `b8ae47e5` keeps the
+  one-line clearing rule when no zone survives. A full-width table that
+  splits across pages would be treated as having a side strip; carry the
+  table's horizontal extent past the page break if that case shows up.
+- **Two thresholds for one rule.** `MIN_EMPTY_STRIP` (18.0pt, `pdf/mod.rs`,
+  bracketed only between 0 and ~42pt) and PR #31's `MIN_NESTED_FLOAT_STRIP`
+  (18.75pt, `pdf/table_layout.rs`, measured between 18.70 and 18.75pt) both
+  decide whether an empty line fits beside a float. Probe the body case in
+  Word and share one constant.
+
 ## Layout accuracy round (2026-10-01)
 
 Rules derived from Word reference PDFs (borders, text positions measured with
