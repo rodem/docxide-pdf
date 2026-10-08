@@ -386,6 +386,8 @@ item 12; uk_commercial_lease −10.8 is the next step
     50.2. Clipping regions and opaque text backgrounds remain.
 14. An empty anchor paragraph's line moves below a float it cannot sit
     beside (cyprus 32.3 → 79.7, 3 pages as Word; corpus subset 51.1 → 54.8).
+15. hideMark hides the mark left alone after a cell's closing line break,
+    with its space after (maine's extra blank line; 5 Word probes).
 
 Still open from the focus set: complex-script fonts (arabic, needs the
 RTL/shaping item below), nested layout tables (maine).
