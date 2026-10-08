@@ -2082,3 +2082,5 @@ Rendering now consumes the paragraph-mark line height already counted by row lay
 
 - Preserve leftFromText when a non-overlapping body table is pushed below a float, both during pre-layout clearance and geometric collision. Compat 15 offset positions are clamped to the text-area edge plus that distance; larger explicit offsets, page anchors and compat 14 keep their prior positions (cases152–161). This builds on the non-overlap stacking change.
 - Honor negative paragraph indents in cell minimum-content widths, preventing an AutoFit nested registration table from collapsing reserved fields (cases118–120). Positive-indent sizing and the separate zero-indent reserved-slot fallback are unchanged.
+
+- Fix line overlap with floating table zones: check line-box intersection at the top edge, preventing short anchor paragraphs from printing over a table (existing cases152–161).

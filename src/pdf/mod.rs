@@ -2401,14 +2401,9 @@ fn render_paragraph_block(
                 // Bottom threshold of 0.2 * line_h excludes lines
                 // barely overlapping the zone, matching Word's behavior.
                 let bottom_threshold = fz.bottom_y + line_h * 0.2;
-                // Paragraph-relative float images and polygon
-                // zones: check if any part of the line overlaps
-                // (catches lines starting just above the zone
-                // whose bottom extends into it). Floating table
-                // zones use the simpler line-top check because
-                // their boundaries already include topFromText /
-                // bottomFromText clearance.
-                let partial_overlap = fz.para_relative || fz.polygon_pts.is_some();
+                // A line starting just above a float can still intersect it.
+                // Apply the same overlap threshold to rectangular table zones
+                // as to paragraph-relative images and polygon zones.
                 for i in 0..max_lines {
                     let line_top = eff_top - i as f32 * line_h;
                     let line_bottom = line_top - line_h;
@@ -2416,11 +2411,7 @@ fn render_paragraph_block(
                     // (symmetric with bottom_threshold) so a caption line
                     // directly above a downward-offset float is not wrongly
                     // squeezed into the float's side margin.
-                    let in_zone = if partial_overlap {
-                        line_bottom < fz.top_y - line_h * 0.2
-                    } else {
-                        line_top <= fz.top_y
-                    };
+                    let in_zone = line_bottom < fz.top_y - line_h * 0.2;
                     if in_zone && line_top > bottom_threshold {
                         let (ex_left, ex_right) =
                             fz.exclusion_in_band(line_top.min(fz.top_y), line_bottom);
