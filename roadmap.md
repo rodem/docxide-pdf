@@ -2041,3 +2041,6 @@ Preserve the line and spacing of an empty section-break paragraph when it is the
 ### Saved asymmetric AutoFit grids with nested tables
 
 Keep a saved non-uniform AutoFit grid containing directly nested tables rather than rebuilding it from stale tcW preferences and proportionally squeezing the host column. Uniform grids retain content-based sizing; content minimums and available-width limits still apply.
+### Empty cell paragraphs with anchored drawings
+
+Rendering now consumes the paragraph-mark line height already counted by row layout when an otherwise empty paragraph contains floating content. This keeps following text in header cells aligned with cells containing plain empty paragraphs.
