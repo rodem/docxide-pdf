@@ -1933,3 +1933,5 @@ Fixes:
 case50–53 (deep style inheritance, nested tables, stacked bar charts, extreme
 chart data) have their reference PDFs. Only case58 (3D effects) and case65 still
 lack one.
+
+- Honor negative paragraph indents in cell minimum-content widths, preventing an AutoFit nested registration table from collapsing reserved fields (cases118–120). Positive-indent sizing and the separate zero-indent reserved-slot fallback are unchanged.
