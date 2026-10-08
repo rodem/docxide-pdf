@@ -423,6 +423,15 @@ Synthetic case87 agrees with Word for Windows on FIRST/DEFAULT/FIRST across
 three pages; a mid-page control retains FIRST/DEFAULT. One external document's
 last-page header is corrected without changing its three-page count; the
 82-document corpus has no page-count or page-score regressions against main.
+## Running-head connectors (2026-10-08)
+
+Header/footer paragraphs now paint their DrawingML connectors, including
+zero-height horizontal lines, at the paragraph anchor. The parser already
+retained them, but the standalone running-head render path skipped them.
+Synthetic case83 checks a horizontal and a diagonal line on two pages against
+Word for Windows. On an external 82-document corpus, conversion and page counts
+are unchanged; restored letterhead rules match Word's bounds exactly. No
+external corpus documents are included in the repository.
 
 ## Layout accuracy round (2026-10-01)
 

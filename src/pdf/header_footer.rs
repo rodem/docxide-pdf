@@ -728,6 +728,18 @@ pub(super) fn render_header_footer(
                 let slot_top = cursor_y;
                 cursor_y -= top_border_band(para) + float_text_push(para, text_width);
 
+                // DrawingML lines live in connectors rather than pictures or
+                // textboxes. Empty header/footer paragraphs still carry their
+                // paragraph-relative anchors.
+                for connector in &para.connectors {
+                    super::positioning::render_connector(
+                        connector,
+                        content,
+                        sp.margin_left,
+                        slot_top,
+                    );
+                }
+
                 // Paragraph borders span the laid-out height, so each exit below
                 // draws them once it knows it (ut_koer: a header staff image
                 // with a bottom border); empty bordered paragraphs render too.
