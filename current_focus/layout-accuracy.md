@@ -66,11 +66,31 @@ Commands: `python3 tools/line_diff.py <ref> <gen>`, `python3 tools/pdf_lines.py
 
 ### 2.2 Remaining focus fixtures (§4)
 
-1. **maine (5.0):** nested layout tables with `tblCellSpacing`; column widths
-   (text 581pt wide where Word wraps at 555) and cell-spacing row heights
-   (page 1 rows 1.7–6pt short). Two nested floating tables (`tblpPr` in a
-   cell) are stacked instead of side by side (`render_nested_table` ignores
-   `position`; 8 corpus documents).
+1. **maine (5.0): nested layout tables with `tblCellSpacing`.**
+   - **Width (diagnosed, patch parked):** its tables are `tblW` 100% pct over
+     stale 544.5pt grids in a 540pt column; Word wraps inside 540, we use the
+     grid (lines run to 582pt past the 576pt margin). Word probes (online,
+     `scratchpad` generator `mk_pct_probe.py`): 100% and 80% tables over 575pt
+     and 540pt grids, autofit and fixed, all take the pct share; compat 15's
+     basis is the column, compat 14's the column plus the table's left and
+     right cell margins (550.7 for 540 + 2 × 5.4). `apply_pct_width` skips real
+     grids and caps pct at 100%. The fix (drop the `grid_inferred` guard,
+     compat-aware basis, optionally no cap) is
+     `accuracy_push_local/patches/pct-over-real-grid.patch`; with it maine's
+     page 1 wraps as Word's but its score stays 5.0 (row heights dominate).
+     It is **parked**: the corpus subset with pct-vs-grid mismatches (42
+     docs) drops 46.59 → 44.89 (capped) / 46.02 (uncapped). The corpus
+     references are local print exports and seem to keep the grid (pct 93% /
+     grid 100%, pct 100% / grid 103%, pct 108% / grid 108%); export three of
+     them online (Word refused to open files during this session) before
+     deciding.
+   - **Cell spacing:** `tblCellSpacing` is not parsed or laid out anywhere;
+     maine's rows come out 1.7–4.5pt short. Probe generator
+     `mk_spacing_probe.py` (bordered 2×2 tables, 0 / 15 / 100 twips, compat
+     15) is ready; its export failed the same way.
+   - Two nested floating tables (`tblpPr` in a cell) are stacked instead of
+     side by side (`render_nested_table` ignores `position`; 8 corpus
+     documents).
 2. **arabic (3.0):** complex script. `rFonts@cs`, `w:rtl`, `szCs`/`bCs` are
    never read (`docx/styles.rs`, "ponytail: w:bidi ignored"); Word draws the
    text in the cs font (B Nazanin → its altName, Faruma → MV Boli, B Zar /
