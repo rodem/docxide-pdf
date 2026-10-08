@@ -322,6 +322,18 @@ the marks get their Link to the note. Visual output changed in the 6
 fixtures with marks in cells (baselines accepted in `7879bc7f`).
 Column auto-fit still measures cells without the marks (a mark's width).
 
+## Short running-head pictures (2026-10-08)
+
+A picture shorter than its natural text line now uses that line's baseline in
+headers and footers, including the bottom effect extent, as the body already
+does. Both Paragraph.image and the one-picture Run.inline_image slot are
+covered (an empty tab keeps the picture in runs). Synthetic case85 exercises
+both slots. Fifty-four Word for Windows probes cover three fonts, three sizes,
+three effect extents and both slots: Times New Roman/Arial agree within 0.002pt;
+Calibri retains a font-metric difference of up to 0.26pt. On an external
+letterhead, the stripe below its logo table is at 72.146pt vs Word's 72.150pt;
+the 82-document corpus has no conversion/page-count or page-score regressions.
+
 ## Layout accuracy round (2026-10-01)
 
 Rules derived from Word reference PDFs (borders, text positions measured with
