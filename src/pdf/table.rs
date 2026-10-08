@@ -553,7 +553,7 @@ fn render_cell_content(
                 );
                 end_cell_tag(content, &tagger);
 
-                cursor_y -= super::table_layout::cell_lines_h(para, 0..para.lines.len());
+                cursor_y -= super::table_layout::para_block_height(para);
 
                 if let Some(src) = source_para {
                     render_cell_floating_shapes(
@@ -1115,7 +1115,11 @@ fn render_partial_cell_content(
                 );
                 end_cell_tag(content, &tagger);
 
-                cursor_y -= super::table_layout::cell_lines_h(para, l0..l1);
+                cursor_y -= if para.lines.is_empty() {
+                    para_block_height(para)
+                } else {
+                    super::table_layout::cell_lines_h(para, l0..l1)
+                };
             }
             CellContentItem::NestedTable {
                 col_widths, rows, ..
@@ -1611,7 +1615,7 @@ pub(super) fn render_table(
     pb: &mut super::PageBuilder,
     sect_idx: usize,
     prev_space_after: f32,
-    override_pos: Option<super::FloatingTablePos>,
+    mut override_pos: Option<super::FloatingTablePos>,
     footnotes: &std::collections::HashMap<u32, crate::model::Footnote>,
     effective_margin_bottom: &mut f32,
     column_bounds: Option<(f32, f32)>,
@@ -1641,6 +1645,25 @@ pub(super) fn render_table(
     let row_layouts = compute_row_layouts(table, &col_widths, ctx, None);
     let merge_spans = compute_merge_spans(table, &row_layouts);
 
+    let preceding_float_zone = table
+        .position
+        .as_ref()
+        .filter(|p| !p.allow_overlap)
+        .and_then(|_| pb.float_zone.clone());
+    if table.position.as_ref().is_some_and(|p| !p.allow_overlap)
+        && let Some(ref zone) = pb.float_zone
+        && let Some(ref mut fp) = override_pos
+    {
+        let width: f32 = col_widths.iter().sum();
+        let height: f32 = row_layouts.iter().map(|r| r.height).sum();
+        if fp.x < zone.obj_right
+            && fp.x + width > zone.obj_left
+            && fp.y > zone.bottom_y
+            && fp.y - height < zone.top_y
+        {
+            fp.y = zone.bottom_y - fp.top_from_text;
+        }
+    }
     let is_floating = override_pos.is_some();
     // A text-anchored floating table sitting at or below its anchor paginates like
     // an inline table: Word starts it in the room left on the page and breaks it
@@ -2146,6 +2169,16 @@ pub(super) fn render_table(
                     para_relative: false,
                     from_table: true,
                 });
+                if let Some(old) = preceding_float_zone
+                    && let Some(ref mut current) = pb.float_zone
+                    && (old.obj_left - current.obj_left).abs() < 0.5
+                    && (old.obj_right - current.obj_right).abs() < 0.5
+                {
+                    current.top_y = current.top_y.max(old.top_y);
+                    current.bottom_y = current.bottom_y.min(old.bottom_y);
+                    current.left_from_text = current.left_from_text.max(old.left_from_text);
+                    current.right_from_text = current.right_from_text.max(old.right_from_text);
+                }
             }
         }
     }

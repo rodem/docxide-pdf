@@ -1563,6 +1563,55 @@ fn line_count(para: &Paragraph, ctx: &RenderContext, col_w: f32) -> usize {
     .len()
 }
 
+/// Empty wrapping frames after a non-overlapping floating-table stack stay outside
+/// its body flow. Ordinary empty paragraphs retain their paragraph-mark lines.
+fn is_empty_wrapping_frame_after_nonoverlap_table(
+    para: &Paragraph,
+    blocks: &[Block],
+    idx: usize,
+) -> bool {
+    let mut preceding = blocks[..idx].iter().rev().filter(|block| !matches!(block,
+        Block::Paragraph(p) if p.runs.iter().all(|r| r.text.trim().is_empty() && r.field_code.is_none() && r.inline_image.is_none())
+            && p.image.is_none() && p.floating_images.is_empty() && p.textboxes.is_empty()));
+    let follows_nonoverlap_table = preceding.next().is_some_and(|block| {
+        matches!(block, Block::Table(t)
+        if t.position.as_ref().is_some_and(|pos| !pos.allow_overlap))
+    }) && preceding
+        .next()
+        .is_some_and(|block| matches!(block, Block::Table(t) if t.position.is_some()));
+    follows_nonoverlap_table
+        && para
+            .frame_props
+            .as_ref()
+            .is_some_and(|fp| !fp.text_below && fp.height == 0.0)
+        && is_text_empty(&para.runs)
+        && !para.runs.iter().any(|r| {
+            r.is_line_break
+                || r.is_tab
+                || r.field_code.is_some()
+                || r.inline_image.is_some()
+                || r.checkbox.is_some()
+        })
+        && para.image.is_none()
+        && para.inline_chart.is_none()
+        && para.smartart.is_empty()
+        && para.floating_images.is_empty()
+        && para.textboxes.is_empty()
+        && para.connectors.is_empty()
+        && para.list_label.is_empty()
+        && para.shading.is_none()
+        && para.borders.top.is_none()
+        && para.borders.bottom.is_none()
+        && para.borders.left.is_none()
+        && para.borders.right.is_none()
+        && para.borders.between.is_none()
+        && !para.page_break_before
+        && !para.page_break_after
+        && para.page_break_at.is_none()
+        && !para.column_break_before
+        && !para.column_break_after
+}
+
 /// Compute effective first-line hanging indent for a paragraph.
 fn compute_text_hanging(para: &Paragraph, default_tab_stop: f32) -> f32 {
     if !para.list_label.is_empty() {
@@ -1714,7 +1763,10 @@ fn compute_bookmark_positions(
                     for bm in &para.bookmarks {
                         bookmark_positions.insert(bm.clone(), (page_idx, slot_top));
                     }
-                    if para.is_section_break && is_text_empty(&para.runs) {
+                    if is_empty_wrapping_frame_after_nonoverlap_table(para, blocks, bi) {
+                        continue;
+                    }
+                    if para.is_section_break && bi != 0 && is_text_empty(&para.runs) {
                         let next_continuous = doc.sections.get(si + 1).is_some_and(|next| {
                             next.properties.break_type == SectionBreakType::Continuous
                         });
@@ -1883,14 +1935,19 @@ fn render_paragraph_block(
         )
     });
     let adjacent_para = |idx: usize| block_para(section_blocks, idx);
+    if is_empty_wrapping_frame_after_nonoverlap_table(para, section_blocks, block_idx) {
+        state.global_block_idx += 1;
+        return true;
+    }
 
     // Skip empty section-break paragraphs — Word gives these zero height, also
     // before a continuous section that changes the columns (Word probes in
     // compat 14 and 15; covid_insomnia's two columns start 12pt higher) —
-    // unless the paragraph is the only block of a section opening a new page:
+    // unless the paragraph is the first block of its section, including a
+    // continuous empty section:
     // transition_to_work's contents start a line and 8pt below the top of the
     // page that empty section opens.
-    let keeps_line = block_idx == 0 && sp.break_type != SectionBreakType::Continuous;
+    let keeps_line = block_idx == 0;
     if para.is_section_break
         && !keeps_line
         && is_text_empty(&para.runs)
@@ -3892,9 +3949,21 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                     state.pb.is_first_page_of_section = true;
                 }
                 SectionBreakType::Continuous => {
-                    // No forced break; geometry updates on next page.
-                    // Don't update page_hf_section — the current page keeps
-                    // the section that started it for header/footer purposes.
+                    if state.pb.is_at_page_top(cur_sp) {
+                        // No content on this page belongs to the preceding
+                        // section. The continuous section therefore owns this
+                        // sheet, including its first-page header/footer variant.
+                        state.pb.page_hf_section = sect_idx;
+                        state.pb.is_first_page_of_section = true;
+                        state.pb.slot_top =
+                            effective_slot_top(sp, true, state.pb.page_count(), &ctx);
+                        state.pb.column_top_y = state.pb.slot_top;
+                        state.pb.page_top_y = state.pb.slot_top;
+                        state.effective_margin_bottom =
+                            compute_effective_margin_bottom(sp, true, state.pb.page_count(), &ctx);
+                    }
+                    // Mid-page, the sheet keeps the section that started it;
+                    // geometry updates on the next page without a forced break.
                 }
             }
         }

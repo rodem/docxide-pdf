@@ -379,6 +379,46 @@ item 12; uk_commercial_lease −10.8 is the next step
 Still open from the focus set: complex-script fonts (arabic, needs the
 RTL/shaping item below), EMF text and lines (potamites), nested layout
 tables (maine), cyprus one page short.
+## Wrapped running-head pictures (2026-10-08)
+
+An image-only header/footer paragraph that wraps multiple inline pictures
+retains its paragraph font's descent between lines and positions the visible
+picture above its bottom effect extent. Case84 is a synthetic Word for Windows
+reference with two wrapped pictures and a 0.75pt bottom extent. Probes at 8/10/14pt
+Times New Roman and Arial, with 0/0.75/2pt extents, agree within 0.002pt; Calibri
+retains a 0.14–0.26pt font-metric difference. The rule is deliberately limited to
+wrapped image-only running heads; other picture paragraphs keep their existing
+behaviour. The independent header-height estimate still needs per-line layout.
+## Short running-head pictures (2026-10-08)
+
+A picture shorter than its natural text line now uses that line's baseline in
+headers and footers, including the bottom effect extent, as the body already
+does. Both Paragraph.image and the one-picture Run.inline_image slot are
+covered (an empty tab keeps the picture in runs). Synthetic case85 exercises
+both slots. Fifty-four Word for Windows probes cover three fonts, three sizes,
+three effect extents and both slots: Times New Roman/Arial agree within 0.002pt;
+Calibri retains a font-metric difference of up to 0.26pt. On an external
+letterhead, the stripe below its logo table is at 72.146pt vs Word's 72.150pt;
+the 82-document corpus has no conversion/page-count or page-score regressions.
+## Reflected group line connectors (2026-10-08)
+
+Group flipH/flipV now compose through nested group transforms for linear
+connectors, with positive bounding dimensions and reflected endpoint direction.
+Zero-height horizontal lines retain their zero height. Other shape types retain
+their existing transform: image/text/arc content mirroring is separate work.
+Synthetic case86 compares two differently weighted horizontal lines in a scaled,
+vertically reflected group against Word for Windows; the bounds differ by 0.02pt.
+Two unit tests cover reflected zero-height lines and cancellation of nested flips.
+Standalone header group lines also need the running-head connector render fix.
+## Continuous section opening an empty sheet (2026-10-08)
+
+A continuous section beginning at an otherwise empty page top now owns that
+sheet's header/footer selection and uses its first-page variant. Mid-page
+continuous sections keep the preceding section's running head as before.
+Synthetic case87 agrees with Word for Windows on FIRST/DEFAULT/FIRST across
+three pages; a mid-page control retains FIRST/DEFAULT. One external document's
+last-page header is corrected without changing its three-page count; the
+82-document corpus has no page-count or page-score regressions against main.
 
 ## Layout accuracy round (2026-10-01)
 
@@ -2003,3 +2043,21 @@ Fixes:
 case50–53 (deep style inheritance, nested tables, stacked bar charts, extreme
 chart data) have their reference PDFs. Only case58 (3D effects) and case65 still
 lack one.
+
+## Single-row nested AutoFit reserved fields
+
+Keep explicit grid/cell preferences for a single-row nested auto-width table when it fits its parent. Empty number/date slots must not collapse to the current text width. Restrict the change to explicit grids and unmerged preferred-width cells; inferred, overflowing and multi-row tables keep their existing AutoFit path. case88 (empty slots) and case89 (filled slots) reproduce the issue with synthetic documents and Word reference PDFs.
+## Explicit widths in single-row nested tables
+
+An explicitly sized single-row nested table should use the fixed-width base when its cell preferences and grid totals agree and fit the parent. Preserve min-content redistribution for narrow marker cells instead of collapsing all columns to text. Synthetic case90/case91 cover empty and populated fields. Global nested-table origin/float positioning is a separate issue.
+### Empty continuous sections
+
+Preserve the line and spacing of an empty section-break paragraph when it is the first block of its section. This also applies to continuous sections between adjacent section breaks. Keep zero-height handling for empty break paragraphs following content within the same section.
+### Saved asymmetric AutoFit grids with nested tables
+
+Keep a saved non-uniform AutoFit grid containing directly nested tables rather than rebuilding it from stale tcW preferences and proportionally squeezing the host column. Uniform grids retain content-based sizing; content minimums and available-width limits still apply.
+### Empty cell paragraphs with anchored drawings
+
+Rendering now consumes the paragraph-mark line height already counted by row layout when an otherwise empty paragraph contains floating content. This keeps following text in header cells aligned with cells containing plain empty paragraphs.
+- Preserve asymmetric saved AutoFit grids when uniform oversized cell preferences would erase them; signature-title wrapping covered by cases109–112 (including nearly equal saved columns).
+- Honor tblOverlap=never for colliding floating tables, retaining the preceding aligned float zone for following text (cases113–117). Empty wrapping frames after this table remain outside the body flow; ordinary empty paragraphs and line breaks remain in flow.

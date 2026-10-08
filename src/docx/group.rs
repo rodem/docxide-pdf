@@ -9,8 +9,8 @@
 use std::io::{Read, Seek};
 
 use crate::model::{
-    FloatingImage, HRelativeFrom, HorizontalPosition, Textbox, VRelativeFrom, VerticalPosition,
-    WrapText, WrapType,
+    ConnectorType, FloatingImage, HRelativeFrom, HorizontalPosition, Textbox, VRelativeFrom,
+    VerticalPosition, WrapText, WrapType,
 };
 
 use super::images::{
@@ -28,6 +28,10 @@ struct GroupTransform {
     sy: f32,
     tx: f32,
     ty: f32,
+    connector_sx: f32,
+    connector_sy: f32,
+    connector_tx: f32,
+    connector_ty: f32,
 }
 
 impl GroupTransform {
@@ -36,6 +40,10 @@ impl GroupTransform {
         sy: 1.0,
         tx: 0.0,
         ty: 0.0,
+        connector_sx: 1.0,
+        connector_sy: 1.0,
+        connector_tx: 0.0,
+        connector_ty: 0.0,
     };
 
     fn apply(&self, x: f32, y: f32) -> (f32, f32) {
@@ -52,6 +60,8 @@ struct Xfrm {
     ext: (f32, f32),
     ch_off: (f32, f32),
     ch_ext: (f32, f32),
+    flip_h: bool,
+    flip_v: bool,
 }
 
 fn read_xfrm(sp_pr: roxmltree::Node) -> Option<Xfrm> {
@@ -69,6 +79,8 @@ fn read_xfrm(sp_pr: roxmltree::Node) -> Option<Xfrm> {
         ext,
         ch_off,
         ch_ext,
+        flip_h: matches!(xfrm.attribute("flipH"), Some("1" | "true")),
+        flip_v: matches!(xfrm.attribute("flipV"), Some("1" | "true")),
     })
 }
 
@@ -86,11 +98,22 @@ fn compose(parent: GroupTransform, xfrm: &Xfrm) -> GroupTransform {
     };
     let tx_l = xfrm.off.0 - xfrm.ch_off.0 * sx_l;
     let ty_l = xfrm.off.1 - xfrm.ch_off.1 * sy_l;
+    // Connectors reflect around the group's extent, including nested groups.
+    // Other shape paths retain their existing transform until their content
+    // mirroring (text, images and arcs) is implemented separately.
+    let csx = if xfrm.flip_h { -sx_l } else { sx_l };
+    let csy = if xfrm.flip_v { -sy_l } else { sy_l };
+    let ctx = xfrm.off.0 + if xfrm.flip_h { xfrm.ext.0 } else { 0.0 } - xfrm.ch_off.0 * csx;
+    let cty = xfrm.off.1 + if xfrm.flip_v { xfrm.ext.1 } else { 0.0 } - xfrm.ch_off.1 * csy;
     GroupTransform {
         sx: parent.sx * sx_l,
         sy: parent.sy * sy_l,
         tx: parent.tx + parent.sx * tx_l,
         ty: parent.ty + parent.sy * ty_l,
+        connector_sx: parent.connector_sx * csx,
+        connector_sy: parent.connector_sy * csy,
+        connector_tx: parent.connector_tx + parent.connector_sx * ctx,
+        connector_ty: parent.connector_ty + parent.connector_sy * cty,
     }
 }
 
@@ -232,6 +255,18 @@ fn emit_wsp<R: Read + Seek>(
             conn.y = base.y + y;
             conn.width = w;
             conn.height = h;
+            if let ConnectorType::Line { flip_h, flip_v } = &mut conn.connector_type {
+                let x0 = t.connector_tx + t.connector_sx * xfrm.off.0;
+                let y0 = t.connector_ty + t.connector_sy * xfrm.off.1;
+                let x1 = x0 + t.connector_sx * xfrm.ext.0;
+                let y1 = y0 + t.connector_sy * xfrm.ext.1;
+                conn.x = base.x + x0.min(x1);
+                conn.y = base.y + y0.min(y1);
+                conn.width = (x1 - x0).abs();
+                conn.height = (y1 - y0).abs();
+                *flip_h ^= t.connector_sx < 0.0;
+                *flip_v ^= t.connector_sy < 0.0;
+            }
             conn.z_index = base.z_index;
             out.push(RunDrawingResult::Connector(conn));
         }
@@ -307,6 +342,8 @@ mod tests {
             ext,
             ch_off,
             ch_ext,
+            flip_h: false,
+            flip_v: false,
         }
     }
 
@@ -327,6 +364,32 @@ mod tests {
         // Sizes scale by ext/chExt
         let (w, h) = t.scale(479.2, 322.5);
         assert!((w - 489.6).abs() < 1e-2 && (h - 202.5).abs() < 1e-2);
+    }
+
+    #[test]
+    fn reflected_group_maps_zero_height_lines_to_opposite_edges() {
+        let mut group = xfrm((5.0, 7.0), (200.0, 20.0), (0.0, 0.0), (200.0, 16.0));
+        group.flip_v = true;
+        let t = compose(GroupTransform::IDENTITY, &group);
+        // A bottom-edge horizontal line becomes the top-edge line; the
+        // former top edge moves to the bottom. Zero height must stay zero.
+        assert!((t.connector_ty + t.connector_sy * 16.0 - 7.0).abs() < 1e-4);
+        assert!((t.connector_ty - 27.0).abs() < 1e-4);
+        assert!((t.connector_tx - 5.0).abs() < 1e-4);
+        assert_eq!(t.connector_sy * 0.0, 0.0);
+    }
+
+    #[test]
+    fn nested_reflections_cancel_and_preserve_child_offset() {
+        let mut outer = xfrm((0.0, 0.0), (100.0, 100.0), (0.0, 0.0), (100.0, 100.0));
+        outer.flip_h = true;
+        outer.flip_v = true;
+        let mut inner = xfrm((10.0, 20.0), (30.0, 40.0), (0.0, 0.0), (30.0, 40.0));
+        inner.flip_h = true;
+        inner.flip_v = true;
+        let t = compose(compose(GroupTransform::IDENTITY, &outer), &inner);
+        assert_eq!((t.connector_sx, t.connector_sy), (1.0, 1.0));
+        assert_eq!((t.connector_tx, t.connector_ty), (60.0, 40.0));
     }
 
     #[test]
