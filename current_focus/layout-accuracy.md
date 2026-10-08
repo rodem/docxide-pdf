@@ -6,10 +6,10 @@ matter. Finished rules are not listed here: `git log` has one commit per rule
 with its evidence, and `roadmap.md` summarises each round ("Layout accuracy
 round", "Large-corpus round", "Focus-fixture round").
 
-## 1. Status (2026-10-08, `main` at `2b366e36` + Arial Narrow 2.42)
+## 1. Status (2026-10-08, `main` at `1e35456d` + Arial Narrow 2.42)
 
 Everything is on `main`; no open branch. Fixture means (Jaccard, snapshot
-`tests/output/snapshots/wmfemf.json`; `main75f.json` is `main` after the
+`tests/output/snapshots/anchorline.json`; `main75f.json` is `main` after the
 external PR merge, before this session's EMF work):
 
 | group | n | J |
@@ -19,12 +19,13 @@ external PR merge, before this session's EMF work):
 | fonts | 7 | 66.46 |
 | hyphenation | 8 | 63.71 |
 | samples | 5 | 55.03 |
-| excluded (local focus set, §4) | 11 | 51.25 |
+| excluded (local focus set, §4) | 11 | 55.55 |
 
 **Baselines are not yet accepted** for the focus-fixture round (10 rule
 commits `f912a033..40275abe`) nor for `12edca93` (footnote hanging tab stop)
 and `943cd9c4` (tab-line space squeeze), nor for the Arial Narrow swap, nor
-for the EMF commits `317faedc`, `e47e64c4`, `2b366e36`. The
+for the EMF commits `317faedc`, `e47e64c4`, `2b366e36` and `1e35456d` (empty
+anchor line below a float). The
 suite reports uk_commercial_lease as a regression until the user approves new
 baselines or §2.1 fixes it.
 
@@ -65,14 +66,12 @@ Commands: `python3 tools/line_diff.py <ref> <gen>`, `python3 tools/pdf_lines.py
 
 ### 2.2 Remaining focus fixtures (§4)
 
-1. **cyprus (32.3, 2 pages vs Word's 3):** the footer float no longer inflates
-   the footer; a second cause leaves us one page short. Not diagnosed.
-2. **maine (5.0):** nested layout tables with `tblCellSpacing`; column widths
+1. **maine (5.0):** nested layout tables with `tblCellSpacing`; column widths
    (text 581pt wide where Word wraps at 555) and cell-spacing row heights
    (page 1 rows 1.7–6pt short). Two nested floating tables (`tblpPr` in a
    cell) are stacked instead of side by side (`render_nested_table` ignores
    `position`; 8 corpus documents).
-3. **arabic (3.0):** complex script. `rFonts@cs`, `w:rtl`, `szCs`/`bCs` are
+2. **arabic (3.0):** complex script. `rFonts@cs`, `w:rtl`, `szCs`/`bCs` are
    never read (`docx/styles.rs`, "ponytail: w:bidi ignored"); Word draws the
    text in the cs font (B Nazanin → its altName, Faruma → MV Boli, B Zar /
    IRANYekan / none → Arial). The font alone gains little: the text needs UAX
@@ -166,10 +165,10 @@ them; without baselines they show as "new" and never fail.
 | australian_higher_education_guidelines | 34.2 → 65.3 | done (35 pages as Word) |
 | czech_village_budget_commentary | 11.3 → 51.1 | header 1.1pt high; a later header line ("IČO … e-mail") lays out differently |
 | italian_academic_cv_form | 28.1 → 45.1 | page breaks as Word; remaining gap untriaged |
-| cyprus_ucits_marketing_registry | 29.9 → 32.3 | §2.2 item 1 |
+| cyprus_ucits_marketing_registry | 29.9 → 79.7 | done (3 pages as Word) |
 | potamites_genetic_distance_table | 14.0 → 72.7 | done (EMF text, lines, fills, rclFrame; clipping and opaque text backgrounds not done) |
-| maine_criminal_history_record | 4.5 → 5.0 | §2.2 item 2 |
-| arabic_rice_benefits_article | 3.0 | §2.2 item 3 |
+| maine_criminal_history_record | 4.5 → 5.0 | §2.2 item 1 |
+| arabic_rice_benefits_article | 3.0 | §2.2 item 2 |
 
 ## 5. Open queue (diagnosed, not fixed)
 
@@ -179,7 +178,12 @@ Ordered roughly by expected gain. Corpus counts are clean documents.
 1. A paragraph holding only a page break on a full page lays out its line
    first, so a blank page follows (one 107-page document; what-if 11 → 76).
 2. Page-relative topAndBottom floats reserve their absolute offset in the
-   anchor paragraph (5 documents).
+   anchor paragraph (5 documents). Related, from the cyprus probes: an anchor
+   paragraph *with text* and a no-room float keeps its text beside the float
+   in ours; Word moves it below (probe: text baseline 208.30 under a float
+   ending at 199.1, ours 94.4). And sample500kB's paragraph-relative AlignTop
+   picture resolves to the margin top while its anchor flows 146pt lower;
+   Word moves both to the next page (`1e35456d` leaves that case alone).
 3. The space squeeze judges a hyphen piece ("(MCL-" of
    "(MCL-LEASECLAUSE-06)", uk_commercial footnote 10) as a word; Word wraps
    it, maybe judging the whole word's midpoint. Probe before changing.

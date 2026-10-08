@@ -384,10 +384,11 @@ item 12; uk_commercial_lease −10.8 is the next step
     rclFrame (not the ink bounds) to the picture box; a WMF with an embedded
     EMF draws the EMF. potamites 14.0 → 72.7; corpus EMF documents 49.3 →
     50.2. Clipping regions and opaque text backgrounds remain.
+14. An empty anchor paragraph's line moves below a float it cannot sit
+    beside (cyprus 32.3 → 79.7, 3 pages as Word; corpus subset 51.1 → 54.8).
 
 Still open from the focus set: complex-script fonts (arabic, needs the
-RTL/shaping item below), nested layout tables (maine), cyprus one page
-short.
+RTL/shaping item below), nested layout tables (maine).
 ## Wrapped running-head pictures (2026-10-08)
 
 An image-only header/footer paragraph that wraps multiple inline pictures
