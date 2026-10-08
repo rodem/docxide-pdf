@@ -2062,3 +2062,4 @@ Rendering now consumes the paragraph-mark line height already counted by row lay
 - Preserve asymmetric saved AutoFit grids when uniform oversized cell preferences would erase them; signature-title wrapping covered by cases109–112 (including nearly equal saved columns).
 - Honor tblOverlap=never for colliding floating tables, retaining the preceding aligned float zone for following text (cases113–117). Empty wrapping frames after this table remain outside the body flow; ordinary empty paragraphs and line breaks remain in flow.
 - Reserve the actual wrapped-line height of image-only running heads with multiple inline pictures (cases121–123); fitting picture lines retain their existing height.
+- Keep non-wrapping body pictures anchored to the margins of the current sheet across a mid-page continuous section margin change; new-page and unchanged-margin controls retain their placement (cases124–126).
