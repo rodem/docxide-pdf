@@ -6,23 +6,25 @@ matter. Finished rules are not listed here: `git log` has one commit per rule
 with its evidence, and `roadmap.md` summarises each round ("Layout accuracy
 round", "Large-corpus round", "Focus-fixture round").
 
-## 1. Status (2026-10-08, `main` at `77cb4c35` + Arial Narrow 2.42)
+## 1. Status (2026-10-08, `main` at `2b366e36` + Arial Narrow 2.42)
 
 Everything is on `main`; no open branch. Fixture means (Jaccard, snapshot
-`tests/output/snapshots/an242.json`):
+`tests/output/snapshots/wmfemf.json`; `main75f.json` is `main` after the
+external PR merge, before this session's EMF work):
 
 | group | n | J |
 |---|---|---|
-| cases | 79 | 75.36 |
+| cases | 104 | 71.99 |
 | scraped | 148 | 64.20 |
 | fonts | 7 | 66.46 |
 | hyphenation | 8 | 63.71 |
 | samples | 5 | 55.03 |
-| excluded (local focus set, §4) | 11 | 45.91 |
+| excluded (local focus set, §4) | 11 | 51.25 |
 
 **Baselines are not yet accepted** for the focus-fixture round (10 rule
 commits `f912a033..40275abe`) nor for `12edca93` (footnote hanging tab stop)
-and `943cd9c4` (tab-line space squeeze), nor for the Arial Narrow swap. The
+and `943cd9c4` (tab-line space squeeze), nor for the Arial Narrow swap, nor
+for the EMF commits `317faedc`, `e47e64c4`, `2b366e36`. The
 suite reports uk_commercial_lease as a regression until the user approves new
 baselines or §2.1 fixes it.
 
@@ -63,22 +65,14 @@ Commands: `python3 tools/line_diff.py <ref> <gen>`, `python3 tools/pdf_lines.py
 
 ### 2.2 Remaining focus fixtures (§4)
 
-1. **potamites (14.0): EMF drawing.** `docx/emf.rs` parses only paths, pens
-   and brushes (`EmfRecord`). Needed: font objects
-   (`EMR_EXTCREATEFONTINDIRECTW`) and text (`EMR_EXTTEXTOUTW`, through our font
-   embedding), standalone `MoveToEx`/`LineTo` strokes outside paths,
-   `EMR_RECTANGLE`, and `EMR_BITBLT`/PatBlt fills without a source. Then apply
-   the parked `accuracy_push_local/patches/wmf-embedded-emf.patch` (use a WMF's
-   embedded EMF, skip pattern blits): it scores lower until EMF text and lines
-   render. 54 corpus documents carry text in metafiles.
-2. **cyprus (32.3, 2 pages vs Word's 3):** the footer float no longer inflates
+1. **cyprus (32.3, 2 pages vs Word's 3):** the footer float no longer inflates
    the footer; a second cause leaves us one page short. Not diagnosed.
-3. **maine (5.0):** nested layout tables with `tblCellSpacing`; column widths
+2. **maine (5.0):** nested layout tables with `tblCellSpacing`; column widths
    (text 581pt wide where Word wraps at 555) and cell-spacing row heights
    (page 1 rows 1.7–6pt short). Two nested floating tables (`tblpPr` in a
    cell) are stacked instead of side by side (`render_nested_table` ignores
    `position`; 8 corpus documents).
-4. **arabic (3.0):** complex script. `rFonts@cs`, `w:rtl`, `szCs`/`bCs` are
+3. **arabic (3.0):** complex script. `rFonts@cs`, `w:rtl`, `szCs`/`bCs` are
    never read (`docx/styles.rs`, "ponytail: w:bidi ignored"); Word draws the
    text in the cs font (B Nazanin → its altName, Faruma → MV Boli, B Zar /
    IRANYekan / none → Arial). The font alone gains little: the text needs UAX
@@ -111,7 +105,6 @@ Diagnostics: `pdf_lines.py` (rules and baselines, y from page top),
   `main`'s rule set.
 - `diagnosis/{page1_offset,page_drift,missing_text,fonts}.md` — per-cause
   evidence from the corpus triage (corpus IDs inside: never copy them out).
-- `patches/wmf-embedded-emf.patch` — parked (§2.2).
 
 **Per rule:**
 1. Diagnose on the fixture; confirm Word's behaviour with a probe document
@@ -173,10 +166,10 @@ them; without baselines they show as "new" and never fail.
 | australian_higher_education_guidelines | 34.2 → 65.3 | done (35 pages as Word) |
 | czech_village_budget_commentary | 11.3 → 51.1 | header 1.1pt high; a later header line ("IČO … e-mail") lays out differently |
 | italian_academic_cv_form | 28.1 → 45.1 | page breaks as Word; remaining gap untriaged |
-| cyprus_ucits_marketing_registry | 29.9 → 32.3 | §2.2 item 2 |
-| potamites_genetic_distance_table | 14.0 | §2.2 item 1 |
-| maine_criminal_history_record | 4.5 → 5.0 | §2.2 item 3 |
-| arabic_rice_benefits_article | 3.0 | §2.2 item 4 |
+| cyprus_ucits_marketing_registry | 29.9 → 32.3 | §2.2 item 1 |
+| potamites_genetic_distance_table | 14.0 → 72.7 | done (EMF text, lines, fills, rclFrame; clipping and opaque text backgrounds not done) |
+| maine_criminal_history_record | 4.5 → 5.0 | §2.2 item 2 |
+| arabic_rice_benefits_article | 3.0 | §2.2 item 3 |
 
 ## 5. Open queue (diagnosed, not fixed)
 
@@ -262,8 +255,8 @@ uk_commercial_lease_template 37.9 (78 vs 79 pages),
 polish_ministry_accessibility_report 37.9.
 
 **Out of this topic:** tracked changes (redline markup, roadmap item; tracked
-corpus states score 15–30), metafile text beyond EMF (vector WMFs come out as
-a brush-sized box), cloud fonts we don't vendor (~43 corpus documents:
+corpus states score 15–30), vector WMFs without an embedded EMF (no WMF
+vector translator), EMF clipping regions and opaque text backgrounds, cloud fonts we don't vendor (~43 corpus documents:
 Poppins, Ubuntu, Segoe UI Light/Semibold, Roboto Light/Medium, …).
 
 ## 6. Findings that still matter

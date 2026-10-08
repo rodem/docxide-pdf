@@ -379,10 +379,15 @@ item 12; uk_commercial_lease −10.8 is the next step
 12. Arial Narrow is Word's 2.42;O365 build (fonts/, assets, ~/Library/Fonts):
     estonian 42.5 → 69.8, indonesian 27.3 → 54.5, renewable_dispatch
     71.0 → 85.7.
+13. EMF pictures draw text (fonts, Dx advances, alignment), standalone
+    lines, pens, stock objects, PatBlt fills and rectangles, and map their
+    rclFrame (not the ink bounds) to the picture box; a WMF with an embedded
+    EMF draws the EMF. potamites 14.0 → 72.7; corpus EMF documents 49.3 →
+    50.2. Clipping regions and opaque text backgrounds remain.
 
 Still open from the focus set: complex-script fonts (arabic, needs the
-RTL/shaping item below), EMF text and lines (potamites), nested layout
-tables (maine), cyprus one page short.
+RTL/shaping item below), nested layout tables (maine), cyprus one page
+short.
 ## Wrapped running-head pictures (2026-10-08)
 
 An image-only header/footer paragraph that wraps multiple inline pictures
