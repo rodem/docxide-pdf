@@ -1933,3 +1933,7 @@ Fixes:
 case50–53 (deep style inheritance, nested tables, stacked bar charts, extreme
 chart data) have their reference PDFs. Only case58 (3D effects) and case65 still
 lack one.
+
+## Justified tabbed segment space squeezing
+
+Apply the existing compatibility-15 SPACE_SQUEEZE rule within the text segment after a tab. Plain justified paragraphs already used it; tabbed signatures still wrapped a surname at an overflow under one point. Only the last tab segment contributes word spaces (never the tab gap), and its last line is marked squeezed for painting. Synthetic case92 reproduces 0.8pt overflow; case93 controls left alignment. Fifteen Word probes cover 0/0.4/0.8/1.5/3pt overflow, left and compat-14 controls.

@@ -1397,6 +1397,7 @@ pub(super) fn build_lines(
             ctx.default_tab_stop,
             opts.tab_exclusions,
             ctx.compat_mode,
+            cjk.squeeze_spaces,
         )
     } else {
         build_paragraph_lines(
@@ -2175,6 +2176,7 @@ pub(super) fn build_tabbed_line(
     default_tab_stop: f32,
     tab_exclusions: &[(f32, f32)],
     compat_mode: u32,
+    squeeze_spaces: bool,
 ) -> Vec<TextLine> {
     // Split runs into segments at tab markers, tracking original run indices.
     // The fourth tuple element is the `<w:tab/>` run itself (when present) so the
@@ -2216,6 +2218,7 @@ pub(super) fn build_tabbed_line(
     ));
 
     let mut result_lines: Vec<TextLine> = Vec::new();
+    let mut squeezed_lines = Vec::new();
     let mut justify_from = 0usize;
     let mut all_chunks: Vec<WordChunk> = Vec::new();
     let mut current_x: f32 = 0.0;
@@ -2534,8 +2537,21 @@ pub(super) fn build_tabbed_line(
                 } else {
                     max_width
                 };
+                let limit = cur_line_max.max(line_reach);
+                let gap = all_chunks
+                    .last()
+                    .map_or(0.0, |c| (current_x - c.x_offset - c.width).max(0.0));
+                let can_squeeze = squeeze_spaces
+                    && applied_space
+                    && current_x + ww / 2.0 <= limit
+                    && current_x + ww - limit
+                        <= SPACE_SQUEEZE * (line_space_width(&all_chunks[justify_from..]) + gap);
+                if current_x + ww > limit && can_squeeze {
+                    squeezed_lines.push(result_lines.len());
+                }
                 // Wrap word to new line if it exceeds max_width
-                if current_x + ww > cur_line_max.max(line_reach)
+                if current_x + ww > limit
+                    && !can_squeeze
                     && !all_chunks.is_empty()
                     && !is_continuation
                 {
@@ -2610,6 +2626,9 @@ pub(super) fn build_tabbed_line(
         });
     }
 
+    for i in squeezed_lines {
+        result_lines[i].squeezed = true;
+    }
     result_lines
 }
 
@@ -4123,6 +4142,55 @@ mod tests {
     }
 
     #[test]
+    fn tabbed_squeeze_uses_only_spaces_after_the_last_tab() {
+        let text_run = |text: &str| Run {
+            text: text.into(),
+            ..make_run(10.0, VertAlign::Baseline, false)
+        };
+        let runs = [
+            text_run("Title"),
+            Run {
+                is_tab: true,
+                ..make_run(10.0, VertAlign::Baseline, false)
+            },
+            text_run("A."),
+            text_run(" "),
+            text_run("Name"),
+        ];
+        let mut fonts = HashMap::new();
+        fonts.insert("Arial".into(), stub_font_entry());
+        let stops = [TabStop {
+            position: 100.0,
+            alignment: TabAlignment::Left,
+            leader: None,
+        }];
+        let full = 100.0 + 7.0 * fonts["Arial"].space_width(10.0);
+        let build = |overflow, squeeze| {
+            build_tabbed_line(
+                &runs,
+                &fonts,
+                &stops,
+                0.0,
+                full - overflow,
+                0.0,
+                0.0,
+                &HashMap::new(),
+                &HashMap::new(),
+                36.0,
+                &[],
+                15,
+                squeeze,
+            )
+        };
+        let squeezed = build(0.8, true);
+        assert_eq!(squeezed.len(), 1);
+        assert!(squeezed[0].squeezed);
+        assert_eq!(build(0.8, false).len(), 2);
+        // A large tab gap must not count as compressible whitespace.
+        assert_eq!(build(2.0, true).len(), 2);
+    }
+
+    #[test]
     fn test_tabbed_line_applies_whitespace_only_run_after_tab() {
         // "<w:tab/>   " at 10pt followed by "x" at 9pt: the size difference keeps
         // the spaces in their own run, and Word still advances over them, so the
@@ -4156,6 +4224,7 @@ mod tests {
             36.0,
             &[],
             15,
+            false,
         );
         assert_eq!(lines.len(), 1);
         let word = lines[0]
