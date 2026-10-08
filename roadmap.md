@@ -322,6 +322,16 @@ the marks get their Link to the note. Visual output changed in the 6
 fixtures with marks in cells (baselines accepted in `7879bc7f`).
 Column auto-fit still measures cells without the marks (a mark's width).
 
+## Continuous section opening an empty sheet (2026-10-08)
+
+A continuous section beginning at an otherwise empty page top now owns that
+sheet's header/footer selection and uses its first-page variant. Mid-page
+continuous sections keep the preceding section's running head as before.
+Synthetic case87 agrees with Word for Windows on FIRST/DEFAULT/FIRST across
+three pages; a mid-page control retains FIRST/DEFAULT. One external document's
+last-page header is corrected without changing its three-page count; the
+82-document corpus has no page-count or page-score regressions against main.
+
 ## Layout accuracy round (2026-10-01)
 
 Rules derived from Word reference PDFs (borders, text positions measured with
