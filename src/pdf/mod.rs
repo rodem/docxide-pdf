@@ -1817,7 +1817,9 @@ fn compute_bookmark_positions(
                     if is_empty_wrapping_frame(para) {
                         continue;
                     }
-                    if para.is_section_break && bi != 0 && is_text_empty(&para.runs) {
+                    if para.is_section_break && bi != 0
+                        && !(ctx.compat_mode >= 15 && matches!(blocks.get(bi - 1), Some(Block::Table(_))))
+                        && is_text_empty(&para.runs) {
                         let next_continuous = doc.sections.get(si + 1).is_some_and(|next| {
                             next.properties.break_type == SectionBreakType::Continuous
                         });
@@ -1999,7 +2001,10 @@ fn render_paragraph_block(
     // continuous empty section:
     // transition_to_work's contents start a line and 8pt below the top of the
     // page that empty section opens.
-    let keeps_line = block_idx == 0;
+    // In modern compatibility mode, Word preserves the section mark's own
+    // paragraph line after a table. Legacy mode still collapses that line.
+    let keeps_line = block_idx == 0
+        || (ctx.compat_mode >= 15 && matches!(block_idx.checked_sub(1).and_then(|i| section_blocks.get(i)), Some(Block::Table(_))));
     if para.is_section_break
         && !keeps_line
         && is_text_empty(&para.runs)
