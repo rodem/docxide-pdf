@@ -2519,12 +2519,12 @@ fn render_paragraph_block(
         } else {
             line_h
         };
-        // A picture wider than the column leaves its line no room for the
+        // An OLE preview wider than the column leaves its line no room for the
         // paragraph mark, which wraps onto a line of its own (alfies_arc: an
         // 11pt line follows a 1014pt-wide OLE logo strip, annotation #186).
         // The paragraph's own indents do not count: learning_cultures keeps
         // the mark beside a column-wide picture in a right-indented paragraph.
-        if img.layout_size().0 > col_w {
+        if img.is_ole_preview && img.layout_size().0 > col_w {
             picture_h + line_h
         } else {
             picture_h
