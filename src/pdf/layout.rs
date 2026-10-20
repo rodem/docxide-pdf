@@ -2067,6 +2067,19 @@ pub(super) fn build_paragraph_lines(
 
             // Small tolerance for floating-point width accumulation over many glyphs
             let mut overflows = proposed_x + ww > cur_max + 0.05;
+            // A complete numeric identifier suffix may use the existing space
+            // squeeze budget even though its hyphen is a break opportunity.
+            let numeric_slash_suffix = overflows
+                && cjk.squeeze_spaces
+                && !need_space
+                && current_chunks.last().is_some_and(|c| c.text.ends_with('-'))
+                && {
+                    let suffix = shown.trim_end_matches(['.', ',', ';', ':', '!', '?', ')', '»']);
+                    suffix.contains('/')
+                        && suffix.split('/').all(|part| {
+                            !part.is_empty() && part.bytes().all(|c| c.is_ascii_digit())
+                        })
+                };
             // A word glued to the previous run's word is judged as one word.
             let (word_x, word_w) = if is_continuation && word_start < current_chunks.len() {
                 let x = current_chunks[word_start].x_offset;
@@ -2074,7 +2087,10 @@ pub(super) fn build_paragraph_lines(
             } else {
                 (proposed_x, ww)
             };
-            if overflows && (need_space || is_continuation) && !in_right_region {
+            if overflows
+                && (need_space || is_continuation || numeric_slash_suffix)
+                && !in_right_region
+            {
                 // How far the word may overflow and stay: Word 2013+ narrows
                 // the spaces, wpJustification the whole line.
                 let space_room = (cjk.squeeze_spaces && word_x + word_w / 2.0 <= cur_max)
@@ -4100,7 +4116,14 @@ pub(super) fn render_paragraph_lines(
                         .map(|(top, th)| (y + top - th, th));
                     let (st_y, st_thick) = strike.unwrap_or((y + chunk.font_size * 0.3, thick));
                     // One line across the spaces of a struck run, like Word's.
-                    push_decoration(&mut decorations, x, st_y, chunk.width, st_thick, chunk.color);
+                    push_decoration(
+                        &mut decorations,
+                        x,
+                        st_y,
+                        chunk.width,
+                        st_thick,
+                        chunk.color,
+                    );
                 }
                 if chunk.dstrike {
                     let gap = thick * 1.5;
@@ -4652,6 +4675,39 @@ mod tests {
     }
 
     #[test]
+    fn complete_numeric_slash_suffix_keeps_the_space_squeeze_cap() {
+        let fonts = HashMap::from([("Arial".to_string(), FontEntry::stub())]);
+        let run = |s: &str| Run {
+            text: s.into(),
+            ..make_run(10.0, VertAlign::Baseline, false)
+        };
+        for suffix in ["12345/2026", "12/3", "1/2/3"] {
+            let text = format!("aa aa aa aa A12-{suffix}");
+            for runs in [vec![run(&text)], vec![run("aa aa aa aa A12-"), run(suffix)]] {
+                let build = |overflow, squeeze| {
+                    build_paragraph_lines(
+                        &runs,
+                        &fonts,
+                        text.len() as f32 * 5.0 - overflow,
+                        0.0,
+                        &HashMap::new(),
+                        &HashMap::new(),
+                        None,
+                        None,
+                        None,
+                        plain_layout(squeeze),
+                    )
+                };
+                let squeezed = build(1.0, true);
+                assert_eq!(squeezed.len(), 1, "{suffix}");
+                assert!(squeezed[0].squeezed);
+                assert_eq!(build(1.0, false).len(), 2);
+                assert_eq!(build(6.0, true).len(), 2);
+            }
+        }
+    }
+
+    #[test]
     fn url_wraps_only_after_hyphens() {
         let words: Vec<&str> =
             split_preserving_spaces("see https://example.com/foo/bar?x=1&y=2#frag after")
@@ -4804,8 +4860,14 @@ mod tests {
     #[test]
     fn abbreviation_before_numero_sign_stays_together() {
         assert_eq!(split_preserving_spaces("ст.№4"), vec![(0, "ст.№4")]);
-        assert_eq!(split_preserving_spaces("st.№ 4"), vec![(0, "st.№"), (1, "4")]);
-        assert_eq!(split_preserving_spaces("st. №4"), vec![(0, "st."), (1, "№4")]);
+        assert_eq!(
+            split_preserving_spaces("st.№ 4"),
+            vec![(0, "st.№"), (1, "4")]
+        );
+        assert_eq!(
+            split_preserving_spaces("st. №4"),
+            vec![(0, "st."), (1, "№4")]
+        );
         assert!(!breaks_between('.', '№'));
         assert!(breaks_between(' ', '№'));
     }
@@ -4998,11 +5060,22 @@ mod tests {
             runs: vec![make_run(10.0, VertAlign::Baseline, false)],
             list_label: "1.".into(),
             indent_first_line: 28.35,
-            tab_stops: vec![TabStop { position: 21.3, alignment: TabAlignment::Left, leader: None },
-                TabStop { position: 42.55, alignment: TabAlignment::Left, leader: None }],
+            tab_stops: vec![
+                TabStop {
+                    position: 21.3,
+                    alignment: TabAlignment::Left,
+                    leader: None,
+                },
+                TabStop {
+                    position: 42.55,
+                    alignment: TabAlignment::Left,
+                    leader: None,
+                },
+            ],
             ..Default::default()
         };
-        let hanging = |p: &crate::model::Paragraph| super::super::list_label::text_hanging(p, 36.0, &fonts);
+        let hanging =
+            |p: &crate::model::Paragraph| super::super::list_label::text_hanging(p, 36.0, &fonts);
         assert!((hanging(&para) + 42.55).abs() < 0.01);
         para.indent_first_line = 0.0;
         para.indent_left = -5.0;
@@ -5015,7 +5088,11 @@ mod tests {
         assert!((hanging(&para) + 36.0).abs() < 0.01);
         para.indent_left = 36.0;
         para.indent_hanging = 18.0;
-        para.tab_stops.push(TabStop { position: 20.1, alignment: TabAlignment::Left, leader: None });
+        para.tab_stops.push(TabStop {
+            position: 20.1,
+            alignment: TabAlignment::Left,
+            leader: None,
+        });
         assert!(hanging(&para).abs() < 0.01);
         para.indent_left = 0.0;
         para.indent_hanging = 0.0;
