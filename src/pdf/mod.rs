@@ -1984,6 +1984,30 @@ fn empty_frame_table_bands(
     bands
 }
 
+fn space_only_anchor_line_h(para: &Paragraph, ctx: &RenderContext) -> Option<f32> {
+    if !para.runs.iter().any(|r| !r.text.is_empty())
+        || !para.runs.iter().all(|r| {
+            r.text.bytes().all(|b| b == b' ')
+                && !r.is_tab
+                && !r.is_line_break
+                && r.inline_image.is_none()
+                && r.field_code.is_none()
+                && r.checkbox.is_none()
+        })
+    {
+        return None;
+    }
+    let (mut fs, mut lhr, _) = tallest_glyph_run_metrics(&para.runs, ctx.fonts);
+    if lhr.is_none() {
+        (fs, lhr) = unsized_line_metrics(para, fs, ctx.fonts);
+    }
+    Some(resolve_line_h(
+        para.line_spacing.unwrap_or(ctx.doc_line_spacing),
+        fs,
+        lhr,
+    ))
+}
+
 /// Empty auto-height wrapping frames have no body-flow content. Ordinary
 /// empty paragraphs and explicit breaks retain their paragraph-mark lines.
 /// Inside a lifted frame the mark keeps its line too: Word spaces
@@ -4767,6 +4791,12 @@ pub fn render(doc: &Document) -> Result<Vec<u8>, Error> {
                         state.pb.float_zone = None;
                     } else if state.pb.slot_top <= fz.top_y
                         || (fz.para_relative && state.pb.slot_top <= fz.top_y + 30.0)
+                        // A spaces-only table anchor can start just above a
+                        // positive table offset. Its line band still intersects
+                        // the table, so clear the line before consuming it.
+                        || (fz.from_table && matches!(block, Block::Paragraph(p)
+                            if space_only_anchor_line_h(p, &ctx).is_some_and(|h|
+                                state.pb.slot_top <= fz.top_y + h)))
                         // A floating table meets a paragraph whose first
                         // line reaches its top: physical_education's empty
                         // anchor 0.05pt above a full-width table goes below
